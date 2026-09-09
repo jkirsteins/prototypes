@@ -4,8 +4,10 @@ import { newGame } from "../src/sim/newgame";
 import { mapHtml, mapKey } from "../src/ui/map";
 import { MOOD_BY_TASK, MOODS, moodOf } from "../src/ui/mood";
 import { statsHtml } from "../src/ui/panels";
+import { updateBars } from "../src/ui/bars";
 import { newUiState } from "../src/ui/render";
 import { ambientTemperature } from "../src/sim/weather";
+import { COLLAPSE_RECOVERED_AT } from "../src/sim/sleep";
 import type { GameState, TaskId } from "../src/sim/types";
 import { css } from "./css";
 
@@ -87,5 +89,31 @@ describe("the mood on the screen", () => {
     const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reduced).toContain("mood-walk");
     expect(reduced).toContain("mood-work");
+  });
+
+  it("shows the active collapse recovery line on the Energy bar", () => {
+    const { state, world } = newGame(17);
+    state.player.energy = 55;
+    state.player.sleeping = { collapsed: true };
+    const cal = calendar(state.minute, state.startDoy);
+    const html = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
+    expect(html).toContain(`left:${COLLAPSE_RECOVERED_AT.toFixed(1)}%`);
+    expect(html).toContain("work resumes here after collapse");
+  });
+
+  it("does not round Energy up across its active recovery line", () => {
+    const { state, world } = newGame(17);
+    state.player.energy = COLLAPSE_RECOVERED_AT - 0.1;
+    state.player.sleeping = { collapsed: true };
+    const cal = calendar(state.minute, state.startDoy);
+    document.body.innerHTML = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
+    updateBars(state, world);
+    expect(document.querySelector('[data-val="energy"]')?.textContent).toBe("99");
+  });
+
+  it("never animates a map cell with a positional transform", () => {
+    const mapRules = css.match(/\.grid \.c[^}]*}/g)?.join("\n") ?? "";
+    expect(mapRules).not.toMatch(/transform\s*:/);
+    expect(mapRules).not.toContain("mood-step");
   });
 });

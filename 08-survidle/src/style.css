@@ -132,6 +132,8 @@ body { display: flex; flex-direction: column; height: 100vh; }
    check-in never needs the page to scroll to reach what a column holds
    below the fold. */
 .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; overflow-y: auto; }
+#right { overflow: hidden; }
+#orders { flex: 1; min-height: 0; overflow-y: auto; }
 
 .panel {
   background: var(--panel);
@@ -654,7 +656,10 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 @keyframes mood-toil { from { background-color: var(--m0); } to { background-color: var(--m1); } }
 @keyframes mood-breathe { from { transform: scale(1); } to { transform: scale(1.04); } }
 
-.grid .c.mk-player.mood-walk { animation: mood-step 1.2s ease-in-out infinite alternate; }
+.grid .c.mk-player.mood-walk {
+  --m0: #b8860b; --m1: #d8a327;
+  animation: mood-toil 1.2s ease-in-out infinite alternate;
+}
 .grid .c.mk-player.mood-work {
   --m0: #b8860b; --m1: #d8a327;
   animation: mood-toil 2.4s ease-in-out infinite alternate;
@@ -914,8 +919,8 @@ button.act small, span.act small { display: block; color: var(--dim); }
    ends in the corner, the temperature large enough to read without looking
    for it, then the pairs a reader scans rather than reads. What the ground
    is doing is one of those pairs and not a headline. */
-#weather { padding: 0; overflow: hidden; position: relative; }
-.wx { position: relative; padding: 10px 12px 12px; min-height: 190px; }
+#weather { padding: 0; overflow: hidden; position: relative; flex: none; }
+.wx { position: relative; padding: 10px 12px 0; min-height: 190px; display: flex; flex-direction: column; }
 
 /* The sky is the widget, not a picture in the corner of it: the same
    drawing the map is lit from, stretched behind the numbers. The scrim is
@@ -945,7 +950,7 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .wx-k { color: rgba(255, 255, 255, 0.65); }
 .wx-v.bad { color: #ffb3b3; }
 .wx-warn { color: #ffb3b3; font-size: 12px; margin-top: 4px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
-.wx-where { position: relative; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.18); color: rgba(255, 255, 255, 0.6); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; overflow: hidden; }
+.wx-where { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 44px; margin: auto -12px 0; padding: 8px 12px 10px; border-top: 1px solid rgba(255, 255, 255, 0.18); color: rgba(255, 255, 255, 0.6); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; overflow: hidden; }
 .wx-where > span { position: relative; z-index: 1; }
 .speed-history { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.18; color: var(--accent); pointer-events: none; }
 .speed-history path { fill: currentColor; transition: d 0.2s linear; }

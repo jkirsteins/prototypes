@@ -10,29 +10,31 @@
  * Spec: docs/superpowers/specs/2026-09-05-survidle-hurry-design.md.
  */
 import { isWorkIntent, type GameState } from "../sim/types";
+import { ordersHere } from "../sim/orders";
+import type { World } from "../world/gen";
 
 export type HurryKind = "auto" | "click" | "none";
 
-/** The rate an immediate action climbs to, as a multiple of the one scale. */
+/** The peak rate of both the automatic and clicked ease-in/out curves. */
 export const PEAK = 6;
-/** Real seconds the climb takes. */
-export const RAMP_S = 2;
 /** Real seconds one pulse lasts; the next click waits for it. */
 export const PULSE_S = 10 / 1.5;
 /** Extra game minutes carried by the smooth 1x -> PEAK -> 1x pulse. */
 export const PULSE_MIN = (PEAK - 1) * PULSE_S / 2;
 
 export interface HurryState {
-  /** Real seconds the kind has been "auto" without a break. */
-  held: number;
   /** The running pulse: the order it was clicked on and how far in it is, in real seconds. */
   pulse: { orderId: number; at: number } | null;
   /** The rate at the end of the last frame, for the clock line; 1 when unhurried. */
   rate: number;
+  /** True while adjacent automatic once actions form one uninterrupted speed envelope. */
+  autoRun: boolean;
+  /** The automatic order seen on the previous frame. */
+  autoOrderId: number | null;
 }
 
 export function newHurry(): HurryState {
-  return { held: 0, pulse: null, rate: 1 };
+  return { pulse: null, rate: 1, autoRun: false, autoOrderId: null };
 }
 
 /** What the work in hand is: chosen in the moment, left running, or nothing to hurry. */
@@ -46,21 +48,10 @@ export function hurryKind(state: GameState): HurryKind {
   return "click";
 }
 
-/** Integral of the auto ramp's ease from 0 to u: raised cosine up to 1, then flat at the peak. */
-function rampArea(u: number): number {
-  return u <= 1 ? (u - Math.sin(Math.PI * u) / Math.PI) / 2 : 0.5 + (u - 1);
-}
-
 /** Integral of the pulse's smooth sine-squared curve, in pulse-length units. */
 function pulseArea(u: number): number {
   const v = Math.max(0, Math.min(1, u));
   return v / 2 - Math.sin(2 * Math.PI * v) / (4 * Math.PI);
-}
-
-function autoRate(held: number): number {
-  const u = held / RAMP_S;
-  const ease = u >= 1 ? 1 : (1 - Math.cos(Math.PI * u)) / 2;
-  return 1 + (PEAK - 1) * ease;
 }
 
 function pulseRate(at: number): number {
@@ -72,17 +63,35 @@ function pulseRate(at: number): number {
 /**
  * Advances the hurry by one frame of dtSec and returns the extra game minutes
  * it carries. A pulse ends on its own or the moment its order stops being the
- * one served; the auto ramp restarts from 1 whenever the kind breaks.
+ * one served. Automatic work reads the same curve against task completion,
+ * so it reaches 1x before the task disappears instead of dropping afterward.
  */
-export function hurryFrame(h: HurryState, kind: HurryKind, liveOrderId: number | null, dtSec: number): number {
+export function hurryFrame(
+  h: HurryState,
+  kind: HurryKind,
+  liveOrderId: number | null,
+  dtSec: number,
+  autoProgress = 0,
+  autoHasNext = false,
+): number {
   let extra = 0;
   if (kind === "auto") {
-    const t0 = h.held;
-    const t1 = t0 + dtSec;
-    extra += (PEAK - 1) * RAMP_S * (rampArea(t1 / RAMP_S) - rampArea(t0 / RAMP_S));
-    h.held = t1;
+    const progress = Math.max(0, Math.min(1, autoProgress));
+    const edge = 0.15;
+    const continued = h.autoRun && h.autoOrderId !== liveOrderId;
+    const entering = continued ? 1 : Math.min(1, progress / edge);
+    const leaving = autoHasNext ? 1 : Math.min(1, (1 - progress) / edge);
+    const envelope = Math.min(
+      Math.sin(Math.PI * entering / 2) ** 2,
+      Math.sin(Math.PI * leaving / 2) ** 2,
+    );
+    h.rate = 1 + (PEAK - 1) * envelope;
+    extra += (h.rate - 1) * dtSec;
+    h.autoRun = true;
+    h.autoOrderId = liveOrderId;
   } else {
-    h.held = 0;
+    h.autoRun = false;
+    h.autoOrderId = null;
   }
   if (h.pulse && (kind !== "click" || h.pulse.orderId !== liveOrderId)) h.pulse = null;
   if (h.pulse) {
@@ -91,8 +100,22 @@ export function hurryFrame(h: HurryState, kind: HurryKind, liveOrderId: number |
     extra += (PEAK - 1) * PULSE_S * (pulseArea(a1 / PULSE_S) - pulseArea(a0 / PULSE_S));
     h.pulse = a1 >= PULSE_S ? null : { orderId: h.pulse.orderId, at: a1 };
   }
-  h.rate = kind === "auto" ? autoRate(h.held) : h.pulse ? pulseRate(h.pulse.at) : 1;
+  if (kind !== "auto") h.rate = h.pulse ? pulseRate(h.pulse.at) : 1;
   return extra;
+}
+
+/**
+ * Advances hurrying from the live game state. Queue adjacency belongs here,
+ * beside the speed-envelope rule, rather than in the browser frame loop.
+ */
+export function advanceHurry(h: HurryState, state: GameState, world: World, dtSec: number): number {
+  const progress = state.task && state.task.duration > 0 ? state.task.progress / state.task.duration : 0;
+  const liveId = state.intent?.orderId ?? null;
+  const rows = ordersHere(state, world);
+  const liveIndex = liveId === null ? -1 : rows.findIndex((order) => order.id === liveId);
+  const next = liveIndex < 0 ? undefined : rows[liveIndex + 1];
+  const autoHasNext = next !== undefined && "req" in next && next.req.until.kind === "once";
+  return hurryFrame(h, hurryKind(state), liveId, dtSec, progress, autoHasNext);
 }
 
 /** A click on the central speed button starts a pulse unless one is already running. */

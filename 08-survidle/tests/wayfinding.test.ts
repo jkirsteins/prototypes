@@ -122,6 +122,27 @@ describe("wayfinding", () => {
     expect(html).not.toContain('data-act="row-more" data-id="explore"');
   });
 
+  it("keeps the current survey visible and neighbouring regions behind one chooser", () => {
+    const g = newGame(4);
+    const { state, world } = g;
+    const region = partlyKnownNeighbour(g);
+    const name = regionAt(world, region).name;
+    const ui = newUiState();
+    ui.panes = { pane: "do", subtab: "Explore", purpose: "Wayfinding" };
+
+    const closed = doHtml(state, world, calendar(state.minute), ui);
+    expect(closed).toContain("Explore this region");
+    expect(closed).toContain('data-specific="regions"');
+    expect(closed).toContain("choose region...");
+    expect(closed).not.toContain(`Explore ${name}`);
+
+    ui.specific.regions = true;
+    const open = doHtml(state, world, calendar(state.minute), ui);
+    expect(open).toContain(`data-id="explore" data-arg="region:${region}"`);
+    expect(open).toContain(`Explore ${name}`);
+    expect(open).toContain("hide region choices");
+  });
+
   it("carrying a wayfinding level to an heir logs no rung either", () => {
     const { state, world } = newGame(17);
     setSkillLevel(state, "wayfinding", 20);

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { bodyStep, campNeed, canFeed, currentNeed, SLEEP_AT, snaresWaiting, SOAKED_WETNESS, WET_COLD_C } from "../src/sim/body";
-import { alertness, RESTED_AT, sleepiness, sleepMinutes, SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
+import { alertness, COLLAPSE_RECOVERED_AT, RESTED_AT, sleepiness, sleepMinutes, SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { calendar } from "../src/sim/calendar";
 import { WATER_FULL } from "../src/sim/water";
 import { fuelTotal } from "../src/sim/fire";
@@ -427,10 +427,10 @@ describe("sleep by the model, not by the clock", () => {
     expect(currentNeed(state, world, night)).toBe("sleep");
     expect(state.player.sleeping).toEqual({ collapsed: true });
     // Past the collapse line but not yet rested: still down.
-    p.energy = RESTED_AT - 1;
+    p.energy = COLLAPSE_RECOVERED_AT - 1;
     expect(currentNeed(state, world, night)).toBe("sleep");
     // Rested, and with no sleepiness to hold it there, it is up by the fire.
-    p.energy = RESTED_AT;
+    p.energy = COLLAPSE_RECOVERED_AT;
     state.player.bodyNeed = null;
     expect(currentNeed(state, world, night)).not.toBe("sleep");
     expect(state.player.sleeping).toBeNull();

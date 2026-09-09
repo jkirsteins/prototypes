@@ -13,4 +13,20 @@ describe("speed history", () => {
     expect(path).toContain("0.00");
     expect(path).toContain("20.00");
   });
+
+  it("fills the footer immediately from its left edge", () => {
+    const path = speedAreaPath([{ at: 60_000, rate: 1 }], 60_000, 100, 20);
+    expect(path).toBe("M 0 20 L 0 20.00 L 100.00 20.00 L 100 20 Z");
+  });
+
+  it("draws acceleration upward and joins samples with slopes", () => {
+    const samples = [
+      { at: 0, rate: 1 },
+      { at: 30_000, rate: 6 },
+      { at: 60_000, rate: 1 },
+    ];
+    expect(speedAreaPath(samples, 60_000, 100, 20)).toBe(
+      "M 0 20 L 0 20.00 L 50.00 0.00 L 100.00 20.00 L 100 20 Z",
+    );
+  });
 });

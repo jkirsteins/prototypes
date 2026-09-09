@@ -455,7 +455,7 @@ export interface Player {
    * sleep need first fires and cleared only when the model ends the sleep, so
    * a night broken to feed the fire or by an order changing under the sleeper
    * is resumed rather than abandoned. `collapsed` marks a sleep begun on the
-   * fatigue line, which holds until fatigue is back at RESTED_AT.
+   * fatigue line, which holds until fatigue is full again.
    */
   sleeping: { collapsed: boolean } | null;
   /** The body need being served, or null. Sticky: a need's exit line is not its entry line. */

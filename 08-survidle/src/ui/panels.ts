@@ -1,6 +1,6 @@
 import { edible, hungerLine, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
-import { COLD_UNDER, SLEEP_AT, SOAKED_WETNESS } from "../sim/body";
+import { COLD_UNDER, SLEEP_AT, SOAKED_WETNESS, workResumeAt } from "../sim/body";
 import { isCareRow } from "../sim/bodyorder";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
@@ -24,7 +24,7 @@ import { moodOf } from "./mood";
 import { fmtName } from "../sim/names";
 import { sleepiness, SLEEPY_AT, SPENT_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
-import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation } from "../sim/player";
+import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation, walkManner } from "../sim/player";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
 import { current, worldDate } from "../sim/record";
 import { campSite, regionState } from "../sim/regionstate";
@@ -130,6 +130,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   const p = state.player;
   const felt = feltTemperature(state, world, ambient);
   const marks = fatLandmarks(current(state).person);
+  const resumeAt = workResumeAt(state);
   const tags: string[] = [];
   tags.push(`<span class="tag">feels like ${Math.round(felt)} C</span>`);
   if (p.sick > 0) tags.push(`<span class="tag bad">sick, ${fmtDuration(p.sick)} to go</span>`);
@@ -155,7 +156,11 @@ ${bar("kcal", "kcal", "Food", [{ at: "hunger", title: "eats below here" }])}
 ${bar("fat", "fat", "Fat", [{ at: marks.floor / marks.upper, title: "dies here" }, { at: marks.lower / marks.upper, title: "thin below here" }, { at: marks.upper / marks.upper, title: "well fed above here" }])}
 ${bar("water", "water", "Water", [{ at: THIRSTY_L / WATER_FULL, title: "thirsty below here" }])}
 ${bar("warmth", "warmth", "Warmth", [{ at: COLD_UNDER / 100, title: "goes to the fire below here" }, { at: 0.2, title: "hypothermia below here" }])}
-${bar("energy", "energy", "Energy", [{ at: SPENT_AT / 100, title: "stops work below here" }, { at: SLEEP_AT / 100, title: "collapses below here" }])}
+${bar("energy", "energy", "Energy", [
+  { at: SPENT_AT / 100, title: "stops work below here" },
+  { at: SLEEP_AT / 100, title: "collapses below here" },
+  ...(resumeAt === null ? [] : [{ at: resumeAt / 100, title: "work resumes here after collapse" }]),
+])}
 ${bar("wet", "wet", "Wet", [{ at: SOAKED_WETNESS / 100, title: "soaked above here" }])}
 <div class="statuses">${tags.join("")}</div>
 <div style="margin-top:8px">
@@ -289,7 +294,8 @@ function thinIceButton(state: GameState, world: World, cal: Calendar, id: "walk"
  */
 /**
  * Everywhere you can go, in a corner of the map: the named places in this
- * region, then the ways out of it.
+ * region, then known ways out of it. Unmapped regions are survey targets in
+ * Do > Explore, where they can be compared without crowding the map.
  *
  * Both used to live at the foot of the region panel, and the ways out only
  * after picking a neighbour on the map first - so a player who never
@@ -334,14 +340,15 @@ export function placesHtml(state: GameState, world: World, cal: Calendar, displa
   // that can be taken. Every neighbour listed with its own refusal was five
   // lines telling the player five times that the list held nothing for them.
   const out = regionAt(world, state.player.region).neighbours
+    .filter((n) => knownShare(state, world, n.id) >= 1)
     .map((n) => wayIntoHtml(state, world, cal, n.id, true, display))
     .join("");
   return `<div class="waylabel">places</div>${rows}${out ? `<div class="waylabel">ways out</div>${out}` : ""}`;
 }
 
 /**
- * The way into one region: go there when its ground is known, and open it
- * when it is not.
+ * The way into one region: go there when its ground is known. The fallback
+ * explore branch is retained for catalogue rendering, not the map corner.
  *
  * This is the whole of what leaving looks like, for one neighbour. The map
  * is where it is offered - point at a region and it says how to get in -
@@ -375,6 +382,7 @@ export function wayIntoHtml(state: GameState, world: World, cal: Calendar, regio
  */
 export function travelHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
   return regionAt(world, state.player.region).neighbours
+    .filter((n) => knownShare(state, world, n.id) >= 1)
     .map((n) => wayIntoHtml(state, world, cal, n.id, false, display))
     .join("");
 }
@@ -565,12 +573,18 @@ const CARE_ROUTE_PURPOSE = {
   thirsty: "for water", spent: "to rest", home: "to camp", fire: "for the fire", snares: "for the snares",
 } as const;
 
-function activityStep(state: GameState): string {
+function walkingStep(state: GameState, world: World, cal: Calendar, suffix = ""): string {
+  if (!state.route) return "walking";
+  const manner = walkManner(state, world, cal);
+  return `${manner} ${routeKm(state.route.path).toFixed(1)} km${suffix}`;
+}
+
+function activityStep(state: GameState, world: World, cal: Calendar): string {
   const it = state.intent;
   if (!it) return "";
   if (it.mode === "care") {
     if (state.task?.id === "walk" && state.route) {
-      return `going ${routeKm(state.route.path).toFixed(1)} km ${CARE_ROUTE_PURPOSE[it.need]}`;
+      return walkingStep(state, world, cal, ` ${CARE_ROUTE_PURPOSE[it.need]}`);
     }
     if (state.task?.id === "sleep") return it.step.includes("dozing") ? "dozing" : "sleeping";
     if (state.task?.id === "rest") {
@@ -587,11 +601,10 @@ function activityStep(state: GameState): string {
       .replace("splitting a log for the fire", "splitting firewood");
   }
   if (state.task?.id === "walk" && state.route) {
-    const km = routeKm(state.route.path).toFixed(1);
     const atCamp = it.campCell !== null && state.route.target === it.campCell;
     const ground = groundOf(it.task, it.arg);
     const destination = atCamp ? "camp" : ground ? SPOT_WORDS[ground].replace(/^the /, "") : "";
-    return `going ${km} km${destination ? ` to ${destination}` : ""}`;
+    return walkingStep(state, world, cal, destination ? ` to ${destination}` : "");
   }
   if (state.task?.id === it.task) return "";
   return plain(it.step)
@@ -605,7 +618,7 @@ export function activity(state: GameState, world: World, cal: Calendar): Activit
   if (it) {
     return {
       title: isWorkIntent(it) ? plain(check(state, world, cal, it.task, it.arg, it.cell).label) : it.care === "camp" ? "Camp maintenance" : "Self-care",
-      step: activityStep(state),
+      step: activityStep(state, world, cal),
       progress: !!state.task && state.task.duration > 0,
     };
   }
@@ -616,13 +629,12 @@ export function activity(state: GameState, world: World, cal: Calendar): Activit
   const opts = availableTasks(state, world, cal);
   const title = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
   if (t.id === "explore") {
-    const step = t.surveyPhase === "read" ? "reading the water" : state.route ? "walking the country" : "surveying";
+    const step = t.surveyPhase === "read" ? "reading the water" : state.route ? walkingStep(state, world, cal) : "surveying";
     return { title, step, progress: t.duration > 0 };
   }
   if ((t.id === "walk" || t.id === "travel") && state.route) {
-    const km = routeKm(state.route.path).toFixed(1);
     const named = state.route.label.startsWith("a spot ") ? "" : ` to ${state.route.label.replace(/^the /, "")}`;
-    return { title: t.id === "travel" ? "Travel" : "Walk", step: `going ${km} km${named}`, progress: t.duration > 0 };
+    return { title: t.id === "travel" ? "Travel" : "Walk", step: walkingStep(state, world, cal, named), progress: t.duration > 0 };
   }
   return { title, step: "", progress: t.duration > 0 };
 }
@@ -653,9 +665,8 @@ export function taskHtml(state: GameState, world: World, cal: Calendar, hurrySta
     ? `<b>${esc(cap(now.title))}</b>${now.step ? `<span class="sub">${esc(now.step)}</span>` : ""}`
     : `<span class="dim">${esc(idleLine(state, cal))}</span>`;
   const speedKind = hurryState ? hurryKind(state) : "none";
-  const canHurry = speedKind !== "none";
-  const speeding = speedKind === "auto" || !!hurryState?.pulse;
-  const speed = canHurry ? `<button class="mini speed-up${speeding ? " on" : ""}" data-act="hurry"${speeding ? " disabled" : ""}>speed up</button>` : "";
+  const speeding = !!hurryState?.pulse;
+  const speed = speedKind === "click" ? `<button class="mini speed-up${speeding ? " on" : ""}" data-act="hurry"${speeding ? " disabled" : ""}>speed up</button>` : "";
   return `<div class="now"><span class="what">${what}</span>${now?.progress ? TASK_BAR : ""}${speed}${stop}</div>`;
 }
 

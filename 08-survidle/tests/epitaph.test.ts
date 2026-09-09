@@ -83,18 +83,16 @@ describe("the epitaph", () => {
     // Neither freezes, because fat is insulation as well as fuel and the reserve a body
     // lands with carries it that far - a body that eats well early is warm later on the
     // same food.
-    // What these snapshots hold: Ausra Zukauskaite (seed 17) starves a kilometre from camp on
-    // day 31, pack empty, 93 kg of firewood still stacked at it. Elsa Sjoberg (seed 79) starves
-    // at camp on day 51, pack empty, 69 kg beside her. Both live well past the point a body
-    // that could not bank a reserve reaches, and both leave wood behind: a fire that keeps
-    // itself costs the woodpile less, and the food is what runs out.
+    // Both live well past the point a body that could not bank a reserve reaches, and both
+    // leave wood behind: a fire that keeps itself costs the woodpile less, and food or cold
+    // is what ends the run.
     // Seed 79 rather than seed 19: an epitaph needs a body, and seed 19's survivor is still
     // alive at the end of her reference span, so she has no death to be read for.
     // A few minutes moved either way swings the day by several, so the day numbers here are
     // a determinism check rather than a reading; what the epitaph is asked for is where the
     // body lies, what it carried and what it left.
     expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 35. Died of cold 0.2 km from camp, with nothing in the pack and 79 kg of firewood at camp."`);
-    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 53. Starved at camp, with nothing in the pack and 76 kg of firewood at camp."`);
+    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 48. Starved at camp, with nothing in the pack and 33 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

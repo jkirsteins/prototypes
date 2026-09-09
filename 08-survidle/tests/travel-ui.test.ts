@@ -14,6 +14,11 @@ import { placesHtml, travelHtml } from "../src/ui/panels";
 import { regionAt } from "../src/world/gen";
 
 describe("the ways out", () => {
+  function mapWays(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]): void {
+    mapRegion(state, world, state.player.region);
+    for (const n of regionAt(world, state.player.region).neighbours) mapRegion(state, world, n.id);
+  }
+
   it("uses the same distance, time, or combined format as every route", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
@@ -28,6 +33,7 @@ describe("the ways out", () => {
 
   it("lists the neighbours, and only the neighbours", () => {
     const { state, world } = newGame(21);
+    mapWays(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const html = travelHtml(state, world, cal);
     const listed = [...html.matchAll(/data-way="(\d+)"/g)].map((m) => Number(m[1]));
@@ -42,14 +48,11 @@ describe("the ways out", () => {
     expect(travelHtml(state, world, cal)).not.toContain(`data-arg="region:${state.player.region}"`);
   });
 
-  it("offers to explore ground that is not known yet, not to go to it", () => {
+  it("leaves unexplored neighbours to the Explore pane", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
-    // A fresh survivor knows nothing outside the landing, so every way out
-    // is an exploration. Offering "Go" would promise a walk over ground
-    // nobody has seen.
-    const html = travelHtml(state, world, cal);
-    expect(html).toContain('data-id="explore"');
+    expect(placesHtml(state, world, cal)).not.toContain('data-id="explore"');
+    expect(travelHtml(state, world, cal)).not.toContain('data-id="explore"');
   });
 
   it("stops offering to explore ground that is already known", () => {
@@ -73,6 +76,7 @@ describe("the ways out", () => {
 
   it("names each neighbour, since a direction with no name is not a choice", () => {
     const { state, world } = newGame(21);
+    mapWays(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const html = travelHtml(state, world, cal);
     for (const n of regionAt(world, state.player.region).neighbours) {
@@ -88,6 +92,7 @@ describe("the ways out", () => {
 
   it("every entry carries a key, since this box redraws under the pointer", () => {
     const { state, world } = newGame(21);
+    mapWays(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const html = travelHtml(state, world, cal);
     const rows = html.match(/<div class="way"[^>]*>/g) ?? [];

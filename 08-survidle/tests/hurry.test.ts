@@ -8,7 +8,7 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { startTask } from "../src/sim/tasks";
-import { hurryClick, hurryFrame, hurryKind, newHurry, PEAK, PULSE_MIN, PULSE_S, pulseLeft, RAMP_S } from "../src/ui/hurry";
+import { advanceHurry, hurryClick, hurryFrame, hurryKind, newHurry, PEAK, PULSE_MIN, PULSE_S, pulseLeft } from "../src/ui/hurry";
 import { queueHtml } from "../src/ui/panels";
 
 const cal = calendar(0);
@@ -18,31 +18,46 @@ function frames(h: ReturnType<typeof newHurry>, kind: "auto" | "click" | "none",
   return lengths.reduce((sum, d) => sum + hurryFrame(h, kind, live, d), 0);
 }
 
-describe("the auto ramp", () => {
-  it("carries the same minutes over the ramp however the frames fall, and the full rate after it", () => {
-    const whole = (PEAK - 1) * RAMP_S / 2;
-    const one = frames(newHurry(), "auto", null, [RAMP_S]);
-    const fine = frames(newHurry(), "auto", null, new Array(20).fill(RAMP_S / 20));
-    const mixed = frames(newHurry(), "auto", null, [0.1, 0.25, 1, RAMP_S - 1.35]);
-    expect(one).toBeCloseTo(whole, 9);
-    expect(fine).toBeCloseTo(whole, 9);
-    expect(mixed).toBeCloseTo(whole, 9);
-    const h = newHurry();
-    frames(h, "auto", null, [RAMP_S]);
-    expect(h.rate).toBeCloseTo(PEAK, 9);
-    expect(hurryFrame(h, "auto", null, 0.5)).toBeCloseTo((PEAK - 1) * 0.5, 9);
+describe("the automatic pulse", () => {
+  const atProgress = hurryFrame as unknown as (
+    h: ReturnType<typeof newHurry>, kind: "auto", live: number, seconds: number, progress: number, hasNext?: boolean,
+  ) => number;
+
+  it("ramps steeply into the first once action", () => {
+    const start = newHurry();
+    atProgress(start, "auto", 1, 0.1, 0);
+    expect(start.rate).toBe(1);
+
+    atProgress(start, "auto", 1, 0.1, 0.075);
+    expect(start.rate).toBeCloseTo(1 + (PEAK - 1) / 2, 9);
+    atProgress(start, "auto", 1, 0.1, 0.15);
+    expect(start.rate).toBeCloseTo(PEAK, 9);
   });
 
-  it("reads 1 the frame after the kind breaks, and starts the climb over", () => {
+  it("holds speed between adjacent once actions and eases out only on the last", () => {
     const h = newHurry();
-    frames(h, "auto", null, [RAMP_S]);
-    expect(hurryFrame(h, "none", null, 0.1)).toBe(0);
+    atProgress(h, "auto", 1, 0.1, 0.95, true);
+    expect(h.rate).toBe(PEAK);
+    atProgress(h, "auto", 2, 0.1, 0.05, false);
+    expect(h.rate).toBe(PEAK);
+    atProgress(h, "auto", 2, 0.1, 0.925, false);
+    expect(h.rate).toBeCloseTo(1 + (PEAK - 1) / 2, 9);
+    atProgress(h, "auto", 2, 0.1, 1, false);
     expect(h.rate).toBe(1);
-    expect(h.held).toBe(0);
-    const again = hurryFrame(h, "auto", null, 0.1);
-    expect(again).toBeLessThan((PEAK - 1) * 0.1 * 0.05);
-    expect(h.rate).toBeGreaterThan(1);
-    expect(h.rate).toBeLessThan(1.2);
+  });
+
+  it("derives an uninterrupted once-action run from the queue", () => {
+    const { state, world } = newGame(3);
+    addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    advance(state, world, 1);
+    if (!state.task) throw new Error("the first once action did not start");
+    state.task.progress = state.task.duration * 0.95;
+    const h = newHurry();
+
+    advanceHurry(h, state, world, 0.1);
+
+    expect(h.rate).toBe(PEAK);
   });
 
   it("with nothing to hurry a frame carries nothing and leaves the state alone", () => {

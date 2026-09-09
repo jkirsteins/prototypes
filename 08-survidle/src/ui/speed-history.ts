@@ -21,13 +21,16 @@ export function speedAreaPath(samples: readonly SpeedSample[], now: number, widt
   const x = (at: number) => Math.max(0, Math.min(width, ((at - (now - SPEED_WINDOW_MS)) / SPEED_WINDOW_MS) * width));
   const y = (rate: number) => height - ((Math.max(1, Math.min(6, rate)) - 1) / 5) * height;
   const first = samples[0];
-  let d = `M ${x(first.at).toFixed(2)} ${height} L ${x(first.at).toFixed(2)} ${y(first.rate).toFixed(2)}`;
+  const firstX = x(first.at);
+  let d = `M 0 ${height} L 0 ${y(first.rate).toFixed(2)}`;
+  if (firstX > 0) d += ` L ${firstX.toFixed(2)} ${y(first.rate).toFixed(2)}`;
   for (let i = 1; i < samples.length; i++) {
-    const prev = samples[i - 1];
     const cur = samples[i];
-    d += ` L ${x(cur.at).toFixed(2)} ${y(prev.rate).toFixed(2)} L ${x(cur.at).toFixed(2)} ${y(cur.rate).toFixed(2)}`;
+    d += ` L ${x(cur.at).toFixed(2)} ${y(cur.rate).toFixed(2)}`;
   }
-  d += ` L ${width} ${y(samples[samples.length - 1].rate).toFixed(2)} L ${width} ${height} Z`;
+  const last = samples[samples.length - 1];
+  if (x(last.at) < width) d += ` L ${width} ${y(last.rate).toFixed(2)}`;
+  d += ` L ${width} ${height} Z`;
   return d;
 }
 

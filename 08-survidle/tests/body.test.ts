@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { ARROWS_TO_CARRY, currentNeed, minutesToCamp, SLEEP_AT } from "../src/sim/body";
-import { alertness, minutesToWake, RESTED_AT, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT } from "../src/sim/sleep";
+import { alertness, minutesToWake, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT } from "../src/sim/sleep";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { bankFire } from "../src/sim/fire";
 import { addItem, pile, qty, weight } from "../src/sim/inventory";
@@ -68,8 +68,10 @@ describe("the body's row against the work", () => {
     expect(state.intent?.step).toBe("dozing by the fire");
     expect(until(g, () => state.task?.id !== "sleep", 700)).toBe(true);
     expect(state.player.bodyNeed).toBeNull();
-    // It lay there until the fatigue an evening by the fire would have restored.
-    expect(state.player.energy).toBeGreaterThanOrEqual(RESTED_AT);
+    // Collapse is not an ordinary evening rest: it restores the full reserve
+    // before the interrupted work is allowed to restart.
+    // The observed minute includes the first minute of resumed work.
+    expect(state.player.energy).toBeGreaterThan(99.8);
     // Back to the tree it left, and on with the same intent.
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     expect(state.task!.progress).toBeGreaterThan(15);
@@ -398,13 +400,12 @@ describe("the body's row against the work", () => {
       if (state.player.energy < SPENT_AT && state.task?.id === "build") pastSpent = true;
     }
     expect(pastSpent).toBe(true);
-    // Energy reads a shade over the line by the end of the minute the collapse
-    // fires in, because the sleep it starts has already begun giving it back.
+    // Collapse releases the build to the queue. Its row visibly refuses work
+    // until Self-care has restored the body, then the same row resumes.
     expect(state.player.energy).toBeLessThan(SLEEP_AT + 1);
-    expect(state.task?.id).toBe("sleep");
     expect(state.player.sleeping?.collapsed).toBe(true);
-    // Awake again, the player picks the build back up where the collapse left it.
-    orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), cabin, "job");
+    expect(until(g, () => state.task?.id === "sleep", 20)).toBe(true);
+    expect(until(g, () => state.task?.id === "build", 1000)).toBe(true);
     // The player sets it aside by choosing something else; the minutes are banked and read back into the next start.
     orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 1);

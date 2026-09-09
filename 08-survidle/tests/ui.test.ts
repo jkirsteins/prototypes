@@ -305,7 +305,7 @@ describe("panels", () => {
     expect(document.querySelectorAll("#map .mk-camp").length).toBe(0);
   });
 
-  it("the middle strip shows speed up for counted work and shows when automatic work is already sped up", () => {
+  it("the middle strip shows speed up only when the button can act", () => {
     const { state, world } = newGame(3);
     siteCamp(state, world);
     const cal = calendar(0);
@@ -323,8 +323,7 @@ describe("panels", () => {
     addOrder(once.state, once.world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(once.state, once.world, 1);
     const automatic = taskHtml(once.state, once.world, cal, newHurry());
-    expect(automatic).toContain('class="mini speed-up on"');
-    expect(automatic).toContain('data-act="hurry" disabled');
+    expect(automatic).not.toContain('data-act="hurry"');
   });
 
   it("keeps care activity copy short and offers its speed control", () => {
@@ -335,9 +334,13 @@ describe("panels", () => {
     state.route = { target: next, path: [next], walked: [here], lastLand: here, label: "the shore", ice: "none" };
     state.task = { id: "walk", progress: 0, duration: 10, repeat: false };
     let html = taskHtml(state, world, calendar(0), newHurry());
-    expect(html).toContain("going 0.3 km for water");
+    expect(html).toContain("walking 0.3 km for water");
     expect(html).toContain('data-act="hurry"');
     expect(html).not.toContain("walking to the shore");
+
+    state.weather.snowCm = 31;
+    html = taskHtml(state, world, calendar(0), newHurry());
+    expect(html).toContain("struggling through deep snow 0.3 km for water");
 
     state.intent = { mode: "care", care: "body", need: "sleep", orderId: 7, step: "sleeping where {you} {stand}; no way to camp" };
     state.route = null;
@@ -779,7 +782,7 @@ describe("the Do panel", () => {
     // the bar's, which bars.ts writes every frame.
     expect(html).toContain("<b>Fell any tree</b>");
     expect(html).not.toContain("until camp has");
-    expect(html).toMatch(/going [0-9.]+ km to forest/);
+    expect(html).toMatch(/walking [0-9.]+ km to forest/);
     expect(html).toContain('data-act="stop"');
     // A tree half felled and stopped does not create a second finish control.
     placeAtSpot(g.state, g.world, g.state.player.region, "forest");

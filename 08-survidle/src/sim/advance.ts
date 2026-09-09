@@ -15,15 +15,13 @@ import { causeFrom, die, type Drains, feltTemperature, stepPlayer } from "./play
 import { current, record } from "./record";
 import { seeFrom } from "./sight";
 import { stepSpine } from "./spine";
-import { beginTask, stepTask } from "./tasks";
+import { stepTask } from "./tasks";
 import type { GameState } from "./types";
 import { stepSeeps } from "./seep";
 import { autoDrink } from "./water";
 import { ambientTemperature, stepWeather, stormComing } from "./weather";
 
 export const MAX_STEP = 1;
-/** Below this energy an idle character falls asleep unbidden. */
-const EXHAUSTED = 10;
 
 /** Where a body is, for the world half to shape itself around without touching the body. */
 export interface Presence {
@@ -74,10 +72,6 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     stepTask(state, world, cal, rng, dt);
     runOrders(state, world, cal, rng);
     runIntent(state, world, cal, rng);
-    // A body left idle and spent lies down on its own.
-    if (!state.task && state.player.energy < EXHAUSTED && beginTask(state, world, cal, "sleep")) {
-      log(state, "Too tired to stand, {you} {sleep} where {you} {are}.");
-    }
   }
 
   // Read after the task step above: a walk, an order or an intent can move

@@ -38,6 +38,20 @@ describe("the map's own surface", () => {
 describe("the layout", () => {
   const page = () => readFileSync("index.html", "utf8");
 
+  it("gives the speed history the whole weather footer without a dead strip below it", () => {
+    expect(rule(".wx")).toContain("display: flex");
+    expect(rule(".wx")).toContain("flex-direction: column");
+    expect(rule(".wx-where")).toContain("margin: auto -12px 0");
+    expect(rule(".wx-where")).toContain("min-height");
+  });
+
+  it("keeps weather fixed while only the activity queue scrolls", () => {
+    expect(rule("#right")).toContain("overflow: hidden");
+    expect(rule("#weather")).toContain("flex: none");
+    expect(rule("#orders")).toContain("overflow-y: auto");
+    expect(rule("#orders")).toContain("min-height: 0");
+  });
+
   /**
    * One rule decides where anything goes. A tester spent a session unable
    * to tell what his survivor was doing while the thing he acted through

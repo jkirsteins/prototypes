@@ -8,7 +8,7 @@ import type { Rng } from "../rng";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { itemLabel } from "./actions";
 import { absence, popOf } from "./animals";
-import { orderKit, provision, provisionKit, SLEEP_AT } from "./body";
+import { orderKit, provision, provisionKit, tooExhausted } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pileAt, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
@@ -24,7 +24,7 @@ import { fishSpecies, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
-import { beginTask, check, huntGroundValue, isShortAtCamp, loadPack, setAside, type InitialWalk, type TaskOption, whereIs } from "./tasks";
+import { check, huntGroundValue, isShortAtCamp, loadPack, setAside, type InitialWalk, type TaskOption, whereIs } from "./tasks";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, UntilChoice, Where, WorkIntent,
 } from "./types";
@@ -295,6 +295,9 @@ export function intentOption(state: GameState, world: World, cal: Calendar, task
 /** Sets out. False when the work could not start at its place; the button already said why. */
 export function startIntent(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, orderId: number | null = null, runNow = true): boolean {
   if (state.dead || req.task === "travel") return false;
+  // Clicks and queue starts share the collapse gate. Care starts sleep and
+  // rest through its own row, so those recovery tasks remain available.
+  if (!UNCHECKED.has(req.task) && tooExhausted(state)) return false;
   const { cell, note } = resolveCell(state, world, cal, req.task, req.arg, req.where);
   const item = yieldItem(req.task, req.arg);
   let until: Until = req.until.kind === "campHas"
@@ -727,17 +730,14 @@ export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rn
   // Care is advanced by the ranked care row in runOrders. It is not work
   // and never falls through into the work-intent state machine.
   if (!isWorkIntent(it)) return;
-  // The floor under work the player chose in the moment. Ranked over the
-  // body's row, nothing thirsty, cold or dark takes the minute back off it,
-  // however long it runs and however far past spent the body is. The body
-  // giving out is the one thing that does not wait to be ranked: at the
-  // collapse line the order ends where it stands and the survivor sleeps
-  // there, the same sleep a runner too far from camp gets.
-  if (it.mode === "hand" && state.player.energy <= SLEEP_AT) {
+  // At the collapse line the work is released back to the queue. Its row
+  // reads "too exhausted", so the next ranked row wins visibly instead of
+  // a hidden sleep task bypassing the list.
+  if (it.mode === "hand" && tooExhausted(state)) {
     state.player.sleeping = { collapsed: true };
     setAside(state, world);
-    endIntent(state, `${labelOf(state, world, cal, it)}: {you} {are} done in. {You} {sleep} where {you} {stand}.`, "bad");
-    beginTask(state, world, cal, "sleep");
+    if (it.orderId === null) endIntent(state, `${labelOf(state, world, cal, it)}: {you} {are} too exhausted. {You} {stop}.`, "bad");
+    else state.intent = null;
     return;
   }
   for (let guard = 0; guard < 8 && state.intent && !state.task; guard++) {

@@ -19,6 +19,16 @@ import { deserialize, serialize } from "../src/sim/save";
 const cal = calendar(0);
 
 describe("the body row", () => {
+  it("does not bypass queue priority with a hidden idle sleep", () => {
+    const { state, world } = newGame(3);
+    state.player.energy = 5;
+    const blocked = addOrder(state, world, { task: "split", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job", "top");
+    blocked.pinned = true;
+    advance(state, world, 1);
+    expect(state.task).toBeNull();
+    expect(state.intent).toBeNull();
+  });
+
   it("a new region's list is the two care rows and nothing else, the camp above the body", () => {
     const { state, world } = newGame(3);
     const list = ordersHere(state, world);

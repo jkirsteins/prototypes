@@ -71,7 +71,10 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   const fatUpper = fatLandmarks(personOf(state)).upper;
   setBar("fat", p.fat / fatUpper, `${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg`, root);
   setBar("warmth", p.warmth / 100, `${Math.round(p.warmth)}`, root);
-  setBar("energy", p.energy / 100, `${Math.round(p.energy)}`, root);
+  // Never round upward across a decision line. In particular, a collapsed
+  // body at 99.9 is still recovering, so the bar must not claim 100 while
+  // the queue truthfully refuses work.
+  setBar("energy", p.energy / 100, `${Math.floor(p.energy + 1e-9)}`, root);
   setBar("wet", p.wetness / 100, `${Math.round(p.wetness)}`, root);
   setBar("water", p.water / WATER_FULL, `${p.water.toFixed(1)} l`, root);
 

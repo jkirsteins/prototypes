@@ -24,7 +24,7 @@ import { cellOf, straightKm, watersideCell } from "./position";
 import { campSite, regionState } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { seepStopped } from "./seep";
-import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
+import { collapseRecoveryPending, COLLAPSE_RECOVERED_AT, RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
 import { isWorkIntent, type BodyNeed, type CampNeed, type CareNeed, type GameState, type ItemId, type WorkIntent } from "./types";
@@ -50,6 +50,16 @@ const PROVISIONS: FoodId[] = ["driedMeat", "cookedMeat", "cookedFish", "berries"
  * counts hours against it.
  */
 export const WORK_HOURS_DEFAULT = 10;
+
+/** The active recovery line, when a collapse is still holding work. */
+export function workResumeAt(state: GameState): number | null {
+  return collapseRecoveryPending(state.player.energy, state.player.sleeping) ? COLLAPSE_RECOVERED_AT : null;
+}
+
+/** Work stays refused through the whole collapse, not only at the instant Energy crosses its floor. */
+export function tooExhausted(state: GameState): boolean {
+  return state.player.energy <= SLEEP_AT || workResumeAt(state) !== null;
+}
 
 /**
  * A catch hanging in the snares and the heath in reach by day: the cell to
@@ -109,15 +119,15 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   // bedtime, the wake and the nap are all the same clause. A thirsty body
   // that can drink drinks before it lies down; one that has worked itself
   // under the collapse line sleeps parched, which is what a collapse is, and
-  // holds that sleep past the wake line until the fatigue an evening by the
-  // fire would have given back is there.
+  // holds that sleep past the wake line until the fatigue reserve is full.
   // The night lives on the player, not the intent, and only the model ends
   // it: a sleep broken to feed the fire, or by an order changing under the
   // sleeper, is a night interrupted rather than a night over, and the body
   // goes back to bed on the next free minute.
   if (p.energy <= SLEEP_AT) mem.sleeping = { collapsed: true };
   else if (mem.sleeping) {
-    if (!(sleepy > WAKE_AT || (mem.sleeping.collapsed && p.energy < RESTED_AT))) mem.sleeping = null;
+    const stillNeedsSleep = sleepy > WAKE_AT || collapseRecoveryPending(p.energy, mem.sleeping);
+    if (!stillNeedsSleep) mem.sleeping = null;
   } else if (sleepy >= SLEEP_ONSET && !drinkFirst) {
     mem.sleeping = { collapsed: false };
   }

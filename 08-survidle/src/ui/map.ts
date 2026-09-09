@@ -606,8 +606,8 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (m.cls === "mk-player") cls.push(`mood-${moodOf(state)}`);
       glyph = m.glyph;
     }
-    // Selecting is what puts the Explore button on the panel, so a named region stays
-    // clickable on the map whether or not its ground itself has been walked.
+    // Named regions stay selectable so their ground can be inspected even when it
+    // has not been walked. Survey targets themselves live in Do > Explore.
     //
     // The index rides with it, and has to. keyOf names an element by its
     // data attributes, so every cell of one region would otherwise carry the

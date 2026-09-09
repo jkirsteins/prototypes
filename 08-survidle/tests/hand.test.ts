@@ -59,10 +59,12 @@ describe("work chosen by hand is the player's", () => {
     // A deadwood round trip costs more energy than the ten points between the
     // spent line and the collapse, so a body that starts one past the spent
     // line gives out on the way. Nothing turned it for camp: it worked until
-    // it dropped, and it sleeps in the forest with the wood still on its back.
+    // its row became blocked, then the ranked self-care row took the next minute.
     expect(state.intent).toBeNull();
     expect(cellOf(state, world)).not.toBe(camp);
-    expect(state.task?.id).toBe("sleep");
+    advance(state, world, 1);
+    expect(state.intent?.mode).toBe("care");
+    expect(until(g, () => state.task?.id === "sleep", 300)).toBe(true);
     expect(state.player.sleeping?.collapsed).toBe(true);
   });
 

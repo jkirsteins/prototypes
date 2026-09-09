@@ -211,6 +211,25 @@ export function baseWalkSpeed(state: GameState, cal: Calendar, weather: Weather,
   return v;
 }
 
+/** The most meaningful real penalty affecting the current walking pace. */
+export function walkManner(state: GameState, world: World, cal: Calendar): string {
+  const p = state.player;
+  const terrain = hereTerrain(state, world);
+  const loadKg = carried(p);
+  const limits = body(state);
+  const lux = skyLux(cal, state.weather.clear, state.weather.snowCm) + (p.torch.lit ? TORCH_LUX : 0);
+  if (p.frostbite.feet > 0 || p.toes) return "limping";
+  if (state.weather.snowCm > DEEP_SNOW_CM) return "struggling through deep snow";
+  if (loadKg > limits.packHardKg) return "struggling under the load";
+  if (lightFactor(lux, WALK_LUX, NIGHT_WALK_FACTOR) < 0.8) return "walking carefully in the dark";
+  if (loadKg > limits.packComfortableKg) return "walking under a heavy load";
+  if (terrain === "water" && state.route?.ice !== "none") return "crossing the ice";
+  if (terrain === "fell") return "climbing the fell";
+  if (terrain === "bog") return "picking through the bog";
+  if (terrain === "rock") return "picking over rock";
+  return "walking";
+}
+
 /** Walking speed in km/h on this ground, right now, with this load; a water cell needs the route's ice mode. */
 export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, terrain: Terrain, loadKg = carried(state.player), ice: IceMode = "none"): number {
   return baseWalkSpeed(state, cal, weather, loadKg) * speedOf(terrain, ice);

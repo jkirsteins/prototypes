@@ -50,7 +50,7 @@ import {
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
-import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
+import { advanceHurry, hurryClick, hurryKind, newHurry } from "./ui/hurry";
 import { updateSky } from "./ui/sky";
 import { newSpeedHistory, updateSpeedHistory } from "./ui/speed-history";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
@@ -97,7 +97,7 @@ ui.travelDisplay = loadTravelDisplay(localStorage);
 const SPECIFIC_KEY = "survidle.specific";
 try {
   const saved = JSON.parse(localStorage.getItem(SPECIFIC_KEY) ?? "{}") as Partial<UiState["specific"]>;
-  ui.specific = { trees: saved.trees === true, fish: saved.fish === true };
+  ui.specific = { trees: saved.trees === true, fish: saved.fish === true, regions: saved.regions === true };
 } catch {
   // A malformed UI preference is only a closed chooser.
 }
@@ -265,7 +265,7 @@ function frame(now: number) {
       awayInfo = { seconds: Math.min(dtSec, awaySeconds(state)), capped: dtSec > awaySeconds(state) };
     } else {
       // The hurry: extra minutes for work chosen by hand, on top of the frame's own. The speed test aid does not scale it.
-      const extra = hurryFrame(ui.hurry, hurryKind(state), state.intent?.orderId ?? null, dtSec);
+      const extra = advanceHurry(ui.hurry, state, world, dtSec);
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra);
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
@@ -377,7 +377,7 @@ function onClick(ev: Event) {
       break;
     case "specific": {
       const kind = target.dataset.specific as keyof UiState["specific"];
-      if (kind === "trees" || kind === "fish") {
+      if (kind === "trees" || kind === "fish" || kind === "regions") {
         ui.specific[kind] = !ui.specific[kind];
         localStorage.setItem(SPECIFIC_KEY, JSON.stringify(ui.specific));
       }

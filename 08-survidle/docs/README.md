@@ -119,7 +119,7 @@ waiting, and everything done while you are away run at the one scale.
   ground you have never seen, so "walk to camp" can say there is no way
   you know, and a heir landing in fresh country may have no way home at
   all - only "search for a way home", which looks for one and promises
-  nothing. New country is opened by going to look: "Explore Stensund"
+  nothing. New country is opened from Do > Explore by going to look: "Explore Stensund"
   walks a sweep of that region until you have all of it. That is hours,
   and it is always your own click - nothing explores while you are away.
   Wayfinding is the skill behind it, and what practice buys is a wider

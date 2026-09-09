@@ -445,7 +445,11 @@ function groupRows(g: { label: string; items: { id: TaskId; arg?: string }[] }, 
     const argKey = arg ?? "";
     const open = ui.open !== null && ui.open.id === id && ui.open.arg === argKey;
     const where = open ? ui.choice.where : "nearest";
-    return withProgression(state, world, intentOption(state, world, cal, id, arg, where));
+    const option = withProgression(state, world, intentOption(state, world, cal, id, arg, where));
+    if (id !== "explore" || !arg?.startsWith("region:")) return option;
+    const region = Number(arg.slice("region:".length));
+    const label = region === state.player.region ? "Explore this region" : `Explore ${regionAt(world, region).name}`;
+    return { ...option, label };
   }).filter((o) => (o.id !== "explore" && o.id !== "searchHome") || o.ok);
 }
 
@@ -496,11 +500,13 @@ function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState):
  * and says why.
  */
 function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
+  const currentRegion = `region:${state.player.region}`;
   const wanted = intentGroups(regionAt(world, state.player.region))
     .flatMap((g) => g.items)
     .filter((i) => subtabOf(i.id, i.arg) === ui.panes.subtab && purposeOf(i.id, i.arg) === ui.panes.purpose)
     .filter((i) => i.id !== "chop" || !i.arg || ui.specific.trees)
-    .filter((i) => i.id !== "fish" || i.arg === "any" || ui.specific.fish);
+    .filter((i) => i.id !== "fish" || i.arg === "any" || ui.specific.fish)
+    .filter((i) => i.id !== "explore" || i.arg === currentRegion || ui.specific.regions);
   return makeFirst(groupRows({ label: ui.panes.subtab, items: wanted }, state, world, cal, ui));
 }
 
@@ -512,6 +518,7 @@ export function purposeCounts(state: GameState, world: World, ui: UiState): Reco
     if (subtabOf(i.id, i.arg) !== ui.panes.subtab) continue;
     if (i.id === "chop" && i.arg && !ui.specific.trees) continue;
     if (i.id === "fish" && i.arg !== "any" && !ui.specific.fish) continue;
+    if (i.id === "explore" && i.arg !== `region:${state.player.region}` && !ui.specific.regions) continue;
     if ((i.id === "explore" || i.id === "searchHome") && !check(state, world, calendar(state.minute, state.startDoy), i.id, i.arg).ok) continue;
     const q = purposeOf(i.id, i.arg);
     if (q !== null && q in counts) counts[q]++;
@@ -530,18 +537,28 @@ export function doPurposesHtml(state: GameState, world: World, ui: UiState): str
 }
 
 function specificChooser(kind: keyof UiState["specific"], open: boolean): string {
-  const one = kind === "trees" ? "tree" : "fish";
+  const one = kind === "trees" ? "tree" : kind === "regions" ? "region" : "fish";
   const label = open ? `hide ${one} choices` : `choose ${one}...`;
   return `<button class="mini specific" data-act="specific" data-specific="${kind}" aria-expanded="${open}">${label}</button>`;
 }
 
 function paneRowsHtml(rows: TaskOption[], ui: UiState, state: GameState, world: World): string {
-  return rows.map((o) => {
+  const currentRegion = `region:${state.player.region}`;
+  const cal = calendar(state.minute, state.startDoy);
+  const hasRegionChoices = regionAt(world, state.player.region).neighbours
+    .some((n) => check(state, world, cal, "explore", `region:${n.id}`).ok);
+  const chooser = hasRegionChoices ? specificChooser("regions", ui.specific.regions) : "";
+  const currentIndex = rows.findIndex((o) => o.id === "explore" && o.arg === currentRegion);
+  const rendered = rows.map((o) => {
     const row = intentRowHtml(o, ui, state, world);
     if (o.id === "chop" && !o.arg) return `${row}${specificChooser("trees", ui.specific.trees)}`;
     if (o.id === "fish" && o.arg === "any") return `${row}${specificChooser("fish", ui.specific.fish)}`;
     return row;
-  }).join("");
+  });
+  if (!chooser) return rendered.join("");
+  if (currentIndex < 0) return `${chooser}${rendered.join("")}`;
+  rendered[currentIndex] += chooser;
+  return rendered.join("");
 }
 
 /** The item pane: the rows of one purpose, or what the filter found across all of them. */
