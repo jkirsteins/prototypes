@@ -459,7 +459,10 @@ cellar's keep, then 4 animals with N presence beside it (the section of
 that name below: the watched hunt's forks and odds over the runner's
 floor, stalking as the tier, with a first cut on the hunt as it stands
 if the tester round reads a session at the keyboard as empty), 5 injury
-and the body model, 7 wind with 1's fog beside it, 8 forest fire, and 6
+and the body model. O's Walking design task follows the scale-independent
+animal-disturbance build, because that build gives movement competence its
+first consumer without pretending to settle the skill; its eventual build slot
+is one of that design's decisions. Then come 7 wind with 1's fog beside it, 8 forest fire, and 6
 territory last. F's ramp is not one slot: its parts land inside C (the
 tool tiers that make the arrival axe the best one), 5 (permanent damage),
 4 and 6 (depletion and fed wolves), each when its sub-project does, and
@@ -4070,6 +4073,62 @@ kept and not re-argued:
   firewood keep at Woodcraft 10, which is the stoke button earned. If a
   first session reads flat, the fix is the manual rung's pacing or the
   log's density, never a chore.
+
+### O. Walking skill (design task)
+
+**Curve.** Not set until the design reads the existing sim. Walking is one of
+the largest uses of time and calories, so even a small speed or efficiency
+bonus can move every horizon and survivor gate at once. First measure lifetime
+walking hours, kilometres, calorie share and walking-related deaths, then name
+which curve rows the skill serves. Its build slot follows those readings.
+
+The scale-independent wildlife-disturbance design
+(`2026-09-09-survidle-wildlife-disturbance-design.md`) bootstraps this item with
+a neutral movement-proficiency interface. That interface is a consumer, not a
+Walking design: animal detection can read competence later without learning
+about skill levels or depending on this item's implementation.
+
+The boundaries are fixed before the design begins:
+
+- Walking is physical movement competence: pacing, footing, load carriage and
+  economical travel.
+- Wayfinding remains navigation, mapping, route judgement and unknown-country
+  safety.
+- Hunting remains finding, reading, approaching and taking animals.
+- Wildlife proximity grants no practice. Walking itself is the practice.
+- A hunting approach may combine Walking and Hunting, with each contributing a
+  different factor. Ordinary travel receives no Hunting bonus.
+- Wildlife consumes a movement profile, never a Walking level.
+
+Before writing its spec, decide:
+
+- whether distance, elapsed effort or a combination grants practice without
+  rewarding deep snow, overload or deliberate inefficiency;
+- which of walk, travel, haul, explore, search home and hunting approach train
+  it, without stealing Wayfinding or Hunting's practice;
+- how a ubiquitous activity fits the quadratic skill curve without reaching
+  its useful cap merely because every task begins with a walk;
+- how faster movement shortening its own training time affects progression;
+- where Walking ends and Strength, mass, fatigue, footwear, injury, permanent
+  damage and terrain begin;
+- whether it sits outside the order ladder like Wayfinding;
+- how lineage carry, save migration, skill UI, the ledger and death statistics
+  represent it;
+- which improvements are rates and which are named capabilities, under the
+  rule that a memorable tier cannot be only `+X%`.
+
+Candidate effects to measure rather than promise are sustainable pace, calorie
+cost per kilometre, heavy-load penalties, rough-ground injury, incidental
+noise, recovery after long travel and travel-estimate accuracy. Candidate
+capabilities may concern snow, bog, fell, darkness or load carriage, but each
+must change a preparation or route rather than erase difficult ground.
+
+Begin with paired novice and experienced journeys over identical routes and
+loads. Then check compounding: speed saves time and exposure, lower burn saves
+food, lower noise helps hunting, and lower injury protects later work. No
+combination may erase footwear, Strength differences, winter danger or terrain
+costs. After implementation, rerun the April, winter, year, lineage and
+forecast probes before accepting the curve.
 
 ## Beyond the gate: the edge of the world
 
