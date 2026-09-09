@@ -25,6 +25,34 @@ describe("deeds reach the ladder", () => {
     expect(goalDeed(state, { kind: "task", id: "makeCamp" })).toContain("site");
   });
 
+  it("does not infer the roof goal from shelter already standing", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    siteFor(st, st.campCell ?? 0).structures.leanTo = true;
+    advance(state, world, 1);
+    expect(state.goals.done.roof).toBeUndefined();
+  });
+
+  it("does not credit a windbreak as a roof", () => {
+    const { state } = newGame(3);
+    expect(goalDeed(state, { kind: "sheltered", protection: 1 })).not.toContain("roof");
+    expect(state.goals.done.roof).toBeUndefined();
+  });
+
+  it("credits weatherproof shelter as the roof outcome", () => {
+    const { state } = newGame(3);
+    expect(goalDeed(state, { kind: "sheltered", protection: 2 })).toContain("roof");
+    expect(state.goals.done.roof).toBe(true);
+  });
+
+  it("keeps every existing built deed as a route to the roof goal", () => {
+    for (const structure of ["leanTo", "turfHut", "snowShelter"] as const) {
+      const { state } = newGame(3);
+      expect(goalDeed(state, { kind: "built", structure })).toContain("roof");
+      expect(state.goals.done.roof).toBe(true);
+    }
+  });
+
   it("credits the fire when this survivor lights one", () => {
     const { state, world } = newGame(3);
     siteCamp(state, world);

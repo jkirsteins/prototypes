@@ -13,6 +13,7 @@ import { BIG_EATER_BURN, body, fatLandmarks, hasQuirk, massFactor, personOf } fr
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { regionState, siteAt } from "./regionstate";
+import { protectionOf } from "./shelter";
 import { speedFactor } from "./skills";
 import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
 import type { DeathCause, GameState, IceMode, Site, Task, TaskId, Terrain, Weather } from "./types";
@@ -47,17 +48,16 @@ export function isCampTask(task: Task | null): boolean {
 
 /** The roof's own warmth, whichever roof stands, regardless of a snow shelter beside it: cabin over turf hut over lean-to. */
 export function roofBonus(site: Site | null): number {
-  if (!site) return 0;
-  if (site.structures.cabin) return 15;
-  if (site.structures.turfHut) return 10;
-  if (site.structures.leanTo) return 5;
+  const protection = protectionOf(site);
+  if (protection === 3) return site?.structures.cabin ? 15 : 10;
+  if (protection === 2 && site?.structures.leanTo) return 5;
   return 0;
 }
 
 /** Degrees of comfort the shelter gives, for someone at camp doing camp things. */
 export function shelterBonus(site: Site | null): number {
-  if (!site) return 0;
-  if (site.structures.snowShelter && !site.structures.cabin && !site.structures.turfHut) return 0;
+  const protection = protectionOf(site);
+  if (protection === 2 && site?.structures.snowShelter) return 0;
   return roofBonus(site);
 }
 
@@ -69,8 +69,7 @@ export function shelterBonus(site: Site | null): number {
  */
 export function sheltered(state: GameState, world: World): boolean {
   const site = siteAt(regionState(state, world, state.player.region), cellOf(state, world));
-  if (!site) return false;
-  return isCampTask(state.task) && (site.structures.cabin || site.structures.leanTo || site.structures.turfHut || site.structures.snowShelter);
+  return isCampTask(state.task) && protectionOf(site) >= 2;
 }
 
 /** True with a lit torch in hand or beside your own lit fire: the light wolves keep away from. */

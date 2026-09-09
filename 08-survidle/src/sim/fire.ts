@@ -9,6 +9,7 @@ import type { Calendar } from "./calendar";
 import { addItem, pile, qty, removeItem } from "./inventory";
 import { BARK_DRY_RATIO, STRUCTURES } from "./items";
 import { campSite, regionState, touchedRegions } from "./regionstate";
+import { protectionOf } from "./shelter";
 import type { GameState, Inventory, ItemId, RegionState, Site, Terrain, Weather } from "./types";
 
 export const WET_AFTER_RAIN_MINUTES = 6 * 60;
@@ -99,8 +100,7 @@ export function fireWarms(st: RegionState): boolean {
 
 /** True when the site has a roof over it: a lean-to, a turf hut, a cabin, or a snow shelter. */
 export function roofed(site: Site | null): boolean {
-  if (!site) return false;
-  return site.structures.leanTo || site.structures.cabin || site.structures.turfHut || site.structures.snowShelter;
+  return protectionOf(site) >= 2;
 }
 
 export const SMOKE_COUGH = 40;

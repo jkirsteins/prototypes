@@ -9,6 +9,9 @@ import type { Species } from "./species";
 
 export type Season = "spring" | "summer" | "autumn" | "winter";
 
+/** How much a place gives against the weather: open ground, a windbreak, weatherproof, or good enough to live in. */
+export type Protection = 0 | 1 | 2 | 3;
+
 export type Terrain =
   | "water" | "fell" | "rock" | "bog"
   | "spruce" | "pine" | "birch" | "meadow";

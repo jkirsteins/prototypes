@@ -8,7 +8,7 @@
  * rather than on state. An heir who lands to a lit fire has not lit one.
  */
 import type { Calendar } from "./calendar";
-import type { GameState, GoalId, GoalState, ItemId, Season, StructureId, TaskId } from "./types";
+import type { GameState, GoalId, GoalState, ItemId, Protection, Season, StructureId, TaskId } from "./types";
 
 export type { GoalId } from "./types";
 
@@ -18,6 +18,7 @@ export type Deed =
   /** Firewood as it leaves the ground or the block: the one moment that cannot be replayed by moving a pile's contents around. */
   | { kind: "gathered"; item: ItemId; kg: number }
   | { kind: "built"; structure: StructureId }
+  | { kind: "sheltered"; protection: Protection }
   /** The tinder caught. A light that failed is not a fire lit. */
   | { kind: "lit" }
   /** A fire alive at dusk, lit or embers, is still alive at the dawn roll. */
@@ -45,6 +46,9 @@ export interface GoalDef {
 const task = (...ids: TaskId[]) => (d: Deed) => (d.kind === "task" && ids.includes(d.id) ? 1 : 0);
 const built = (...ids: StructureId[]) => (d: Deed) => (d.kind === "built" && ids.includes(d.structure) ? 1 : 0);
 const season = (s: Season) => (d: Deed) => (d.kind === "season" && d.season === s ? 1 : 0);
+const roof = (d: Deed) => d.kind === "sheltered"
+  ? (d.protection >= 2 ? 1 : 0)
+  : built("leanTo", "turfHut", "snowShelter")(d);
 
 /** The kilos of firewood a gather actually produced, wet or dry: the goal is the gathering. */
 const firewoodKg = (d: Deed) => (d.kind === "gathered" && (d.item === "firewood" || d.item === "wetFirewood") ? d.kg : 0);
@@ -68,7 +72,7 @@ export const GOALS: GoalDef[] = [
     target: 1,
     credit: (d) => (d.kind === "keptFor" && d.minutes >= KEPT_DAYS * 24 * 60 ? 1 : 0),
   },
-  { id: "roof", title: "Put a roof over your head", target: 1, credit: built("leanTo", "turfHut", "snowShelter") },
+  { id: "roof", title: "Put a roof over your head", target: 1, credit: roof },
   {
     id: "keptRain",
     title: "Keep a fire through a day of rain",
