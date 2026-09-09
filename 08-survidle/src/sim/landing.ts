@@ -274,6 +274,9 @@ function builtList(rec: LifeRecord): string {
 export function land(state: GameState, world: World, name = state.landing?.name, person?: Person): void {
   const l = state.landing;
   if (!l || !name) return;
+  // Old landing-screen saves predate the opportunity clock rebase in beginAgain.
+  // This is idempotent for current saves and for landings that changed boats.
+  rebaseGoalOpportunityClock(state);
   const chosen = l.candidates[l.chosen];
   const p = person ?? chosen.person;
   // Both branches land a new survivor, and a moment is theirs alone. Ahead of

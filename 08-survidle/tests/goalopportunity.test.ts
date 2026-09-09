@@ -7,6 +7,7 @@ import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { cellOf } from "../src/sim/position";
+import { deserialize, serialize } from "../src/sim/save";
 import type { GameState, GoalId } from "../src/sim/types";
 import { stepWeather } from "../src/sim/weather";
 import { regionAt } from "../src/world/gen";
@@ -394,5 +395,41 @@ describe("misses and retries", () => {
       goal: "testShelter", status: "reserved", createdAt: 1440, attempts: 2,
       stormId: null, source: null, area,
     });
+  });
+
+  it("normalizes a prior landing save on direct land before the heir retry day", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    activateShelterTest(state);
+    state.minute = 2000;
+    die(state, "froze", regionAt(world, state.player.region).name);
+    beginAgain(state, world);
+    const area = { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 } as const;
+    state.goals.opportunity = {
+      goal: "testShelter", status: "resolved", createdAt: 81000, attempts: 4,
+      stormId: 8, source: "natural", area, announcedAt: 81500, resolvedAt: 82000,
+    };
+    state.weather.stormFreeSince = 82750;
+    state.goals.introduced = { site: true, testShelter: true };
+    state.goals.noticeQueue = ["The rain passed without shelter being tested. Another opportunity will come."];
+    const completed = structuredClone(state.goals.done);
+    const introduced = structuredClone(state.goals.introduced);
+    const notices = [...state.goals.noticeQueue];
+    const loaded = deserialize(serialize(state))!.state;
+
+    land(loaded, world, { first: "Ilze", last: "Berg" });
+    advance(loaded, world, 1439);
+    expect(loaded.goals.opportunity?.attempts).toBe(4);
+    advance(loaded, world, 1);
+
+    expect(loaded.minute).toBe(1440);
+    expect(loaded.weather.stormFreeSince).toBe(0);
+    expect(loaded.goals.opportunity).toMatchObject({
+      goal: "testShelter", status: "reserved", createdAt: 1440, attempts: 5,
+      stormId: null, source: null, area,
+    });
+    expect(loaded.goals.done).toEqual(completed);
+    expect(loaded.goals.introduced).toEqual(introduced);
+    expect(loaded.goals.noticeQueue).toEqual(notices);
   });
 });
