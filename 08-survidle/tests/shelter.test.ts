@@ -151,6 +151,75 @@ describe("finding shelter", () => {
   });
 });
 
+describe("improving shelter", () => {
+  it("works found pine cover to weatherproof in 30 effective minutes", () => {
+    const g = newGame(17);
+    const pine = cellWith(g, "pine");
+    placeAt(g.state, g.world, pine);
+    const site = siteFor(regionState(g.state, g.world, g.state.player.region), pine);
+    site.cover = 1;
+    site.coverAge = 123;
+    const cal = calendar(g.state.minute, g.state.startDoy);
+
+    expect(check(g.state, g.world, cal, "improveCover")).toMatchObject({ ok: true, duration: 30 });
+    expect(startTask(g.state, g.world, cal, "improveCover")).toBe(true);
+    finishTask(g);
+
+    expect(site.cover).toBe(2);
+    expect(site.coverAge).toBe(0);
+    expect(g.state.goals.done.roof).toBe(true);
+  });
+
+  it("works found rock cover to liveable in 75 effective minutes without repeating the roof deed", () => {
+    const g = newGame(17);
+    const rock = cellWith(g, "rock");
+    placeAt(g.state, g.world, rock);
+    const site = siteFor(regionState(g.state, g.world, g.state.player.region), rock);
+    site.cover = 2;
+    site.coverAge = 456;
+    const cal = calendar(g.state.minute, g.state.startDoy);
+
+    expect(check(g.state, g.world, cal, "improveCover")).toMatchObject({ ok: true, duration: 75 });
+    expect(startTask(g.state, g.world, cal, "improveCover")).toBe(true);
+    finishTask(g);
+
+    expect(site.cover).toBe(3);
+    expect(site.coverAge).toBe(0);
+    expect(g.state.goals.done.roof).toBeUndefined();
+    expect(check(g.state, g.world, cal, "improveCover")).toMatchObject({ ok: false });
+    expect(startTask(g.state, g.world, cal, "improveCover")).toBe(false);
+    expect(site.cover).toBe(3);
+  });
+
+  it("refuses open meadow because there is no found cover to improve", () => {
+    const g = newGame(17);
+    const meadow = cellWith(g, "meadow");
+    placeAt(g.state, g.world, meadow);
+    const option = check(g.state, g.world, calendar(g.state.minute, g.state.startDoy), "improveCover");
+    expect(option).toMatchObject({ ok: false, why: "no cover found here" });
+  });
+
+  it("binds improvement to its named cell and otherwise works underfoot", async () => {
+    const { resolveCell } = await import("../src/sim/intent");
+    const g = newGame(17);
+    const here = cellOf(g.state, g.world);
+    const named = cellWith(g, "rock");
+    expect(resolveCell(g.state, g.world, calendar(0), "improveCover", undefined, "nearest").cell).toBe(here);
+    expect(resolveCell(g.state, g.world, calendar(0), "improveCover", undefined, { cell: named }).cell).toBe(named);
+  });
+
+  it("does not clear an unrelated shopping target", () => {
+    const g = newGame(17);
+    const pine = cellWith(g, "pine");
+    placeAt(g.state, g.world, pine);
+    siteFor(regionState(g.state, g.world, g.state.player.region), pine).cover = 1;
+    g.state.shopping = { task: "craft", arg: "knife" };
+    expect(startTask(g.state, g.world, calendar(0), "improveCover")).toBe(true);
+    finishTask(g);
+    expect(g.state.shopping).toEqual({ task: "craft", arg: "knife" });
+  });
+});
+
 describe("found cover keeping", () => {
   it("expires after exactly seven elapsed days when a search finishes just before the daily roll", () => {
     const g = newGame(17);

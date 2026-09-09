@@ -37,10 +37,10 @@ import {
 } from "./position";
 import { EMBER_RELIGHT_MINUTES, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { goalDeed } from "./goals";
-import { findCover, protectionOf, PROTECTION_WORDS } from "./shelter";
+import { findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare } from "./mapped";
-import { campSite, discovery, regionState, siteFor } from "./regionstate";
+import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { seeFrom, sightReachCells } from "./sight";
 import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
@@ -101,7 +101,7 @@ export interface TaskOption {
 }
 
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs", "innerBark", "roots", "tapSap", "seaweed", "findShelter"]);
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs", "innerBark", "roots", "tapSap", "seaweed", "findShelter", "improveCover"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "hone", "light", "lightIndoors", "lightTorch"]);
 
@@ -133,7 +133,7 @@ export const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "findDen", "fish", "cook",
   "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
   "setTrap", "emptyTrap", "makeCamp", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
-  "findShelter",
+  "findShelter", "improveCover",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -962,6 +962,15 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = opt({ group: "move", label: "Find shelter", detail: "look over this ground for natural cover", duration });
       return passable(terrain) ? o : { ...o, ok: false, why: "not on water" };
     }
+    case "improveCover": {
+      const cover = siteAt(st, at)?.cover ?? 0;
+      const duration = improveCoverMinutes(cover) ?? 0;
+      const next = Math.min(3, cover + 1) as 1 | 2 | 3;
+      const o = opt({ group: "build", label: "Improve shelter", detail: `${PROTECTION_WORDS[cover]} to ${PROTECTION_WORDS[next]}`, duration });
+      if (cover === 0) return { ...o, ok: false, why: "no cover found here" };
+      if (cover === 3) return { ...o, ok: false, why: "cover cannot be improved further" };
+      return o;
+    }
     case "haul": {
       const from = at;
       // Haul does not read `repeat` (beginTask refuses "haul" outright; the intent's own until governs it), so a loop button beside it would be a promise the button cannot keep.
@@ -1139,6 +1148,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   for (const nb of r.neighbours) out.push(check(state, world, cal, "explore", `region:${nb.id}`));
   out.push(check(state, world, cal, "searchHome"));
   out.push(check(state, world, cal, "findShelter"));
+  out.push(check(state, world, cal, "improveCover"));
   return out.map((o) => withProgression(state, world, o));
 }
 
@@ -2478,6 +2488,14 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const after = protectionOf(site);
       if (before < 2 && after >= 2) goalDeed(state, { kind: "sheltered", protection: after });
       log(state, site.cover === 0 ? "There is no shelter here." : `{You} {find} ${PROTECTION_WORDS[site.cover]} cover.`);
+      return;
+    }
+    case "improveCover": {
+      const site = siteFor(st, cellOf(state, world));
+      const before = protectionOf(site);
+      const after = improveCover(site);
+      if (before < 2 && after >= 2) goalDeed(state, { kind: "sheltered", protection: after });
+      log(state, `{You} {work} the cover into something ${PROTECTION_WORDS[after]}.`);
       return;
     }
     // A sleep leaves nothing behind it: it ran to the wake line, and whether

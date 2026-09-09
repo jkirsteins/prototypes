@@ -521,6 +521,7 @@ describe("the rungs", () => {
     expect(TASK_IDS).not.toContain("wait");
     expect(TASK_IDS).toContain("findDen");
     expect(TASK_IDS).toContain("findShelter");
-    expect(TASK_IDS.length).toBe(46);
+    expect(TASK_IDS).toContain("improveCover");
+    expect(TASK_IDS.length).toBe(47);
   });
 });

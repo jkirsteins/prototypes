@@ -155,7 +155,7 @@ export function nearestCell(state: GameState, world: World, pred: (cell: number)
 /** Where the work is done, decided once. The note says when the chosen spot did not suit. */
 export function resolveCell(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, where: Where): { cell: number; note: string } {
   const here = cellOf(state, world);
-  if (task === "findShelter") return { cell: typeof where === "object" ? where.cell : here, note: "" };
+  if (task === "findShelter" || task === "improveCover") return { cell: typeof where === "object" ? where.cell : here, note: "" };
   // The site is chosen at the click, not wherever the runner happens to be standing when
   // the order starts; named explicitly, ahead of the generic object check below, so the
   // binding still holds even if that check is ever narrowed to fewer tasks.
@@ -635,6 +635,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   hunt: (arg) => (arg === "any" ? "hunting" : `hunting ${SPECIES_DEFS[arg as Species]?.name ?? "game"}`),
   findDen: () => "following bear sign",
   findShelter: () => "looking for shelter",
+  improveCover: () => "improving shelter",
   fish: (arg) => (arg === "any" ? "fishing" : `fishing for ${SPECIES_DEFS[arg as Species]?.name ?? "fish"}`),
   cook: (arg) => `cooking ${ITEM_NAMES[(arg ?? "rawMeat") as ItemId]}`,
   craft: (arg) => `making ${RECIPES[arg as RecipeId].name}`,

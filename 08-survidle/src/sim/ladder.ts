@@ -19,7 +19,7 @@ import type { GameState, IntentRequest, OrderKind, SkillId, TaskId, WorkOrder } 
 const GATE_SKILL: Partial<Record<TaskId, SkillId>> = { haul: "woodcraft", melt: "building", thaw: "building" };
 
 /** Never orders: the runner's own steps, and the moves the Do panel starts directly. */
-export const NOT_ORDERS: TaskId[] = ["walk", "travel", "rest", "sleep", "night", "makeCamp", "explore", "searchHome", "findShelter"];
+export const NOT_ORDERS: TaskId[] = ["walk", "travel", "rest", "sleep", "night", "makeCamp", "explore", "searchHome", "findShelter", "improveCover"];
 
 /** The skill whose level gates orders for this task, or null for a task that is never an order. */
 export function gateSkill(task: TaskId, arg?: string): SkillId | null {

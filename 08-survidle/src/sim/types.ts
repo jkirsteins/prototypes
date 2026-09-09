@@ -132,7 +132,7 @@ export type TaskId =
   | "hunt" | "findDen" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
-  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome" | "findShelter";
+  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome" | "findShelter" | "improveCover";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
@@ -140,7 +140,7 @@ export const TASK_IDS: TaskId[] = [
   "hunt", "findDen", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
-  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome", "findShelter",
+  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome", "findShelter", "improveCover",
 ];
 
 export interface Task {

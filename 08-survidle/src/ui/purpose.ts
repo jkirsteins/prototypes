@@ -127,6 +127,7 @@ const HOME: Record<string, [SubtabId, string]> = {
   "build:turfHut": ["Build", "Shelter"],
   "build:snowShelter": ["Build", "Shelter"],
   "build:boughBed": ["Build", "Shelter"],
+  improveCover: ["Build", "Shelter"],
   "build:seep": ["Build", "Water"],
   "build:waterStore": ["Build", "Water"],
   "build:dryingRack": ["Build", "Food"],

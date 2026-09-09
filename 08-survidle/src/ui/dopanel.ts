@@ -50,7 +50,7 @@ const VOCABULARY: { name: string; words: string; rows: string[] }[] = [
   { name: "water", words: "drink thirst", rows: ["fill", "melt", "thaw", "iceHole", "tapSap", "build:seep", "build:waterStore", "craft:barkBucket", "craft:waterskin"] },
   { name: "warmth", words: "heat cold", rows: ["light", "lightIndoors", "lightTorch", "night", "sleep", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "build:boughBed", "repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens", "craft:hideBlanket"] },
   { name: "sleep", words: "rest bed", rows: ["sleep", "rest", "night", "build:boughBed", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "craft:hideBlanket"] },
-  { name: "shelter", words: "roof cover weather", rows: ["findShelter", "makeCamp", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter"] },
+  { name: "shelter", words: "roof cover weather", rows: ["findShelter", "improveCover", "makeCamp", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter"] },
   { name: "tool", words: "gear", rows: ["craft", "sharpen", "hone"] },
   { name: "clothing", words: "clothes", rows: ["repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"] },
   { name: "dark", words: "darkness", rows: ["lightTorch", "craft:torch"] },
@@ -227,6 +227,7 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
     // own while the raw list existed, which meant a structure could decay with no
     // way to repair it that a player would ever find.
     { label: "Build", items: [
+      { id: "improveCover" as TaskId },
       ...STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })),
       ...DECAYING.map((id) => ({ id: "mend" as TaskId, arg: id })),
       { id: "mend" as TaskId, arg: "seep" },

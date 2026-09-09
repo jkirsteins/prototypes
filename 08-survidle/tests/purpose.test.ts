@@ -102,6 +102,12 @@ describe("every Do row has exactly one purpose", () => {
     expect(PURPOSES.Explore).toContain("Shelter");
   });
 
+  it("improving shelter has one visible home under Build", () => {
+    expect(subtabOf("improveCover")).toBe("Build");
+    expect(purposeOf("improveCover")).toBe("Shelter");
+    expect(PURPOSES.Build).toContain("Shelter");
+  });
+
   it("an arg-keyed row beats its bare task, which is how every hunt species shares one line", () => {
     // craft is Make whatever the recipe; the recipe decides which pane.
     expect(purposeOf("craft", "knife")).toBe("Tools");

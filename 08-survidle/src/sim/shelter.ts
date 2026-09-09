@@ -36,6 +36,20 @@ export function findCover(world: World, cell: number, naturalShelterLevel: numbe
   return naturalShelterLevel >= 5 ? ceiling : 1;
 }
 
+/** Effective work minutes to raise found cover by one protection level. */
+export function improveCoverMinutes(cover: Protection): number | null {
+  if (cover === 1) return 30;
+  if (cover === 2) return 75;
+  return null;
+}
+
+/** Raises found cover by one, never beyond the protection scale. */
+export function improveCover(site: Site): Protection {
+  site.cover = Math.min(3, site.cover + 1) as Protection;
+  site.coverAge = 0;
+  return site.cover;
+}
+
 /** The level the structures standing on a cell come to. */
 export function protectionOf(site: Site | null): Protection {
   if (!site) return 0;

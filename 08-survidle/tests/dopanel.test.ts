@@ -10,8 +10,10 @@ import { purposeOf, subtabOf } from "../src/ui/purpose";
 import { paneHtml } from "./pane";
 import { defaultChoice, defaultChoiceFor, newUiState, rowRequest, setWhenField } from "../src/ui/render";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { TASK_IDS } from "../src/sim/types";
 import type { OrderWhen, TaskId } from "../src/sim/types";
+import { siteCamp } from "./siting-helpers";
 
 
 describe("the purposes and the filter", () => {
@@ -264,6 +266,19 @@ describe("the purposes and the filter", () => {
     const html = doHtml(state, world, cal, ui);
     expect(html).toContain('data-opt="intent:findShelter:"');
     expect((html.match(/data-opt="intent:findShelter:/g) ?? []).length).toBe(1);
+  });
+
+  it("Build has one improve-cover Shelter row in Do", () => {
+    const { state, world } = newGame(21);
+    const here = siteCamp(state, world);
+    placeAt(state, world, here);
+    siteFor(regionState(state, world, state.player.region), here).cover = 1;
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Build" as const, purpose: "Shelter" } };
+    const html = doHtml(state, world, cal, ui);
+    expect(html).toContain('data-opt="intent:improveCover:');
+    expect((html.match(/data-opt="intent:improveCover:/g) ?? []).length).toBe(1);
+    expect(doHtml(state, world, cal, { ...ui, filter: "roof cover" })).toContain('data-opt="intent:improveCover:');
   });
 
   it("Camp is no longer one heap of twenty-six rows", () => {
