@@ -12,6 +12,7 @@ import { advance } from "./advance";
 import { ensureCareRows } from "./bodyorder";
 import { calendar, coastOpen, fmtDate, START_DOY } from "./calendar";
 import { fmtWorldDate } from "./epitaph";
+import { rebaseGoalOpportunityClock } from "./goalopportunity";
 import { addItem, pile } from "./inventory";
 import { STRUCTURES } from "./items";
 import { log } from "./log";
@@ -165,6 +166,7 @@ export function beginAgain(state: GameState, world: World): void {
   state.lastDay = 0;
   state.weather.rolledDay = 0;
   state.weather.storm = null;
+  rebaseGoalOpportunityClock(state);
   // The plan dies with the planner. An heir lands to the world - the structures, the piles,
   // the snares - and not to the dead survivor's standing orders, which the ladder gated at
   // the level the dead had and no one has read since: a level-9 heir working a rung-15 list
@@ -236,6 +238,7 @@ export function nextBoat(state: GameState, world: World): void {
   state.lastDay = 0;
   state.weather.rolledDay = 0;
   state.weather.storm = null;
+  rebaseGoalOpportunityClock(state);
   for (const st of Object.values(state.regions)) st.iceHole = null;
   state.log = [];
   l.date = date;

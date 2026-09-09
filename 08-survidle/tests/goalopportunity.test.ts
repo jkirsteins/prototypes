@@ -3,10 +3,14 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { stepGoalOpportunity } from "../src/sim/goalopportunity";
+import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
+import { die } from "../src/sim/player";
 import { cellOf } from "../src/sim/position";
 import type { GameState, GoalId } from "../src/sim/types";
 import { stepWeather } from "../src/sim/weather";
+import { regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 const THROUGH_SHELTER: GoalId[] = [
   "site", "drink", "firewood", "fire", "bed", "roof", "cook", "findUsefulCover", "makeUsefulShelter",
@@ -225,6 +229,35 @@ describe("natural-first weather", () => {
 });
 
 describe("misses and retries", () => {
+  it("replaces a successful Chapter 1 opportunity when Chapter 2 becomes active", () => {
+    const { state, world } = newGame(17);
+    activateWeatherReading(state);
+    state.goals.opportunity = {
+      goal: "testShelter", status: "resolved", createdAt: 100, attempts: 1,
+      stormId: 1, source: "natural", area: null, announcedAt: 200, resolvedAt: 600,
+    };
+
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(76));
+
+    expect(state.goals.opportunity).toEqual({
+      goal: "readWeather", status: "reserved", createdAt: state.minute, attempts: 1,
+      stormId: null, source: null, area: null, announcedAt: null, resolvedAt: null,
+    });
+  });
+
+  it("clears a successful Chapter 2 opportunity so contextual Chapter 3 can own the slot", () => {
+    const { state, world } = newGame(17);
+    activateRemoteStorm(state);
+    state.goals.opportunity = {
+      goal: "readWeather", status: "resolved", createdAt: 100, attempts: 2,
+      stormId: 2, source: "synthetic", area: null, announcedAt: 200, resolvedAt: 700,
+    };
+
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(77));
+
+    expect(state.goals.opportunity).toBeNull();
+  });
+
   it("retries the Chapter 2 opportunity while its final storm goal remains open", () => {
     const { state, world } = newGame(17);
     activateWeatherReading(state);
@@ -319,5 +352,47 @@ describe("misses and retries", () => {
     expect(state.goals.opportunity).toMatchObject({ status: "resolved", resolvedAt: 10, stormId: 1 });
     expect(state.goals.noticeQueue).toHaveLength(1);
     expect(state.goals.done).toEqual(completedBefore);
+  });
+
+  it("rebases a missed attempt through begin again and retries after one heir day", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    activateShelterTest(state);
+    state.minute = 2000;
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 1900, until: 2200, warned: true };
+    state.weather.nextStormId = 2;
+    state.goals.opportunity = {
+      goal: "testShelter", status: "running", createdAt: 1800, attempts: 1,
+      stormId: 1, source: "natural",
+      area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
+      announcedAt: 1840, resolvedAt: null,
+    };
+    state.goals.introduced = { site: true, testShelter: true };
+    const area = structuredClone(state.goals.opportunity.area);
+    const completed = structuredClone(state.goals.done);
+    const introduced = structuredClone(state.goals.introduced);
+    die(state, "froze", regionAt(world, state.player.region).name);
+
+    beginAgain(state, world);
+    land(state, world, { first: "Ilze", last: "Berg" });
+
+    expect(state.minute).toBe(0);
+    expect(state.weather.storm).toBeNull();
+    expect(state.weather.stormFreeSince).toBe(0);
+    expect(state.goals.done).toEqual(completed);
+    expect(state.goals.introduced).toEqual(introduced);
+    expect(state.goals.opportunity).toMatchObject({
+      goal: "testShelter", status: "resolved", createdAt: 0, attempts: 1,
+      area, resolvedAt: 0,
+    });
+    state.minute = 1439;
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(92));
+    expect(state.goals.opportunity?.attempts).toBe(1);
+    state.minute = 1440;
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(92));
+    expect(state.goals.opportunity).toMatchObject({
+      goal: "testShelter", status: "reserved", createdAt: 1440, attempts: 2,
+      stormId: null, source: null, area,
+    });
   });
 });

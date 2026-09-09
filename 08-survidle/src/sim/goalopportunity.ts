@@ -128,6 +128,16 @@ function resolve(state: GameState, opportunity: GoalOpportunity, death: boolean)
   if (!attemptSucceeded(state, opportunity)) state.goals.noticeQueue.push(failureNotice(opportunity, death));
 }
 
+/** Rebase world-owned opportunity timestamps when an heir's life clock returns to zero. */
+export function rebaseGoalOpportunityClock(state: GameState): void {
+  state.weather.stormFreeSince = 0;
+  const opportunity = state.goals.opportunity;
+  if (!opportunity) return;
+  opportunity.createdAt = 0;
+  if (opportunity.announcedAt !== null) opportunity.announcedAt = 0;
+  if (opportunity.resolvedAt !== null) opportunity.resolvedAt = 0;
+}
+
 function stepClaimed(state: GameState, world: World, cal: Calendar, opportunity: GoalOpportunity): void {
   const storm = state.weather.storm;
   if (!storm || storm.id !== opportunity.stormId) {
@@ -161,8 +171,12 @@ export function stepGoalOpportunity(state: GameState, world: World, cal: Calenda
     return;
   }
   const goal = activeWeatherGoal(state, cal);
+  if (opportunity?.status === "resolved" && attemptSucceeded(state, opportunity)) {
+    state.goals.opportunity = null;
+    opportunity = null;
+  }
   if (!opportunity) {
-    if (!goal || stormNow(state.weather, state.minute) || goal === "remoteStorm") return;
+    if (!goal || state.dead || state.landing || stormNow(state.weather, state.minute) || goal === "remoteStorm") return;
     opportunity = newOpportunity(goal, state.minute);
     state.goals.opportunity = opportunity;
   }
