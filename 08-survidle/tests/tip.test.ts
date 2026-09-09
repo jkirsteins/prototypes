@@ -69,6 +69,23 @@ describe("finding the cell under the pointer", () => {
 });
 
 describe("what the tooltip says", () => {
+  it("names visible animals standing on the hovered cell", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const here = cellOf(state, world);
+    state.wildlife.activeRegion = state.player.region;
+    state.wildlife.subjects.push({
+      id: 901, species: "deer", form: "herd", region: state.player.region,
+      cohorts: [{ sex: "f", bornYear: state.year - 1, count: 7 }],
+      condition: 70, reproductive: "none", dependentUntilYear: 0,
+      name: null, nameKind: "field", colour: 0, lastKnownDay: -1,
+      denCell: null,
+      active: { cell: here, hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [] },
+    });
+
+    expect(tipHtml(state, world, cal, here)).toContain("deer, 7, wander");
+  });
+
   it("unwalked ground in this region says so and nothing else", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);

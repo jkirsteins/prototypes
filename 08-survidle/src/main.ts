@@ -42,7 +42,7 @@ import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
 import { goalDoneHtml, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, mountMapInspection, viewOrigin } from "./ui/map";
+import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, viewOrigin } from "./ui/map";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
@@ -832,7 +832,6 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     }
   });
 }
-mountMapInspection(document.getElementById("mapdyn")!);
 render();
 portraitMotion.frame(document, performance.now(), document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
 requestAnimationFrame(frame);

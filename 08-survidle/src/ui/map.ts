@@ -376,36 +376,6 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${animals}`;
 }
 
-/**
- * One stable inspection surface for every map glyph. Pointer users can sweep
- * across the map, while keyboard users enter the grid and move cell by cell.
- * Delegation keeps the listeners alive when the glyph markup is morphed.
- */
-export function mountMapInspection(root: HTMLElement): void {
-  const show = (target: EventTarget | null): void => {
-    const cell = target instanceof Element ? target.closest<HTMLElement>("[data-map-info]") : null;
-    const output = root.querySelector<HTMLOutputElement>(".map-inspect");
-    if (cell && output) output.textContent = cell.dataset.mapInfo ?? "";
-  };
-  root.addEventListener("pointerover", (event) => show(event.target));
-  root.addEventListener("focusin", (event) => show(event.target));
-  root.addEventListener("keydown", (event) => {
-    if (!(event instanceof KeyboardEvent) || !event.key.startsWith("Arrow")) return;
-    const grid = root.querySelector<HTMLElement>(".grid");
-    if (!grid || (event.target !== grid && !(event.target instanceof Element && event.target.matches("[data-map-info]")))) return;
-    const cells = [...grid.querySelectorAll<HTMLElement>("[data-map-info]")];
-    if (!cells.length) return;
-    const current = event.target instanceof HTMLElement && event.target.matches("[data-map-info]") ? event.target : cells[0];
-    const x = Number(current.dataset.mapX);
-    const y = Number(current.dataset.mapY);
-    const dx = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
-    const dy = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
-    const next = cells.find((cell) => Number(cell.dataset.mapX) === x + dx && Number(cell.dataset.mapY) === y + dy) ?? current;
-    event.preventDefault();
-    next.focus();
-  });
-}
-
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar): string {
   const cur = state.player.region;
   const sel = ui.selected;
@@ -707,8 +677,8 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // No title attribute: the board's own box says all of this, at once and
     // in the page's own voice, where the browser's tooltip said it after a
     // delay and stood over whatever it was next to.
-    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${act}${wildlife}${style}>${glyph === "\"" ? "&quot;" : glyph}</span>`);
+    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${act}${wildlife}${style}>${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
-  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}</div><i class="shade"></i><output class="map-inspect" aria-live="polite">Map: point at a glyph, or focus the map and use arrow keys.</output></div>${tools}`);
+  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}</div><i class="shade"></i></div>${tools}`);
   return parts.join("");
 }

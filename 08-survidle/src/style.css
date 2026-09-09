@@ -492,15 +492,6 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   padding: 0 4px;
   background: rgba(5, 7, 12, 0.7);
 }
-.map-inspect {
-  position: absolute; left: 6px; top: 54px; z-index: 4;
-  display: block; max-width: min(360px, calc(100% - 24px));
-  padding: 4px 7px;
-  border: 1px solid var(--line);
-  background: rgba(5, 7, 12, 0.9);
-  color: var(--text); font: 12px/1.35 monospace; text-align: left;
-  pointer-events: none;
-}
 .grid:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .grid .c:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .legend .fog-key { color: #4a5160; }
