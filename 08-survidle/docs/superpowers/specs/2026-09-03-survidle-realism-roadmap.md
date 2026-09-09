@@ -3895,6 +3895,39 @@ gate; and the ice hysteresis around `ICE_SHORE_CM`, the water method's
 65 of 84 flips a year, is the whole of a level-20 camp's attention - a
 reading and not a defect.
 
+**Post-overhaul validation, 9 September 2026.** Measured on main at
+`e1d14a18` after the queue, collapse recovery and map-marker fixes. The
+April gate remains 5 of 5 and the stocked winter gate remains 5 of 5.
+The level-20 year is 4 of 5 and the level-10 reading is also 4 of 5;
+the fresh-survivor year diagnostic is 0 of 5, with the same day 35 to
+66 deaths already measured by the April run rather than a separate
+regression. December holds 7.9 hours of sleep per day on every seed,
+7.9 to 9.6 hours of work, and no sleep begun by day. Removing marrow,
+oily fish, roe, eggs, roots, bark, sap or seaweed one at a time leaves
+the year at 4 or 5 of 5, so no single source is secretly mandatory.
+
+Two readings are red. A late-August start passes 2 of 5: three seeds
+starve before or just after first snow. The lineage still gets 4 of 5
+seeds to a year within six lives, but its monotonic trend is 2 of 5,
+below the 3-of-4 target. The horizon ladder is no longer calibrated:
+every non-stocked row is over its band in both April and late August,
+while only the 30-day stocked row remains in band. Treat this first as
+a runner/set-up diagnostic, not permission to move the bands: verify
+that each staged list actually represents its named rung before
+changing survival targets.
+
+The next balance work should therefore diagnose the late-August food
+bootstrap and the non-monotonic heir cases from their printed ledgers.
+Do not buff a source globally: the one-source removals are healthy, and
+annual large-game yield is already far over its experienced band on
+most surviving seeds. Audit producer scheduling, walking cost and hunt
+selection first. Also audit the winter deep-cold burn expectation: the
+winter gate is 5 of 5 while most monthly deep-cold burn readings are
+under band, which can mean either shelter is too strong or that band is
+stale. The queue and collapse fixes intentionally change no balance
+constant; April, winter and annual survival show they did not regress
+the core curve.
+
 ### M. A landing on the coast
 
 **Curve.** Horizon rows 1 to 3 on a new ground: the sea shore's fetch,
