@@ -131,6 +131,18 @@ describe("the goal ladder", () => {
     expect(activeGoals(state, day8)).toEqual(["surviveForecast", "water", "keptDays"]);
   });
 
+  it("gives eligible Chapter 3 one slot before an unfinished camp backlog", () => {
+    const { state } = newGame(3);
+    finish(state, [
+      "site", "drink", "firewood", "fire", "bed", "roof", "cook", ...CHAPTER_1,
+      "keptNight", "firstOrder", ...CHAPTER_2,
+    ]);
+    const day30 = calendar(29 * 1440, state.startDoy);
+    const day31 = calendar(30 * 1440, state.startDoy);
+    expect(activeGoals(state, day30)).toEqual(["water", "keptDays", "foodSource"]);
+    expect(activeGoals(state, day31)).toEqual(["remoteRefuge", "water", "keptDays"]);
+  });
+
   it("gates Chapter 3 by Chapter 2 and day 31, then keeps its steps ordered at the established width", () => {
     const { state } = newGame(3);
     finish(state, [
