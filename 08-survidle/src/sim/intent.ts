@@ -17,6 +17,7 @@ import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_POOR_SHARE
 import { log } from "./log";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, straightKm, watersideCell } from "./position";
 import { campSite, regionState } from "./regionstate";
+import { owningOrder } from "./orderowner";
 import { survivorRoute } from "./routing";
 import { nearestSeep, seepGround } from "./seep";
 import { rootCellFullKg, rootCellKg } from "./stocks";
@@ -322,7 +323,7 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   const campCell = regionState(state, world, state.player.region).campCell;
   const mode = intentMode(req.task, until);
   const fields = {
-    task: req.task, arg: req.arg, cell, campCell, until, deliver,
+    task: req.task, arg: req.arg, cell, campCell, until, deliver, orderRegion: state.player.region,
     done: 0, step: "setting out", orderId, windDown: false,
   };
   state.intent = mode === "hand" ? { mode, ...fields } : { mode, ...fields };
@@ -631,6 +632,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   splitWedges: () => "splitting a log with wedges",
   deadwood: () => "gathering dead wood",
   hunt: (arg) => (arg === "any" ? "hunting" : `hunting ${SPECIES_DEFS[arg as Species]?.name ?? "game"}`),
+  findDen: () => "following bear sign",
   fish: (arg) => (arg === "any" ? "fishing" : `fishing for ${SPECIES_DEFS[arg as Species]?.name ?? "fish"}`),
   cook: (arg) => `cooking ${ITEM_NAMES[(arg ?? "rawMeat") as ItemId]}`,
   craft: (arg) => `making ${RECIPES[arg as RecipeId].name}`,
@@ -670,7 +672,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   if (it.task === "walk") {
     if (here === it.cell) {
       it.done++;
-      const order = regionState(state, world, state.player.region).orders.find((o) => o.id === it.orderId);
+      const order = owningOrder(state, world, it);
       if (order) order.done++;
       state.intent = null;
       return "again";
@@ -733,7 +735,7 @@ export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rn
   // At the collapse line the work is released back to the queue. Its row
   // reads "too exhausted", so the next ranked row wins visibly instead of
   // a hidden sleep task bypassing the list.
-  if (it.mode === "hand" && tooExhausted(state)) {
+  if (tooExhausted(state)) {
     state.player.sleeping = { collapsed: true };
     setAside(state, world);
     if (it.orderId === null) endIntent(state, `${labelOf(state, world, cal, it)}: {you} {are} too exhausted. {You} {stop}.`, "bad");

@@ -18,6 +18,54 @@ export type IceMode = "none" | "safe" | "thin";
 
 export type { Habitat, Species } from "./species";
 
+export type AgentSpecies = "deer" | "reindeer" | "elk" | "wolf" | "wolverine" | "bear";
+export type WildlifeMode = "detailed" | "aggregate";
+export type WildlifeIntent = "forage" | "drink" | "rest" | "flee" | "hunt" | "camp" | "den" | "wander";
+
+export interface WildlifeCohort { sex: "f" | "m"; bornYear: number; count: number }
+export interface WildlifeActive {
+  cell: number;
+  hunger: number;
+  thirst: number;
+  rest: number;
+  alarm: number;
+  intent: WildlifeIntent;
+  target: number | null;
+  route: number[];
+}
+export interface WildlifeSubject {
+  id: number;
+  species: AgentSpecies;
+  form: "individual" | "pack" | "herd";
+  region: number;
+  cohorts: WildlifeCohort[];
+  condition: number;
+  reproductive: "none" | "pregnant" | "dependent";
+  dependentUntilYear: number;
+  name: string | null;
+  nameKind: "proper" | "field";
+  colour: number;
+  lastKnownDay: number;
+  /** Stable winter den site for bears, whether or not a survivor has found it. */
+  denCell: number | null;
+  active: WildlifeActive | null;
+}
+export interface WildlifeState {
+  nextId: number;
+  activeRegion: number | null;
+  subjects: WildlifeSubject[];
+  lastSpatialTick: number;
+  familiarity: Record<number, { points: number; lastDay: number }>;
+  inherited: Record<number, 3>;
+  /** Subjects this survivor personally recognizes. Names themselves belong to the world. */
+  recognized: Record<number, true>;
+  /** Subjects inside line of sight on the previous spatial tick. */
+  visible: number[];
+  /** Den cells this lineage has identified. The site remains after its current occupant dies. */
+  knownDens: Record<number, true>;
+  recognitionQueue: number[];
+}
+
 /** Items counted in pieces. A tool not in hand is one of these. */
 export type CountItem =
   | "log" | "stick" | "bark" | "cordage" | "stone" | "bone" | "sinew" | "crackedBone"
@@ -78,7 +126,7 @@ export const FILL_METHODS: FillMethod[] = ["shore", "hole", "seep"];
 
 export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split" | "deadwood" | "splitWedges"
-  | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
+  | "hunt" | "findDen" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
   | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome";
@@ -86,7 +134,7 @@ export type TaskId =
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges",
-  "hunt", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
+  "hunt", "findDen", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
   "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome",
@@ -101,6 +149,8 @@ export interface Task {
   /** Minutes of work the task needs at full speed. */
   duration: number;
   repeat: boolean;
+  /** Persistent large-animal subject selected when a detailed hunt begins. */
+  wildlifeSubject?: number;
   /** Started as "hunt anything" or "fish for anything": the arg is the species drawn, and a repeat draws again. */
   any?: boolean;
   /** The dark has already cost this task an attempt and been remarked on; the rest of them are silent. */
@@ -296,6 +346,8 @@ interface IntentBase {
 }
 
 interface WorkIntentBase extends IntentBase {
+  /** Region whose queue owns orderId. Stable while a cross-region route changes player.region. */
+  orderRegion?: number;
   /** The work underneath, in the terms startTask speaks. */
   task: TaskId;
   arg?: string;
@@ -515,6 +567,7 @@ export type ThresholdId = "berries" | "rut" | "firstFrost" | "lakeFreeze" | "fir
 export type LifeEventBody =
   | { kind: "threshold"; id: ThresholdId }
   | { kind: "firstKill"; species: Species }
+  | { kind: "animalRecognized"; subject: number; name: string }
   | { kind: "built"; structure: StructureId }
   | { kind: "entered"; region: string }
   | { kind: "toolWorn"; tool: ToolId }
@@ -683,4 +736,6 @@ export interface GameState {
    */
   taught: Partial<Record<Rung, true>>;
   teachQueue: Rung[];
+  /** Persistent identities and the one current-region spatial cohort. */
+  wildlife: WildlifeState;
 }

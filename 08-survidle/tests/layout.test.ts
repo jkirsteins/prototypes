@@ -231,7 +231,7 @@ describe("what survives the night sheet", () => {
   it("marks only what the survivor built or found, never ground the world always had", () => {
     // A named place is not clickable, the HERE panel lists every one of them
     // with a walk button, and an order walks there on its own.
-    expect(Object.values(MARKS).map((m) => m.label).sort()).toEqual(["camp", "coals", "fire", "seep", "shelter", "trap", "you"]);
+    expect(Object.values(MARKS).map((m) => m.label).sort()).toEqual(["camp", "coals", "fire", "known bear den", "seep", "shelter", "trap", "you"]);
     for (const gone of ["forest", "outcrop", "shore", "heath"]) {
       expect(legendHtml()).not.toContain(`> ${gone}<`);
     }

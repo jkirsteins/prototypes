@@ -198,7 +198,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
   switch (id) {
     case "chop": case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": return "woodcraft";
     case "berries": case "stone": case "eggs": case "innerBark": case "grindBark": case "roots": case "tapSap": case "seaweed": return "foraging";
-    case "hunt": return "hunting";
+    case "hunt": case "findDen": return "hunting";
     case "build": return arg === "snare" ? "hunting" : "building";
     case "mend": return "building";
     case "fish": case "read": case "setTrap": case "emptyTrap": return "fishing";
@@ -220,7 +220,7 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
   switch (id) {
     case "chop": return `chop:${cell === undefined ? hereTerrain(state, world) : cellAt(world, cell).terrain}`;
     case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone": case "eggs": case "roots": case "tapSap": case "seaweed":
-    case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang": case "explore": case "searchHome":
+    case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang": case "explore": case "searchHome": case "findDen":
       return id;
     // Grinding is foraging's too, the same practice as stripping the bark: the flour is the forager's.
     case "innerBark": case "grindBark": return "innerBark";

@@ -1,71 +1,66 @@
 import { describe, expect, it } from "vitest";
 import { medianPerson } from "../src/sim/person";
-import type { Grade, Person } from "../src/sim/types";
-import { BEARDS, facePicks, facePixels, faceSvg, HAIR_MEN, HAIR_WOMEN } from "../src/ui/face";
+import type { Person } from "../src/sim/types";
+import {
+  clearFaceCache,
+  faceCacheSize,
+  faceFrame,
+  faceIdentity,
+  faceSvg,
+  FOCUSED_FACE,
+  STATIC_FACE,
+} from "../src/ui/face";
 
-function person(sex: "f" | "m", face: number, eyes: Grade = 0, build: Grade = 0): Person {
-  const p = medianPerson(sex);
-  return { ...p, axes: { ...p.axes, eyes, build }, face };
+function person(sex: "f" | "m", face: number): Person {
+  return { ...medianPerson(sex), face };
 }
 
-describe("the face", () => {
-  it("is eight rows of eight cells, each row its own mirror, at both sizes", () => {
-    for (let seed = 0; seed < 200; seed++) {
-      for (const sex of ["f", "m"] as const) {
-        for (const eyes of [-2, 0, 2] as Grade[]) {
-          for (const build of [0, 2] as Grade[]) {
-            const p = person(sex, seed, eyes, build);
-            const rows = facePixels(p, 8);
-            expect(rows).toHaveLength(8);
-            for (const row of rows) {
-              expect(row).toHaveLength(8);
-              expect([...row].reverse()).toEqual(row);
-            }
-            const big = facePixels(p, 12);
-            expect(big).toHaveLength(12);
-            for (const row of big) expect(row).toHaveLength(12);
-          }
-        }
-      }
-    }
-  });
-
-  it("reaches every hair and beard template, and never draws a beard on a woman", () => {
-    const hairs = new Set<string>();
-    const beards = new Set<string>();
-    for (let seed = 0; seed < 300; seed++) {
-      const w = facePicks(person("f", seed));
-      const m = facePicks(person("m", seed));
-      hairs.add(`f:${w.hair}`);
-      hairs.add(`m:${m.hair}`);
-      beards.add(m.beard);
-      expect(w.beard).toBe("none");
-      expect(facePixels(person("f", seed), 8).flat()).not.toContain("B");
-      expect(HAIR_WOMEN).toContain(w.hair);
-      expect(HAIR_MEN).toContain(m.hair);
-    }
-    for (const h of HAIR_WOMEN) expect(hairs.has(`f:${h}`)).toBe(true);
-    for (const h of HAIR_MEN) expect(hairs.has(`m:${h}`)).toBe(true);
-    for (const b of BEARDS) expect(beards.has(b)).toBe(true);
-  });
-
-  it("follows the grades: wide bright eyes at +1, a slit at -1, a wide jaw at build +1", () => {
-    expect(facePicks(person("m", 1, 1, 0)).eyes).toBe("wide");
-    expect(facePicks(person("m", 1, -1, 0)).eyes).toBe("narrow");
-    expect(facePicks(person("m", 1, 0, 0)).eyes).toBe("plain");
-    expect(facePicks(person("m", 1, 0, 1)).jaw).toBe("wide");
-    expect(facePixels(person("m", 1, 2, 0), 8)[3]).toContain("W");
-    expect(facePixels(person("m", 1, 0, 2), 8)[4][0]).toBe("S");
-    expect(facePixels(person("m", 1, 0, 0), 8)[4][0]).toBe(".");
-  });
-
-  it("is stable per seed and different across seeds, and the svg is crisp rects", () => {
+describe("the Toon Head face", () => {
+  it("keeps an identity stable per seed and changes it across seeds", () => {
+    expect(faceIdentity(person("f", 7))).toEqual(faceIdentity(person("f", 7)));
+    expect(faceIdentity(person("f", 7))).not.toEqual(faceIdentity(person("f", 8)));
     expect(faceSvg(person("f", 7), 64)).toBe(faceSvg(person("f", 7), 64));
     expect(faceSvg(person("f", 7), 64)).not.toBe(faceSvg(person("f", 8), 64));
-    const svg = faceSvg(person("m", 3), 48);
-    expect(svg).toContain('viewBox="0 0 8 8"');
-    expect(svg).toContain('width="48"');
-    expect(svg).toContain('shape-rendering="crispEdges"');
-    expect(svg.match(/<rect/g)!.length).toBeGreaterThan(20);
+  });
+
+  it("shares hair, limits clothes, and gives facial hair only to men", () => {
+    const clothes = new Set<string>();
+    const womenHair = new Set<string>();
+    const menHair = new Set<string>();
+    let beardedMen = 0;
+    for (let seed = 0; seed < 200; seed++) {
+      const woman = faceIdentity(person("f", seed));
+      const man = faceIdentity(person("m", seed));
+      expect(woman.beard).toBeNull();
+      expect(["shirt", "openJacket", "turtleNeck"]).toContain(woman.clothes);
+      expect(["shirt", "openJacket", "turtleNeck"]).toContain(man.clothes);
+      clothes.add(woman.clothes);
+      clothes.add(man.clothes);
+      womenHair.add(woman.hair);
+      menHair.add(man.hair);
+      if (man.beard) beardedMen++;
+    }
+    expect(clothes).toEqual(new Set(["shirt", "openJacket", "turtleNeck"]));
+    expect(womenHair).toEqual(menHair);
+    expect(womenHair.size).toBe(4);
+    expect(beardedMen).toBeGreaterThan(0);
+  });
+
+  it("changes expression without changing the chosen identity", () => {
+    const p = person("m", 77);
+    const identity = faceIdentity(p);
+    const resting = faceFrame(p, 64, STATIC_FACE);
+    const focused = faceFrame(p, 64, FOCUSED_FACE);
+    expect(faceIdentity(p)).toEqual(identity);
+    expect(resting).not.toBe(focused);
+    expect(resting).toContain("<svg");
+    expect(resting).toContain('width="64"');
+    expect(focused).toContain("eyes-wide");
+  });
+
+  it("bounds the generated frame cache", () => {
+    clearFaceCache();
+    for (let seed = 0; seed < 300; seed++) faceSvg(person("m", seed), 24);
+    expect(faceCacheSize()).toBe(256);
   });
 });

@@ -61,6 +61,7 @@ const HOME: Record<string, [SubtabId, string]> = {
 
   // Hunt
   hunt: ["Hunt", "Game"],
+  findDen: ["Hunt", "Game"],
   fish: ["Hunt", "Fish"],
   read: ["Hunt", "Fish"],
   setTrap: ["Hunt", "Traps"],

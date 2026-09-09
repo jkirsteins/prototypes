@@ -472,6 +472,17 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   padding: 0 4px;
   background: rgba(5, 7, 12, 0.7);
 }
+.map-inspect {
+  position: absolute; left: 6px; top: 54px; z-index: 4;
+  display: block; max-width: min(360px, calc(100% - 24px));
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  background: rgba(5, 7, 12, 0.9);
+  color: var(--text); font: 12px/1.35 monospace; text-align: left;
+  pointer-events: none;
+}
+.grid:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.grid .c:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .legend .fog-key { color: #4a5160; }
 /* Your walk: a line through the glyph centres, solid ahead, dashed behind. It sits after the shade
    and carries no z-index, so it is over the night and under the @ and the fire glow. */
@@ -632,6 +643,13 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.mk-camp { color: #0c0f14; background: #6fcf6f; }
 .grid .c.mk-trap { color: #fff; background: #4a5a78; }
 .grid .c.mk-seep { color: #0c0f14; background: #6fa8dc; }
+.grid .c.mk-animal { color: #111; background: #b7ad87; z-index: 1; }
+.grid .c.mk-animal.wildlife-0 { color: #111; background: #e5a84b; }
+.grid .c.mk-animal.wildlife-1 { color: #111; background: #76c7b7; }
+.grid .c.mk-animal.wildlife-2 { color: #111; background: #cb8fc4; }
+.grid .c.mk-animal.wildlife-3 { color: #111; background: #91bd62; }
+.grid .c.mk-animal.wildlife-4 { color: #111; background: #d77b68; }
+.grid .c.mk-animal.wildlife-5 { color: #111; background: #87a8dc; }
 
 /* The legend has no cell background to draw a marker against, so its letters take the
    background colour each mark uses on the map instead. */
@@ -642,6 +660,8 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 #map .legend b.mk-camp { color: #6fcf6f; }
 #map .legend b.mk-trap { color: #4a5a78; }
 #map .legend b.mk-seep { color: #6fa8dc; }
+#map .legend b.mk-animal { color: #b7ad87; }
+.mk-den { color: #d6aa72; }
 
 /*
  * The survivor moves. What the person is doing is filed under one of five
@@ -668,22 +688,76 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.mk-player.mood-sleep { background: #7d5c08; }
 .grid .c.mk-player.mood-rest, .grid .c.mk-player.mood-idle { animation: none; }
 
-/* The portrait animates by its wrapper and never by its pixels: the face is
-   64 SVG rects redrawn from the person, and moving those every frame would
-   spend the churn budget tests/churn.test.ts guards for a 24px breath. */
-.stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep { transform-origin: 50% 60%; }
+/* The living portrait is a stable stack of explicit Toon Head frames. CSS
+   reveals transient frames, so a blink never rebuilds the stats panel. */
+.portrait {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  overflow: visible;
+  transform-origin: 50% 70%;
+  isolation: isolate;
+}
+.portrait [data-portrait-frame] {
+  position: absolute;
+  inset: 0;
+  display: block;
+  opacity: 0;
+  pointer-events: none;
+}
+.portrait [data-portrait-frame="base"] { position: relative; opacity: 1; }
+.portrait [data-portrait-frame] .face { display: block; width: 100%; height: 100%; }
+.portrait.is-focused [data-portrait-frame="focus-raised"] { opacity: 1; }
+.portrait.focus-brow-left [data-portrait-frame="focus-raised"] { clip-path: inset(0 50% 0 0); }
+.portrait.focus-brow-right [data-portrait-frame="focus-raised"] { clip-path: inset(0 0 0 50%); }
+.portrait.is-blinking [data-portrait-frame="blink"],
+.portrait.is-flavor [data-portrait-frame="flavor"] { opacity: 1; }
+
+@keyframes portrait-focus { from { transform: translateY(0) scale(1); } to { transform: translateY(1px) scale(1.025); } }
+@keyframes portrait-cold { 0%, 100% { transform: translateX(0); } 35% { transform: translateX(-.5px); } 70% { transform: translateX(.5px); } }
 .stat-face.mood-walk { animation: mood-step 1.2s ease-in-out infinite alternate; }
 .stat-face.mood-work { animation: mood-breathe 3.4s ease-in-out infinite alternate; }
 .stat-face.mood-rest { animation: mood-breathe 4.6s ease-in-out infinite alternate; }
 .stat-face.mood-sleep { opacity: 0.65; animation: mood-breathe 5.6s ease-in-out infinite alternate; }
 .stat-face.mood-idle { animation: none; }
+.portrait.is-focused { animation: portrait-focus 2.8s ease-in-out infinite alternate; }
+.portrait.is-cold { animation: portrait-cold .42s ease-in-out infinite; }
+.portrait.is-cold [data-portrait-frame] .face { filter: saturate(.7) brightness(.88) hue-rotate(8deg); }
+.portrait.is-hot [data-portrait-frame] .face { filter: saturate(1.18) brightness(1.06); }
+.portrait.is-hurt [data-portrait-frame] .face,
+.portrait.is-unhappy [data-portrait-frame] .face { filter: saturate(.78) brightness(.92); }
+
+/* Firelight rises from below in two overlapping rhythms. The face remains
+   readable because these are translucent screen layers, not a replacement. */
+@keyframes portrait-fire-a { from { opacity: .2; transform: scale(.94); } to { opacity: .52; transform: scale(1.08); } }
+@keyframes portrait-fire-b { from { opacity: .12; transform: translateY(1px) scaleX(1.08); } to { opacity: .38; transform: translateY(-1px) scaleX(.94); } }
+.portrait.is-firelit::before, .portrait.is-firelit::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  z-index: 2;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  border-radius: 45%;
+}
+.portrait.is-firelit::before {
+  background: radial-gradient(ellipse at 50% 100%, rgba(255, 183, 74, .72) 0%, rgba(255, 108, 28, .26) 42%, transparent 72%);
+  animation: portrait-fire-a 1.7s ease-in-out infinite alternate;
+}
+.portrait.is-firelit::after {
+  background: radial-gradient(ellipse at 50% 100%, rgba(255, 226, 150, .5) 0%, rgba(255, 132, 35, .18) 36%, transparent 65%);
+  animation: portrait-fire-b 2.3s ease-in-out infinite alternate-reverse;
+}
 
 /* Somebody who has asked their system for less motion is asking this screen too. */
 @media (prefers-reduced-motion: reduce) {
   .grid .c.mk-player.mood-walk, .grid .c.mk-player.mood-work,
-  .stat-face.mood-walk, .stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep {
+  .stat-face.mood-walk, .stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep,
+  .portrait.is-focused, .portrait.is-cold, .portrait.is-firelit::before, .portrait.is-firelit::after {
     animation: none;
   }
+  .portrait.is-firelit::before { opacity: .32; transform: none; }
+  .portrait.is-firelit::after { opacity: .18; transform: none; }
 }
 
 /* Firelight. The source cell rises above the shade and the tint; ring cells stay under the shade and only their overlay rises. */

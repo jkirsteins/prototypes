@@ -519,6 +519,7 @@ describe("the rungs", () => {
     expect(new Set(TASK_IDS).size).toBe(TASK_IDS.length);
     for (const id of ["chop", "haul", "fill", "sleep", "night", "melt", "thaw"]) expect(TASK_IDS).toContain(id);
     expect(TASK_IDS).not.toContain("wait");
-    expect(TASK_IDS.length).toBe(44);
+    expect(TASK_IDS).toContain("findDen");
+    expect(TASK_IDS.length).toBe(45);
   });
 });

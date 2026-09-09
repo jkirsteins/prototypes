@@ -1,160 +1,124 @@
-/**
- * The face: an 8x8 portrait drawn from the person, a four-column left half
- * mirrored, a handful of colours from a northern palette. The templates are
- * picked by the face seed (hair, beard, colours) and by the grades (eyes wide
- * and bright or narrow, the jaw wide for a heavy build), so the ancestor
- * keeps their face in the cemetery and a candidate's card says who they are
- * before a word is read. Rendered as inline SVG rects, so the string panels
- * stay strings.
- */
+import { Avatar, Style } from "@dicebear/core";
+import definition from "@dicebear/styles/toon-head.json";
 import { Rng } from "../rng";
 import type { Person } from "../sim/types";
 
-/** The portrait's side in cells; 12 is the fallback if 8 does not read as a person. */
-export const FACE_SIZE: 8 | 12 = 8;
+const toonHead = new Style(definition);
+const CACHE_LIMIT = 256;
+const frameCache = new Map<string, string>();
 
-/** Cell keys: background, skin, hair, eye, eye white, line, beard, wool collar. */
-type Key = "." | "S" | "H" | "E" | "W" | "L" | "B" | "C";
+const HAIR = ["bun", "sideComed", "spiky", "undercut"] as const;
+const REAR_HAIR = [null, "longStraight", "longWavy", "neckHigh", "shoulderHigh"] as const;
+const BEARDS = [null, null, null, "chin", "chinMoustache", "fullBeard", "longBeard", "moustacheTwirl"] as const;
+const CLOTHES = ["shirt", "openJacket", "turtleNeck"] as const;
+const SKIN = ["5c3829", "f1c3a5", "a36b4f", "c68e7a", "b98e6a"] as const;
+const HAIR_COLOURS = ["2c1b18", "d6b370", "724133", "a55728", "b58143"] as const;
+const CLOTHES_COLOURS = ["151613", "0b3286", "545454", "147f3c", "f97316", "ec4899", "731ac3", "b11f1f", "e8e9e6", "eab308"] as const;
+const BACKGROUNDS = ["3b4652", "2f4a3d", "232b4a"] as const;
 
-const SKIN = ["#e8c39e", "#d4a373", "#b07d4f"];
-const HAIR = ["#2b1d14", "#6b4423", "#d9b86a", "#a4402a"];
-const EYE = ["#2f4f6f", "#4b6b3a", "#3b2a1a"];
-const BACK = ["#3b4652", "#2f4a3d", "#232b4a"];
-const WOOL = ["#5a5f66", "#6e5a48"];
-const LINE = "#1a1410";
-const WHITE = "#f2efe6";
+type Hair = (typeof HAIR)[number];
+type RearHair = Exclude<(typeof REAR_HAIR)[number], null>;
+type Beard = Exclude<(typeof BEARDS)[number], null>;
+type Clothes = (typeof CLOTHES)[number];
 
-export const HAIR_WOMEN = ["long", "braided", "short", "cropped"] as const;
-export const HAIR_MEN = ["short", "cropped", "bald", "long"] as const;
-export const BEARDS = ["none", "short", "full"] as const;
-export type Hair = (typeof HAIR_WOMEN)[number] | (typeof HAIR_MEN)[number];
-export type Beard = (typeof BEARDS)[number];
-
-export interface FacePicks {
+export interface FaceIdentity {
+  seed: string;
   hair: Hair;
-  beard: Beard;
-  eyes: "wide" | "plain" | "narrow";
-  jaw: "wide" | "narrow";
-  skin: number;
-  hairColour: number;
-  eye: number;
-  back: number;
-  wool: number;
+  rearHair: RearHair | null;
+  beard: Beard | null;
+  clothes: Clothes;
+  skin: string;
+  hairColor: string;
+  clothesColor: string;
+  backgroundColor: string;
 }
 
-/** What the seed and the grades pick for a person. */
-export function facePicks(p: Person): FacePicks {
-  const rng = new Rng(p.face);
-  const hair = p.sex === "f" ? HAIR_WOMEN[rng.int(HAIR_WOMEN.length)] : HAIR_MEN[rng.int(HAIR_MEN.length)];
-  const beard = p.sex === "m" ? BEARDS[rng.int(BEARDS.length)] : "none";
-  return {
-    hair,
-    beard,
-    eyes: p.axes.eyes >= 1 ? "wide" : p.axes.eyes <= -1 ? "narrow" : "plain",
-    jaw: p.axes.build >= 1 ? "wide" : "narrow",
-    skin: rng.int(SKIN.length),
-    hairColour: rng.int(HAIR.length),
-    eye: rng.int(EYE.length),
-    back: rng.int(BACK.length),
-    wool: rng.int(WOOL.length),
-  };
+export interface FaceExpression {
+  eyes: "bow" | "happy" | "humble" | "wide" | "wink";
+  eyebrows: "angry" | "happy" | "neutral" | "raised" | "sad";
+  mouth: "agape" | "angry" | "laugh" | "sad" | "smile";
 }
 
-/** The left half, four cells a row, rows top to bottom; later layers paint over earlier ones. */
-function half(picks: FacePicks): Key[][] {
-  const rows: Key[][] = [
-    [".", ".", ".", "."],
-    [".", ".", "S", "S"],
-    [".", "S", "L", "S"],
-    [".", "S", "E", "S"],
-    [".", "S", "S", "S"],
-    [".", "S", "S", "L"],
-    [".", ".", "S", "S"],
-    [".", "C", "C", "C"],
-  ];
-  if (picks.jaw === "wide") {
-    rows[4] = ["S", "S", "S", "S"];
-    rows[5] = ["S", "S", "S", "L"];
-    rows[6] = [".", "S", "S", "S"];
-  }
-  switch (picks.hair) {
-    case "short":
-      rows[0] = [".", ".", "H", "H"];
-      rows[1] = [".", "H", "H", "H"];
-      break;
-    case "cropped":
-      rows[1] = [".", ".", "H", "H"];
-      break;
-    case "long":
-    case "braided":
-      rows[0] = [".", ".", "H", "H"];
-      rows[1] = [".", "H", "H", "H"];
-      for (const r of [2, 3, 4, 5]) rows[r][0] = "H";
-      if (picks.hair === "braided") {
-        rows[6][0] = "H";
-        rows[7][0] = "H";
-      }
-      break;
-    case "bald":
-      break;
-  }
-  if (picks.eyes === "wide") {
-    rows[3][1] = "W";
-    rows[3][2] = "E";
-  } else if (picks.eyes === "narrow") {
-    rows[3][2] = "L";
-  }
-  if (picks.beard === "short") {
-    rows[6][2] = "B";
-    rows[6][3] = "B";
-  } else if (picks.beard === "full") {
-    rows[5][1] = "B";
-    rows[5][2] = "B";
-    rows[5][3] = "B";
-    rows[6][1] = "B";
-    rows[6][2] = "B";
-    rows[6][3] = "B";
-  }
-  return rows;
+export const STATIC_FACE: FaceExpression = { eyes: "happy", eyebrows: "happy", mouth: "smile" };
+export const FOCUSED_FACE: FaceExpression = { eyes: "wide", eyebrows: "angry", mouth: "smile" };
+
+/** Stable appearance choices. Gameplay axes deliberately do not alter identity. */
+export function faceIdentity(person: Person): FaceIdentity {
+  const rng = new Rng(person.face);
+  const hair = rng.pick(HAIR);
+  const rearHair = rng.pick(REAR_HAIR);
+  const clothes = rng.pick(CLOTHES);
+  const skin = rng.pick(SKIN);
+  const hairColor = rng.pick(HAIR_COLOURS);
+  const clothesColor = rng.pick(CLOTHES_COLOURS);
+  const backgroundColor = rng.pick(BACKGROUNDS);
+  const beard = person.sex === "m" ? rng.pick(BEARDS) : null;
+  return { seed: String(person.face), hair, rearHair, beard, clothes, skin, hairColor, clothesColor, backgroundColor };
 }
 
-/** The whole portrait, size rows of size keys; 12 is the 8 grid at one and a half, the same shapes. */
-export function facePixels(p: Person, size: 8 | 12 = FACE_SIZE): Key[][] {
-  const left = half(facePicks(p));
-  const eight = left.map((row) => [...row, ...[...row].reverse()]);
-  if (size === 8) return eight;
-  const out: Key[][] = [];
-  for (let y = 0; y < 12; y++) {
-    const row: Key[] = [];
-    for (let x = 0; x < 12; x++) row.push(eight[Math.min(7, Math.floor((y * 8) / 12))][Math.min(7, Math.floor((x * 8) / 12))]);
-    out.push(row);
+function cached(key: string, create: () => string): string {
+  const hit = frameCache.get(key);
+  if (hit !== undefined) {
+    frameCache.delete(key);
+    frameCache.set(key, hit);
+    return hit;
   }
-  return out;
+  const value = create();
+  frameCache.set(key, value);
+  if (frameCache.size > CACHE_LIMIT) {
+    const oldest = frameCache.keys().next().value;
+    if (oldest !== undefined) frameCache.delete(oldest);
+  }
+  return value;
 }
 
-function colour(k: Key, picks: FacePicks): string | null {
-  switch (k) {
-    case ".": return null;
-    case "S": return SKIN[picks.skin];
-    case "H": return HAIR[picks.hairColour];
-    case "E": return EYE[picks.eye];
-    case "W": return WHITE;
-    case "L": return LINE;
-    case "B": return HAIR[picks.hairColour];
-    case "C": return WOOL[picks.wool];
+function renderFace(person: Person, px: number, expression: FaceExpression): string {
+  const identity = faceIdentity(person);
+  try {
+    const avatar = new Avatar(toonHead, {
+      seed: identity.seed,
+      size: px,
+      hairVariant: identity.hair,
+      hairColor: identity.hairColor,
+      rearHairVariant: identity.rearHair ?? "longStraight",
+      rearHairProbability: identity.rearHair === null ? 0 : 100,
+      beardVariant: identity.beard ?? "chin",
+      beardProbability: identity.beard === null ? 0 : 100,
+      clothesVariant: identity.clothes,
+      clothesColor: identity.clothesColor,
+      skinColor: identity.skin,
+      backgroundColor: identity.backgroundColor,
+      eyesVariant: expression.eyes,
+      eyebrowsVariant: expression.eyebrows,
+      mouthVariant: expression.mouth,
+    }).toString();
+    return avatar
+      .replace(/<metadata[\s\S]*?<\/metadata>/, "")
+      .replace("<svg ", '<svg class="face" ');
+  } catch {
+    return fallbackFace(px, identity);
   }
 }
 
-/** The portrait as an inline SVG, `px` wide and high, crisp at any scale. */
-export function faceSvg(p: Person, px: number, size: 8 | 12 = FACE_SIZE): string {
-  const picks = facePicks(p);
-  const rows = facePixels(p, size);
-  const rects: string[] = [`<rect x="0" y="0" width="${size}" height="${size}" fill="${BACK[picks.back]}"/>`];
-  rows.forEach((row, y) => {
-    row.forEach((k, x) => {
-      const c = colour(k, picks);
-      if (c) rects.push(`<rect x="${x}" y="${y}" width="1" height="1" fill="${c}"/>`);
-    });
-  });
-  return `<svg class="face" viewBox="0 0 ${size} ${size}" width="${px}" height="${px}" shape-rendering="crispEdges" aria-hidden="true">${rects.join("")}</svg>`;
+function fallbackFace(px: number, identity: FaceIdentity): string {
+  return `<svg class="face" viewBox="0 0 8 8" width="${px}" height="${px}" shape-rendering="crispEdges" aria-hidden="true"><rect width="8" height="8" fill="#${identity.backgroundColor}"/><rect x="2" y="1" width="4" height="6" fill="#${identity.skin}"/><rect x="2" y="1" width="4" height="2" fill="#${identity.hairColor}"/><rect x="3" y="3" width="1" height="1" fill="#151613"/><rect x="5" y="3" width="1" height="1" fill="#151613"/><rect x="3" y="5" width="3" height="1" fill="#151613"/></svg>`;
+}
+
+/** Render one identity with an explicit expression. */
+export function faceFrame(person: Person, px: number, expression: FaceExpression): string {
+  const key = JSON.stringify([person.face, person.sex, px, expression]);
+  return cached(key, () => renderFace(person, px, expression));
+}
+
+/** Static portrait used outside the live player header. */
+export function faceSvg(person: Person, px: number): string {
+  return faceFrame(person, px, STATIC_FACE);
+}
+
+export function clearFaceCache(): void {
+  frameCache.clear();
+}
+
+export function faceCacheSize(): number {
+  return frameCache.size;
 }

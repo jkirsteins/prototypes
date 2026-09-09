@@ -21,7 +21,7 @@ const MOOD: Record<TaskId, Mood> = {
   sleep: "sleep", night: "sleep", rest: "rest",
   // Everything else is work of some kind, and one slow pulse serves all of it.
   chop: "work", sticks: "work", bark: "work", stone: "work", berries: "work",
-  split: "work", deadwood: "work", splitWedges: "work", hunt: "work", fish: "work",
+  split: "work", deadwood: "work", splitWedges: "work", hunt: "work", findDen: "work", fish: "work",
   cook: "work", craft: "work", repair: "work", sharpen: "work", hone: "work",
   build: "work", mend: "work", light: "work", lightTorch: "work", melt: "work",
   thaw: "work", lightIndoors: "work", fill: "work", iceHole: "work", hang: "work",

@@ -25,6 +25,8 @@
     "vitest": "^2.0.5"
   },
   "dependencies": {
-    "@datadog/browser-rum": "^7.12.0"
+    "@datadog/browser-rum": "^7.12.0",
+    "@dicebear/core": "^10.7.0",
+    "@dicebear/styles": "^10.6.0"
   }
 }

@@ -42,7 +42,7 @@ import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
 import { goalDoneHtml, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, viewOrigin } from "./ui/map";
+import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, mountMapInspection, viewOrigin } from "./ui/map";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
@@ -51,9 +51,11 @@ import {
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
 import { advanceHurry, hurryClick, hurryKind, newHurry } from "./ui/hurry";
+import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
 import { newSpeedHistory, updateSpeedHistory } from "./ui/speed-history";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
+import { recognitionHtml } from "./ui/wildlife-panel";
 import { generateWorld, regionAt, type World } from "./world/gen";
 
 const params = new URLSearchParams(location.search);
@@ -104,6 +106,7 @@ try {
 let awayInfo: { seconds: number; capped: boolean } | null = null;
 const audio = createAudioEngine(SLOTS);
 const sounds = createScheduler(audio);
+const portraitMotion = createPortraitMotion();
 // Read by fresh() below (called from boot(), before the forecaster exists) and by
 // requestForecast() (defined after boot(), once world is real) - declared here so
 // neither reads it before it is initialized.
@@ -244,6 +247,9 @@ function render() {
   } else if (ui.goalsDone) {
     setPanel("overlay", goalDoneHtml(state, cal, ui.goalsDone));
     overlay.hidden = false;
+  } else if (ui.recognition !== null) {
+    setPanel("overlay", recognitionHtml(state, ui.recognition));
+    overlay.hidden = false;
   } else {
     overlay.hidden = true;
   }
@@ -254,7 +260,7 @@ let lastSave = performance.now();
 function frame(now: number) {
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
-  if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalsDone) {
+  if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalsDone && ui.recognition === null) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
@@ -266,10 +272,10 @@ function frame(now: number) {
     } else {
       // The hurry: extra minutes for work chosen by hand, on top of the frame's own. The speed test aid does not scale it.
       const extra = advanceHurry(ui.hurry, state, world, dtSec);
-      advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra);
+      advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra, { wildlife: "detailed" });
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
-  } else if (ui.away || ui.teach || ui.welcome || ui.goalsDone) {
+  } else if (ui.away || ui.teach || ui.welcome || ui.goalsDone || ui.recognition !== null) {
     // An open moment holds the game still. Without the bump, a modal left open
     // past thirty seconds trips the catch-up branch above, and the player
     // dismisses it into an away report they never earned.
@@ -285,11 +291,15 @@ function frame(now: number) {
   // not requeue the overlay every frame.
   const reached = goalMomentToOpen(state, ui);
   if (reached) ui.goalsDone = reached;
+  if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.goalsDone && ui.recognition === null) {
+    ui.recognition = state.wildlife.recognitionQueue[0] ?? null;
+  }
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
   render();
   updateSpeedHistory(document, ui.speedHistory, now, GAME_MINUTES_PER_REAL_SECOND * ui.hurry.rate);
+  portraitMotion.frame(document, now, document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
   const cal = calendar(state.minute, state.startDoy);
   sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
   if (now - lastSave > 5000) {
@@ -499,6 +509,11 @@ function onClick(ev: Event) {
       state.goals.queue = [];
       // The same bump the rung moment's dismiss does: the minutes the
       // screen was open were paused, not spent away.
+      lastReal = performance.now();
+      break;
+    case "recognition-close":
+      if (ui.recognition !== null && state.wildlife.recognitionQueue[0] === ui.recognition) state.wildlife.recognitionQueue.shift();
+      ui.recognition = null;
       lastReal = performance.now();
       break;
     case "leave-world":
@@ -817,7 +832,9 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     }
   });
 }
+mountMapInspection(document.getElementById("mapdyn")!);
 render();
+portraitMotion.frame(document, performance.now(), document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
 requestAnimationFrame(frame);
 
 // For poking at the run from the console and for browser checks.

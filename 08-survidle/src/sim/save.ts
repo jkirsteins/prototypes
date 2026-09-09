@@ -14,6 +14,7 @@ import { newSite, regionState } from "./regionstate";
 import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
 import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
+import { emptyWildlife } from "./wildlife-agents";
 
 export const SAVE_KEY = "survidle.save";
 
@@ -22,17 +23,17 @@ export function awaySeconds(state: GameState): number {
   return state.awayHours * 3600;
 }
 
-export interface SaveFile { version: 7; savedAt: number; state: GameState }
+export interface SaveFile { version: 8; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  const file: SaveFile = { version: 7, savedAt: now, state };
+  const file: SaveFile = { version: 8, savedAt: now, state };
   return JSON.stringify(file);
 }
 
 export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
-    if (!(file?.version >= 3 && file?.version <= 7) || !file.state || typeof file.savedAt !== "number") return null;
+    if (!(file?.version >= 3 && file?.version <= 8) || !file.state || typeof file.savedAt !== "number") return null;
     migrate(file.state);
     return file as unknown as SaveFile;
   } catch {
@@ -65,6 +66,14 @@ export function migrate(state: GameState): void {
   state.goals ??= newGoals(calendar(state.minute, state.startDoy).season);
   state.taught ??= {};
   state.teachQueue ??= [];
+  state.wildlife ??= emptyWildlife();
+  state.wildlife.familiarity ??= {};
+  state.wildlife.inherited ??= {};
+  state.wildlife.recognized ??= {};
+  state.wildlife.visible ??= [];
+  state.wildlife.knownDens ??= {};
+  state.wildlife.recognitionQueue ??= [];
+  for (const subject of state.wildlife.subjects) subject.denCell ??= null;
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
   state.survivors ??= [firstRecord(state.seed, state.startDoy)];
   // A record from before the person: the median survivor, with the sex its name says and a face of its own.
@@ -117,6 +126,10 @@ export function migrate(state: GameState): void {
   if ((state.task as unknown as { id?: string } | null)?.id === "wait") state.task = null;
   if (state.intent) {
     state.intent.orderId ??= null;
+    if (isWorkIntent(state.intent) && state.intent.orderRegion === undefined) {
+      state.intent.orderRegion = Number(Object.entries(state.regions)
+        .find(([, st]) => st.orders.some((order) => order.id === state.intent?.orderId))?.[0] ?? state.player.region);
+    }
     // Whose the intent is was read off what it was asked to do; a save from
     // before that reads the same way.
     const it = state.intent as Partial<Intent> & { task?: TaskId; until?: Until };

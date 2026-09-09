@@ -131,7 +131,7 @@ describe("the person", () => {
     expect(g.state.survivors[0].person).toEqual(custom);
     const back = deserialize(serialize(g.state))!;
     expect(back.state.survivors[0].person).toEqual(custom);
-    expect(JSON.parse(serialize(g.state)).version).toBe(7);
+    expect(JSON.parse(serialize(g.state)).version).toBe(8);
   });
 
   it("gives a record from before the person the median with the sex its name says", () => {

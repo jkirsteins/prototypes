@@ -60,6 +60,21 @@ describe("the automatic pulse", () => {
     expect(h.rate).toBe(PEAK);
   });
 
+  it("eases out when the physically next once action is blocked", () => {
+    const { state, world } = newGame(3);
+    addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    addOrder(state, world, { task: "cook", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, "grind");
+    advance(state, world, 1);
+    if (!state.task) throw new Error("the first once action did not start");
+    state.task.progress = state.task.duration * 0.95;
+    const h = newHurry();
+
+    advanceHurry(h, state, world, 0.1);
+
+    expect(h.rate).toBeLessThan(PEAK);
+  });
+
   it("with nothing to hurry a frame carries nothing and leaves the state alone", () => {
     const h = newHurry();
     expect(hurryFrame(h, "none", null, 1)).toBe(0);

@@ -17,7 +17,9 @@ import { seeFrom } from "./sight";
 import { stepSpine } from "./spine";
 import { stepTask } from "./tasks";
 import type { GameState } from "./types";
+import type { WildlifeMode } from "./types";
 import { stepSeeps } from "./seep";
+import { dailyWildlife, stepWildlife } from "./wildlife-agents";
 import { autoDrink } from "./water";
 import { ambientTemperature, stepWeather, stormComing } from "./weather";
 
@@ -37,20 +39,21 @@ export interface Presence {
  * time: this is how the months between two survivors run, on the same
  * weather, camp and animal rules a lived-in world uses.
  */
-export function advance(state: GameState, world: World, dtMinutes: number, opts: { nobody?: boolean } = {}): void {
+export function advance(state: GameState, world: World, dtMinutes: number, opts: { nobody?: boolean; wildlife?: WildlifeMode } = {}): void {
   const nobody = opts.nobody ?? false;
+  const wildlife = nobody ? "aggregate" : (opts.wildlife ?? "aggregate");
   if (state.dead && !nobody) return;
   let left = dtMinutes;
   const rng = new Rng(state.rng);
   while (left > 1e-9 && (nobody || !state.dead)) {
     const dt = Math.min(MAX_STEP, left);
     left -= dt;
-    step(state, world, rng, dt, nobody);
+    step(state, world, rng, dt, nobody, wildlife);
   }
   state.rng = rng.s;
 }
 
-function step(state: GameState, world: World, rng: Rng, dt: number, nobody: boolean): void {
+function step(state: GameState, world: World, rng: Rng, dt: number, nobody: boolean, wildlife: WildlifeMode): void {
   state.minute += dt;
   const cal = calendar(state.minute, state.startDoy);
 
@@ -79,6 +82,8 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   // it landed, the same place stepCamp used to read state.player itself.
   const who: Presence | null = nobody ? null : { region: state.player.region, atCamp: atCamp(state, world) };
 
+  stepWildlife(state, world, cal, rng, dt, wildlife);
+
   stepCamp(state, world, ambient, dt, who);
   stepSeeps(state, world, ambient, dt);
 
@@ -94,12 +99,14 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   if (hour > state.lastHour) {
     state.lastHour = hour;
     hourlyWorld(state, world, cal, ambient, rng, who);
-    if (!nobody) hourlyEvents(state, world, cal, ambient, feltTemperature(state, world, ambient), rng);
+    const detailedWolves = wildlife === "detailed" && state.wildlife.subjects.some((subject) => subject.species === "wolf" && subject.region === state.player.region && subject.active);
+    if (!nobody) hourlyEvents(state, world, cal, ambient, feltTemperature(state, world, ambient), rng, !detailedWolves);
     // Standing still still sees: the eye does not need a step to look around.
     if (!nobody) seeFrom(state, world, cal, cellOf(state, world));
   }
   if (cal.dayIndex > state.lastDay && cal.hour >= DAILY_HOUR) {
     state.lastDay = cal.dayIndex;
+    dailyWildlife(state, world, cal, rng, wildlife);
     dailyAnimals(state, world, cal, rng, who);
     dailyCamp(state, world, cal, rng, who);
     stepSpine(state, cal, who);

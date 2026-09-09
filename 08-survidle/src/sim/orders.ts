@@ -608,6 +608,18 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
   return judgeOrders(state, world, cal).chosen;
 }
 
+/** The row the scheduler would choose after one live row disappears. */
+export function nextRunnableAfter(state: GameState, world: World, cal: Calendar, liveId: number): Order | null {
+  const rng = new Rng(state.rng);
+  for (const order of ordersHere(state, world)) {
+    if (order.id === liveId) continue;
+    const verdict = judgeRow(state, world, cal, rng, order, null, true);
+    if (verdict.v === "ready") return order;
+    if (verdict.v === "blocked" && !isCareRow(order) && order.pinned) return null;
+  }
+  return null;
+}
+
 export type Judgement = {
   /** The row with the minute: the topmost ready row, the body's own included. */
   chosen: Order | null;

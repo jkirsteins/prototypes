@@ -10,7 +10,9 @@ import { COLLAPSE_RECOVERED_AT } from "../src/sim/sleep";
 import { insertWalkAtTop, isWalkOrder } from "../src/sim/walkorders";
 import { siteCamp } from "./siting-helpers";
 import { Rng } from "../src/rng";
-import { cellAt, neighbours } from "../src/world/gen";
+import { cellAt, neighbours, regionAt } from "../src/world/gen";
+import { passable } from "../src/world/route";
+import { regionState } from "../src/sim/regionstate";
 
 describe("visible walk orders", () => {
   it("puts an explicit exact-cell walk at the top and replaces an older walk", () => {
@@ -74,5 +76,24 @@ describe("visible walk orders", () => {
     expect(resumedAt).not.toBeNull();
     expect(resumedAt!).toBeGreaterThanOrEqual(COLLAPSE_RECOVERED_AT - 0.2);
     expect(ordersHere(state, world).some(isWalkOrder)).toBe(false);
+  });
+
+  it("keeps a cross-region walk owned by and removes it from its source queue", () => {
+    const { state, world } = newGame(3);
+    const source = state.player.region;
+    const destination = regionAt(world, source).neighbours[0].id;
+    mapRegion(state, world, source);
+    mapRegion(state, world, destination);
+    const target = regionAt(world, destination).cells.find((cell) => passable(cellAt(world, cell).terrain));
+    if (target === undefined) throw new Error("neighbour has no passable cell");
+    const order = insertWalkAtTop(state, world, target);
+    const sourceState = regionState(state, world, source);
+    expect(startIntent(state, world, calendar(state.minute), new Rng(1), order.req, order.id)).toBe(true);
+
+    for (let minute = 0; minute < 6000 && sourceState.orders.some((row) => row.id === order.id); minute++) advance(state, world, 1);
+
+    expect(state.player.region).toBe(destination);
+    expect(sourceState.orders.some((row) => row.id === order.id)).toBe(false);
+    expect(state.intent?.orderId).not.toBe(order.id);
   });
 });

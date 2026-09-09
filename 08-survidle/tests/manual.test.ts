@@ -18,6 +18,10 @@ describe("the manual", () => {
     const html = manualHtml();
     for (const s of MANUAL_SECTIONS) expect(html).toContain(s.title);
     for (const l of MANUAL_LINKS) expect(html).toContain(l.url);
+    expect(html).toContain("ToonHead");
+    expect(html).toContain("Johan Melin");
+    expect(html).toContain("CC BY 4.0");
+    expect(html).toContain("https://www.figma.com/community/file/1589627891082866389");
     expect(html).toContain('data-act="manual-close"');
     expect(html).not.toMatch(/[\u2014\u2013\u2026\u2018\u2019\u201c\u201d]/);
     const food = MANUAL_SECTIONS.find((s) => s.title === "Food and the seasons")!;

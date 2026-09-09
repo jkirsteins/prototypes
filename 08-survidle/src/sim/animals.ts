@@ -86,19 +86,32 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
     for (const s of speciesHere(r)) {
       const def = SPECIES_DEFS[s];
       const k = seasonalCapacity(world, r.id, s, cal, state.weather.iceCm);
-      const pop = popOf(st, s);
+      const represented = def.agent
+        ? state.wildlife.subjects.filter((subject) => subject.region === id && subject.species === s).reduce((sum, subject) => sum + subject.cohorts.reduce((n, cohort) => n + cohort.count, 0), 0)
+        : 0;
+      // Persistent subjects already embody these animals. Capacity dynamics
+      // act only on the unrepresented remainder, then the two are recombined.
+      // This keeps a denned bear present while seasonal active abundance is 0.
+      const pop = Math.max(0, popOf(st, s) - represented);
+      const residualK = Math.max(0, k - represented);
+      let next = pop;
       if (isVoiceOnly(s)) {
         st.pop[s] = k;
       } else if (def.season.kind === "migrant") {
         // A flock arrives over a few weeks and leaves the same way; next year's replaces what was taken.
-        st.pop[s] = pop + (k - pop) * 0.1;
-      } else if (k <= 0) {
-        st.pop[s] = 0;
+        next = pop + (residualK - pop) * 0.1;
+        st.pop[s] = represented + next;
+      } else if (residualK <= 0) {
+        st.pop[s] = represented;
       } else if (growing) {
-        st.pop[s] = Math.max(0, pop + def.growth * pop * (1 - pop / k));
-      } else if (pop > k) {
+        next = Math.max(0, pop + def.growth * pop * (1 - pop / residualK));
+        st.pop[s] = represented + next;
+      } else if (pop > residualK) {
         // Winter thins a herd the land cannot feed.
-        st.pop[s] = pop - (pop - k) * 0.05;
+        next = pop - (pop - residualK) * 0.05;
+        st.pop[s] = represented + next;
+      } else if (represented > 0) {
+        st.pop[s] = represented + pop;
       }
     }
   }

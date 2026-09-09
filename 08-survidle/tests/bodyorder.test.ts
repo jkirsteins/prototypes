@@ -214,6 +214,22 @@ describe("the body row takes its turn by rank", () => {
     expect(state.intent?.orderId).toBe(grind.id);
   });
 
+  it("absolute exhaustion releases runner work regardless of rank", () => {
+    const { state, world } = newGame(3);
+    const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    ordersHere(state, world).reverse();
+    state.player.energy = SLEEP_AT + 1;
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(grind.id);
+
+    state.player.energy = SLEEP_AT;
+    advance(state, world, 1);
+
+    expect(state.player.sleeping).toEqual({ collapsed: true });
+    expect(state.intent?.orderId).not.toBe(grind.id);
+    expect(state.task?.id).not.toBe("sticks");
+  });
+
   it("under the work, the body's memory is still kept current: a want that ends is seen to end, and the hurry is not left answering for it", () => {
     const { state, world } = newGame(17);
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");

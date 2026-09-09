@@ -20,7 +20,7 @@ import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
 import { MANUAL_LINKS, MANUAL_SECTIONS } from "../sim/manual";
 import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
-import { moodOf } from "./mood";
+import { liveFaceHtml, livePortraitState } from "./portrait";
 import { fmtName } from "../sim/names";
 import { sleepiness, SLEEPY_AT, SPENT_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
@@ -150,7 +150,8 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.energy < 20) tags.push(`<span class="tag bad">exhausted</span>`);
   if (sleepiness(p.sleepDebt, cal.hour) >= SLEEPY_AT) tags.push(`<span class="tag bad">sleepy</span>`);
   if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
-  return `<h2><span class="stat-face mood-${moodOf(state)}">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
+  const portrait = livePortraitState(state, world, cal, ambient);
+  return `<h2>${liveFaceHtml(current(state).person, 24, portrait)}${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
 ${bar("kcal", "kcal", "Food", [{ at: "hunger", title: "eats below here" }])}
 ${bar("fat", "fat", "Fat", [{ at: marks.floor / marks.upper, title: "dies here" }, { at: marks.lower / marks.upper, title: "thin below here" }, { at: marks.upper / marks.upper, title: "well fed above here" }])}
@@ -925,6 +926,7 @@ export function manualHtml(): string {
 ${sections}
 <h2>More</h2>
 <ul>${links}</ul>
+<p class="dim">Portraits use <a href="https://www.figma.com/community/file/1589627891082866389" target="_blank" rel="noopener">ToonHead by Johan Melin</a>, licensed CC BY 4.0.</p>
 <button class="act" data-act="manual-close">Close</button>
 </div>`;
 }

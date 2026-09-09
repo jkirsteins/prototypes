@@ -10,7 +10,9 @@
  * Spec: docs/superpowers/specs/2026-09-05-survidle-hurry-design.md.
  */
 import { isWorkIntent, type GameState } from "../sim/types";
-import { ordersHere } from "../sim/orders";
+import { nextRunnableAfter } from "../sim/orders";
+import { calendar } from "../sim/calendar";
+import { isCareRow } from "../sim/bodyorder";
 import type { World } from "../world/gen";
 
 export type HurryKind = "auto" | "click" | "none";
@@ -111,10 +113,10 @@ export function hurryFrame(
 export function advanceHurry(h: HurryState, state: GameState, world: World, dtSec: number): number {
   const progress = state.task && state.task.duration > 0 ? state.task.progress / state.task.duration : 0;
   const liveId = state.intent?.orderId ?? null;
-  const rows = ordersHere(state, world);
-  const liveIndex = liveId === null ? -1 : rows.findIndex((order) => order.id === liveId);
-  const next = liveIndex < 0 ? undefined : rows[liveIndex + 1];
-  const autoHasNext = next !== undefined && "req" in next && next.req.until.kind === "once";
+  const next = liveId === null || progress < 0.85
+    ? null
+    : nextRunnableAfter(state, world, calendar(state.minute, state.startDoy), liveId);
+  const autoHasNext = next !== null && !isCareRow(next) && next.req.until.kind === "once";
   return hurryFrame(h, hurryKind(state), liveId, dtSec, progress, autoHasNext);
 }
 
