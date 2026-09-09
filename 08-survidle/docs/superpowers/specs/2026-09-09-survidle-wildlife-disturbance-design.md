@@ -302,6 +302,65 @@ ten-minute reaction delay; hidden identity or route disclosure; an ambiguous
 twig snap; non-receding hoofbeats; one marker per herd member; teleporting; or
 zoom replay.
 
+### Verified deterministic fixtures (9 September 2026)
+
+`npm run startle-seeds` searches seeds 1 through 5000, at most 16 generated
+cells and 16 approach samples per seed. It uses the production encounter's
+seeded rolls without overrides. These are controlled placements of a naturally
+generated herd on generated ground, not promises about its normal spawn cell.
+Terrain is never edited. Only the selected herd is active during a fixture.
+
+| Case | Seed | Subject | Animal start cell | Survivor cell | Result |
+|---|---|---|---|---|---|
+| visible | 1 | 1 | 1280781 | 1280781 | Seen herd departs through pine |
+| heard-only | 7 | 1 | 901197 | 902997 | Hidden spruce source, unknown crash |
+| same-area-remain | 1 | 1 | 1280781 | 1280781 | Alarm stays zero; no departure or log |
+| bog | 74 | 1 | 1257438 | 1257438 | Heard hoof departure through bog |
+| snow | 1 | 1 | 1280781 | 1280781 | Seen departure with snow impacts |
+| blocked-edge | 1 | 1 | 1280781 | 1280781 | Departure stays on passable regional ground |
+
+The explicit approach is 15 m toward the herd's stable metric estimate, at
+08:01 on 1 April (minute 1), or midnight for heard-only (minute 960). The
+survivor stays within its listed cell while taking that sample. Snow sets
+10 cm of cover; other fixtures have clear, dry, snow-free weather. A single
+sample intentionally holds other simulation systems still so a later wildlife
+tick, changing weather or browser frame timing cannot change the result.
+
+Exact browser steps:
+
+1. Run `npm run dev` from `08-survidle`, open
+   `http://127.0.0.1:5173/prototypes/08/`, and enable sound with the audio control.
+   These helpers exist only in the development build.
+2. Run `npm run startle-seeds` and copy the printed `await
+   window.survidle.startleSetup({...});` line for a case into the console. Setup
+   selects one-cell zoom, holds simulation time, and suppresses saves. It keeps
+   the existing run in memory for restoration.
+3. Execute `setTimeout(() => window.survidle.startleStep(), 2000)` and close the
+   console before the two seconds elapse. The helper takes the 15 m approach
+   sample and invokes the same production
+   disturbance evaluator and live presentation sink. Look for one marker and
+   log line, plus departure audio, except in the calm shared-cell case.
+4. Invoke `startleStep()` again. The same escape must not produce another cue.
+   Reload the fixture with its setup command to hear or see it again. Compare
+   the bog fixture's wet impacts with the snow fixture's crunching footfalls.
+5. In heard-only, confirm the source cell remains unmapped and no animal or
+   route appears. In blocked-edge, confirm the herd remains inside its region
+   on passable ground. Test zoom, mute and reduced motion during an effect.
+6. Run `window.survidle.startleEnd()` to restore the original run and normal
+   clock/saving. Avoid other game actions while inspecting a fixture.
+
+For a shorter setup command, load the finder once in the development console:
+
+```js
+const startles = await import('/prototypes/08/scripts/startle-seeds.ts');
+await window.survidle.startleSetup(startles.findStartleScenario('heard-only', 7, 7));
+window.survidle.startleStep();
+```
+
+The table and production live-event delivery are verified by the scenario
+tests. Visual appearance and perceived audio quality still require the manual
+pass above.
+
 ## 14. Walking follow-on
 
 The roadmap's Walking item owns progression. It starts from the neutral

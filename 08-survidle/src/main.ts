@@ -98,6 +98,12 @@ let wasDead = false;
 // which cannot see the assignment through the function call.
 let state!: GameState;
 let world!: World;
+// Development fixtures hold their clock outside GameState and restore the run.
+let startleRestore: (() => void) | null = null;
+let startleStep: (() => void) | null = null;
+function persistGame(): void {
+  if (!(import.meta.env.DEV && startleRestore)) saveGame(state);
+}
 const ui = newUiState();
 ui.travelDisplay = loadTravelDisplay(localStorage);
 const SPECIFIC_KEY = "survidle.specific";
@@ -144,7 +150,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   ui.confirmCamp = false;
   resetPanels();
   resetForecastAt();
-  saveGame(state);
+  persistGame();
   awayDial?.refresh();
 }
 
@@ -168,7 +174,7 @@ function boot() {
       setCueSink((c) => sounds.cue(c));
       setWildlifeEventSink(onWildlifeStartle);
       awayInfo = { seconds: Math.min(elapsed, awaySeconds(state)), capped: elapsed > awaySeconds(state) };
-      saveGame(state);
+      persistGame();
     }
   } else {
     fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy);
@@ -284,6 +290,11 @@ let lastSave = performance.now();
 function frame(now: number) {
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
+  if (import.meta.env.DEV && startleRestore) {
+    render(now);
+    requestAnimationFrame(frame);
+    return;
+  }
   if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalGuide && ui.recognition === null) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
@@ -333,7 +344,7 @@ function frame(now: number) {
   sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
   if (now - lastSave > 5000) {
     lastSave = now;
-    saveGame(state);
+    persistGame();
   }
   requestAnimationFrame(frame);
 }
@@ -666,7 +677,7 @@ function onClick(ev: Event) {
   state.rng = rng.s;
   // After the rng write-back, so the request the click triggers reads the committed rng.
   if (FORECAST_ACTS.includes(target.dataset.act!)) requestForecast();
-  saveGame(state);
+  persistGame();
   render();
   restoreScroll();
 }
@@ -789,9 +800,9 @@ document.addEventListener("change", (ev) => {
   render();
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") saveGame(state);
+  if (document.visibilityState === "hidden") persistGame();
 });
-window.addEventListener("pagehide", () => saveGame(state));
+window.addEventListener("pagehide", persistGame);
 // The terrain letters never change, so the legend is set once rather than rebuilt with the map.
 document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
 
@@ -855,7 +866,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     const walk = insertWalkAtTop(state, world, cell);
     startIntent(state, world, cal, rng, walk.req, walk.id);
     state.rng = rng.s;
-    saveGame(state);
+    persistGame();
     render();
   });
   board.addEventListener("pointerleave", (ev) => {
@@ -917,7 +928,12 @@ requestAnimationFrame(frame);
 
 // For poking at the run from the console and for browser checks.
 declare global {
-  interface Window { survidle: { get state(): GameState; get world(): World; advance(minutes: number): void; speed: number } }
+  interface Window { survidle: {
+    get state(): GameState; get world(): World; advance(minutes: number): void; speed: number;
+    startleSetup?(scenario: import("../scripts/startle-seeds").StartleScenario): Promise<void>;
+    startleStep?(): void;
+    startleEnd?(): void;
+  } }
 }
 window.survidle = {
   get state() { return state; },
@@ -925,3 +941,31 @@ window.survidle = {
   advance(minutes: number) { advance(state, world, minutes); render(); },
   speed,
 };
+if (import.meta.env.DEV) {
+  window.survidle.startleSetup = async (scenario) => {
+    const harness = await import("../scripts/startle-seeds");
+    const scene = harness.prepareStartleScenario(scenario);
+    startleRestore?.();
+    const previous = { state, world, ui: { ...ui } };
+    startleRestore = () => {
+      state = previous.state;
+      world = previous.world;
+      Object.assign(ui, previous.ui);
+      startleRestore = null;
+      startleStep = null;
+      lastReal = performance.now();
+      lastSave = lastReal;
+      resetPanels();
+      resetForecastAt();
+      render();
+    };
+    state = scene.state;
+    world = scene.world;
+    Object.assign(ui, newUiState(), { zoom: 0, welcome: false });
+    resetPanels();
+    startleStep = () => { harness.stepStartleScenario(scene, scenario, true); render(); };
+    render();
+  };
+  window.survidle.startleStep = () => startleStep?.();
+  window.survidle.startleEnd = () => startleRestore?.();
+}
