@@ -199,7 +199,7 @@ describe("sweeping the pointer does not redraw the map", () => {
       if (cell === null) continue;
       if (cell !== lastCell) cells++;
       lastCell = cell;
-      const key = tipKey(state, world, cell);
+      const key = tipKey(state, world, cal, cell);
       if (key !== last) {
         last = key;
         redraws++;

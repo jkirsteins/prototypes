@@ -8,6 +8,7 @@
  * rather than on state. An heir who lands to a lit fire has not lit one.
  */
 import type { Calendar } from "./calendar";
+import { qty } from "./inventory";
 import type { GameState, GoalId, GoalState, ItemId, Season, StructureId, TaskId } from "./types";
 
 export type { GoalId } from "./types";
@@ -28,10 +29,23 @@ export type Deed =
   | { kind: "keptRain"; minutes: number }
   /** Meat actually went on the rack. A hang that racked nothing put nothing by. */
   | { kind: "stored" }
+  | { kind: "cooked"; kg: number }
+  | { kind: "drank" }
+  | { kind: "ordered"; task: TaskId; long: boolean }
+  | { kind: "foodSourced" }
+  | { kind: "ateFat" }
+  | { kind: "toolCared" }
+  | { kind: "explored"; anotherRegion: boolean }
+  | { kind: "campedAgain"; region: number }
+  | { kind: "seasonalFood" }
+  | { kind: "winterStocked" }
   | { kind: "season"; season: Season };
+
+export type GoalPhase = "firstWeek" | "firstMonth" | "firstSeason" | "longTerm";
 
 export interface GoalDef {
   id: GoalId;
+  phase: GoalPhase;
   /** The whole of what the player is told. There is deliberately no second line. */
   title: string;
   /** 1 for a one-shot; the count or the kilos for a counted goal. */
@@ -52,36 +66,59 @@ const firewoodKg = (d: Deed) => (d.kind === "gathered" && (d.item === "firewood"
 /** The firewood goal's target, in kilos: named once so the title can never drift from the number the bar checks. */
 const FIREWOOD_KG = 10;
 
+export const WINTER_DRIED_MEAT_KG = 80;
+export const WINTER_FAT_KG = 20;
+export const WINTER_FIREWOOD_KG = 600;
+export const WINTER_LOGS = 300;
+
+export function winterStoreProgress(state: GameState): { food: boolean; fuel: boolean } {
+  const st = state.regions[state.player.region];
+  const inv = st?.campCell === null || st?.campCell === undefined ? undefined : state.piles[st.campCell];
+  const food = Boolean(inv && qty(inv, "driedMeat") >= WINTER_DRIED_MEAT_KG && qty(inv, "fat") >= WINTER_FAT_KG);
+  const fuel = Boolean(inv && qty(inv, "firewood") + (st?.fire.fuelKg ?? 0) >= WINTER_FIREWOOD_KG && qty(inv, "log") >= WINTER_LOGS);
+  return { food, fuel };
+}
+
+export function checkWinterStores(state: GameState): void {
+  const progress = winterStoreProgress(state);
+  if (progress.food && progress.fuel) goalDeed(state, { kind: "winterStocked" });
+}
+
 /** The keeping goal's target, in days: named once so the title can never drift from the number the credit checks. */
 export const KEPT_DAYS = 3;
 
 export const GOALS: GoalDef[] = [
-  { id: "site", title: "Choose where to live", target: 1, credit: task("makeCamp") },
-  { id: "firewood", title: `Gather ${FIREWOOD_KG} kg of firewood`, target: FIREWOOD_KG, unit: "kg", credit: firewoodKg },
-  { id: "fire", title: "Light a fire", target: 1, credit: (d) => (d.kind === "lit" ? 1 : 0) },
-  { id: "cook", title: "Cook something over it", target: 1, credit: task("cook") },
-  { id: "keptNight", title: "Keep a fire alive overnight", target: 1, credit: (d) => (d.kind === "keptNight" ? 1 : 0) },
-  { id: "bed", title: "Get off the cold ground", target: 1, credit: built("boughBed") },
+  { id: "site", phase: "firstWeek", title: "Choose where to live", target: 1, credit: task("makeCamp") },
+  { id: "drink", phase: "firstWeek", title: "Drink water", target: 1, credit: (d) => (d.kind === "drank" ? 1 : 0) },
+  { id: "firewood", phase: "firstWeek", title: `Gather ${FIREWOOD_KG} kg of firewood`, target: FIREWOOD_KG, unit: "kg", credit: firewoodKg },
+  { id: "fire", phase: "firstWeek", title: "Light a fire", target: 1, credit: (d) => (d.kind === "lit" ? 1 : 0) },
+  { id: "bed", phase: "firstWeek", title: "Get off the cold ground", target: 1, credit: built("boughBed") },
+  { id: "roof", phase: "firstWeek", title: "Put a roof over your head", target: 1, credit: built("leanTo", "turfHut", "snowShelter", "cabin") },
+  { id: "cook", phase: "firstWeek", title: "Cook something over the fire", target: 1, credit: (d) => (d.kind === "cooked" && d.kg > 0 ? 1 : 0) },
+  { id: "keptNight", phase: "firstWeek", title: "Keep the fire alive overnight", target: 1, credit: (d) => (d.kind === "keptNight" ? 1 : 0) },
+  { id: "firstOrder", phase: "firstWeek", title: "Give a standing camp order", target: 1, credit: (d) => (d.kind === "ordered" && ["deadwood", "split", "splitWedges", "chop", "fill", "melt"].includes(d.task) ? 1 : 0) },
+  { id: "water", phase: "firstMonth", title: "Keep water at camp", target: 1, credit: built("waterStore", "seep") },
   {
     id: "keptDays",
-    title: "Keep a fire burning for three days without letting it go out",
+    phase: "firstMonth",
+    title: "Keep a fire burning for three days",
     target: 1,
     credit: (d) => (d.kind === "keptFor" && d.minutes >= KEPT_DAYS * 24 * 60 ? 1 : 0),
   },
-  { id: "roof", title: "Put a roof over your head", target: 1, credit: built("leanTo", "turfHut", "snowShelter") },
-  {
-    id: "keptRain",
-    title: "Keep a fire through a day of rain",
-    target: 1,
-    credit: (d) => (d.kind === "keptRain" && d.minutes >= 24 * 60 ? 1 : 0),
-  },
-  { id: "water", title: "Keep water at camp", target: 1, credit: built("waterStore", "seep") },
-  { id: "snare", title: "Set a snare", target: 1, credit: built("snare") },
-  { id: "store", title: "Put food by for later", target: 1, credit: (d) => (d.kind === "stored" ? 1 : 0) },
-  { id: "spring", title: "Live to see the spring", target: 1, credit: season("spring") },
-  { id: "summer", title: "Live to see the summer", target: 1, credit: season("summer") },
-  { id: "autumn", title: "Live to see the autumn", target: 1, credit: season("autumn") },
-  { id: "winter", title: "Live to see the winter", target: 1, credit: season("winter") },
+  { id: "foodSource", phase: "firstMonth", title: "Find a lasting food source", target: 1, credit: (d) => (d.kind === "foodSourced" ? 1 : 0) },
+  { id: "store", phase: "firstMonth", title: "Put food by for later", target: 1, credit: (d) => (d.kind === "stored" ? 1 : 0) },
+  { id: "fat", phase: "firstMonth", title: "Find food with fat", target: 1, credit: (d) => (d.kind === "ateFat" ? 1 : 0) },
+  { id: "longOrder", phase: "firstMonth", title: "Try a longer order", target: 1, credit: (d) => (d.kind === "ordered" && d.long ? 1 : 0) },
+  { id: "toolCare", phase: "firstMonth", title: "Keep a tool working", target: 1, credit: (d) => (d.kind === "toolCared" ? 1 : 0) },
+  { id: "explore", phase: "firstSeason", title: "Explore another region", target: 1, credit: (d) => (d.kind === "explored" && d.anotherRegion ? 1 : 0) },
+  { id: "secondCamp", phase: "firstSeason", title: "Establish a second camp", target: 1, credit: (d) => (d.kind === "campedAgain" ? 1 : 0) },
+  { id: "seasonalFood", phase: "firstSeason", title: "Try a seasonal food", target: 1, credit: (d) => (d.kind === "seasonalFood" ? 1 : 0) },
+  { id: "durableRoof", phase: "firstSeason", title: "Build lasting shelter", target: 1, credit: built("turfHut", "cabin") },
+  { id: "winterStores", phase: "firstSeason", title: "Prepare stores for winter", target: 1, credit: (d) => (d.kind === "winterStocked" ? 1 : 0) },
+  { id: "spring", phase: "longTerm", title: "Live to see the spring", target: 1, credit: season("spring") },
+  { id: "summer", phase: "longTerm", title: "Live to see the summer", target: 1, credit: season("summer") },
+  { id: "autumn", phase: "longTerm", title: "Live to see the autumn", target: 1, credit: season("autumn") },
+  { id: "winter", phase: "longTerm", title: "Live to see the winter", target: 1, credit: season("winter") },
 ];
 
 /** The seasons in the order they arrive, which is how the tail takes its turn. */
@@ -96,7 +133,7 @@ export function goalDef(id: GoalId): GoalDef {
 }
 
 export function newGoals(s: Season): GoalState {
-  return { done: {}, progress: {}, queue: [], lastSeason: s };
+  return { done: {}, progress: {}, introduced: {}, queue: [], lastSeason: s };
 }
 
 /**
@@ -157,6 +194,14 @@ export function activeGoals(state: GameState, cal: Calendar): GoalId[] {
     out.push(g.id);
   }
   return out;
+}
+
+export function unintroducedGoals(state: GameState, cal: Calendar): GoalId[] {
+  return activeGoals(state, cal).filter((id) => !state.goals.introduced[id]);
+}
+
+export function introduceGoals(state: GameState, ids: GoalId[]): void {
+  for (const id of ids) state.goals.introduced[id] = true;
 }
 
 /**

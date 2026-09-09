@@ -3,7 +3,7 @@ import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
 import { ensureCareRows, isCareRow } from "./bodyorder";
 import { calendar, START_DOY } from "./calendar";
-import { newGoals } from "./goals";
+import { GOALS, newGoals } from "./goals";
 import { addItem } from "./inventory";
 import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
@@ -65,6 +65,19 @@ export function migrate(state: GameState): void {
   // inferring a history from state, which is the inference goals exist to avoid.
   state.goals ??= newGoals(calendar(state.minute, state.startDoy).season);
   state.shopping ??= null;
+  const legacyGoals = state.goals.introduced === undefined;
+  if (legacyGoals) migrateLegacyGoals(state);
+  state.goals.introduced ??= {};
+  const goalIds = new Set(GOALS.map((goal) => goal.id));
+  state.goals.queue = (state.goals.queue ?? []).filter((id) => goalIds.has(id));
+  if (state.task?.id === "explore" && state.task.originRegion === undefined) {
+    const target = state.task.arg?.startsWith("region:") ? Number(state.task.arg.slice(7)) : Number.NaN;
+    const otherCamp = Object.entries(state.regions)
+      .find(([id, region]) => Number(id) !== target && region.campCell !== null);
+    state.task.originRegion = target !== state.player.region
+      ? state.player.region
+      : otherCamp ? Number(otherCamp[0]) : state.player.region;
+  }
   state.taught ??= {};
   state.teachQueue ??= [];
   state.wildlife ??= emptyWildlife();
@@ -344,6 +357,21 @@ export function migrate(state: GameState): void {
         step: `walking to ${state.route.label}`, orderId: walk.id, windDown: false,
       };
     }
+  }
+}
+
+/** Keeps a pre-guidance save at least as far through the journey as it was. */
+function migrateLegacyGoals(state: GameState): void {
+  const old = ["site", "firewood", "fire", "cook", "keptNight", "bed", "keptDays", "roof", "keptRain", "water", "snare", "store", "spring", "summer", "autumn", "winter"] as const;
+  const anchor = ["site", "firewood", "fire", "cook", "keptNight", "firstOrder", "keptDays", "foodSource", "foodSource", "foodSource", "store", "store", "spring", "summer", "autumn", "winter"] as const;
+  const done = state.goals.done as Record<string, true | undefined>;
+  let current = old.findIndex((id) => !done[id]);
+  if (current < 0) current = old.length;
+  const before = current === old.length ? GOALS.length : GOALS.findIndex((goal) => goal.id === anchor[current]);
+  for (let i = 0; i < before; i++) {
+    const goal = GOALS[i];
+    done[goal.id] = true;
+    state.goals.progress[goal.id] = Math.max(state.goals.progress[goal.id] ?? 0, goal.target);
   }
 }
 

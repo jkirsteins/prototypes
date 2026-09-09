@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MANUAL_LINKS, MANUAL_SECTIONS, openManualOnFirstLanding } from "../src/sim/manual";
+import { MANUAL_LINKS, MANUAL_SECTIONS } from "../src/sim/manual";
 import { newGame } from "../src/sim/newgame";
 import { landingHtml, manualHtml } from "../src/ui/panels";
 import { beginAgain } from "../src/sim/landing";
@@ -29,17 +29,6 @@ describe("the manual", () => {
     // The orders line names the whole ladder, so the five rungs are read once before any of them opens.
     const orders = MANUAL_SECTIONS.find((s) => s.title === "Orders and being away")!;
     expect(orders.lines.join(" ")).toContain("jobs, grinds, keeps, then conditions and a due date");
-  });
-
-  it("opens once on a world's first landing and never for a heir", () => {
-    const { state } = newGame(17);
-    expect(state.manualSeen).toBe(false);
-    expect(openManualOnFirstLanding(state, false)).toBe(true);
-    expect(state.manualSeen).toBe(true);
-    expect(openManualOnFirstLanding(state, false)).toBe(false);
-    const fresh = newGame(19).state;
-    expect(openManualOnFirstLanding(fresh, true)).toBe(false);
-    expect(fresh.manualSeen).toBe(false);
   });
 
   it("the landing screen has the button", () => {

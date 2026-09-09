@@ -75,6 +75,10 @@ describe("explore", () => {
     expect(minutes).toBeGreaterThanOrEqual(expected);
     expect(minutes).toBeLessThan(expected + legs + 1);
     expect(state.player.region).toBe(region);
+    expect(state.goals.done.explore).toBe(true);
+    expect(startTask(state, world, calendar(state.minute), "makeCamp")).toBe(true);
+    driveExplore(g, 30);
+    expect(state.goals.done.secondCamp).toBe(true);
   });
 
   it("leaves a crossable corridor when it is stopped halfway", () => {
