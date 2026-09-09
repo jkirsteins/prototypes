@@ -710,6 +710,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
  * glow below rather than fog with the shelter and the trap.
  */
 .grid .c.mk { font-weight: bold; position: relative; }
+.grid .c.has-map-signal { z-index: var(--map-signal); }
 .grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire, .grid .c.mk-coals { z-index: var(--map-signal); }
 .grid .micro-mark.mk-player, .grid .micro-mark.mk-camp, .grid .micro-mark.mk-fire, .grid .micro-mark.mk-coals { z-index: var(--map-signal); }
 .grid .c.mk-player { color: #fff; background: #b8860b; }

@@ -796,6 +796,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         // change of task replace the glyph's node instead of retitling it.
         if (m.cls === "mk-player") cls.push(`mood-${moodOf(state)}`);
         glyph = m.glyph;
+      } else if (m === MARKS.you || m === MARKS.camp || m === MARKS.fire || m === MARKS.coals) {
+        // Snow's brightness filter creates a stacking context on the cell.
+        // Lift the containing context along with its essential detail marker.
+        cls.push("has-map-signal");
       }
     } else if (!detailGlyphs) {
       const animal = animalAt.get(i)?.[0];

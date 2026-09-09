@@ -1,6 +1,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { Rng } from "../src/rng";
+import { calendar } from "../src/sim/calendar";
+import { mapRegion } from "../src/sim/mapped";
+import { newGame } from "../src/sim/newgame";
+import { cellOf } from "../src/sim/position";
+import { activateWildlife } from "../src/sim/wildlife-agents";
+import { mapHtml } from "../src/ui/map";
+import { newUiState } from "../src/ui/render";
+import { cellAt, neighbours } from "../src/world/gen";
+import { passable } from "../src/world/route";
 import { css, rule } from "./css";
+import { neighbourLandCell } from "./siting-helpers";
 
 describe("the map's compositing layers", () => {
   it("puts weather over the shaded ground and under routes, light, and essential marks", () => {
@@ -46,6 +57,50 @@ describe("the map's compositing layers", () => {
         expect(z(signal)).toBeLessThan(z(".wildlife-startle"));
       }
       expect(z(".mk-animal")).toBeLessThan(route);
+    } finally {
+      sheet.remove();
+      map.remove();
+    }
+  });
+
+  it.each(["camp", "fire", "coals"])("raises filtered snowy cells containing player and %s signals above routes", (kind) => {
+    const { state, world } = newGame(79);
+    const ui = newUiState();
+    ui.zoom = 0;
+    state.weather.snowCm = 10;
+    mapRegion(state, world, state.player.region);
+    const region = state.regions[state.player.region];
+    region.campCell = neighbourLandCell(world, cellOf(state, world));
+    region.fire.lit = kind === "fire";
+    region.fire.embers = kind === "coals" ? 60 : 0;
+    activateWildlife(state, world, new Rng(1));
+    const animal = state.wildlife.subjects.find((subject) => subject.active)!;
+    animal.active!.cell = neighbours(world, cellOf(state, world)).find((cell) =>
+      cell !== region.campCell && cellAt(world, cell).region === state.player.region && passable(cellAt(world, cell).terrain))!;
+    const sheet = document.createElement("style");
+    sheet.textContent = css;
+    document.head.append(sheet);
+    const map = document.createElement("div");
+    map.id = "mapdyn";
+    map.innerHTML = mapHtml(world, state, ui, calendar(state.minute, state.startDoy));
+    document.body.append(map);
+    try {
+      const route = Number(getComputedStyle(map.querySelector(".walk")!).zIndex);
+      for (const selector of [".mk-player", `.mk-${kind}`]) {
+        const cell = map.querySelector(selector)!.closest(".c")!;
+        // Exercise both snow filters on real map markup, independent of the
+        // generated cell's elevation rank within this particular viewport.
+        for (const [tone, filter] of [["tone-0", "brightness(0.82)"], ["tone-2", "brightness(1.18)"]]) {
+          cell.classList.remove("tone-0", "tone-2");
+          cell.classList.add(tone);
+          expect(getComputedStyle(cell).filter).toBe(filter);
+          expect(Number(getComputedStyle(cell).zIndex)).toBeGreaterThan(route);
+        }
+      }
+      const animalCell = map.querySelector(`[data-wildlife-id="${animal.id}"]`)!.closest(".c")!;
+      expect(Number(getComputedStyle(animalCell).zIndex)).toBeLessThan(route);
+      const terrainCell = [...map.querySelectorAll(".c:not(.fog):not(.void)")].find((cell) => !cell.querySelector(".micro-mark"))!;
+      expect(Number(getComputedStyle(terrainCell).zIndex)).toBeLessThan(route);
     } finally {
       sheet.remove();
       map.remove();
