@@ -100,10 +100,11 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     autoEat(state, world, rng);
     autoDrink(state, world);
     iceUnderFoot(state, world, rng);
-    // This one-minute interval is attributed where the survivor ended it,
-    // after its task or movement has taken effect, never from a later cell.
-    if (previousStorm && state.minute > previousStorm.from && state.minute <= previousStorm.until) {
-      recordStormMinute(state, world, previousStorm.id);
+    // Attribute exactly the overlap of this elapsed interval to where the
+    // survivor ended it, after its task or movement has taken effect.
+    if (previousStorm) {
+      const stormMinutes = Math.max(0, Math.min(state.minute, previousStorm.until) - Math.max(state.minute - dt, previousStorm.from));
+      recordStormMinute(state, world, previousStorm.id, stormMinutes);
     }
   }
 

@@ -179,6 +179,56 @@ describe("Chapter 1 shelter storm evidence", () => {
     expect(state.goals.opportunity?.minutesByProtection).toEqual([0, 0, 30, 0]);
     expect(state.goals.done.testShelter).toBeUndefined();
   });
+
+  it("uses elapsed fractional storm time instead of one minute for every advance step", () => {
+    const { state, world } = newGame(17);
+    activateShelterTest(state);
+    const centre = cellOf(state, world);
+    siteFor(state.regions[state.player.region], centre).structures.leanTo = true;
+    shelterAttempt(state, world, 22);
+    state.weather.storm = { id: 22, source: "natural", kind: "rain", from: 0, until: 60, warned: true };
+
+    for (let i = 0; i < 60; i++) advance(state, world, 0.1);
+
+    const metrics = state.goals.opportunity!;
+    expect(metrics.minutesByProtection[0]).toBe(0);
+    expect(metrics.minutesByProtection[1]).toBe(0);
+    expect(metrics.minutesByProtection[2]).toBeCloseTo(6);
+    expect(metrics.minutesByProtection[3]).toBe(0);
+    expect(metrics.atCampMinutes + metrics.awayFromCampMinutes).toBeCloseTo(6);
+    expect(state.goals.done.testShelter).toBeUndefined();
+  });
+
+  it("completes the shelter test after sixty elapsed fractional storm minutes", () => {
+    const { state, world } = newGame(17);
+    activateShelterTest(state);
+    const centre = cellOf(state, world);
+    siteFor(state.regions[state.player.region], centre).structures.leanTo = true;
+    shelterAttempt(state, world, 23);
+    state.weather.storm = { id: 23, source: "natural", kind: "rain", from: 0, until: 60, warned: true };
+
+    for (let i = 0; i < 600; i++) advance(state, world, 0.1);
+
+    expect(state.goals.opportunity?.minutesByProtection).toEqual([0, 0, 60, 0]);
+    expect(state.goals.done.testShelter).toBe(true);
+  });
+
+  it("clips fractional accounting to the actual storm overlap at both boundaries", () => {
+    const { state, world } = newGame(17);
+    activateShelterTest(state);
+    const centre = cellOf(state, world);
+    siteFor(state.regions[state.player.region], centre).structures.leanTo = true;
+    shelterAttempt(state, world, 24);
+    state.weather.storm = { id: 24, source: "natural", kind: "rain", from: 1, until: 2, warned: false };
+
+    state.minute = 0.95;
+    advance(state, world, 0.1);
+    expect(state.goals.opportunity?.minutesByProtection[2]).toBeCloseTo(0.05);
+
+    state.minute = 1.95;
+    advance(state, world, 0.1);
+    expect(state.goals.opportunity?.minutesByProtection[2]).toBeCloseTo(0.1);
+  });
 });
 
 describe("natural-first weather", () => {

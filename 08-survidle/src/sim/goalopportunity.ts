@@ -43,19 +43,20 @@ function newOpportunity(goal: GoalId, minute: number, attempts = 1): GoalOpportu
   };
 }
 
-/** Record a lived storm minute from the survivor's current place, never a later one. */
-export function recordStormMinute(state: GameState, world: World, stormId: number): void {
+/** Record lived storm time from the survivor's current place, never a later one. */
+export function recordStormMinute(state: GameState, world: World, stormId: number, minutes: number): void {
+  if (minutes <= 0) return;
   const opportunity = state.goals.opportunity;
   if (!opportunity || opportunity.stormId !== stormId) return;
   opportunity.maxWetness = Math.max(opportunity.maxWetness, state.player.wetness);
-  if (atCamp(state, world)) opportunity.atCampMinutes++;
-  else opportunity.awayFromCampMinutes++;
+  if (atCamp(state, world)) opportunity.atCampMinutes += minutes;
+  else opportunity.awayFromCampMinutes += minutes;
   const area = opportunity.area;
   const cell = cellOf(state, world);
   if (!area || state.player.region !== area.region || straightKm(world, area.centre, cell) > area.radiusKm) return;
   const site = siteAt(state.regions[state.player.region], cell);
   const protection = protectionOf(site);
-  opportunity.minutesByProtection[protection]++;
+  opportunity.minutesByProtection[protection] += minutes;
 }
 
 /** Snapshot the matching attempt's accumulated general storm facts for GoalEvent. */
