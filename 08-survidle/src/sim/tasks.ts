@@ -1,8 +1,8 @@
 import { Rng } from "../rng";
-import { CELL_KM, fmtDuration, shareWord } from "../units";
+import { fmtDuration, shareWord } from "../units";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, neighbours, regionAt, spotOf, type World } from "../world/gen";
-import { passable, routeKm, routeMinutes } from "../world/route";
+import { passable, routeKm, routeMinutes, walkPath } from "../world/route";
 import { itemLabel, loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { dayNumber, type Calendar } from "./calendar";
@@ -1591,41 +1591,29 @@ export function fallThrough(state: GameState, world: World, rng: Rng, land: numb
 function walkAlong(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): boolean {
   const route = state.route!;
   const p = state.player;
-  let km = (walkSpeed(state, cal, state.weather, hereTerrain(state, world), undefined, route.ice) / 60) * dt;
-  while (km > 1e-9 && route.path.length) {
-    const cell = route.path[0];
-    const next = cellCenter(world, cell);
-    const dx = next.x - p.x;
-    const dy = next.y - p.y;
-    const distKm = Math.hypot(dx, dy) * CELL_KM;
-    if (km >= distKm) {
-      p.x = next.x;
-      p.y = next.y;
+  const km = (walkSpeed(state, cal, state.weather, hereTerrain(state, world), undefined, route.ice) / 60) * dt;
+  walkPath(world, p, route.path, km, (cell, movedKm, arrived) => {
+    if (arrived) {
       setRegion(state, world, cellAt(world, cell).region);
       seeFrom(state, world, cal, cell);
-      route.walked.push(route.path.shift()!);
-      km -= distKm;
-      state.stats.km += distKm;
+      route.walked.push(cell);
+      state.stats.km += movedKm;
       const terrain = cellAt(world, cell).terrain;
       if (terrain === "water") {
         if (state.weather.iceCm < ICE_SAFE_CM) cue("iceCracks");
         if (state.weather.iceCm < ICE_SAFE_CM && rng.chance(fallChance(state.weather.iceCm))) {
           fallThrough(state, world, rng, route.lastLand);
-          return true;
+          return false;
         }
       } else {
         route.lastLand = cell;
       }
     } else {
-      const f = km / distKm;
-      p.x += dx * f;
-      p.y += dy * f;
       setRegion(state, world, cellAt(world, cellIndex(world, p.x, p.y)).region);
-      state.stats.km += km;
-      km = 0;
+      state.stats.km += movedKm;
     }
-  }
-  return route.path.length === 0;
+  });
+  return !state.route || route.path.length === 0;
 }
 
 /**

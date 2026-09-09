@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { isKnown, knowledgeGen, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
-import { cellIdx } from "../src/world/gen";
+import { cellAt, cellIdx, regionAt } from "../src/world/gen";
 import { findRoute, knownRoute } from "../src/world/route";
+import * as routes from "../src/world/route";
 
 describe("knownRoute", () => {
   it("will not leave known ground, and takes the long way round rather than cross the dark", () => {
@@ -52,5 +53,30 @@ describe("knownRoute", () => {
     const route = knownRoute(world, from, to, known, knowledgeGen());
     expect(route).not.toBeNull();
     expect(route!.length).toBe(3);
+  });
+});
+
+describe("remaining walking time", () => {
+  it("counts the actual mixed-terrain minute steps without moving the route", () => {
+    expect(routes.remainingWalkMinutes).toBeTypeOf("function");
+    const { world } = newGame(17);
+    const position = { x: 847254 % world.w + 0.5, y: Math.floor(847254 / world.w) + 0.5 };
+    const before = { ...position };
+    const path = [847253, 847252];
+    expect(routes.remainingWalkMinutes(world, position, path, 3, "none")).toBe(13);
+    expect(position).toEqual(before);
+    expect(path).toEqual([847253, 847252]);
+  });
+
+  it.each(["safe", "thin"] as const)("uses the %s ice route's walking speed", ice => {
+    expect(routes.remainingWalkMinutes).toBeTypeOf("function");
+    const { state, world } = newGame(17);
+    const from = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "water"
+      && cellAt(world, c + 1).terrain === "water")!;
+    const position = { x: from % world.w + 0.5, y: Math.floor(from / world.w) + 0.5 };
+    // 300 m at 3 km/h * the ice's 0.8 pace takes 7.5 minutes,
+    // completing on the eighth real minute step.
+    expect(routes.remainingWalkMinutes(world, position, [from + 1], 3, ice)).toBe(8);
+    expect(routes.remainingWalkMinutes(world, position, [from + 1], 3, "none")).toBe(Number.POSITIVE_INFINITY);
   });
 });

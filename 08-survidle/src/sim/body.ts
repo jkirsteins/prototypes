@@ -9,8 +9,7 @@
  * check, so a missing drill or an under-level pit is skipped, never an error.
  */
 import type { Rng } from "../rng";
-import { CELL_KM } from "../units";
-import { routeMinutes } from "../world/route";
+import { remainingWalkMinutes, routeMinutes } from "../world/route";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { addFirewood, autoEat, edible, hungerLine } from "./actions";
 import type { Calendar } from "./calendar";
@@ -20,8 +19,8 @@ import { AXES, axeInHand, hasTool, pile, pileAt, qty, takeUp, toolNear, transfer
 import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { log } from "./log";
-import { baseWalkSpeed, walkSpeed } from "./player";
-import { cellCenter, cellOf, straightKm, watersideCell } from "./position";
+import { baseWalkSpeed } from "./player";
+import { cellOf, straightKm, watersideCell } from "./position";
 import { campSite, regionState, siteAt } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { seepStopped } from "./seep";
@@ -533,12 +532,7 @@ function stormStep(state: GameState, world: World, cal: Calendar, dry: boolean):
     let minutes = minutesToCamp(state, world, cal);
     const route = state.task?.id === "walk" && state.route?.target === camp ? state.route : null;
     if (route?.path.length) {
-      // A route already under way starts at the actual position, not this
-      // cell's centre. Keep its remaining path and its chosen ice mode.
-      const next = cellCenter(world, route.path[0]);
-      const km = Math.hypot(next.x - state.player.x, next.y - state.player.y) * CELL_KM;
-      const speed = walkSpeed(state, cal, state.weather, cellAt(world, here).terrain, undefined, route.ice);
-      minutes = km / speed * 60 + routeMinutes(world, route.path.slice(1), baseWalkSpeed(state, cal, state.weather), route.ice);
+      minutes = remainingWalkMinutes(world, state.player, route.path, baseWalkSpeed(state, cal, state.weather), route.ice);
     }
     const remaining = Math.max(0, (state.weather.storm?.from ?? state.minute) - state.minute);
     if (minutes !== null && minutes <= remaining && check(state, world, cal, "walk", `cell:${camp}`).ok) {

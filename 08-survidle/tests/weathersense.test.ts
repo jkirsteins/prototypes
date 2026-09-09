@@ -162,6 +162,51 @@ describe("weather sense", () => {
 });
 
 describe("the storm choice", () => {
+  function rockReturn() {
+    const g = game();
+    const { state, world } = g;
+    placeAt(state, world, 847254);
+    regionState(state, world, state.player.region).campCell = 847252;
+    state.weather.snowCm = 0;
+    state.weather.precip = "none";
+    state.weather.storm = { from: 13.25, until: 373.25, warned: false };
+    return g;
+  }
+
+  it("keeps the feasible rock-to-meadow return across the terrain boundary", () => {
+    const control = rockReturn();
+    expect(startTask(control.state, control.world, calendar(0), "walk", "cell:847252")).toBe(true);
+    expect(control.state.route?.path).toEqual([847253, 847252]);
+    advance(control.state, control.world, 9);
+    expect(cellOf(control.state, control.world)).not.toBe(847252);
+    advance(control.state, control.world, 1);
+    expect(cellOf(control.state, control.world)).toBe(847252);
+    advance(control.state, control.world, 3);
+    expect(control.state.route).toBeNull();
+    expect(control.state.player.x).toBe(847252 % control.world.w + 0.5);
+
+    const { state, world } = rockReturn();
+    expect(minutesToCamp(state, world, calendar(0))).toBeCloseTo(10.909);
+    runOrders(state, world, calendar(0), new Rng(1));
+    expect(state.route?.path).toEqual([847253, 847252]);
+    for (let minute = 1; minute < 10; minute++) {
+      advance(state, world, 1);
+      expect(state.task?.id, `minute ${minute}`).toBe("walk");
+    }
+    advance(state, world, 1);
+    expect(cellOf(state, world)).toBe(847252);
+  });
+
+  it("abandons the same return when deep snow makes its remaining walk too slow", () => {
+    const { state, world } = rockReturn();
+    runOrders(state, world, calendar(0), new Rng(1));
+    expect(state.task?.id).toBe("walk");
+    state.weather.snowCm = 40;
+    advance(state, world, 1);
+    expect(state.task?.id).toBe("findShelter");
+    expect(state.route).toBeNull();
+  });
+
   it("keeps an achievable return while the warning counts down within a cell", () => {
     const { state, world } = game();
     const r = regionAt(world, state.player.region);

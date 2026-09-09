@@ -222,3 +222,52 @@ export function routeMinutes(world: World, path: number[], baseKmh: number, ice:
   }
   return minutes;
 }
+
+/** The geometry of one walking step, shared by movement and its time estimate.
+ * Mutates the position and remaining path. A false visit result stops at that
+ * point, so a real walk can stop immediately when the ice gives way. */
+export function walkPath(
+  world: World, position: { x: number; y: number }, path: number[], km: number,
+  visit?: (cell: number, movedKm: number, arrived: boolean) => boolean | undefined,
+): void {
+  while (km > 1e-9 && path.length) {
+    const cell = path[0];
+    const x = cell % world.w + 0.5;
+    const y = Math.floor(cell / world.w) + 0.5;
+    const dx = x - position.x;
+    const dy = y - position.y;
+    const distKm = Math.hypot(dx, dy) * CELL_KM;
+    if (km >= distKm) {
+      position.x = x;
+      position.y = y;
+      path.shift();
+      km -= distKm;
+      if (visit?.(cell, distKm, true) === false) return;
+    } else {
+      const fraction = km / distKm;
+      position.x += dx * fraction;
+      position.y += dy * fraction;
+      visit?.(cell, km, false);
+      km = 0;
+    }
+  }
+}
+
+/** Remaining one-minute walking steps at today's body pace. Terrain is read
+ * under the moving feet each minute, including a boundary before the next
+ * route centre. Uses the same geometry as real movement, on private copies;
+ * it predicts neither future weather nor random falls through thin ice. */
+export function remainingWalkMinutes(
+  world: World, position: { x: number; y: number }, path: number[], baseKmh: number, ice: IceMode,
+): number {
+  const feet = { x: position.x, y: position.y };
+  const remaining = [...path];
+  let minutes = 0;
+  while (remaining.length) {
+    const speed = baseKmh * speedOf(terrainOf(world, Math.floor(feet.x), Math.floor(feet.y)), ice);
+    if (speed <= 0) return Number.POSITIVE_INFINITY;
+    walkPath(world, feet, remaining, speed / 60);
+    minutes++;
+  }
+  return minutes;
+}
