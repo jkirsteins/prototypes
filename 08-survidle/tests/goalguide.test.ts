@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { GOALS } from "../src/sim/goals";
 import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
-import { beginTask } from "../src/sim/tasks";
+import { beginTask, check, startTask } from "../src/sim/tasks";
 import { goalGuide, goalProgress } from "../src/ui/goalguide";
 import { purposeOf, subtabOf } from "../src/ui/purpose";
 import { siteCamp } from "./siting-helpers";
@@ -36,6 +37,35 @@ describe("goal guidance", () => {
     expect(progress.target).toBe(3);
     expect(progress.steps.map((step) => [step.label, step.done])).toEqual([
       ["Site", false], ["Fuel", true], ["Ignition", true],
+    ]);
+  });
+
+  it("counts open ground as a ready fire site when a field light is legal", () => {
+    const { state, world } = newGame(3);
+    state.weather.precip = "none";
+    addItem(state.player.pack, "fireDrill", 1);
+    addItem(state.player.pack, "firewood", 2);
+    const cal = calendar(state.minute, state.startDoy);
+    expect(check(state, world, cal, "light").ok).toBe(true);
+    expect(goalProgress(state, world, cal, "fire").steps.map((step) => [step.label, step.done])).toEqual([
+      ["Site", true], ["Fuel", true], ["Ignition", true],
+    ]);
+  });
+
+  it("counts a real field fire as the fire needed to cook", () => {
+    const { state, world } = newGame(3);
+    state.weather.precip = "none";
+    addItem(state.player.pack, "fireDrill", 1);
+    addItem(state.player.pack, "firewood", 2);
+    const cal = calendar(state.minute, state.startDoy);
+    const duration = check(state, world, cal, "light").duration;
+    expect(startTask(state, world, cal, "light")).toBe(true);
+    advance(state, world, duration + 1);
+    addItem(state.player.pack, "rawMeat", 1);
+    const now = calendar(state.minute, state.startDoy);
+    expect(check(state, world, now, "cook", "rawMeat").ok).toBe(true);
+    expect(goalProgress(state, world, now, "cook").steps.map((step) => [step.label, step.done])).toEqual([
+      ["Fire", true], ["Food", true], ["Cook", false],
     ]);
   });
 

@@ -1,8 +1,10 @@
 import type { Calendar } from "../sim/calendar";
+import { fireAt } from "../sim/fire";
 import { goalDef, type GoalPhase, winterStoreProgress } from "../sim/goals";
 import { qty } from "../sim/inventory";
 import { SNOW_SHELTER_CM, STRUCTURES } from "../sim/items";
 import { campSite, regionState } from "../sim/regionstate";
+import { check, inReach } from "../sim/tasks";
 import type { GameState, GoalId, ItemId } from "../sim/types";
 import type { World } from "../world/gen";
 
@@ -90,10 +92,11 @@ export function goalProgress(state: GameState, world: World | undefined, _cal: C
   const st = regionState(state, world, state.player.region);
   const site = campSite(st);
   if (id === "fire") {
+    const fire = fireAt(state, world);
     const steps = [
-      { label: "Site", done: Boolean(site?.structures.firePit || site?.structures.hearth) },
-      { label: "Fuel", done: st.fire.fuelKg > 0 || held(state, world, "firewood") > 0 },
-      { label: "Ignition", done: state.player.tools.some((tool) => tool.id === "fireDrill") || held(state, world, "fireDrill") > 0 },
+      { label: "Site", done: Boolean(fire || site?.structures.firePit || site?.structures.hearth || check(state, world, _cal, "light").ok) },
+      { label: "Fuel", done: Boolean(fire) || st.fire.fuelKg > 0 || inReach(state, world, "firewood") > 0 },
+      { label: "Ignition", done: Boolean(fire) || state.player.tools.some((tool) => tool.id === "fireDrill") || inReach(state, world, "fireDrill") > 0 },
     ];
     return { ...base, at: state.goals.done.fire ? 3 : steps.filter((step) => step.done).length, target: 3, steps };
   }
@@ -104,8 +107,8 @@ export function goalProgress(state: GameState, world: World | undefined, _cal: C
   if (id === "cook") {
     const food: ItemId[] = ["rawMeat", "fish", "oilyFish", "rawFat", "roots"];
     const steps = [
-      { label: "Fire", done: st.fire.lit },
-      { label: "Food", done: food.some((item) => held(state, world, item) > 0) },
+      { label: "Fire", done: fireAt(state, world) !== null },
+      { label: "Food", done: food.some((item) => inReach(state, world, item) > 0) },
       { label: "Cook", done: Boolean(state.goals.done.cook) },
     ];
     return { ...base, at: state.goals.done.cook ? 3 : steps.filter((step) => step.done).length, target: 3, steps };
