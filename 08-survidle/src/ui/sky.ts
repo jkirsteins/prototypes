@@ -3,13 +3,16 @@
  * clock: where the sun (or moon) sits on its arc, and how that colours the
  * world. Updated every frame; the markup is static and only attributes move.
  */
-import type { Calendar } from "../sim/calendar";
+import { LATITUDE_DEG, type Calendar } from "../sim/calendar";
 import type { GameState, Weather } from "../sim/types";
 import { stormNow } from "../sim/weather";
 import { clamp } from "../units";
 
 export const SKY_W = 220;
 export const SKY_H = 64;
+const SIDEREAL_DAY_MINUTES = 23 * 60 + 56 + 4 / 60;
+const CELESTIAL_REFERENCE_DOY = 172;
+const CELESTIAL_REFERENCE_HOUR = 1;
 
 /**
  * The shape one sky is drawn at.
@@ -252,6 +255,7 @@ function ridgePath(g: SkyGeom, seed: number, height: number, samples = 34): stri
 export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true): string {
   const u = uid ? `-${uid}` : "";
   const arc = `M ${g.cx - g.arcR} ${g.groundY} A ${g.arcR} ${g.arcR} 0 0 1 ${g.cx + g.arcR} ${g.groundY}`;
+  const celestialPoleY = g.groundY * (1 + LATITUDE_DEG / 90);
   const rand = (n: number, seed: number) => ((Math.sin(seed * 12.9898) * 43758.5453) % 1 + 1) % 1 * n;
   const stars = Array.from({ length: 650 }, (_, i) => {
     const bright = i % 47 === 0;
@@ -259,7 +263,7 @@ export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true): string 
     const r = bright ? 0.40 + rand(0.30, i + 61) : middle ? 0.18 + rand(0.20, i + 61) : 0.05 + rand(0.13, i + 61);
     const opacity = bright ? 0.65 + rand(0.30, i + 81) : middle ? 0.35 + rand(0.35, i + 81) : 0.12 + rand(0.30, i + 81);
     const colour = i % 29 === 0 ? "#d9e5ff" : i % 37 === 0 ? "#fff0dc" : "#fff";
-    return `<circle cx="${rand(g.w, i + 1).toFixed(1)}" cy="${rand(g.groundY * 0.82, i + 31).toFixed(1)}" r="${r.toFixed(2)}" fill="${colour}" opacity="${opacity.toFixed(2)}"/>`;
+    return `<circle cx="${rand(g.w, i + 1).toFixed(1)}" cy="${rand(g.groundY, i + 31).toFixed(1)}" r="${r.toFixed(2)}" fill="${colour}" opacity="${opacity.toFixed(2)}"/>`;
   }).join("");
   // A clean-edged river of light with a scatter of bright dust. The
   // translucent strokes give the Milky Way breadth while the dust and
@@ -331,15 +335,17 @@ export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true): string 
   }).join("");
   return `<svg class="sky" id="sky" viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}" preserveAspectRatio="xMidYMax slice" aria-label="sky"
  data-sky-w="${g.w}" data-sky-h="${g.h}" data-sky-ground="${g.groundY}" data-sky-arc="${g.arcR}" data-sky-cx="${g.cx}">
-<defs>${cloudField}<filter id="sky-milkytexture${u}" x="-40%" y="-10%" width="180%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.035 0.018" numOctaves="4" seed="43" result="grain"/><feComposite in="grain" in2="SourceAlpha" operator="in" result="clipped"/><feColorMatrix in="clipped" values="0 0 0 0 0.55 0 0 0 0 0.48 0 0 0 0 0.82 0 0 0 1 0" result="coloured"/><feBlend in="SourceGraphic" in2="coloured" mode="screen"/></filter><filter id="sky-milkyedge${u}" x="-35%" y="-20%" width="170%" height="140%"><feGaussianBlur stdDeviation="3.5"/></filter><mask id="sky-milkymask${u}" maskUnits="userSpaceOnUse" x="0" y="-10" width="${g.w}" height="${g.groundY + 20}"><path d="${milkyShape}" fill="#fff" filter="url(#sky-milkyedge${u})"/></mask><linearGradient id="sky-milkygrad${u}" gradientUnits="userSpaceOnUse" x1="${g.w * 0.43}" y1="0" x2="${g.w * 0.88}" y2="0"><stop offset="0" stop-color="#849bd7" stop-opacity="0"/><stop offset="0.34" stop-color="#a3add9" stop-opacity="0.18"/><stop offset="0.48" stop-color="#c7bee4" stop-opacity="0.58"/><stop offset="0.62" stop-color="#b1b5df" stop-opacity="0.30"/><stop offset="1" stop-color="#8299d4" stop-opacity="0"/></linearGradient><radialGradient id="sky-glowgrad${u}" class="glowgrad" gradientUnits="userSpaceOnUse" cx="${g.cx}" cy="${g.groundY}" r="${g.arcR * 1.15}">
+<defs>${cloudField}<pattern id="sky-starfield${u}" patternUnits="userSpaceOnUse" width="${g.w}" height="${g.groundY}">${stars}</pattern><filter id="sky-milkytexture${u}" x="-40%" y="-10%" width="180%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.035 0.018" numOctaves="4" seed="43" result="grain"/><feComposite in="grain" in2="SourceAlpha" operator="in" result="clipped"/><feColorMatrix in="clipped" values="0 0 0 0 0.55 0 0 0 0 0.48 0 0 0 0 0.82 0 0 0 1 0" result="coloured"/><feBlend in="SourceGraphic" in2="coloured" mode="screen"/></filter><filter id="sky-milkyedge${u}" x="-35%" y="-20%" width="170%" height="140%"><feGaussianBlur stdDeviation="3.5"/></filter><mask id="sky-milkymask${u}" maskUnits="userSpaceOnUse" x="0" y="-10" width="${g.w}" height="${g.groundY + 20}"><path d="${milkyShape}" fill="#fff" filter="url(#sky-milkyedge${u})"/></mask><linearGradient id="sky-milkygrad${u}" gradientUnits="userSpaceOnUse" x1="${g.w * 0.43}" y1="0" x2="${g.w * 0.88}" y2="0"><stop offset="0" stop-color="#849bd7" stop-opacity="0"/><stop offset="0.34" stop-color="#a3add9" stop-opacity="0.18"/><stop offset="0.48" stop-color="#c7bee4" stop-opacity="0.58"/><stop offset="0.62" stop-color="#b1b5df" stop-opacity="0.30"/><stop offset="1" stop-color="#8299d4" stop-opacity="0"/></linearGradient><radialGradient id="sky-glowgrad${u}" class="glowgrad" gradientUnits="userSpaceOnUse" cx="${g.cx}" cy="${g.groundY}" r="${g.arcR * 1.15}">
 <stop id="sky-glow-in" offset="0" stop-color="#ff8a5c" stop-opacity="0.95"/>
 <stop id="sky-glow-mid" offset="0.4" stop-color="#ff8a5c" stop-opacity="0.4"/>
 <stop id="sky-glow-out" offset="1" stop-color="#ff8a5c" stop-opacity="0"/>
 </radialGradient><linearGradient id="skygrad${u}" x1="0" y1="0" x2="0" y2="1"><stop id="sky-top" offset="0" stop-color="#4682d2"/><stop id="sky-bottom" offset="1" stop-color="#96c3f0"/></linearGradient></defs>
 <rect width="${g.w}" height="${g.h}" fill="url(#skygrad${u})"/>
+<g id="sky-celestial" data-sidereal-angle="0">
 <g id="sky-milky-way" opacity="0"><path d="${milkyShape}" fill="url(#sky-milkygrad${u})" opacity="0.30" filter="url(#sky-milkytexture${u})" mask="url(#sky-milkymask${u})" style="mix-blend-mode:screen"/><path d="${milkyPath}" fill="none" stroke="#071027" stroke-width="${(g.w * 0.014).toFixed(1)}" opacity="0.16"/>${milkyFilaments}${milkyDust}</g>
-<g id="sky-stars" opacity="0">${stars}</g>
+<rect id="sky-stars" x="${g.cx - g.w * 2}" y="${celestialPoleY - g.w * 2}" width="${g.w * 4}" height="${g.w * 4}" fill="url(#sky-starfield${u})" opacity="0"/>
 ${constellationHtml}
+</g>
 <g id="sky-perseids" opacity="0">${meteors}</g>
 <rect id="sky-glow" width="${g.w}" height="${g.h}" fill="url(#sky-glowgrad${u})" opacity="0"/>
 <path d="${arc}" fill="none" stroke="rgba(255,255,255,0.18)" stroke-dasharray="2 3"/>
@@ -396,6 +402,24 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   const pos = bodyPosition(cal, g);
   const light = lighting(cal, state.weather, ambient);
   const f = (v: number) => v.toFixed(1);
+  // dayOfYear wraps from 364 to 0. Recover the run's starting day and add
+  // dayIndex so the sky keeps moving by one sidereal minute at that seam.
+  const startDoy = ((cal.dayOfYear - cal.dayIndex) % 365 + 365) % 365;
+  const absoluteDay = startDoy + cal.dayIndex;
+  const siderealMinutes = (absoluteDay - CELESTIAL_REFERENCE_DOY) * 1440
+    + (cal.hour - CELESTIAL_REFERENCE_HOUR) * 60;
+  const siderealAngle = ((siderealMinutes / SIDEREAL_DAY_MINUTES * 360) % 360 + 360) % 360;
+  const celestialPoleY = g.groundY * (1 + LATITUDE_DEG / 90);
+  const theta = siderealAngle * Math.PI / 180;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  const matrix = [
+    cos, sin, -sin, cos,
+    g.cx - cos * g.cx + sin * celestialPoleY,
+    celestialPoleY - sin * g.cx - cos * celestialPoleY,
+  ].map((value) => value.toFixed(6)).join(" ");
+  setAttr(root, "sky-celestial", "data-sidereal-angle", siderealAngle.toFixed(3));
+  setAttr(root, "sky-celestial", "transform", `matrix(${matrix})`);
   setAttr(root, "sky-sun", "cx", f(pos.body === "sun" ? pos.x : g.cx - g.arcR));
   setAttr(root, "sky-sun", "cy", f(pos.body === "sun" ? pos.y : g.groundY + 8));
   // A yellow disc sitting on the horizon at dusk was the one thing in the

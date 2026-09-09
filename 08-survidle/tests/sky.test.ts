@@ -199,7 +199,7 @@ describe("sky in the page", () => {
     updateSky(state, at(13), 10, root);
     expect(visibleConstellation()).toBeUndefined();
     expect(opacity("#sky-stars")).toBe("0");
-    expect(opacity("#sky-milky-way")).toBe("0");
+    expect(Number(opacity("#sky-milky-way"))).toBe(0);
 
     state.weather.clear = false;
     updateSky(state, evening, -3, root);
@@ -211,6 +211,35 @@ describe("sky in the page", () => {
     updateSky(state, evening, -3, root);
     expect(visibleConstellation()).toBeUndefined();
     expect(opacity("#sky-stars")).toBe("0");
+  });
+
+  it("moves the fixed stars and galaxy together at the sidereal rate", () => {
+    const { state } = newGame(21);
+    const root = document.createElement("div");
+    root.innerHTML = skyHtml(WALL);
+    const angle = () => Number(root.querySelector("#sky-celestial")?.getAttribute("data-sidereal-angle"));
+    const forward = (from: number, to: number) => (to - from + 360) % 360;
+
+    const night = calendar((22 - 8) * 60, 172);
+    updateSky(state, night, -3, root);
+    const first = angle();
+    updateSky(state, calendar((23 - 8) * 60, 172), -3, root);
+    expect(forward(first, angle())).toBeCloseTo(15.041, 2);
+
+    updateSky(state, calendar((22 - 8) * 60 + 1440, 172), -3, root);
+    expect(forward(first, angle())).toBeCloseTo(0.986, 2);
+
+    updateSky(state, calendar((24 - 8) * 60 - 1, 364), -3, root);
+    const yearEnd = angle();
+    updateSky(state, calendar((24 - 8) * 60, 364), -3, root);
+    expect(forward(yearEnd, angle())).toBeCloseTo(360 / (23 * 60 + 56 + 4 / 60), 3);
+
+    const celestial = root.querySelector("#sky-celestial");
+    expect(celestial?.getAttribute("transform")).toMatch(/^matrix\(/);
+    const stars = root.querySelector("#sky-stars");
+    expect(stars?.tagName).toBe("rect");
+    expect(Number(stars?.getAttribute("x"))).toBeLessThan(0);
+    expect(Number(stars?.getAttribute("width"))).toBeGreaterThan(WALL.w * 2);
   });
 
   it("draws the terrain as one opaque colourless silhouette", () => {
@@ -252,6 +281,7 @@ describe("sky in the page", () => {
 
     updateSky(state, calendar((22 - 8) * 60, 223), 12, root);
     expect(root.querySelectorAll("#sky-perseids .sky-meteor").length).toBeGreaterThan(2);
+    expect(root.querySelector("#sky-celestial #sky-perseids")).toBeNull();
     expect(opacity()).toBe("1");
 
     state.weather.clear = false;

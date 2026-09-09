@@ -13,7 +13,7 @@
  * a sky says so instead of being noticed months later.
  */
 import "./style.css";
-import { calendar } from "./sim/calendar";
+import { calendar, fmtClock } from "./sim/calendar";
 import { newGame } from "./sim/newgame";
 import type { GameState, Weather } from "./sim/types";
 import { weatherHtml } from "./ui/panels";
@@ -39,6 +39,8 @@ export interface SkyCase {
   /** Day of the year, which sets the season and the length of the light. */
   doy: number;
   weather: Partial<Weather>;
+  /** Advances this many game minutes per real second in the live gallery. */
+  motionMinutesPerSecond?: number;
 }
 
 export const SKY_CASES: SkyCase[] = [
@@ -48,6 +50,7 @@ export const SKY_CASES: SkyCase[] = [
   { name: "dusk", note: "the sun going down: the pink hour", hour: { of: "sunset", plus: -0.05 }, doy: 172, weather: { clear: true, precip: "none" } },
   { name: "golden", note: "the last light before the sun is gone", hour: { of: "sunset", plus: -0.9 }, doy: 200, weather: { clear: true, precip: "none" } },
   { name: "night-clear", note: "the moon up and the stars out", hour: 1, doy: 172, weather: { clear: true, precip: "none" } },
+  { name: "galaxy-motion", note: "sidereal motion, accelerated through a September night", hour: 20.4, doy: 243, weather: { clear: true, precip: "none" }, motionMinutesPerSecond: 30 },
   { name: "perseids", note: "a clear night near the Perseid peak", hour: 1, doy: 223, weather: { clear: true, precip: "none" } },
   { name: "night-cloudy", note: "the same night with the stars shut out", hour: 1, doy: 172, weather: { clear: false, precip: "none" } },
   { name: "rain-light", note: "rain, falling straight", hour: 14, doy: 200, weather: { clear: false, precip: "light" } },
@@ -57,6 +60,11 @@ export const SKY_CASES: SkyCase[] = [
   { name: "winter-night", note: "a long dark, deep snow on the ground", hour: 2, doy: 350, weather: { clear: true, precip: "none", snowCm: 40, iceCm: 30 } },
   { name: "winter-noon", note: "what passes for noon in December", hour: 12, doy: 350, weather: { clear: false, precip: "none", snowCm: 40, iceCm: 30 } },
 ];
+
+/** Live motion is opt-in by context so capture tools can stop it before load. */
+export function shouldAnimateMotion(search: string, reducedMotion: boolean): boolean {
+  return !new URLSearchParams(search).has("still") && !reducedMotion;
+}
 
 /**
  * The minute at which the clock reads this hour on this day of the year.
@@ -101,7 +109,7 @@ function draw(): void {
     const ambient = ambientTemperature(cal, state.weather);
     return `<figure class="skycase" data-case="${c.name}">
 <div class="panel skycase-box" id="wx-${c.name}">${weatherHtml(state, world, cal, ambient, 1, c.name)}</div>
-<figcaption><b>${c.name}</b><br>${c.note}</figcaption>
+<figcaption><b>${c.name}</b><br>${c.note}${c.motionMinutesPerSecond ? `<br><span data-motion-clock>${fmtClock(calendar(state.minute, state.startDoy).hour)}</span>` : ""}</figcaption>
 </figure>`;
   }).join("");
   root.innerHTML = cards;
@@ -114,9 +122,40 @@ function draw(): void {
     const { state, world } = at(c);
     const cal = calendar(state.minute, state.startDoy);
     updateSky(state, cal, ambientTemperature(cal, state.weather), box);
+    if (c.motionMinutesPerSecond && shouldAnimateMotion(
+      window.location.search,
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    )) {
+      animateMotion(c, state, box);
+    }
     void world;
   }
   document.body.setAttribute("data-ready", "1");
+}
+
+/** Loops one September dark window quickly enough to judge the celestial motion. */
+function animateMotion(c: SkyCase, state: GameState, box: Element): void {
+  const startMinute = state.minute;
+  const startCal = calendar(startMinute, state.startDoy);
+  const darkMinutes = (startCal.sunrise + 24 - startCal.hour - 0.2) * 60;
+  const started = performance.now();
+  let drawnMinute = -1;
+  const frame = (now: number) => {
+    const elapsed = (now - started) / 1000;
+    const minute = startMinute + Math.floor((elapsed * (c.motionMinutesPerSecond ?? 0)) % darkMinutes);
+    if (minute !== drawnMinute) {
+      drawnMinute = minute;
+      state.minute = minute;
+      const cal = calendar(state.minute, state.startDoy);
+      updateSky(state, cal, ambientTemperature(cal, state.weather), box);
+      const hour = box.querySelector(".wx-clock .hour");
+      const live = box.parentElement?.querySelector("[data-motion-clock]");
+      if (hour) hour.textContent = fmtClock(cal.hour);
+      if (live) live.textContent = `live ${fmtClock(cal.hour)}`;
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 draw();

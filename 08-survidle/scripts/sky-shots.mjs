@@ -31,7 +31,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const URL_PAGE = process.env.SKY_URL ?? "http://127.0.0.1:5173/prototypes/08/sky.html";
+const pageUrl = new URL(process.env.SKY_URL ?? "http://127.0.0.1:5173/prototypes/08/sky.html");
+pageUrl.searchParams.set("still", "1");
+const URL_PAGE = pageUrl.toString();
 const PORT = Number(process.env.SKY_PORT ?? 9445);
 const OUT = resolve(HERE, "../docs/sky-shots");
 const PROFILE = resolve(tmpdir(), `survidle-sky-shots-${PORT}`);

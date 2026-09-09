@@ -27,6 +27,10 @@ them; `npm run sky -- --check` says which ones a change has altered.
 
   ![night-clear](night-clear.png)
 
+- **galaxy-motion** - galaxy-motionsidereal motion, accelerated through a September night20:23
+
+  ![galaxy-motion](galaxy-motion.png)
+
 - **perseids** - perseidsa clear night near the Perseid peak
 
   ![perseids](perseids.png)
