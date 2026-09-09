@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { rule } from "./css";
+import { css, rule } from "./css";
 
 describe("the map's compositing layers", () => {
   it("puts weather over the shaded ground and under routes, light, and essential marks", () => {
@@ -28,6 +28,28 @@ describe("the map's compositing layers", () => {
     expect(rule(".grid .c.has-wildlife-startle")).toContain("z-index: var(--map-startle)");
     expect(rule(".wildlife-startle")).toContain("z-index: var(--map-startle)");
     expect(rule(".wildlife-startle")).toContain("pointer-events: none");
+  });
+
+  it("keeps detailed player and camp signals above routes without lifting ordinary animals", () => {
+    const sheet = document.createElement("style");
+    sheet.textContent = css;
+    document.head.append(sheet);
+    const map = document.createElement("div");
+    map.id = "mapdyn";
+    map.innerHTML = '<div class="scroll-x"><div class="grid detailed"><span class="c"><b class="micro-mark mk-player"></b><b class="micro-mark mk-camp"></b><b class="micro-mark mk-fire"></b><b class="micro-mark mk-coals"></b><b class="micro-mark mk-animal"></b></span><svg class="walk"></svg><i class="wildlife-startle"></i></div></div>';
+    document.body.append(map);
+    try {
+      const z = (selector: string) => Number(getComputedStyle(map.querySelector(selector)!).zIndex);
+      const route = z(".walk");
+      for (const signal of [".mk-player", ".mk-camp", ".mk-fire", ".mk-coals"]) {
+        expect(z(signal)).toBeGreaterThan(route);
+        expect(z(signal)).toBeLessThan(z(".wildlife-startle"));
+      }
+      expect(z(".mk-animal")).toBeLessThan(route);
+    } finally {
+      sheet.remove();
+      map.remove();
+    }
   });
 
   it("keeps both kinds of falling weather animated without taking the pointer", () => {

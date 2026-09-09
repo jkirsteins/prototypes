@@ -496,8 +496,21 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const { event, startedAtMs, key } = cue;
     const gx = Math.floor((event.source.xM / (CELL_KM * 1000) - x0) / z);
     const gy = Math.floor((event.source.yM / (CELL_KM * 1000) - y0) / z);
-    const px = (gx + 0.5) * l.px;
-    const py = (gy + 0.5) * l.line;
+    let jitterX = 0;
+    let jitterY = 0;
+    if (event.perception.kind === "heard") {
+      let hash = 0;
+      for (const char of event.id) hash = (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0;
+      const angle = (hash % 360) * Math.PI / 180;
+      const radius = Math.min(30, Math.max(0, event.uncertaintyM)) / (CELL_KM * 1000 * z);
+      jitterX = Number((Math.cos(angle) * radius * l.px).toFixed(2));
+      jitterY = Number((Math.sin(angle) * radius * l.line).toFixed(2));
+    }
+    // Match the cue's CSS anchor (left:50%, top:-25%), including hearing
+    // jitter. At close zoom the cell centre can be visible while the cue is
+    // entirely above the viewport. The inset also reserves its animated rise.
+    const px = (gx + 0.5) * l.px + jitterX;
+    const py = (gy - 0.25) * l.line + jitterY;
     const x = Math.max(viewport.left + insetX, Math.min(viewport.right - insetX, px));
     const y = Math.max(viewport.top + insetY, Math.min(viewport.bottom - insetY, py));
     const offscreen = px !== x || py !== y;
@@ -507,14 +520,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // The presentation key is local and anonymous. Event IDs contain subject IDs
     // and must never enter hidden-cue markup, including its data attributes.
     const edge = offscreen ? ` edge bearing-${direction}` : "";
-    let jitter = "";
-    if (event.perception.kind === "heard" && !offscreen) {
-      let hash = 0;
-      for (const char of event.id) hash = (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0;
-      const angle = (hash % 360) * Math.PI / 180;
-      const radius = Math.min(30, Math.max(0, event.uncertaintyM)) / (CELL_KM * 1000 * z);
-      jitter = `;--startle-x:${(Math.cos(angle) * radius * l.px).toFixed(2)}px;--startle-y:${(Math.sin(angle) * radius * l.line).toFixed(2)}px`;
-    }
+    const jitter = event.perception.kind === "heard" ? `;--startle-x:${jitterX}px;--startle-y:${jitterY}px` : "";
     const position = offscreen ? `;left:${x}px;top:${y}px` : jitter;
     const markup = `<i aria-hidden="true" class="wildlife-startle ${event.perception.kind}${edge}" data-startle="${key}" style="--wildlife-start:${startedAtMs}ms${position}">!</i>`;
     if (offscreen) edgeStartles.push(markup);

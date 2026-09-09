@@ -125,6 +125,7 @@ describe("transient wildlife map cues", () => {
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const level = levelAt(ui.zoom);
     event.source = { xM: (x0 + level.w + 10) * 300, yM: (y0 + 4.5) * 300 };
+    event.uncertaintyM = 0;
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
     const cues = document.querySelectorAll(".wildlife-startle");
@@ -132,7 +133,7 @@ describe("transient wildlife map cues", () => {
     expect(cues[0].classList.contains("bearing-east")).toBe(true);
     expect(cues[0].parentElement?.classList.contains("grid")).toBe(true);
     expect((cues[0] as HTMLElement).style.left).toBe("768px");
-    expect((cues[0] as HTMLElement).style.top).toBe("63px");
+    expect((cues[0] as HTMLElement).style.top).toBe("52.5px");
   });
 
   it("keeps cues inside a 300 by 160 clipped panel, including sources still inside the logical grid", () => {
@@ -144,13 +145,14 @@ describe("transient wildlife map cues", () => {
     );
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     event.source = { xM: (x0 + 68.5) * 300, yM: (y0 + 20.5) * 300 };
+    event.uncertaintyM = 0;
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
     const cue = document.querySelector<HTMLElement>(".wildlife-startle.edge.bearing-east");
     expect(cue).not.toBeNull();
     expect(cue?.parentElement?.classList.contains("grid")).toBe(true);
     expect(cue?.style.left).toBe("522px");
-    expect(cue?.style.top).toBe("287px");
+    expect(cue?.style.top).toBe("276.5px");
     expect(document.querySelectorAll(".wildlife-startle")).toHaveLength(1);
     const clippedKey = mapKey(state, world, ui, cal, 1100);
     ui.mapViewport = { left: 0, top: 0, right: 792, bottom: 504 };
@@ -158,6 +160,30 @@ describe("transient wildlife map cues", () => {
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1300));
     expect(document.querySelector(".wildlife-startle.edge")).toBeNull();
     expect(document.querySelector(".wildlife-startle")?.getAttribute("style")).toContain("--wildlife-start:1000ms");
+  });
+
+  it.each([
+    { row: 0, top: 0, cueTop: "24px" },
+    { row: 1, top: 64, cueTop: "88px" },
+  ])("keeps the close-zoom row $row cue visible above a viewport starting at $top", ({ row, top, cueTop }) => {
+    const { state, world, ui, cal, event } = scene();
+    ui.zoom = 0;
+    ui.mapViewport = { left: 0, top, right: 792, bottom: 504 };
+    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+    // An 84px cell's centre is visible here, but its cue at top:-25% is not.
+    event.source = { xM: (x0 + 6.5) * 300, yM: (y0 + row + 0.5) * 300 };
+    event.bearingRad = -Math.PI / 2;
+    event.uncertaintyM = 0;
+    enqueueWildlifeStartle(ui, event, 1000);
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
+    const cues = document.querySelectorAll<HTMLElement>(".wildlife-startle");
+    expect(cues).toHaveLength(1);
+    expect(cues[0].classList.contains("edge")).toBe(true);
+    expect(cues[0].classList.contains("bearing-north")).toBe(true);
+    expect(cues[0].parentElement?.classList.contains("grid")).toBe(true);
+    expect(cues[0].style.left).toBe("429px");
+    expect(cues[0].style.top).toBe(cueTop);
+    expect(cues[0].style.getPropertyValue("--wildlife-start")).toBe("1000ms");
   });
 
   it("keeps the cue above glyphs and weather and removes motion when reduced motion is requested", () => {
