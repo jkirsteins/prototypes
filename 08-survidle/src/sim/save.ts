@@ -89,6 +89,7 @@ export function migrate(state: GameState): void {
     l.oldCamp ??= null;
   }
   state.player.known ??= {};
+  state.player.fieldFire ??= null;
   state.seeps ??= {};
   state.stats.kills ??= {};
   state.stats.killsKcal ??= 0;

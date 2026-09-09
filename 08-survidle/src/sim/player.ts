@@ -3,7 +3,7 @@ import { cellAt, type World } from "../world/gen";
 import { speedOf } from "../world/route";
 import type { Calendar } from "./calendar";
 import { type Exposure, garmentWet, skinExposure, stepGarments, wetFactor } from "./clothing";
-import { fireWarmth, fireWarms, SMOKE_COUGH, SMOKE_DEADLY, SMOKE_DRAIN_PER_HOUR } from "./fire";
+import { fireAt, warmthAtFire, SMOKE_COUGH, SMOKE_DEADLY, SMOKE_DRAIN_PER_HOUR } from "./fire";
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { creditBurn, creditTime } from "./ledger";
@@ -76,8 +76,7 @@ export function sheltered(state: GameState, world: World): boolean {
 /** True with a lit torch in hand or beside your own lit fire: the light wolves keep away from. */
 export function firelit(state: GameState, world: World): boolean {
   if (state.player.torch.lit) return true;
-  const r = regionState(state, world, state.player.region);
-  return atCamp(state, world) && r.fire.lit;
+  return fireAt(state, world) !== null;
 }
 
 export function insulation(state: GameState): number {
@@ -165,8 +164,7 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
     // A room at its temperature is the shelter's whole gift; the bonus is for a roof with no warm air under it.
     if (campTask) felt += shelterBonus(here);
   }
-  // The fire is the camp's: there is no fire burning at a site the survivor left.
-  if (camp && fireWarms(r)) felt += fireWarmth(r.fire, campTask);
+  felt += warmthAtFire(state, world, campTask);
   if (bedded(state.task)) felt += beddingInsulation(state);
   if (state.task?.id === "sleep" && here?.structures.boughBed) felt += BOUGH_BED_C;
   const a = activityOf(state.task);
@@ -350,7 +348,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
     snowing: w.precip !== "none" && ambient <= 0,
     roof,
     walled: !!walled,
-    fireAtCamp: r.fire.lit && camp && campTask,
+    fireAtCamp: fireAt(state, world) !== null && campTask,
     bedded: bedded(state.task),
     storm: stormNow(w, state.minute),
   };

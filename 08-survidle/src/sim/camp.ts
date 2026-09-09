@@ -4,7 +4,7 @@ import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty } from "./inventory";
-import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepSmoke } from "./fire";
+import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepFieldFire, stepSmoke } from "./fire";
 import { goalDeed, KEPT_DAYS } from "./goals";
 import {
   BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
@@ -26,6 +26,7 @@ export { rootStockFor };
 
 /** Fires, racks and rot, every minute, everywhere; `who` is null with nobody home. */
 export function stepCamp(state: GameState, world: World, ambient: number, dt: number, who: Presence | null): void {
+  if (who) stepFieldFire(state, world, ambient, dt);
   const cal = calendar(state.minute, state.startDoy);
   // Read here rather than after: dailyCamp's own gate below flips state.lastDay
   // later in this same tick, so this still catches the one tick the day turns.

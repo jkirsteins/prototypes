@@ -83,8 +83,8 @@ describe("no camp until one is made", () => {
   it("every camp-addressed task refuses in the same words", () => {
     const { state, world } = newGame(2);
     const cal = calendar(state.minute, state.startDoy);
-    for (const id of ["night", "haul", "hang", "melt", "thaw", "light", "lightIndoors", "cook"] as const) {
-      const o = check(state, world, cal, id);
+    for (const id of ["night", "haul", "hang", "lightIndoors", "mend"] as const) {
+      const o = check(state, world, cal, id, id === "mend" ? "leanTo" : undefined);
       expect(o.ok, id).toBe(false);
       expect(o.why, id).toBe(NO_CAMP);
     }

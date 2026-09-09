@@ -533,6 +533,8 @@ export interface Player {
   tools: Tool[];
   /** A torch in hand: lit or put out, and the minutes of burn left. Zero means none equipped. */
   torch: { lit: boolean; minutes: number };
+  /** A hand-fed fire that dies on leaving its cell; never a hearth or embers. */
+  fieldFire: { cell: number; fuelKg: number } | null;
   pack: Inventory;
   /** Litres of water in the body, 0..3. */
   water: number;

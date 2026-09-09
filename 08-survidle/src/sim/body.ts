@@ -14,7 +14,7 @@ import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { autoEat, edible, hungerLine } from "./actions";
 import type { Calendar } from "./calendar";
 import { feedFire } from "./camp";
-import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
+import { fireAt, fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
 import { AXES, axeInHand, hasTool, pile, pileAt, qty, takeUp, toolNear, transfer, weight } from "./inventory";
 import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
@@ -560,17 +560,17 @@ function homeStep(state: GameState, world: World, cal: Calendar): Step | null {
 export function fireStep(state: GameState, world: World, cal: Calendar, at: number): Step | null {
   const p = state.player;
   const st = regionState(state, world, p.region);
-  if (st.fire.lit) return null;
+  if (fireAt(state, world, at)) return null;
   // Every step below is preparation for a light, so the drill decides whether
   // any of it is worth the walk home. The fire site is bare ground and can be
   // cleared anywhere; without a drill, clearing it warms nobody tonight.
   if (!toolNear(p, "fireDrill", [p.pack, pile(state, at)])) return null;
   const site = campSite(st);
-  if (!site?.structures.firePit) {
+  if (at === st.campCell && !site?.structures.firePit) {
     return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: "clearing the fire site" } : null;
   }
   // The body's own choice of method, allowed to a reflex: the fire indoors where a hut or a hearth stands, the pit otherwise.
-  const indoors = site.structures.turfHut || (site.structures.cabin && site.structures.hearth);
+  const indoors = at === st.campCell && (site?.structures.turfHut || (site?.structures.cabin && site.structures.hearth));
   if (indoors && check(state, world, cal, "lightIndoors", undefined, at).ok) return { id: "lightIndoors", step: "lighting the fire indoors" };
   if (check(state, world, cal, "light", undefined, at).ok) return { id: "light", step: "lighting the fire" };
   const firewood = qty(state.player.pack, "firewood") + qty(pile(state, at), "firewood");
@@ -624,6 +624,7 @@ function fireNeedStep(state: GameState, world: World, cal: Calendar, dry: boolea
  * that only makes it colder than working would have.
  */
 function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
+  if (fireAt(state, world)) return true;
   const st = regionState(state, world, state.player.region);
   const camp = st.campCell;
   if (camp === null) return false;
@@ -640,6 +641,7 @@ function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
  * run in.
  */
 function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" | "cold" | "spent", dry: boolean): Step {
+  if (need === "cold" && fireAt(state, world)) return { id: "rest", step: "warming up by the fire" };
   const p = state.player;
   const st = regionState(state, world, p.region);
   const camp = st.campCell;
@@ -718,6 +720,7 @@ export function orderKit(state: GameState): ItemId[] {
   if (it?.task === "build" && it.arg === "snare") return ["snare"];
   if (it?.task === "build" && it.arg === "seep") return ["stick"];
   if (it?.task === "setTrap") return ["basketTrap"];
+  if (it.task === "grindBark" || (it.task === "crack" && !axeInHand(state.player))) return ["stone"];
   return [];
 }
 
@@ -747,6 +750,9 @@ export function provisionKit(state: GameState, world: World): number {
   const kit = orderKit(state);
   const pack = state.player.pack;
   const camp = pile(state, it.campCell);
+  if (kit.includes("stone")) {
+    return transfer(camp, pack, "stone", Math.max(0, 1 - qty(pack, "stone")));
+  }
   if (kit.includes("arrow")) {
     const want = ARROWS_TO_CARRY - qty(pack, "arrow");
     if (want <= 0) return 0;

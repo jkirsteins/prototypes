@@ -60,6 +60,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     ],
     tools: [{ id: "axe", durability: 100 }],
     torch: { lit: false, minutes: 0 },
+    fieldFire: null,
     pack,
     water: 2.5,
     frostbite: { feet: 0, hands: 0 },

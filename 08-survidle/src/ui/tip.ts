@@ -60,7 +60,8 @@ export function tipKey(state: GameState, world: World, cell: number): string {
   const trap = st.trap?.cell === cell ? "T" : "";
   const site = cellAt(world, cell).region === state.player.region ? st.sites[cell] : undefined;
   const protection = site ? `P${protectionOf(site)}` : "";
-  return `${cell}|${cellOf(state, world)}|${known}|${heap}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}|${protection}`;
+  const field = state.player.fieldFire?.cell === cell && state.player.fieldFire.fuelKg > 0;
+  return `${cell}|${cellOf(state, world)}|${known}|${heap}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}|${protection}|${field ? "field" : ""}`;
 }
 
 /** The named place this cell is, if it is one. */
@@ -163,6 +164,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   const marks: string[] = [];
   if (cell === st.campCell) marks.push("your camp");
   if (cell === st.campCell && st.fire.lit) marks.push("the fire is lit");
+  if (cell === cellOf(state, world) && state.player.fieldFire?.cell === cell && state.player.fieldFire.fuelKg > 0) marks.push("a field fire is lit");
   if (st.trap?.cell === cell) marks.push(st.trap.kg > 0 ? `a trap, ${st.trap.kg.toFixed(1)} kg in it` : "a trap, empty");
   if (marks.length) lines.push(`<div>${esc(marks.join("; "))}</div>`);
   const site = st.sites[cell] ?? null;

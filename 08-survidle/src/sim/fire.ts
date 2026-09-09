@@ -8,11 +8,42 @@ import type { Presence } from "./advance";
 import type { Calendar } from "./calendar";
 import { addItem, pile, qty, removeItem } from "./inventory";
 import { BARK_DRY_RATIO, STRUCTURES } from "./items";
-import { campSite, regionState, touchedRegions } from "./regionstate";
+import { campSite, regionState, siteAt, touchedRegions } from "./regionstate";
+import { cellOf } from "./position";
 import { protectionOf } from "./shelter";
 import type { GameState, Inventory, ItemId, RegionState, Site, Terrain, Weather } from "./types";
 
 export const WET_AFTER_RAIN_MINUTES = 6 * 60;
+
+/** The live fire on a cell, for work and warmth; camp maintenance uses the region fire directly. */
+export function fireAt(state: GameState, world: World, at = cellOf(state, world)): { fuelKg: number } | null {
+  const st = state.regions[cellAt(world, at).region];
+  if (st?.campCell === at && st.fire.lit) return st.fire;
+  const field = state.player.fieldFire;
+  return field && field.cell === at && at === cellOf(state, world) && field.fuelKg > 0 ? field : null;
+}
+
+export function warmthAtFire(state: GameState, world: World, close: boolean): number {
+  const field = state.player.fieldFire;
+  if (field?.cell === cellOf(state, world) && field.fuelKg > 0) return close ? 15 : 7;
+  const st = state.regions[state.player.region];
+  if (st?.campCell === cellOf(state, world)) return fireWarms(st) ? fireWarmth(st.fire, close) : 0;
+  return 0;
+}
+
+/** A field fire burns at the open-fire rate under the cover at its own cell. */
+export function stepFieldFire(state: GameState, world: World, ambient: number, dt: number): void {
+  const fire = state.player.fieldFire;
+  if (!fire) return;
+  if (fire.cell !== cellOf(state, world) || state.dead) { state.player.fieldFire = null; return; }
+  const site = siteAt(regionState(state, world, state.player.region), fire.cell);
+  const exposed = state.weather.precip !== "none" && !roofed(site);
+  const rain = exposed && state.weather.precip === "heavy" && ambient > 0;
+  fire.fuelKg = Math.max(0, fire.fuelKg - openBurnPerHour(ambient) * (rain ? 2 : exposed ? 1.5 : 1) * dt / 60);
+  if (fire.fuelKg <= 0 || (rain && fire.fuelKg < 2)) {
+    state.player.fieldFire = null;
+  }
+}
 
 export function fuelTotal(fire: RegionState["fire"]): number {
   return fire.fuelKg + fire.wetKg;
@@ -223,10 +254,15 @@ export function dryWood(state: GameState, dt: number, who: Presence | null): voi
     const perHour = sheltered ? 2 : site?.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
     if (perHour <= 0 || st.campCell === null) continue;
     const campPile = state.piles[st.campCell];
-    const atThisCamp = who !== null && id === who.region && who.atCamp;
+    const atThisCamp = who !== null && id === who.region && who.atCamp && !state.player.fieldFire;
     const invs = [campPile, atThisCamp ? state.player.pack : undefined].filter((x): x is Inventory => x !== undefined);
     dryBudget(invs, perHour, dt);
     dryBudget(invs, perHour, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
+  }
+  // A field fire dries the carried items even in rain, without reaching a camp pile.
+  if (who && state.player.fieldFire) {
+    dryBudget([state.player.pack], 2, dt);
+    dryBudget([state.player.pack], 2, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }
   if (!dry) return;
   for (const k of Object.keys(state.piles)) {
@@ -237,7 +273,7 @@ export function dryWood(state: GameState, dt: number, who: Presence | null): voi
     if (!isCampPile) dryBudget([inv], 0.5, dt);
   }
   // Away from every camp, the pack dries in the open like any other stack; nobody carries one with nobody home.
-  if (who && !who.atCamp) {
+  if (who && !who.atCamp && !state.player.fieldFire) {
     dryBudget([state.player.pack], 0.5, dt);
     dryBudget([state.player.pack], 0.5, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }

@@ -9,14 +9,14 @@ import { cellAt, neighbours, regionAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
 import type { Calendar } from "./calendar";
 import { coldFeet, coldHands, frostbiteChance, FROSTBITE_MINUTES } from "./clothing";
-import { fuelTotal, groundDry, SPREAD_FUEL_KG, SPREAD_PER_HOUR, SPREAD_UNATTENDED_MINUTES } from "./fire";
+import { fireAt, fuelTotal, groundDry, SPREAD_FUEL_KG, SPREAD_PER_HOUR, SPREAD_UNATTENDED_MINUTES } from "./fire";
 import { addItem, qty, removeItem } from "./inventory";
 import { TOOLS } from "./items";
 import { log } from "./log";
 import { activityOf } from "./player";
-import { atCamp, cellOf } from "./position";
+import { cellOf } from "./position";
 import { record } from "./record";
-import { campSite, regionState, touchedRegions } from "./regionstate";
+import { campSite, touchedRegions } from "./regionstate";
 import { fallChance, fallThrough } from "./tasks";
 import type { GameState } from "./types";
 import { campWaterCapacity, FREEZE_C } from "./water";
@@ -120,8 +120,7 @@ function freezeVessels(state: GameState, world: World, ambient: number, rng: Rng
   if (ambient >= FREEZE_C) return;
   const a = activityOf(state.task);
   if (a === "walk" || a === "heavy" || a === "light") return;
-  const st = regionState(state, world, p.region);
-  if (atCamp(state, world) && st.fire.lit) return;
+  if (fireAt(state, world)) return;
   for (const t of [...p.tools]) {
     const holds = TOOLS[t.id].litres ?? 0;
     if (!holds || !(t.litres ?? 0) || t.frozen) continue;

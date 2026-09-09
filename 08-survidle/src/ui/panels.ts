@@ -770,8 +770,9 @@ export function instantHtml(state: GameState, world: World): string {
     })
     .join(" ");
   const st = regionState(state, world, p.region);
-  const wood = invs.reduce((a, inv) => a + qty(inv, "firewood") + qty(inv, "wetFirewood"), 0);
-  const fire = st.fire.lit && camp
+  const field = p.fieldFire?.cell === cellOf(state, world) && p.fieldFire.fuelKg > 0;
+  const wood = camp && !field ? invs.reduce((a, inv) => a + qty(inv, "firewood") + qty(inv, "wetFirewood"), 0) : qty(p.pack, "firewood");
+  const fire = (st.fire.lit && camp) || field
     ? `<button class="mini" data-act="feed" ${wood <= 0 ? "disabled" : ""}>add firewood <small>${fmtKg(wood)} within reach</small></button>`
     : "";
   const atSource = waterSource(state, world);

@@ -139,6 +139,7 @@ export function illuminance(state: GameState, world: World, cal: Calendar, cell:
     else if (hasEmbers(c.st.fire)) lux += EMBER_LUX;
   }
   if (state.player.torch.lit && cellOf(state, world) === cell) lux += TORCH_LUX;
+  if (state.player.fieldFire?.cell === cell && state.player.fieldFire.fuelKg > 0 && cellOf(state, world) === cell) lux += CAMP_FIRE_LUX;
   return lux;
 }
 

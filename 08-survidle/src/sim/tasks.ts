@@ -35,7 +35,7 @@ import {
   atCamp, campCellOf, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { EMBER_RELIGHT_MINUTES, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { goalDeed } from "./goals";
 import { builtProtection, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
@@ -139,14 +139,14 @@ export const WORK_TASKS = new Set<TaskId>([
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
 export function toolFor(id: TaskId, arg?: string): ToolId | null {
   switch (id) {
-    case "chop": case "split": return "axe";
+    case "chop": case "split": case "crack": return "axe";
     case "hunt": return "bow";
     case "fish": return "fishingSpear";
     case "craft": return RECIPES[arg as RecipeId]?.tool ?? null;
     case "repair": return "needle";
     case "hone": return "whetstone";
     case "light": case "lightIndoors": return "fireDrill";
-    case "fill": return "barkBucket";
+    case "fill": case "melt": return "barkBucket";
     case "iceHole": return "axe";
     case "mend": return null;
     case "innerBark": return "knife";
@@ -749,18 +749,16 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const kg = Math.min(1, totalQty(invs, food));
       const label = food === "rawFat" ? "Render fat" : `Cook ${ITEM_NAMES[food]}`;
       const detail = food === "rawFat" ? "1 kg at a time; raw fat rots in three warm days, rendered it keeps" : "1 kg at a time over the fire";
-      const o = needCamp(opt({ group: "camp", label, detail, duration: Math.max(1, 10 * kg), repeatable: true }));
-      if (!o.ok) return o;
-      if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
+      const o = opt({ group: "camp", label, detail, duration: Math.max(1, 10 * kg), repeatable: true });
+      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire" };
       if (kg <= TRACE_KG) return { ...o, ok: false, why: `no ${ITEM_NAMES[food]} here` };
       if (food === "roots" && disabled("roots")) return { ...o, ok: false, why: "disabled for the probe" };
       return o;
     }
     case "crack": {
-      const o = needCamp(opt({ group: "camp", label: "Crack bones for marrow", detail: `${MARROW_KG_PER_BONE * 1000} g of marrow a bone at a fat animal, less in spring; the fragments still make a needle`, duration: 20, repeatable: true }));
-      if (!o.ok) return o;
+      const o = opt({ group: "camp", label: "Crack bones for marrow", detail: `${MARROW_KG_PER_BONE * 1000} g of marrow a bone at a fat animal, less in spring; the fragments still make a needle`, duration: 20, repeatable: true });
       if (totalQty(invs, "bone") < 1) return { ...o, ok: false, why: "no bones here" };
-      if (totalQty(toolInvs, "stone") < 1 && !axeInHand(p)) return { ...o, ok: false, why: "needs a stone or the axe" };
+      if (totalQty(toolInvs, "stone") < 1 && !axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs a stone or the axe" };
       if (disabled("marrow")) return { ...o, ok: false, why: "disabled for the probe" };
       return o;
     }
@@ -776,8 +774,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "grindBark": {
       const kg = Math.min(1, totalQty(invs, "driedBark"));
-      const o = needCamp(opt({ group: "camp", label: "Grind bark flour", detail: "20 minutes a kilo with a stone", duration: Math.max(1, Math.round(BARK_FLOUR_MINUTES_PER_KG * kg)), repeatable: true }));
-      if (!o.ok) return o;
+      const o = opt({ group: "camp", label: "Grind bark flour", detail: "20 minutes a kilo with a stone", duration: Math.max(1, Math.round(BARK_FLOUR_MINUTES_PER_KG * kg)), repeatable: true });
       if (kg <= TRACE_KG) return { ...o, ok: false, why: "no dried bark here" };
       if (totalQty(toolInvs, "stone") < 1) return { ...o, ok: false, why: "needs a stone" };
       if (disabled("bark")) return { ...o, ok: false, why: "disabled for the probe" };
@@ -885,16 +882,16 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "light": {
-      const rekindle = hasEmbers(st.fire);
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(campSite(st)), hasQuirk(state, "steadyByTheFire"));
-      const o = needCamp(opt({
-        group: "camp", label: "Light the fire at the site",
+      const rekindle = camp && hasEmbers(st.fire);
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(siteAt(st, at)), hasQuirk(state, "steadyByTheFire"));
+      const o = opt({
+        group: "camp", label: camp ? "Light the fire at the site" : "Light a field fire",
         detail: rekindle ? "1 kg firewood" : `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
         duration: rekindle ? EMBER_RELIGHT_MINUTES : lr.minutes,
-      }));
-      if (!o.ok) return o;
-      if (!campSite(st)?.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
-      if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
+      });
+      if (terrain === "water") return { ...o, ok: false, why: "needs dry ground" };
+      if (camp && !campSite(st)?.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
+      if (fireAt(state, world, at)) return { ...o, ok: false, why: "already burning" };
       if (!rekindle && !toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       if (!rekindle && lr.blocked) return { ...o, ok: false, why: lr.blocked };
@@ -905,7 +902,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = opt({ group: "camp", label: relight ? "Relight torch" : "Light a torch", detail: relight ? `${fmtDuration(p.torch.minutes)} fuel left` : "burns 1 h; no night penalty on foot, and wolves keep off", duration: 1 });
       if (p.torch.lit) return { ...o, ok: false, why: "a torch is already burning" };
       if (!relight && totalQty(invs, "torch") < 1) return { ...o, ok: false, why: "needs a torch" };
-      if (camp && st.fire.lit) return { ...o, detail: `${o.detail}; lit from the fire` };
+      if (fireAt(state, world, at)) return { ...o, detail: `${o.detail}; lit from the fire` };
       if (hasTool(p, "fireDrill")) return { ...o, duration: 10, detail: `${o.detail}; with the fire drill` };
       return { ...o, ok: false, why: "needs a fire or a fire drill" };
     }
@@ -1016,18 +1013,19 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return opt({ group: "camp", label: "Sleep", detail: `until rested, about ${Math.round(minutes / 60)} h; ${bedText(state, world)}`, duration: minutes });
     }
     case "melt": {
-      const o = needCamp(opt({ group: "camp", label: "Melt snow", detail: "1 kg of the fire's wood for a litre", duration: 15, repeatable: true }));
-      if (!o.ok) return o;
-      if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
-      if (st.fire.fuelKg < 1) return { ...o, ok: false, why: "the fire is too low" };
+      const o = opt({ group: "camp", label: "Melt snow", detail: "1 kg of the fire's wood for a litre", duration: 15, repeatable: true });
+      if (!camp && !toolNear(p, "barkBucket", toolInvs)) return { ...o, ok: false, why: "needs a bark bucket" };
+      const fire = fireAt(state, world, at);
+      if (!fire) return { ...o, ok: false, why: "needs a lit fire" };
+      if (fire.fuelKg < 1) return { ...o, ok: false, why: "the fire is too low" };
       if (state.weather.snowCm < 1) return { ...o, ok: false, why: "no snow to melt" };
       return o;
     }
     case "thaw": {
-      const o = needCamp(opt({ group: "camp", label: "Thaw the water", detail: "a frozen vessel by the fire", duration: 10 }));
-      if (!o.ok) return o;
-      if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
-      if (!p.tools.some((t) => t.frozen) && qty(pileAt(state, campCell), "ice") <= 1e-9) return { ...o, ok: false, why: "nothing is frozen" };
+      const o = opt({ group: "camp", label: "Thaw the water", detail: "a frozen vessel by the fire", duration: 10 });
+      if (!camp && !p.tools.some(t => TOOLS[t.id].litres)) return { ...o, ok: false, why: "needs a vessel" };
+      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire" };
+      if (!p.tools.some((t) => t.frozen) && (!camp || qty(pileAt(state, campCell), "ice") <= 1e-9)) return { ...o, ok: false, why: "nothing is frozen" };
       return o;
     }
     case "lightIndoors": {
@@ -2445,12 +2443,20 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "light":
     case "lightIndoors": {
-      const rekindle = hasEmbers(st.fire);
+      const camp = atCamp(state, world);
+      const rekindle = camp && hasEmbers(st.fire);
       consume(invs, [{ item: "firewood", qty: 1 }]);
       if (!rekindle && wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(campSite(st)), hasQuirk(state, "steadyByTheFire"));
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(siteAt(st, cellOf(state, world))), hasQuirk(state, "steadyByTheFire"));
       if (!rekindle && lr.failChance > 0 && rng.chance(lr.failChance)) {
         log(state, "The tinder will not catch.", "bad");
+        return;
+      }
+      if (!camp) {
+        p.fieldFire = { cell: cellOf(state, world), fuelKg: 1 };
+        goalDeed(state, { kind: "lit" });
+        cue("fireCatches");
+        log(state, "Smoke, then flame. The field fire is lit.", "good");
         return;
       }
       st.fire.lit = true;
@@ -2468,14 +2474,16 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     case "lightTorch": {
       const relight = p.torch.minutes > 0;
       if (!relight) consume(invs, [{ item: "torch", qty: 1 }]);
-      if (!(atCamp(state, world) && st.fire.lit) && wearTool(state, "fireDrill", wearFactor(state, world, "lightTorch"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
+      if (!fireAt(state, world) && wearTool(state, "fireDrill", wearFactor(state, world, "lightTorch"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
       p.torch = { lit: true, minutes: relight ? p.torch.minutes : TORCH_BURN_MINUTES };
       cue("torchLit");
       log(state, "The torch catches.", "good");
       return;
     }
     case "melt": {
-      st.fire.fuelKg = Math.max(0, st.fire.fuelKg - 1);
+      const fire = fireAt(state, world);
+      if (!fire) return;
+      fire.fuelKg = Math.max(0, fire.fuelKg - 1);
       let l = 1.0;
       const drinkL = Math.min(l, WATER_FULL - p.water);
       p.water += drinkL;

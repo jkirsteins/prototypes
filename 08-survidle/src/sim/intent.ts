@@ -46,7 +46,7 @@ export function intentMode(task: TaskId, until: Until | UntilChoice): WorkIntent
 export type { IntentRequest, UntilChoice, Where } from "./types";
 
 /** Work that is done at camp whatever the ground. */
-const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "hang", "mend", "crack", "grindBark"]);
+const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "lightIndoors", "repair", "sharpen", "hone", "hang", "mend"]);
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */

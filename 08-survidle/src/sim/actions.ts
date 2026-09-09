@@ -8,9 +8,9 @@ import type { World } from "../world/gen";
 import { feedFire, rackCapacity } from "./camp";
 import { creditGut, creditLean, gutEatenToday, gutRefused, leanEatenToday, leanRefused } from "./gut";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
-import { AUTO_EAT_ORDER, FOODS, type FoodId, GUT, ITEM_KG, ITEM_NAMES, itemLabel, KCAL_FULL } from "./items";
+import { AUTO_EAT_ORDER, FIRE_MAX_KG, FOODS, type FoodId, GUT, ITEM_KG, ITEM_NAMES, itemLabel, KCAL_FULL } from "./items";
 import { creditEaten } from "./ledger";
-import { atCamp } from "./position";
+import { atCamp, cellOf } from "./position";
 import { body, fatLandmarks } from "./person";
 import { current } from "./record";
 import { campSite, regionState } from "./regionstate";
@@ -226,6 +226,12 @@ function listWords(parts: string[]): string {
 
 export function addFirewood(state: GameState, world: World, kg: number): number {
   const p = state.player;
+  const fire = p.fieldFire;
+  if (fire && fire.cell === cellOf(state, world) && fire.fuelKg > 0) {
+    const fed = removeItem(p.pack, "firewood", Math.max(0, Math.min(kg, FIRE_MAX_KG - fire.fuelKg)));
+    fire.fuelKg += fed;
+    return fed;
+  }
   if (!atCamp(state, world)) return 0;
   const st = regionState(state, world, p.region);
   if (!st.fire.lit) return 0;
