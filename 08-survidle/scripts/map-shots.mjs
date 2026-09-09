@@ -15,13 +15,13 @@
  * It drives its own headless Chrome on a debug port rather than the browser
  * you are using, so it cannot disturb a session you have open.
  *
- * How the conditions are set matters for reading the output. The season, the
- * snow and the night are classes the game writes onto the grid from the
- * calendar and the weather, and this script writes them directly instead of
- * playing until the calendar says December. So each image is a true picture of
- * the stylesheet under that condition, and NOT evidence that the condition is
- * reached correctly - that part is what the layout tests hold. The firelight
- * shot is the same bargain: the rings are placed by hand around the survivor.
+ * How the conditions are set matters for reading the output. Season, ground
+ * snow and night belong to the grid; falling rain and snow and the light level
+ * belong to its viewport. This script pins each one on the same element as the
+ * game instead of playing until the calendar reaches it. Each image is a true
+ * picture of the stylesheet under that condition, and NOT evidence that the
+ * condition is reached correctly - that part is what the layout tests hold.
+ * The firelight shot is the same bargain: its rings are placed by hand.
  */
 import { spawn } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -38,20 +38,20 @@ const CHROME = process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Conte
 const KEEP = process.argv.includes("--keep");
 
 /**
- * Every condition the map draws in, and the grid classes that put it there.
- * A new one belongs here and nowhere else: the run writes one PNG per row.
+ * Every condition the map draws in: grid classes, viewport weather class, and
+ * its note. A new one belongs here and nowhere else: one row writes one PNG.
  */
 const CONDITIONS = [
-  ["spring", "season-spring", "the growing season: the ground's own colours"],
-  ["summer", "season-summer", "as spring; nothing in the stylesheet separates them yet"],
-  ["autumn", "season-autumn", "birch gold, the meadow and the bog gone over"],
-  ["winter-bare", "season-winter", "a winter with no snow down: bare birch, dead grass"],
-  ["winter-snow", "season-winter snow", "snow on the ground: evergreens hold their green, the birch does not"],
-  ["winter-deep", "season-winter snow snow-deep", "past DEEP_SNOW_CM: more snow than tree to see"],
-  ["night", "season-autumn night", "the sheet down: you, camp, the fire and the walk line stay up"],
-  ["night-fire", "season-autumn night +fire", "firelight over the ground, rings placed by hand"],
-  ["rain", "season-autumn rain", "falling weather over the ground"],
-  ["snowing", "season-winter snow snowing", "falling weather over the ground"],
+  ["spring", "season-spring", "", "the growing season: the ground's own colours"],
+  ["summer", "season-summer", "", "as spring; nothing in the stylesheet separates them yet"],
+  ["autumn", "season-autumn", "", "birch gold, the meadow and the bog gone over"],
+  ["winter-bare", "season-winter", "", "a winter with no snow down: bare birch, dead grass"],
+  ["winter-snow", "season-winter snow", "", "snow on the ground: evergreens hold their green, the birch does not"],
+  ["winter-deep", "season-winter snow snow-deep", "", "past DEEP_SNOW_CM: more snow than tree to see"],
+  ["night", "season-autumn night", "", "the sheet down: you, camp, the fire and the walk line stay up"],
+  ["night-fire", "season-autumn night +fire", "", "firelight over the ground, rings placed by hand"],
+  ["rain", "season-autumn", "rain", "falling weather over the ground"],
+  ["snowing", "season-winter snow", "snowing", "falling weather over the ground"],
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -121,15 +121,17 @@ async function main() {
   if (covered !== "clear") throw new Error(`the map is ${covered}; a panel is over it and the shots would be of that`);
 
   // The map is rebuilt from the live calendar every frame, so a class set once
-  // is gone by the next. Pin it instead, and let the game keep running under it.
-  // The class AND the light: mapHtml writes --bright into the grid's style
-  // attribute from the live calendar every frame, so a night set once here is
-  // back to noon before the shutter. Both are pinned, every frame.
-  await evalJs(`window.__pin = null; window.__bright = null; (function loop() {
+  // is gone by the next. Pin both surfaces and their light level instead, and
+  // let the game keep running under them.
+  await evalJs(`window.__pin = null; window.__weather = ''; window.__bright = null; (function loop() {
     const g = document.querySelector('.grid');
-    if (g && window.__pin) {
+    const viewport = document.querySelector('.scroll-x');
+    if (g && viewport && window.__pin) {
       g.className = 'grid ' + window.__pin;
-      if (window.__bright !== null) g.style.setProperty('--bright', window.__bright);
+      viewport.classList.toggle('rain', window.__weather === 'rain');
+      viewport.classList.toggle('snowing', window.__weather === 'snowing');
+      if (window.__bright === null) viewport.style.removeProperty('--bright');
+      else viewport.style.setProperty('--bright', window.__bright);
     }
     requestAnimationFrame(loop);
   })();`);
@@ -139,14 +141,14 @@ async function main() {
     return JSON.stringify({ x: Math.round(r.x), y: Math.round(r.y), width: Math.round(Math.min(440, r.width)), height: Math.round(Math.min(300, r.height)) });
   })()`));
 
-  for (const [name, spec, note] of CONDITIONS) {
+  for (const [name, spec, weather, note] of CONDITIONS) {
     const fire = spec.includes("+fire");
     await evalJs(`window.__pin = ${JSON.stringify(spec.replace(" +fire", ""))};`);
+    await evalJs(`window.__weather = ${JSON.stringify(weather)};`);
     // Night is a light level, so the shot has to set one: full dark for the
     // plain night, and the ember glow the firelight is meant to be read against.
     const night = spec.includes("night");
     await evalJs(`window.__bright = ${night ? (fire ? "'0.25'" : "'0.10'") : "null"};`);
-    if (!night) await evalJs(`document.querySelector('.grid').style.removeProperty('--bright');`);
     if (fire) {
       await evalJs(`(() => {
         const grid = document.querySelector('.grid');
@@ -157,7 +159,7 @@ async function main() {
         cells[at]?.classList.add('mk', 'mk-fire', 'lit-0');
         for (const d of [-1, 1, -cols, cols, -cols - 1, cols + 1, -cols + 1, cols - 1]) cells[at + d]?.classList.add('lit-1');
         for (const d of [-2, 2, -2 * cols, 2 * cols, -2 * cols - 2, 2 * cols + 2]) cells[at + d]?.classList.add('lit-2');
-        grid.style.setProperty('--bright', '0.25');
+        document.querySelector('.scroll-x').style.setProperty('--bright', '0.25');
       })()`);
     }
     await sleep(700);
@@ -186,7 +188,7 @@ async function main() {
       "picture of the stylesheet under that condition and not evidence that the",
       "condition is reached correctly. The firelight rings are placed by hand.",
       "",
-      ...CONDITIONS.map(([name, spec, note]) => `- **${name}** (\`${spec}\`) - ${note}\n\n  ![${name}](${name}.png)`),
+      ...CONDITIONS.map(([name, spec, weather, note]) => `- **${name}** (\`${spec}${weather ? `; ${weather}` : ""}\`) - ${note}\n\n  ![${name}](${name}.png)`),
       "",
     ].join("\n"),
   );

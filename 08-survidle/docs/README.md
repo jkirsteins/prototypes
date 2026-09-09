@@ -124,10 +124,26 @@ waiting, and everything done while you are away run at the one scale.
   and it is always your own click - nothing explores while you are away.
   Wayfinding is the skill behind it, and what practice buys is a wider
   view and a whole ankle, not a faster sweep.
-  zoom with the two buttons in the map's bottom left corner or the plus and
-  minus keys, from the whole north on one screen down to 300 m per glyph,
-  where the last two rungs hold the cell and draw it larger rather than
-  finer, since a glyph cannot show less than a cell.
+  Zoom with the two buttons in the map's bottom left corner or the plus and
+  minus keys, from the whole north on one screen down to 50 m visual detail.
+  The default map has one glyph per 300 m simulation cell. The first close
+  rung divides each of those cells into a deterministic 3 by 3 field of trees,
+  scrub, stone and water texture; the closest divides it again into a 6 by 6
+  field. The fields join seamlessly, without a border around every simulation
+  cell. These details are visual: clicking, resources and encounters still
+  resolve to the containing 300 m cell.
+- **Walking crosses close-map detail without inventing another task.** The
+  simulation already keeps the survivor's continuous position between cell
+  centres. Close zoom projects that position into its visual details, so `@`
+  crosses them during the existing Walk task while the containing 300 m cell
+  remains authoritative. The existing task progress bar is the only walking
+  bar; no separate walking skill, task or progress state is introduced.
+- **Large animals roam through close-map detail.** A visible animal takes a
+  stable visual position inside its 300 m cell. Wandering animals move through
+  that field over game time; an animal with a real route crosses toward the
+  edge of its next simulation cell. Several subjects in one cell spread over
+  separate details. Their position within the cell is illustrative and does
+  not change detection, pursuit, targeting or encounter distance.
 - **You are a point on the map.** Regions are split by blue borders; your
   region is outlined in yellow and `@` is your actual cell. What you can do depends on the ground under foot: fell trees and hunt
   in forest, gather stone on rock, fish beside water, hares and berries on

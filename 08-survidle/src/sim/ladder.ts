@@ -9,6 +9,7 @@ import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { intentOption, startIntent, yieldItem } from "./intent";
+import { goalDeed } from "./goals";
 import { log } from "./log";
 import { addOrder, type Landing, orderSentence } from "./orders";
 import { RUNG_LEVEL, RUNG_WORD, type Rung, SKILL_NAMES, skillLevel, skillOf } from "./skills";
@@ -106,7 +107,9 @@ function stripUnearned(state: GameState, req: IntentRequest): IntentRequest {
 export function giveOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: Landing): WorkOrder {
   const gate = orderGate(state, req, kind);
   if (!gate.ok) throw new Error(gate.why);
-  return addOrder(state, world, req, kind, rank);
+  const order = addOrder(state, world, req, kind, rank);
+  if (order.req.until.kind !== "once") goalDeed(state, { kind: "ordered", task: order.req.task, long: order.kind === "grind" || order.kind === "keep" });
+  return order;
 }
 
 /**

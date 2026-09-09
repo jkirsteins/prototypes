@@ -21,7 +21,7 @@ import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars } from "../src/ui/bars";
-import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
+import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, playerVisualSlot, viewOrigin, visualGround, ZOOMS } from "../src/ui/map";
 import { lighting } from "../src/ui/sky";
 import { doHtml } from "../src/ui/dopanel";
 import { campHtml, forecastHtml, rosterHtml, instantHtml, inventoryHtml, placesHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml, weatherHtml } from "../src/ui/panels";
@@ -142,18 +142,25 @@ describe("reachability: everything in the catalogue has a button", () => {
 });
 
 describe("panels", () => {
+  it("gives a simulation cell a stable terrain-specific field at the requested subdivision", () => {
+    const first = visualGround(17, 40, 50, "spruce", "A", 6, false, false);
+    expect(first).toHaveLength(36);
+    expect(visualGround(17, 40, 50, "spruce", "A", 6, false, false)).toEqual(first);
+    expect(first.every((glyph) => ["A", "'"].includes(glyph))).toBe(true);
+    expect(visualGround(17, 40, 50, "water", "~", 3, false, true)).toEqual(["=", "-", "=", "=", "-", "=", "=", "-", "="]);
+  });
+
   beforeEach(() => {
     document.body.innerHTML = `<div id="stats"></div><div id="weather"></div><div id="map"></div><div id="camp"></div><div id="maptravel"></div><div id="task"></div><div id="orders"></div><div id="inventory"></div><div id="overlay"></div>`;
     resetPanels();
   });
 
-  it("zooms in two levels past the cell: the same ground drawn on a smaller grid of bigger glyphs, and the map still opens where it did", () => {
-    // Every level closer than the default reads one cell per glyph: past the cell
-    // there is nothing finer to draw, so zooming in makes the ground bigger.
+  it("zooms in two levels past the cell: the closest rung subdivides further while the map still opens where it did", () => {
     const open = LEVELS[DEFAULT_ZOOM];
-    expect(open).toEqual({ cells: 1, w: 72, h: 36, px: 11, line: 14, font: 12 });
+    expect(open).toEqual({ cells: 1, detail: 1, w: 72, h: 36, px: 11, line: 14, font: 12 });
     expect(newUiState().zoom).toBe(DEFAULT_ZOOM);
     expect(DEFAULT_ZOOM).toBeGreaterThanOrEqual(2);
+    expect(LEVELS.slice(0, DEFAULT_ZOOM).map((level) => level.detail)).toEqual([6, 3]);
     for (let z = 0; z < DEFAULT_ZOOM; z++) {
       expect(LEVELS[z].cells).toBe(1);
       expect(LEVELS[z].px).toBeGreaterThan(LEVELS[z + 1].px);
@@ -176,7 +183,11 @@ describe("panels", () => {
     const grid = document.querySelector<HTMLElement>("#map .grid")!;
     expect(grid.getAttribute("style")).toContain(`--cols:${l.w}`);
     expect(grid.getAttribute("style")).toContain(`--px:${l.px}px`);
+    expect(grid.getAttribute("style")).toContain(`--detail:${l.detail}`);
     expect(document.querySelector("#map svg.walk")!.getAttribute("viewBox")).toBe(`0 0 ${l.w} ${l.h}`);
+    expect(grid.classList).toContain("detailed");
+    const known = document.querySelectorAll("#map .c:not(.fog):not(.void)").length;
+    expect(document.querySelectorAll("#map .micro-ground").length).toBe(known * l.detail * l.detail);
   });
 
   it("a rebuilt grid is born with the hour's light, so a zoom does not fade in from full day", () => {
@@ -216,6 +227,29 @@ describe("panels", () => {
     const html = document.getElementById("map")!.innerHTML;
     expect(html.indexOf("maptools")).toBeGreaterThan(html.indexOf("scroll-x"));
     expect(document.querySelectorAll("#map .maptools [data-act=zoom]").length).toBe(2);
+  });
+
+  it("projects the survivor's real in-cell walking position onto close visual details", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const ui = newUiState();
+    ui.zoom = 0;
+    const detail = LEVELS[ui.zoom].detail;
+    const cell = cellOf(state, world);
+    const x = Math.floor(state.player.x);
+    const y = Math.floor(state.player.y);
+    state.player.x = x + 0.51;
+    state.player.y = y + 0.51;
+    expect(playerVisualSlot(state, detail)).toBe(3 * detail + 3);
+    const centred = mapKey(state, world, ui, calendar(0));
+
+    state.player.x = x + 0.99;
+    expect(cellOf(state, world)).toBe(cell);
+    expect(playerVisualSlot(state, detail)).toBe(3 * detail + 5);
+    expect(mapKey(state, world, ui, calendar(0))).not.toBe(centred);
+
+    setPanel("map", mapHtml(world, state, ui, calendar(0)));
+    expect(document.querySelector("#map .mk-player")?.getAttribute("data-visual-slot")).toBe(String(3 * detail + 5));
   });
 
   it("renders one span per cell with region borders and the player marker on the player's cell", () => {

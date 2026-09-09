@@ -1249,7 +1249,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     const from = cellOf(state, world);
     const vantage = pickVantage(state, world, cal, region, [from]);
     const ice = walkIceMode(state, false);
-    state.task = { id, arg, progress: 0, duration: 0, repeat: false, visited: [from], surveyPhase: "walk", surveyedWater: [] };
+    state.task = { id, arg, progress: 0, duration: 0, repeat: false, visited: [from], originRegion: state.player.region, surveyPhase: "walk", surveyedWater: [] };
     if (vantage) {
       state.route = { target: vantage.cell, path: vantage.path, walked: [from], label: target.label, ice, lastLand: from };
       state.task.visited!.push(vantage.cell);
@@ -1839,6 +1839,7 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
     delete t.surveyShore;
     delete t.surveyProgress;
     if (!planSurvey(state, world, cal, t, region, target.label)) {
+      goalDeed(state, { kind: "explored", anotherRegion: t.originRegion !== undefined && region !== t.originRegion });
       state.task = null;
       state.route = null;
       log(state, `{You} {finish} surveying ${regionAt(world, region).name}.`);
@@ -1872,6 +1873,7 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
     return;
   }
   if (!planSurvey(state, world, cal, t, region, target.label)) {
+    goalDeed(state, { kind: "explored", anotherRegion: t.originRegion !== undefined && region !== t.originRegion });
     state.task = null;
     log(state, `{You} {finish} surveying ${regionAt(world, region).name}.`);
   }
@@ -2137,6 +2139,8 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const kg = BERRY_PICK_KG * yieldFactor(state, "foraging") * (winterBerries(cal) ? BERRY_WINTER_SHARE : 1);
       produce(state, world, "berries", kg);
       creditYield(state, "berries", kg * FOODS.berries.kcalPerKg);
+      if (kg > 1e-9) goalDeed(state, { kind: "foodAcquired", method: "forage" });
+      goalDeed(state, { kind: "seasonalFood" });
       return;
     }
     case "innerBark": {
@@ -2144,6 +2148,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       st.wood -= kg * BARK_TREE_SHARE;
       produce(state, world, "freshBark", kg);
       creditYield(state, "bark", (kg / BARK_DRY_RATIO) * FOODS.barkFlour.kcalPerKg);
+      if (kg > 1e-9) goalDeed(state, { kind: "foodAcquired", method: "forage" });
       log(state, `{You} {strip} the pines: ${(kg * 1000).toFixed(0)} g of inner bark.`, "good");
       return;
     }
@@ -2159,6 +2164,8 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       if (kept < take) log(state, "{You} {dig} up as much that is not food as is.", "bad");
       produce(state, world, "roots", kept);
       creditYield(state, "roots", kept * FOODS.cookedRoots.kcalPerKg);
+      if (kept > 1e-9) goalDeed(state, { kind: "foodAcquired", method: "forage" });
+      if (!winter) goalDeed(state, { kind: "seasonalFood" });
       return;
     }
     case "tapSap": {
@@ -2168,6 +2175,9 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       p.kcal = Math.min(KCAL_FULL, p.kcal + SAP_KCAL);
       creditEaten(state, SAP_KCAL, 0);
       creditYield(state, "sap", SAP_KCAL);
+      goalDeed(state, { kind: "foodAcquired", method: "forage" });
+      goalDeed(state, { kind: "seasonalFood" });
+      goalDeed(state, { kind: "ate", item: "sap" });
       log(state, "{You} {drink} the sap as it runs.", "good");
       return;
     }
@@ -2175,6 +2185,8 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const kg = SEAWEED_KG_PER_HOUR * yieldFactor(state, "foraging");
       produce(state, world, "seaweed", kg);
       creditYield(state, "seaweed", kg * FOODS.seaweed.kcalPerKg);
+      if (kg > 1e-9) goalDeed(state, { kind: "foodAcquired", method: "forage" });
+      goalDeed(state, { kind: "seasonalFood" });
       log(state, `{You} {gather} seaweed off the rocks: ${(kg * 1000).toFixed(0)} g.`, "good");
       return;
     }
@@ -2229,6 +2241,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
         state.stats.animals++;
         if (!hasEvent(state, (e) => e.kind === "firstKill" && e.species === s)) record(state, { kind: "firstKill", species: s });
         const kg = fishKg(state, s) * yieldFactor(state, "fishing");
+        goalDeed(state, { kind: "foodAcquired", method: "fish" });
         const item = fishItem(s);
         produce(state, world, item, kg);
         // Raw fish is not eaten; the yield is what it cooks to.
@@ -2258,6 +2271,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "emptyTrap": {
       const kg = takeTrapFish(state, world);
+      if (kg > 1e-9) goalDeed(state, { kind: "foodAcquired", method: "trap" });
       log(state, `{You} {empty} the trap: ${kg.toFixed(1)} kg of fish.`, "good");
       return;
     }
@@ -2267,6 +2281,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       consume(invs, [{ item: food, qty: kg }]);
       const out = food === "rawMeat" ? "cookedMeat" : food === "fish" ? "cookedFish" : food === "oilyFish" ? "cookedOilyFish" : food === "roots" ? "cookedRoots" : "fat";
       produce(state, world, out, kg);
+      if (kg > 0) goalDeed(state, { kind: "cooked", kg, item: out });
       return;
     }
     case "crack": {
@@ -2283,6 +2298,8 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       st.nests -= kg / EGG_CLUTCH_KG;
       produce(state, world, "eggs", kg);
       creditYield(state, "eggs", kg * FOODS.eggs.kcalPerKg);
+      if (kg > 1e-9) goalDeed(state, { kind: "foodAcquired", method: "forage" });
+      if (kg > 1e-9) goalDeed(state, { kind: "seasonalFood" });
       log(state, `{You} {gather} the nests: ${(kg * 1000).toFixed(0)} g of eggs.`, "good");
       return;
     }
@@ -2321,11 +2338,13 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
         const item = rec.out.item;
         produce(state, world, item, rec.out.qty ?? 1);
         if (item in TOOLS) {
+          goalDeed(state, { kind: "toolCared" });
           if (hasTool(p, item as ToolId)) log(state, `{You} {have} a spare ${rec.name}.`, "good");
           else if (takeUp(state, world, item as ToolId)) log(state, `{You} {have} a ${rec.name}.`, "good");
         }
       }
       if (state.shopping?.task === "craft" && state.shopping.arg === rid) state.shopping = null;
+      goalDeed(state, { kind: "crafted", recipe: rid });
       return;
     }
     case "repair": {
@@ -2340,12 +2359,14 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       consume(invs, [{ item: "stone", qty: 1 }]);
       const axe = axeInHand(p);
       if (axe) axe.durability = Math.min(100, axe.durability + 30);
+      if (axe) goalDeed(state, { kind: "toolCared" });
       return;
     }
     case "hone": {
       const axe = axeInHand(p);
       if (axe) axe.durability = 100;
       wearTool(state, "whetstone", 1);
+      if (axe) goalDeed(state, { kind: "toolCared" });
       return;
     }
     case "build": {
@@ -2406,6 +2427,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       st.fire.embers = 0;
       // A run of keeping survives the coals; only a fire lit from cold starts a new one.
       if (st.fire.litSince === null) st.fire.litSince = state.minute;
+      goalDeed(state, { kind: "fuelled" });
       goalDeed(state, { kind: "lit" });
       cue("fireCatches");
       st.fire.fuelKg += 1;
@@ -2464,6 +2486,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       if (kg > 0) {
         log(state, `{You} {hang} ${kg.toFixed(1)} kg of meat to dry.`);
         goalDeed(state, { kind: "stored" });
+        goalDeed(state, { kind: "preserved" });
       }
       return;
     }
@@ -2473,11 +2496,14 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "makeCamp": {
       const here = cellOf(state, world);
+      const hadCampInAnotherRegion = Object.entries(state.regions)
+        .some(([id, region]) => Number(id) !== state.player.region && region.campCell !== null);
       const left = leftBehind(state, world);
       leaveCamp(state, world);
       st.campCell = here;
       if (isWorkIntent(state.intent)) state.intent.campCell = here;
       log(state, left ? `{You} {make} camp here. ${left}` : "{You} {make} camp here.");
+      if (hadCampInAnotherRegion) goalDeed(state, { kind: "campedAgain", region: state.player.region });
       return;
     }
     // A sleep leaves nothing behind it: it ran to the wake line, and whether
@@ -2487,7 +2513,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     case "night":
     case "travel":
     case "walk":
-    case "explore":
+      return;
     case "searchHome":
     case "rest":
       return;
@@ -2529,7 +2555,10 @@ function collectTrap(state: GameState, world: World): void {
   const st = regionState(state, world, state.player.region);
   if (!st.trap || cellOf(state, world) !== st.trap.cell) return;
   const kg = takeTrapFish(state, world);
-  if (kg > 1e-9) log(state, `${kg.toFixed(1)} kg of fish in the trap at ${whereIs(state, world, st.trap.cell)}; {you} {take} them.`, "good");
+  if (kg > 1e-9) {
+    goalDeed(state, { kind: "foodAcquired", method: "trap" });
+    log(state, `${kg.toFixed(1)} kg of fish in the trap at ${whereIs(state, world, st.trap.cell)}; {you} {take} them.`, "good");
+  }
 }
 
 /** Hares hanging in the snares come with you when you pass the heath. */
@@ -2546,6 +2575,7 @@ function collectSnares(state: GameState, world: World): void {
   produce(state, world, "fur", (y.furKg ?? 0) * n);
   produce(state, world, "bone", n);
   state.stats.animals += n;
+  goalDeed(state, { kind: "foodAcquired", method: "snare" });
   log(state, `${n} hare${n > 1 ? "s" : ""} in the snares at ${regionAt(world, p.region).name}.`, "good");
 }
 

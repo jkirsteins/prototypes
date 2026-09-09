@@ -8,6 +8,10 @@ import { newUiState } from "../src/ui/render";
 import { css, rule } from "./css";
 
 describe("the map's own surface", () => {
+  it("draws close terrain seamlessly without a border around every simulation cell", () => {
+    expect(rule(".grid.detailed .c")).toContain("border: 0");
+  });
+
   it("marks a region by a wash over it and never by a frame on each of its cells", () => {
     // A frame per cell repeats at cell scale what the wash and the region's
     // accent-coloured border already say once, and 69 of them read as graph
@@ -224,7 +228,7 @@ describe("what survives the night sheet", () => {
     // light, and its own cell already rises at the close rungs; banked coals
     // are the same light at a lower wattage.
     const lifted = rule(".grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire, .grid .c.mk-coals");
-    expect(lifted).toContain("z-index: 1");
+    expect(lifted).toContain("z-index: var(--map-signal)");
     // The blanket lift on every mark is what put a shore at full daylight
     // brightness at midnight.
     expect(rule(".grid .c.mk")).not.toContain("z-index");

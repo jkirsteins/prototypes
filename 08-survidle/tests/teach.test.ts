@@ -3,12 +3,13 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { beginAgain, land } from "../src/sim/landing";
+import { MANUAL_SECTIONS } from "../src/sim/manual";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { current } from "../src/sim/record";
-import { levelMinutes, markTaught, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD, SKILL_IDS, SKILL_NAMES, teachOnce, train } from "../src/sim/skills";
+import { levelMinutes, markTaught, RUNG_LEVEL, RUNG_ORDER, SKILL_IDS, SKILL_NAMES, teachOnce, train } from "../src/sim/skills";
 import { catchUp, loadGame, saveGame } from "../src/sim/save";
-import { CONCEPTS, resetTeaching, tipFor, TIPS, welcomeLines } from "../src/sim/teach";
+import { CONCEPTS, resetTeaching, tipFor, TIPS } from "../src/sim/teach";
 import { giveOrder } from "../src/sim/ladder";
 import { conceptHtml, exampleFor, momentToOpen, welcomeHtml } from "../src/ui/teachpanel";
 import { newUiState, type UiState } from "../src/ui/render";
@@ -262,33 +263,6 @@ describe("a moment never opens over something else", () => {
 });
 
 describe("the welcome", () => {
-  it("tells a fresh survivor that everything is theirs to click", () => {
-    const { state } = newGame(17);
-    const w = welcomeLines(state);
-    expect(w.held).toEqual([]);
-    expect(w.body.join(" ")).toContain("one at a time");
-    expect(w.body.join(" ")).toContain(String(RUNG_LEVEL.job));
-  });
-
-  it("names what an heir landed holding, and the rung it already opens", () => {
-    const { state } = newGame(17);
-    setSkillLevel(state, "woodcraft", RUNG_LEVEL.grind);
-    setSkillLevel(state, "building", RUNG_LEVEL.job);
-    const w = welcomeLines(state);
-    expect(w.held).toContain(`${SKILL_NAMES.woodcraft} ${RUNG_LEVEL.grind}`);
-    expect(w.held).toContain(`${SKILL_NAMES.building} ${RUNG_LEVEL.job}`);
-    // The highest rung any carried skill opens, not the lowest.
-    expect(w.body.join(" ")).toContain(RUNG_WORD.grind);
-  });
-
-  it("says so plainly when what carried over still opens no rung", () => {
-    const { state } = newGame(17);
-    setSkillLevel(state, "woodcraft", 2);
-    const w = welcomeLines(state);
-    expect(w.held).toEqual([`${SKILL_NAMES.woodcraft} 2`]);
-    expect(w.body.join(" ")).toContain("comes with practice");
-  });
-
   it("gives a landing the same tip every time, and never the last landing's twice", () => {
     expect(tipFor(17, 3)).toBe(tipFor(17, 3));
     for (let i = 1; i < TIPS.length + 4; i++) expect(tipFor(17, i)).not.toBe(tipFor(17, i - 1));
@@ -304,7 +278,13 @@ describe("the welcome", () => {
     const cal = calendar(state.minute, state.startDoy);
     const html = welcomeHtml(state, cal);
     expect(html).toContain(current(state).name.first);
+    expect(html).toContain("Starting skills");
+    expect(html).toContain("Tip");
     for (const s of SKILL_IDS) expect(html).toContain(SKILL_NAMES[s]);
     expect(html).toContain('data-act="welcome-close"');
+    expect(html).not.toContain("You land knowing nothing");
+    expect(html).not.toContain("Practise a skill");
+    expect(html).not.toContain('class="example"');
+    expect(html).not.toContain(MANUAL_SECTIONS[0].lines[0]);
   });
 });

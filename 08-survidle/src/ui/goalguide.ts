@@ -1,0 +1,62 @@
+import type { Calendar } from "../sim/calendar";
+import { GOALS, goalDef, goalSteps, type GoalPhase } from "../sim/goals";
+import type { GameState, GoalId } from "../sim/types";
+import type { World } from "../world/gen";
+
+export interface GoalStepView { label: string; done: boolean }
+export interface GoalProgressView {
+  at: number;
+  target: number;
+  unit?: string;
+  steps: GoalStepView[];
+}
+
+export interface GoalGuide {
+  id: GoalId;
+  phase: GoalPhase;
+  note?: string;
+}
+
+const NOTES: Partial<Record<GoalId, string>> = {
+  drink: "Below 1 litre, the survivor drinks automatically from water at hand. If travel is needed, Self-care handles it through the activity queue.",
+  firewood: "Dead wood burns without felling a tree.",
+  fire: "Fire needs a site, fuel, and ignition.",
+  bed: "A bed keeps sleep off the cold ground.",
+  roof: "Shelter reduces wind and rain exposure.",
+  forageMeal: "Some gathered foods must be cooked before eating.",
+  cook: "Raw meat, fish, fat, and roots need a fire.",
+  snareMeal: "Snares catch food while other work continues, but must be checked.",
+  huntMeal: "Hunts can fail.",
+  trapMeal: "A basket trap catches fish while other work continues, but must be emptied.",
+  foodSource: "Repeatable and passive methods can keep producing food.",
+  store: "Raw meat rots quickly; drying makes it last.",
+  fat: "Lean meat alone cannot sustain the body.",
+  keptNight: "A fire survives only while fuel remains.",
+  firstOrder: "Standing orders repeat work through the activity queue.",
+  water: "Stored water avoids repeated journeys to a source.",
+  keptDays: "Weather and fuel determine how long a fire lasts.",
+  longOrder: "Longer orders continue without repeated clicks.",
+  toolCare: "Damaged tools can be restored or replaced.",
+  explore: "Other regions offer different ground, wildlife, and food.",
+  secondCamp: "Another camp extends the country the survivor can use.",
+  seasonalFood: "Seasonal foods are available for only part of the year.",
+  durableRoof: "Lasting shelter survives longer than a lean-to.",
+  winterStores: "Winter requires both food and fuel.",
+};
+
+export const GOAL_GUIDES: GoalGuide[] = GOALS.map((goal) => goalGuide(goal.id));
+
+export function goalGuide(id: GoalId): GoalGuide {
+  return { id, phase: goalDef(id).phase, note: NOTES[id] };
+}
+
+export function goalProgress(state: GameState, _world: World | undefined, _cal: Calendar, id: GoalId): GoalProgressView {
+  const def = goalDef(id);
+  const steps = goalSteps(state, id);
+  return {
+    at: steps.filter((step) => step.done).length,
+    target: steps.length,
+    unit: def.unit,
+    steps: steps.map((step) => ({ label: step.label, done: step.done })),
+  };
+}

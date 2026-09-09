@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { leaveCamp } from "../src/sim/camp";
 import { EMBER_MINUTES } from "../src/sim/fire";
+import { introduceGoals } from "../src/sim/goals";
 import { newGame } from "../src/sim/newgame";
 import { fatLandmarks, personOf } from "../src/sim/person";
 import { placeAt } from "../src/sim/position";
@@ -41,6 +42,7 @@ function run(state: ReturnType<typeof newGame>["state"], world: World, minutes: 
 /** A camp with a huge fuel stock so the fire's own burn math never ends a test early; only the deliberate mutations in each test do. */
 function litCamp(startDoy?: number) {
   const { state, world } = startDoy === undefined ? newGame(3) : newGame(3, startDoy);
+  introduceGoals(state, ["keptNight", "keptDays"]);
   siteCamp(state, world);
   const st = regionState(state, world, state.player.region);
   placeAt(state, world, st.campCell!);
@@ -137,12 +139,11 @@ describe("keeping a fire for three days", () => {
   });
 });
 
-describe("keeping a fire through a day of rain", () => {
-  it("credits a fire that comes through twenty-four hours of rain", () => {
+describe("tracking rain held by a fire", () => {
+  it("counts a fire that comes through twenty-four hours of rain", () => {
     const { state, world, st } = litCamp();
     state.weather.storm = { from: state.minute, until: state.minute + 26 * 60, warned: true };
     run(state, world, 26 * 60);
-    expect(state.goals.done.keptRain).toBe(true);
     expect(st.fire.rainHeld).toBeGreaterThanOrEqual(24 * 60);
   });
 
@@ -150,7 +151,6 @@ describe("keeping a fire through a day of rain", () => {
     const { state, world, st } = litCamp();
     state.weather.storm = { from: state.minute, until: state.minute + 20 * 60, warned: true };
     run(state, world, 20 * 60); // exactly the storm's span, so no chance rain after it can pad the count
-    expect(state.goals.done.keptRain).toBeUndefined();
     expect(st.fire.rainHeld).toBeLessThan(24 * 60);
   });
 
@@ -167,7 +167,7 @@ describe("keeping a fire through a day of rain", () => {
     st.fire.fuelKg = 1e7;
     st.fire.embers = 0;
     run(state, world, 14 * 60); // the rest of the storm and past it
-    expect(state.goals.done.keptRain).toBe(true);
+    expect(st.fire.rainHeld).toBeGreaterThanOrEqual(24 * 60);
   });
 });
 
@@ -192,7 +192,6 @@ describe("the fire goals credit only the player's own region", () => {
     run(state, world, 5 * 24 * 60);
     expect(state.goals.done.keptNight).toBeUndefined();
     expect(state.goals.done.keptDays).toBeUndefined();
-    expect(state.goals.done.keptRain).toBeUndefined();
   });
 });
 
@@ -217,6 +216,5 @@ describe("a catch-up with nobody home", () => {
     expect(st.fire.lit).toBe(true); // 1e7 kg of fuel never runs out, so nothing here ends the run early
     expect(state.goals.done.keptNight).toBeUndefined();
     expect(state.goals.done.keptDays).toBeUndefined();
-    expect(state.goals.done.keptRain).toBeUndefined();
   });
 });

@@ -4,6 +4,29 @@ Items raised but not built, written here because the roadmap the specs cite
 (`the roadmap's gate table`, `roadmap item B`) is not in this repo. Move them
 into it when they meet.
 
+## Optional revisit: mechanical subcells
+
+**Raised** 2026-09-09, while adding close-map visual detail.
+
+The first close map rung now divides each 300 m simulation cell into a 3 by 3
+field of cosmetic 100 m details. The closest rung subdivides further into a 6
+by 6 field of cosmetic 50 m details. These fields have no individual cell
+borders, so the terrain reads as one continuous surface. Large-animal markers
+can roam through the details and cross toward their next real cell, but their
+visual position does not affect movement, detection, pursuit, targeting,
+resources or encounters. The survivor's marker uses the continuous in-cell
+position the walking simulation already keeps; this adds no second walking
+task, skill or progress bar. All interaction still resolves to the containing
+300 m cell.
+
+This separation is deliberate. Making the details mechanical would multiply
+the routing graph, retune travel and sight, redistribute cell-based resources,
+and change every rule that currently means "here". It should remain optional,
+and only be revisited if visual subcells prove insufficient in play: for
+example, if close animal approaches repeatedly feel misleading, or players need
+to choose a precise patch of ground inside a cell. At that point the work wants
+its own spec and balance pass rather than more visual exceptions.
+
 ## Burn scars
 
 **Raised** 2026-09-08, during the seasonal colour pass.

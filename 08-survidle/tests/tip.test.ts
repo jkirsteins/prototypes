@@ -48,6 +48,21 @@ describe("finding the cell under the pointer", () => {
     expect(cellFromPoint(world, state, ui, p.x, p.y)).toBe(here);
   });
 
+  it("every closest-rung detail resolves to its one containing simulation cell", () => {
+    const close = newUiState();
+    close.zoom = 0;
+    const here = cellOf(state, world);
+    const centre = pointOf(world, state, close, here);
+    const l = levelAt(close.zoom);
+    for (let x = 0; x < l.detail; x++) {
+      for (let y = 0; y < l.detail; y++) {
+        const dx = (x + 0.5) / l.detail - 0.5;
+        const dy = (y + 0.5) / l.detail - 0.5;
+        expect(cellFromPoint(world, state, close, centre.x + dx * l.px, centre.y + dy * l.line)).toBe(here);
+      }
+    }
+  });
+
   it("subtracts a centered grid's screen offset before resolving a cell", () => {
     const here = cellOf(state, world);
     const p = pointOf(world, state, ui, here);
@@ -70,6 +85,23 @@ describe("finding the cell under the pointer", () => {
 });
 
 describe("what the tooltip says", () => {
+  it("names visible animals standing on the hovered cell", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const here = cellOf(state, world);
+    state.wildlife.activeRegion = state.player.region;
+    state.wildlife.subjects.push({
+      id: 901, species: "deer", form: "herd", region: state.player.region,
+      cohorts: [{ sex: "f", bornYear: state.year - 1, count: 7 }],
+      condition: 70, reproductive: "none", dependentUntilYear: 0,
+      name: null, nameKind: "field", colour: 0, lastKnownDay: -1,
+      denCell: null,
+      active: { cell: here, hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [] },
+    });
+
+    expect(tipHtml(state, world, cal, here)).toContain("deer, 7, wander");
+  });
+
   it("unwalked ground in this region says so and nothing else", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
@@ -187,23 +219,26 @@ describe("what the tooltip says", () => {
 describe("the tooltip's key", () => {
   it("is the same for the same cell, so a still pointer redraws nothing", () => {
     const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
     const here = cellOf(state, world);
-    expect(tipKey(state, world, here)).toBe(tipKey(state, world, here));
+    expect(tipKey(state, world, cal, here)).toBe(tipKey(state, world, cal, here));
   });
 
   it("differs between cells, so moving to a new one redraws once", () => {
     const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
     const here = cellOf(state, world);
-    expect(tipKey(state, world, here)).not.toBe(tipKey(state, world, here + 5));
+    expect(tipKey(state, world, cal, here)).not.toBe(tipKey(state, world, cal, here + 5));
   });
 
   it("changes when the pile under it changes, so a heap picked up stops being advertised", () => {
     const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
     siteCamp(state, world);
     const camp = campCellOf(state, world)!;
-    const before = tipKey(state, world, camp);
+    const before = tipKey(state, world, cal, camp);
     addItem(pile(state, camp), "firewood", 5);
-    expect(tipKey(state, world, camp)).not.toBe(before);
+    expect(tipKey(state, world, cal, camp)).not.toBe(before);
   });
 });
 

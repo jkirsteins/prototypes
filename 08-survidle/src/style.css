@@ -165,8 +165,13 @@ small, .dim { color: var(--dim); }
 /* An empty ladder collapses rather than leaving a titled box with nothing in it. */
 #goals:empty { display: none; }
 #goals .goals { list-style: none; margin: 0; padding: 0; }
-#goals .goal { margin: 0.35rem 0; }
+#goals .goal { margin: 0; }
 #goals .goal-title { font-weight: 600; }
+#goals .goal-open {
+  width: 100%; padding: 4px 0; text-align: left; color: var(--text);
+  background: transparent; border: 0; font: inherit; cursor: pointer;
+}
+#goals .goal-open:hover, #goals .goal-open:focus-visible { background: #1a1f28; outline: 1px solid var(--accent); }
 
 #shopping:empty { display: none; }
 #shopping ul { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -369,7 +374,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 }
 /* A place row points out its destination without making ordinary map hover
    leave a highlight behind. main.ts adds and removes this class directly. */
-.grid .c.target { outline: 1px solid var(--accent); outline-offset: -1px; z-index: 2; }
+.grid .c.target { outline: 1px solid var(--accent); outline-offset: -1px; z-index: var(--map-signal); }
 
 /* The ways out, over the map's top right. They sit on the ground they lead
    off rather than at the foot of a panel a player had to find first. */
@@ -429,7 +434,17 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 /* The chain of min-height: 0 that lets the board give way to the panels
    under it: a flex child will not shrink below its content without it, so
    the grid would push the Do pane off the screen instead of scrolling. */
-#mapdyn { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#mapdyn {
+  position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column;
+  /* One stack names every map surface, including controls that are siblings of
+     the viewport. The viewport isolates its own terrain and atmosphere below. */
+  --map-ground: 0;
+  --map-shade: 1;
+  --map-weather: 2;
+  --map-route: 3;
+  --map-signal: 4;
+  --map-control: 5;
+}
 /* The world moves under the survivor; the viewport never pans. A fixed-size
    grid is centred and clipped, while any spare area carries the same grain
    as unknown ground instead of exposing the panel as a black bar. */
@@ -444,7 +459,10 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   background-size: var(--px) var(--line);
   background-position: center;
   --bright: 1; --sat: 1; --tint: rgb(0, 0, 0); --tint-a: 0;
+  /* Ground has no positioned lift. The named layers inherited from #mapdyn
+     keep DOM order from quietly putting weather behind opaque terrain again. */
   position: relative;
+  isolation: isolate;
   filter: saturate(var(--sat));
   transition: filter 0.5s linear;
 }
@@ -472,7 +490,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 }
 /* The atmosphere covers the whole viewport, including synthetic unexplored padding. */
 .scroll-x > .shade {
-  position: absolute; inset: 0; pointer-events: none;
+  position: absolute; inset: 0; z-index: var(--map-shade); pointer-events: none;
   background: #000;
   opacity: calc(1 - var(--bright));
   transition: opacity 0.5s linear;
@@ -486,7 +504,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
    panel of its own. It is nice to have and it is not what anybody came to
    the map to read, so it takes no border and no full-sized type. */
 .maptools {
-  position: absolute; left: 6px; bottom: 6px; z-index: 3;
+  position: absolute; left: 6px; bottom: 6px; z-index: var(--map-control);
   display: flex; gap: 5px; align-items: center;
   font-size: 10px;
   opacity: 0.7;
@@ -501,21 +519,12 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   padding: 0 4px;
   background: rgba(5, 7, 12, 0.7);
 }
-.map-inspect {
-  position: absolute; left: 6px; top: 54px; z-index: 4;
-  display: block; max-width: min(360px, calc(100% - 24px));
-  padding: 4px 7px;
-  border: 1px solid var(--line);
-  background: rgba(5, 7, 12, 0.9);
-  color: var(--text); font: 12px/1.35 monospace; text-align: left;
-  pointer-events: none;
-}
 .grid:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .grid .c:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .legend .fog-key { color: #4a5160; }
-/* Your walk: a line through the glyph centres, solid ahead, dashed behind. It sits after the shade
-   and carries no z-index, so it is over the night and under the @ and the fire glow. */
-.grid .walk { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
+/* Your walk: a line through the glyph centres, solid ahead, dashed behind. Its
+   named layer keeps it over weather and night, under the @ and fire glow. */
+.grid .walk { position: absolute; inset: 0; z-index: var(--map-route); width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
 /* non-scaling-stroke keeps the stroke in screen pixels under the stretched viewBox. */
 polyline.walk-ahead, polyline.walk-behind { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
 polyline.walk-ahead { stroke: rgba(230, 194, 41, 0.9); stroke-width: 2px; }
@@ -526,14 +535,14 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .legend .pl-key { text-decoration: underline; text-decoration-color: #e6c229; }
 /* The light of the hour, laid over the glyphs. */
 .scroll-x::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
+  content: ""; position: absolute; inset: 0; z-index: var(--map-shade); pointer-events: none;
   background: var(--tint); opacity: var(--tint-a);
   mix-blend-mode: hard-light;
   transition: background 0.5s linear, opacity 0.5s linear;
 }
 /* Falling weather: faint streaks for rain, drifting dots for snow. */
 .scroll-x::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  content: ""; position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none; opacity: 0;
   transition: opacity 0.5s;
 }
 .scroll-x.rain::before {
@@ -563,6 +572,38 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   border: 1px solid transparent;
   cursor: pointer;
   color: var(--dim);
+}
+
+/* At the two closest rungs a simulation cell becomes a field of cosmetic
+   details. The parent remains the one hit target, route step and accessibility
+   cell. Its border is gone so neighbouring fields join without a grid seam;
+   only genuine region boundaries restore one side below. */
+.grid.detailed .c { position: relative; overflow: hidden; border: 0; }
+.grid.detailed .detail-ground {
+  position: absolute; inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--detail), 1fr);
+  grid-template-rows: repeat(var(--detail), 1fr);
+  pointer-events: none;
+}
+.grid.detailed .micro-ground {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 0; min-height: 0;
+  font: inherit; font-style: normal;
+  line-height: 1;
+  opacity: 0.82;
+}
+.grid.detailed .micro-mark {
+  position: absolute;
+  left: calc(var(--sx) * 100% / var(--detail));
+  top: calc(var(--sy) * 100% / var(--detail));
+  width: calc(100% / var(--detail)); height: calc(100% / var(--detail));
+  z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+  transition: left 0.18s linear, top 0.18s linear;
+  box-shadow: 0 0 0 1px rgba(5, 7, 12, 0.42);
+  pointer-events: none;
 }
 .grid .c.t-water { color: #3a6fd8; background: #0a1633; }
 .grid .c.ice-thin { color: #6d8a9c; }
@@ -633,17 +674,25 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.br { border-right-color: var(--border); }
 .grid .c.bt { border-top-color: var(--border); }
 .grid .c.bb { border-bottom-color: var(--border); }
+/* Border style is restored only on a real region edge. The colour continues
+   to come from the existing known, current and fog boundary rules. */
+.grid.detailed .c.bl { border-left-style: solid; border-left-width: 1px; }
+.grid.detailed .c.br { border-right-style: solid; border-right-width: 1px; }
+.grid.detailed .c.bt { border-top-style: solid; border-top-width: 1px; }
+.grid.detailed .c.bb { border-bottom-style: solid; border-bottom-width: 1px; }
 /* The region you stand in and the region you picked are marked by a wash over
    their whole area, and never by a frame drawn on each of their cells: a frame
    per cell says at cell scale what the wash and the accent-coloured region
    border below already say at region scale, and 69 of them read as graph paper
    laid over the ground rather than as a place. */
 .grid .c.cur { box-shadow: inset 0 0 0 20px rgba(255, 255, 255, 0.07); }
+.grid.detailed .c.cur { box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.07); }
 .grid .c.cur.bl { border-left-color: var(--accent); }
 .grid .c.cur.br { border-right-color: var(--accent); }
 .grid .c.cur.bt { border-top-color: var(--accent); }
 .grid .c.cur.bb { border-bottom-color: var(--accent); }
 .grid .c.sel { box-shadow: inset 0 0 0 20px rgba(230, 194, 41, 0.18); }
+.grid.detailed .c.sel { box-shadow: inset 0 0 0 100px rgba(230, 194, 41, 0.18); }
 /*
  * What stays legible once the night sheet is down: where you are, where camp
  * is, and the line of your walk. Those are the three things you would know in
@@ -660,7 +709,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
  * glow below rather than fog with the shelter and the trap.
  */
 .grid .c.mk { font-weight: bold; position: relative; }
-.grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire, .grid .c.mk-coals { z-index: 1; }
+.grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire, .grid .c.mk-coals { z-index: var(--map-signal); }
 .grid .c.mk-player { color: #fff; background: #b8860b; }
 .grid .c.mk-fire { color: #fff; background: #b8431a; }
 /* Dimmer than mk-fire's #b8431a: the same fire, banked. */
@@ -679,6 +728,24 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.mk-animal.wildlife-3 { color: #111; background: #91bd62; }
 .grid .c.mk-animal.wildlife-4 { color: #111; background: #d77b68; }
 .grid .c.mk-animal.wildlife-5 { color: #111; background: #87a8dc; }
+
+/* Close-map marks occupy one visual subcell instead of repainting all 300 m
+   of their parent. They repeat the established mark palette exactly. */
+.grid .micro-mark.mk-player { color: #fff; background: #b8860b; }
+.grid .micro-mark.mk-fire { color: #fff; background: #b8431a; }
+.grid .micro-mark.mk-coals { color: #fff; background: #7a3d1a; }
+.grid .micro-mark.mk-shelter { color: #fff; background: #4a5a78; }
+.grid .micro-mark.mk-camp { color: #0c0f14; background: #6fcf6f; }
+.grid .micro-mark.mk-trap { color: #fff; background: #4a5a78; }
+.grid .micro-mark.mk-seep { color: #0c0f14; background: #6fa8dc; }
+.grid .micro-mark.mk-den { color: #d6aa72; background: #1a1c20; }
+.grid .micro-mark.mk-animal { color: #111; background: #b7ad87; }
+.grid .micro-mark.mk-animal.wildlife-0 { background: #e5a84b; }
+.grid .micro-mark.mk-animal.wildlife-1 { background: #76c7b7; }
+.grid .micro-mark.mk-animal.wildlife-2 { background: #cb8fc4; }
+.grid .micro-mark.mk-animal.wildlife-3 { background: #91bd62; }
+.grid .micro-mark.mk-animal.wildlife-4 { background: #d77b68; }
+.grid .micro-mark.mk-animal.wildlife-5 { background: #87a8dc; }
 
 /* The legend has no cell background to draw a marker against, so its letters take the
    background colour each mark uses on the map instead. */
@@ -709,7 +776,15 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   --m0: #b8860b; --m1: #d8a327;
   animation: mood-toil 1.2s ease-in-out infinite alternate;
 }
+.grid .micro-mark.mk-player.mood-walk {
+  --m0: #b8860b; --m1: #d8a327;
+  animation: mood-toil 1.2s ease-in-out infinite alternate;
+}
 .grid .c.mk-player.mood-work {
+  --m0: #b8860b; --m1: #d8a327;
+  animation: mood-toil 2.4s ease-in-out infinite alternate;
+}
+.grid .micro-mark.mk-player.mood-work {
   --m0: #b8860b; --m1: #d8a327;
   animation: mood-toil 2.4s ease-in-out infinite alternate;
 }
@@ -781,10 +856,12 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 /* Somebody who has asked their system for less motion is asking this screen too. */
 @media (prefers-reduced-motion: reduce) {
   .grid .c.mk-player.mood-walk, .grid .c.mk-player.mood-work,
+  .grid .micro-mark.mk-player.mood-walk, .grid .micro-mark.mk-player.mood-work,
   .stat-face.mood-walk, .stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep,
   .portrait.is-focused, .portrait.is-cold, .portrait.is-firelit::before, .portrait.is-firelit::after {
     animation: none;
   }
+  .grid.detailed .micro-mark { transition: none; }
   .portrait.is-firelit::before { opacity: .32; transform: none; }
   .portrait.is-firelit::after { opacity: .18; transform: none; }
 }
@@ -797,7 +874,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   animation: flicker 1.1s ease-in-out infinite alternate;
 }
 .grid.night .c.lit-0 {
-  position: relative; z-index: 2;
+  position: relative; z-index: var(--map-signal);
   --f0: #ff7a1a; --f1: #ffb84d;
   animation: flicker 1.1s ease-in-out infinite alternate;
   animation-delay: var(--fd, 0s);
@@ -819,7 +896,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 }
 .grid.night .c.lit-1, .grid.night .c.lit-2 { position: relative; }
 .grid.night .c.lit-1::after, .grid.night .c.lit-2::after {
-  content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  content: ""; position: absolute; inset: 0; z-index: var(--map-signal); pointer-events: none;
   animation: flicker 1.1s ease-in-out infinite alternate;
   animation-delay: var(--fd, 0s);
 }
@@ -1146,12 +1223,21 @@ button.act small.gives, span.act small.gives,
 
 #overlay .box.teach.welcome { max-width: 520px; }
 #overlay .box.teach .statuses { margin: 10px 0; }
+.welcome-label { color: var(--dim); font-weight: 600; margin-top: 14px !important; }
 #overlay .box.teach .example {
   font-weight: 600;
   padding: 8px 10px;
   border-left: 3px solid var(--accent);
   margin: 4px 0 0;
 }
+#overlay .box.goal-modal { width: min(460px, calc(100vw - 36px)); text-align: left; }
+.goal-guide + .goal-guide { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+.goal-status { font-weight: 600; }
+.goal-complete { color: var(--good); }
+.goal-note { color: var(--dim); }
+.goal-steps { display: flex; flex-direction: column; gap: 5px; list-style: none; padding: 0; margin: 10px 0; }
+.goal-steps li { color: var(--dim); }
+.goal-steps li.done { color: var(--good); }
 .cards { display: flex; gap: 12px; margin: 10px 0; align-items: stretch; }
 .card {
   flex: 1 1 0; min-width: 0; text-align: left;
