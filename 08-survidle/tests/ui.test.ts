@@ -560,14 +560,15 @@ describe("panels", () => {
     expect(document.querySelector(`#overlay [data-act="restart"]`)).toBeNull();
   });
 
-  it("skills panel lists seven rows with level, hours to next, pool share and active perks", () => {
+  it("skills panel lists ten rows with level, hours to next, pool share and active perks", () => {
     const { state } = newGame(21);
     state.skills.woodcraft.xp = levelMinutes(7) + 60;
     state.skills.woodcraft.pool = poolCapacity("woodcraft") * 0.3;
     const h = skillsHtml(state);
     expect(h).toContain("Woodcraft");
     expect(h).toContain("Fishing");
-    expect((h.match(/class="skill"/g) ?? []).length).toBe(7);
+    expect((h.match(/class="skill"/g) ?? []).length).toBe(10);
+    for (const name of ["Natural shelter", "Shelter building", "Weather sense"]) expect(h).toContain(name);
     // Level 8 needs 98 h; level 7 had 72; one hour in, 25 h to go.
     expect(h).toContain("25 h to 8");
     expect(h).toContain("pool 30%");

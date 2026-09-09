@@ -8,6 +8,7 @@ import { sheltered, workSpeed } from "../src/sim/player";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
+import { levelMinutes, skillLevel } from "../src/sim/skills";
 import { builtProtection, COVER_CEILING, EMERGENCY_MINUTES, findCover, protectionOf, PROTECTION_WORDS } from "../src/sim/shelter";
 import { check, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { TASK_IDS, type Terrain } from "../src/sim/types";
@@ -105,6 +106,33 @@ describe("protection", () => {
 });
 
 describe("finding shelter", () => {
+  it.each([[1, 30, 1], [4, 27, 1], [5, 26, 2], [20, 11, 2], [21, 10, 2], [50, 10, 2]])("searches rock at level %i in %i base minutes for protection %i", (level, duration, protection) => {
+    const g = newGame(17);
+    const rock = cellWith(g, "rock");
+    placeAt(g.state, g.world, rock);
+    g.state.survivors[0].person.quirks = [];
+    g.state.skills.naturalShelter = { xp: levelMinutes(level), mastery: {}, pool: 0 };
+    const option = check(g.state, g.world, calendar(0), "findShelter");
+    expect(option.duration).toBe(duration);
+    expect(option.detail).toContain(PROTECTION_WORDS[protection as 1 | 2]);
+    expect(startTask(g.state, g.world, calendar(0), "findShelter")).toBe(true);
+    finishTask(g);
+    expect(siteFor(regionState(g.state, g.world, g.state.player.region), rock).cover).toBe(protection);
+    expect(g.state.skills.naturalShelter.mastery.findShelter).toBeGreaterThan(0);
+  });
+
+  it("keeps the search's promised result when its practice reaches level five during completion", () => {
+    const g = newGame(17);
+    const rock = cellWith(g, "rock");
+    placeAt(g.state, g.world, rock);
+    g.state.skills.naturalShelter = { xp: levelMinutes(5) - 1, mastery: {}, pool: 0 };
+    expect(startTask(g.state, g.world, calendar(0), "findShelter")).toBe(true);
+    finishTask(g);
+    expect(skillLevel(g.state, "naturalShelter")).toBe(5);
+    expect(siteFor(regionState(g.state, g.world, g.state.player.region), rock).cover).toBe(1);
+    expect(g.state.goals.done.roof).toBeUndefined();
+  });
+
   it("looks on open ground, spends the time and says that it found nothing", () => {
     const g = newGame(17);
     const meadow = cellWith(g, "meadow");
@@ -112,7 +140,7 @@ describe("finding shelter", () => {
     const cal = calendar(g.state.minute, g.state.startDoy);
     const option = check(g.state, g.world, cal, "findShelter");
     expect(option.ok, option.why).toBe(true);
-    expect(option.duration).toBe(26);
+    expect(option.duration).toBe(30);
     expect(startTask(g.state, g.world, cal, "findShelter")).toBe(true);
     finishTask(g);
     const site = siteFor(regionState(g.state, g.world, g.state.player.region), meadow);
@@ -121,7 +149,7 @@ describe("finding shelter", () => {
     expect(g.state.log.some((entry) => /nothing|no (?:shelter|cover)/i.test(entry.text))).toBe(true);
   });
 
-  it("finds the ceiling on rock and spruce at the temporary level floor", () => {
+  it("finds only a windbreak on rock and spruce as a novice", () => {
     for (const terrain of ["rock", "spruce"] as const) {
       const g = newGame(17);
       const cell = cellWith(g, terrain);
@@ -130,7 +158,7 @@ describe("finding shelter", () => {
       expect(startTask(g.state, g.world, cal, "findShelter")).toBe(true);
       finishTask(g);
       const site = siteFor(regionState(g.state, g.world, g.state.player.region), cell);
-      expect(site.cover, terrain).toBe(2);
+      expect(site.cover, terrain).toBe(1);
       expect(site.coverAge).toBe(0);
     }
   });
@@ -143,6 +171,7 @@ describe("finding shelter", () => {
 
   it("credits the roof deed only when the search first reaches weatherproof protection", () => {
     const fresh = newGame(17);
+    fresh.state.skills.naturalShelter = { xp: levelMinutes(5), mastery: {}, pool: 0 };
     const rock = cellWith(fresh, "rock");
     placeAt(fresh.state, fresh.world, rock);
     expect(startTask(fresh.state, fresh.world, calendar(0), "findShelter")).toBe(true);
@@ -150,6 +179,7 @@ describe("finding shelter", () => {
     expect(fresh.state.goals.done.roof).toBe(true);
 
     const known = newGame(17);
+    known.state.skills.naturalShelter = { xp: levelMinutes(5), mastery: {}, pool: 0 };
     const knownRock = cellWith(known, "rock");
     placeAt(known.state, known.world, knownRock);
     siteFor(regionState(known.state, known.world, known.state.player.region), knownRock).cover = 2;
@@ -274,22 +304,22 @@ describe("found cover keeping", () => {
     placeAt(g.state, g.world, rock);
     // The run starts at 08:00, so minute 1199 is 03:59 the next morning,
     // one minute before the camp's 04:00 daily roll.
-    g.state.minute = 1173;
+    g.state.minute = 1169;
     g.state.lastHour = Math.floor(g.state.minute / 60);
     g.state.player.torch = { lit: true, minutes: 60 };
     expect(startTask(g.state, g.world, calendar(g.state.minute, g.state.startDoy), "findShelter")).toBe(true);
-    advance(g.state, g.world, 26);
+    advance(g.state, g.world, 30);
     expect(g.state.minute).toBe(1199);
 
     const st = regionState(g.state, g.world, g.state.player.region);
     const site = siteFor(st, rock);
-    expect(site.cover).toBe(2);
+    expect(site.cover).toBe(1);
     expect(site.coverAge).toBe(0);
     site.structures.cabin = true;
     site.structures.firePit = true;
 
     advance(g.state, g.world, 7 * 1440 - 1, { nobody: true });
-    expect(site.cover).toBe(2);
+    expect(site.cover).toBe(1);
     expect(site.coverAge).toBe(7 * 1440 - 1);
     advance(g.state, g.world, 1, { nobody: true });
     expect(site.cover).toBe(0);

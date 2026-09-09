@@ -125,9 +125,6 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
  */
 export const NO_CAMP = "no camp here yet";
 
-/** The usable judgement this action starts from until practice can raise it. */
-const NATURAL_SHELTER_LEVEL_FLOOR = 5;
-
 /** Tasks whose pace depends on the body; the rest are walks and waits. Exported so a test can hold availableTasks to covering every one of them. */
 export const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "findDen", "fish", "cook",
@@ -955,8 +952,10 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return { ...o, duration: 0, detail: "no telling how long; it ends the moment the way opens" };
     }
     case "findShelter": {
-      const duration = Math.max(10, 31 - NATURAL_SHELTER_LEVEL_FLOOR);
-      const o = opt({ group: "move", label: "Find shelter", detail: "look over this ground for natural cover", duration });
+      const level = skillLevel(state, "naturalShelter");
+      const duration = Math.max(10, 31 - level);
+      const cover = findCover(world, at, level);
+      const o = opt({ group: "move", label: "Find shelter", detail: `look over this ground for natural cover; ${PROTECTION_WORDS[cover]} at Natural shelter ${level}`, duration });
       return passable(terrain) ? o : { ...o, ok: false, why: "not on water" };
     }
     case "improveCover": {
@@ -1332,6 +1331,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
       ?? state.wildlife.subjects.find((subject) => subject.species === arg && subject.region === state.player.region && subject.active)?.id
     : undefined;
   state.task = { id, arg, progress: fresh.duration * fraction, duration: fresh.duration, repeat: repeat && o.repeatable, ...(any ? { any: true } : {}), ...(wildlifeSubject !== undefined ? { wildlifeSubject } : {}) };
+  if (id === "findShelter") state.task.shelterLevel = skillLevel(state, "naturalShelter");
   if (id === "emergencyShelter") {
     const minutes = siteAt(regionState(state, world, state.player.region), cellOf(state, world))?.emergencyMinutes ?? 0;
     const cost = hasQuirk(state, "bigEater") ? BIG_EATER_PACE : 1;
@@ -1448,6 +1448,8 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
     t.progress = minutes * (t.duration / EMERGENCY_MINUTES[3]);
   }
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state, world) : 1;
+  // Older saves may hold a search started before levels were recorded.
+  if (t.id === "findShelter") t.shelterLevel ??= skillLevel(state, "naturalShelter");
   train(state, world, dt);
   // An "any" task is the intent's and the order's work under whatever species it drew.
   const wanted = t.any ? "any" : t.arg;
@@ -1533,7 +1535,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
       }
     }
   }
-  complete(state, world, cal, rng, id, arg, wildlifeSubject);
+  complete(state, world, cal, rng, id, arg, wildlifeSubject, t.shelterLevel);
   if (repeat && !state.dead) {
     // "Anything" draws afresh; state.task is already null, so beginTask sets nothing aside.
     const o = check(state, world, cal, id, wanted);
@@ -2092,12 +2094,12 @@ export function leftBehind(state: GameState, world: World): string {
  * below is untouched: a deed is what happened, not a special case inside
  * whatever happened.
  */
-function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string, wildlifeSubject?: number): void {
-  completeTask(state, world, cal, rng, id, arg, wildlifeSubject);
+function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string, wildlifeSubject?: number, shelterLevel?: number): void {
+  completeTask(state, world, cal, rng, id, arg, wildlifeSubject, shelterLevel);
   goalDeed(state, { kind: "task", id, arg });
 }
 
-function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string, wildlifeSubject?: number): void {
+function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string, wildlifeSubject?: number, shelterLevel?: number): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
   const invs = reach(state, world);
@@ -2560,7 +2562,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const cell = cellOf(state, world);
       const site = siteFor(st, cell);
       const before = protectionOf(site);
-      site.cover = findCover(world, cell, NATURAL_SHELTER_LEVEL_FLOOR);
+      site.cover = findCover(world, cell, shelterLevel ?? skillLevel(state, "naturalShelter"));
       site.coverAge = 0;
       const after = protectionOf(site);
       if (before < 2 && after >= 2) goalDeed(state, { kind: "sheltered", protection: after });

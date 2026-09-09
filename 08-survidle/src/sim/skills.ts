@@ -13,11 +13,12 @@ import { extrasClass, fatSeason, fishSpecies, huntedLand, type Species, SPECIES_
 import type { GameState, ItemId, LifeRecord, RecipeId, Rung, SkillId, SkillState, StructureId, Task, TaskId } from "./types";
 import { log } from "./log";
 
-export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building", "wayfinding"];
+export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building", "wayfinding", "naturalShelter", "shelterBuilding", "weatherSense"];
 
 export const SKILL_NAMES: Record<SkillId, string> = {
   woodcraft: "Woodcraft", foraging: "Foraging", hunting: "Hunting",
   fishing: "Fishing", crafting: "Crafting", building: "Building", wayfinding: "Wayfinding",
+  naturalShelter: "Natural shelter", shelterBuilding: "Shelter building", weatherSense: "Weather sense",
 };
 
 /** The actions each skill owns; the pool's capacity is 100 hours per key. */
@@ -29,6 +30,10 @@ export const MASTERY_KEYS: Record<SkillId, string[]> = {
   crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen", "hone"],
   building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish", "cook:oilyFish", "cook:rawFat", "cook:roots", "crack"],
   wayfinding: ["explore", "searchHome"],
+  naturalShelter: ["findShelter", "improveCover"],
+  shelterBuilding: ["emergencyShelter"],
+  // The forecast task lands next; reserve its practice pool without exposing a task yet.
+  weatherSense: ["readSky"],
 };
 
 export const SKILL_CAP = 50;
@@ -206,6 +211,8 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
     case "light": case "lightIndoors": case "lightTorch": case "cook": case "hang": case "crack": return "building";
     case "fill": case "iceHole": return "foraging";
     case "explore": case "searchHome": return "wayfinding";
+    case "findShelter": case "improveCover": return "naturalShelter";
+    case "emergencyShelter": return "shelterBuilding";
     default: return null;
   }
 }
@@ -221,6 +228,7 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
     case "chop": return `chop:${cell === undefined ? hereTerrain(state, world) : cellAt(world, cell).terrain}`;
     case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone": case "eggs": case "roots": case "tapSap": case "seaweed":
     case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang": case "explore": case "searchHome": case "findDen":
+    case "findShelter": case "improveCover": case "emergencyShelter":
       return id;
     // Grinding is foraging's too, the same practice as stripping the bark: the flour is the forager's.
     case "innerBark": case "grindBark": return "innerBark";
@@ -409,7 +417,8 @@ export function speedFactor(state: GameState, world: World, id: TaskId, arg?: st
   const skill = skillOf(id, arg);
   if (!skill) return 1;
   const key = masteryKey(state, world, id, arg);
-  let f = 1 + skillBonus(state, skill);
+  // Searching already spends its level in the explicit 31 - level duration curve.
+  let f = id === "findShelter" ? 1 : 1 + skillBonus(state, skill);
   if (key) f *= 1 + 0.0025 * (masteryOf(state, skill, key) - 1);
   const share = poolShare(state, skill);
   if (share >= 0.5) f *= 1.1;

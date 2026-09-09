@@ -152,6 +152,8 @@ export interface Task {
   /** Minutes of work the task needs at full speed. */
   duration: number;
   repeat: boolean;
+  /** Natural shelter level promised when this search began, before its practice. */
+  shelterLevel?: number;
   /** Persistent large-animal subject selected when a detailed hunt begins. */
   wildlifeSubject?: number;
   /** Started as "hunt anything" or "fish for anything": the arg is the species drawn, and a repeat draws again. */
@@ -663,7 +665,7 @@ export interface RunStats {
   killsKcal: number;
 }
 
-export type SkillId = "woodcraft" | "foraging" | "hunting" | "fishing" | "crafting" | "building" | "wayfinding";
+export type SkillId = "woodcraft" | "foraging" | "hunting" | "fishing" | "crafting" | "building" | "wayfinding" | "naturalShelter" | "shelterBuilding" | "weatherSense";
 
 /** Practice, in minutes. A level is a count of hours behind the tool. */
 export interface SkillState {
