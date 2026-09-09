@@ -33,9 +33,9 @@ condition is reached correctly. The firelight rings are placed by hand.
 - **night-fire** (`season-autumn night +fire`) - firelight over the ground, rings placed by hand
 
   ![night-fire](night-fire.png)
-- **rain** (`season-autumn rain`) - falling weather over the ground
+- **rain** (`season-autumn; rain`) - falling weather over the ground
 
   ![rain](rain.png)
-- **snowing** (`season-winter snow snowing`) - falling weather over the ground
+- **snowing** (`season-winter snow; snowing`) - falling weather over the ground
 
   ![snowing](snowing.png)

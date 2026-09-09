@@ -228,7 +228,7 @@ describe("what survives the night sheet", () => {
     // light, and its own cell already rises at the close rungs; banked coals
     // are the same light at a lower wattage.
     const lifted = rule(".grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire, .grid .c.mk-coals");
-    expect(lifted).toContain("z-index: 1");
+    expect(lifted).toContain("z-index: var(--map-signal)");
     // The blanket lift on every mark is what put a shore at full daylight
     // brightness at midnight.
     expect(rule(".grid .c.mk")).not.toContain("z-index");
