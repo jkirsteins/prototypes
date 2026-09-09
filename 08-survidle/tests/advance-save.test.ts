@@ -13,6 +13,8 @@ import { AWAY_HOURS_MAX } from "../src/units";
 import { isWorkOrder, type GameState } from "../src/sim/types";
 import { regionAt, speciesHere } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { Rng } from "../src/rng";
+import { activateWildlife } from "../src/sim/wildlife-agents";
 
 class MemStorage implements Storage {
   private m = new Map<string, string>();
@@ -64,6 +66,26 @@ describe("advance", () => {
 });
 
 describe("save", () => {
+  it("migrates old active wildlife without replaying an existing flight", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const raw = JSON.parse(serialize(state));
+    const active = raw.state.wildlife.subjects[0].active;
+    active.intent = "flee";
+    active.alarm = 60;
+    delete active.escapeRemainingM;
+    delete active.escapeStartedMinute;
+    delete active.lastDetectionMinute;
+    delete active.escapeEpisode;
+    const loaded = deserialize(JSON.stringify(raw))!.state;
+    expect(loaded.wildlife.subjects[0].active).toMatchObject({
+      escapeRemainingM: 420, escapeStartedMinute: state.minute,
+      lastDetectionMinute: state.minute, escapeEpisode: 0,
+    });
+    advance(loaded, world, 1, { wildlife: "detailed" });
+    expect(loaded.wildlife.subjects[0].active!.cell).not.toBe(active.cell);
+  });
+
   it("round-trips the whole state", () => {
     const { state, world } = newGame(9);
     siteCamp(state, world);

@@ -39,7 +39,7 @@ export interface Presence {
  * time: this is how the months between two survivors run, on the same
  * weather, camp and animal rules a lived-in world uses.
  */
-export function advance(state: GameState, world: World, dtMinutes: number, opts: { nobody?: boolean; wildlife?: WildlifeMode } = {}): void {
+export function advance(state: GameState, world: World, dtMinutes: number, opts: { nobody?: boolean; wildlife?: WildlifeMode; live?: boolean } = {}): void {
   const nobody = opts.nobody ?? false;
   const wildlife = nobody ? "aggregate" : (opts.wildlife ?? "aggregate");
   if (state.dead && !nobody) return;
@@ -48,12 +48,12 @@ export function advance(state: GameState, world: World, dtMinutes: number, opts:
   while (left > 1e-9 && (nobody || !state.dead)) {
     const dt = Math.min(MAX_STEP, left);
     left -= dt;
-    step(state, world, rng, dt, nobody, wildlife);
+    step(state, world, rng, dt, nobody, wildlife, opts.live ?? false);
   }
   state.rng = rng.s;
 }
 
-function step(state: GameState, world: World, rng: Rng, dt: number, nobody: boolean, wildlife: WildlifeMode): void {
+function step(state: GameState, world: World, rng: Rng, dt: number, nobody: boolean, wildlife: WildlifeMode, live: boolean): void {
   state.minute += dt;
   const cal = calendar(state.minute, state.startDoy);
 
@@ -82,7 +82,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   // it landed, the same place stepCamp used to read state.player itself.
   const who: Presence | null = nobody ? null : { region: state.player.region, atCamp: atCamp(state, world) };
 
-  stepWildlife(state, world, cal, rng, dt, wildlife);
+  stepWildlife(state, world, cal, rng, dt, wildlife, live);
 
   stepCamp(state, world, ambient, dt, who);
   stepSeeps(state, world, ambient, dt);

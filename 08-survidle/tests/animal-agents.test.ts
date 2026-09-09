@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { activateWildlife, dailyWildlife, emptyWildlife, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
+import { activateWildlife, dailyWildlife, emptyWildlife, evaluateWildlifeDisturbance, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
@@ -19,6 +19,310 @@ import { beginTask, check } from "../src/sim/tasks";
 import { placeAt } from "../src/sim/position";
 import { dailyAnimals } from "../src/sim/animals";
 import { siteCamp } from "./siting-helpers";
+import { setWildlifeEventSink } from "../src/sim/wildlife-events";
+import type { WildlifeStartleEvent } from "../src/sim/wildlife-encounter";
+import { metricAreaForCell, resolveSpatialEstimate } from "../src/sim/wildlife-space";
+import { CHUNK } from "../src/world/cells";
+import { TERRAIN_INDEX } from "../src/world/terrain";
+import type { World } from "../src/world/gen";
+import type { Terrain } from "../src/sim/types";
+
+afterEach(() => setWildlifeEventSink(null));
+
+const seesStartle = { detectionRoll: 0, auditoryDetectionRoll: 1, sightRoll: 0, hearingRoll: 1 };
+const noDetection = { detectionRoll: 1, auditoryDetectionRoll: 1, sightRoll: 1, hearingRoll: 1 };
+
+function disturbanceScene() {
+  const { state, world } = newGame(79);
+  const st = regionState(state, world, state.player.region);
+  for (const species of ["deer", "reindeer", "elk", "wolf", "wolverine", "bear"] as const) st.pop[species] = 0;
+  st.pop.deer = 4;
+  activateWildlife(state, world, new Rng(1));
+  const deer = state.wildlife.subjects[0];
+  const startCell = regionAt(world, state.player.region).cells.find((cell) => passable(cellAt(world, cell).terrain)
+    && neighbours(world, cell).length === 4
+    && neighbours(world, cell).every((n) => cellAt(world, n).region === state.player.region && passable(cellAt(world, n).terrain)))!;
+  deer.active!.cell = startCell;
+  const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, startCell)!)!;
+  // The fixture puts the survivor one metre from this herd's stable coarse estimate.
+  state.player.x = (point.xM + 1) / 300;
+  state.player.y = point.yM / 300;
+  state.minute = 1;
+  state.wildlife.lastSpatialTick = 0;
+  state.weather.precip = "none";
+  state.weather.clear = true;
+  const cal = calendar(state.minute, state.startDoy);
+  return { state, world, deer, startCell, cal };
+}
+
+function setGround(world: World, cell: number, terrain: Terrain, region?: number): void {
+  const { x, y } = cellAt(world, cell);
+  const chunk = world.chunks.get(Math.floor(y / CHUNK) * 4096 + Math.floor(x / CHUNK))!;
+  const i = (y % CHUNK) * CHUNK + x % CHUNK;
+  chunk.terrain[i] = TERRAIN_INDEX[terrain];
+  if (region !== undefined) chunk.region[i] = region;
+}
+
+describe("immediate wildlife disturbance", () => {
+  it("starts and spends escape in the update that startles a herd", () => {
+    const { state, world, deer, startCell, cal } = disturbanceScene();
+    const events: WildlifeStartleEvent[] = [];
+    setWildlifeEventSink((event) => events.push(event));
+    evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
+    expect(deer.active).toMatchObject({ intent: "flee", escapeEpisode: 1, escapeStartedMinute: 1, lastDetectionMinute: 1 });
+    expect(neighbours(world, startCell)).toContain(deer.active!.cell);
+    expect(deer.active!.escapeRemainingM).toBeGreaterThanOrEqual(0);
+    expect(deer.active!.escapeRemainingM).toBeLessThan(680);
+    expect(events).toHaveLength(1);
+    expect(state.log.filter((entry) => entry.text === events[0].logText)).toHaveLength(1);
+  });
+
+  it("allows an undetected herd to remain in the survivor's coarse area", () => {
+    const { state, world, deer, startCell, cal } = disturbanceScene();
+    const before = state.log.length;
+    evaluateWildlifeDisturbance(state, world, cal, true, noDetection);
+    expect(deer.active!.cell).toBe(startCell);
+    expect(deer.active!.cell).toBe(cellOf(state, world));
+    expect(deer.active!.alarm).toBe(0);
+    expect(deer.active!.intent).toBe("wander");
+    expect(state.log).toHaveLength(before);
+  });
+
+  it("refreshes detected alarm without moving or presenting the same episode again", () => {
+    const { state, world, deer, cal } = disturbanceScene();
+    const events: WildlifeStartleEvent[] = [];
+    setWildlifeEventSink((event) => events.push(event));
+    evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
+    const escaped = deer.active!.cell;
+    const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, escaped)!)!;
+    state.player.x = point.xM / 300;
+    state.player.y = point.yM / 300;
+    state.minute = 2;
+    evaluateWildlifeDisturbance(state, world, calendar(2), true, seesStartle);
+    expect(deer.active!.lastDetectionMinute).toBe(2);
+    expect(deer.active!.cell).toBe(escaped);
+    expect(deer.active!.escapeEpisode).toBe(1);
+    expect(events).toHaveLength(1);
+    expect(state.log.filter((entry) => entry.text === events[0].logText)).toHaveLength(1);
+  });
+
+  it("changes only behavior when a startle is unperceived", () => {
+    const { state, world, deer, cal } = disturbanceScene();
+    const events: WildlifeStartleEvent[] = [];
+    setWildlifeEventSink((event) => events.push(event));
+    const before = state.log.length;
+    evaluateWildlifeDisturbance(state, world, cal, true, { ...seesStartle, sightRoll: 1 });
+    expect(deer.active!.intent).toBe("flee");
+    expect(events).toHaveLength(0);
+    expect(state.log).toHaveLength(before);
+  });
+
+  it("does not map, recognize or expose a heard-only departure", () => {
+    const { state, world, deer, startCell, cal } = disturbanceScene();
+    deer.name = "River Herd";
+    state.wildlife.recognized[deer.id] = true;
+    delete state.mapped[startCell];
+    const before = JSON.stringify({ mapped: state.mapped, discovered: state.discovered, wildlife: {
+      visible: state.wildlife.visible, familiarity: state.wildlife.familiarity, lastKnownDay: deer.lastKnownDay,
+    } });
+    const events: WildlifeStartleEvent[] = [];
+    setWildlifeEventSink((event) => events.push(event));
+    evaluateWildlifeDisturbance(state, world, cal, true, { ...seesStartle, sightRoll: 1, hearingRoll: 0 });
+    expect(events).toHaveLength(1);
+    expect(events[0].perception.kind).toBe("heard");
+    expect(events[0].logText).not.toContain("River");
+    expect(JSON.stringify({ mapped: state.mapped, discovered: state.discovered, wildlife: {
+      visible: state.wildlife.visible, familiarity: state.wildlife.familiarity, lastKnownDay: deer.lastKnownDay,
+    } })).toBe(before);
+  });
+
+  it("logs perceived offline events without sending a live presentation", () => {
+    const { state, world, deer, cal } = disturbanceScene();
+    const events: WildlifeStartleEvent[] = [];
+    setWildlifeEventSink((event) => events.push(event));
+    const before = state.log.length;
+    evaluateWildlifeDisturbance(state, world, cal, false, seesStartle);
+    expect(deer.active!.intent).toBe("flee");
+    expect(state.log).toHaveLength(before + 1);
+    expect(events).toHaveLength(0);
+  });
+
+  it("reacts to this minute's movement before the next ten-minute tick", () => {
+    const { state, world, deer, startCell } = disturbanceScene();
+    setGround(world, startCell, "meadow");
+    const target = neighbours(world, startCell)[0];
+    state.task = { id: "walk", arg: `cell:${target}`, progress: 0, duration: 20, repeat: false };
+    state.route = { target, path: [target], walked: [startCell], label: "nearby", ice: "none", lastLand: startCell };
+    const before = { x: state.player.x, y: state.player.y };
+    advance(state, world, 1, { wildlife: "detailed", live: true });
+    expect({ x: state.player.x, y: state.player.y }).not.toEqual(before);
+    expect(state.wildlife.lastSpatialTick).toBe(0);
+    expect(deer.active!.intent).toBe("flee");
+    expect(neighbours(world, startCell)).toContain(deer.active!.cell);
+    expect(deer.active!.escapeStartedMinute).toBe(2);
+  });
+
+  it("reacts to noisy work during a minute with no spatial tick", () => {
+    const { state, world, deer } = disturbanceScene();
+    state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
+    advance(state, world, 1, { wildlife: "detailed", live: true });
+    expect(state.task?.progress).toBeGreaterThan(0);
+    expect(state.wildlife.lastSpatialTick).toBe(0);
+    expect(deer.active!.intent).toBe("flee");
+  });
+
+  it("continues spending metric escape on detailed ticks without replay", () => {
+    const { state, world, deer, cal } = disturbanceScene();
+    const events: WildlifeStartleEvent[] = [];
+    setWildlifeEventSink((event) => events.push(event));
+    evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
+    const from = deer.active!.cell;
+    // An unfinished 700 m escape must continue even when the normal rhythm says rest.
+    deer.active!.escapeRemainingM = 700;
+    deer.active!.rest = 100;
+    state.minute = 10;
+    stepWildlife(state, world, calendar(10), new Rng(2), 1, "detailed", true);
+    expect(neighbours(world, from)).toContain(deer.active!.cell);
+    expect(deer.active!.escapeRemainingM).toBeLessThan(700);
+    const fromPoint = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, from)!)!;
+    const toPoint = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
+    expect(deer.active!.escapeRemainingM).toBeCloseTo(700 - Math.hypot(toPoint.xM - fromPoint.xM, toPoint.yM - fromPoint.yM), 6);
+    expect(deer.active!.intent).toBe("flee");
+    expect(events).toHaveLength(1);
+  });
+
+  it.each(["water", "thin ice", "region edge"])("stays alarmed when all exits are blocked by %s", (barrier) => {
+    const { state, world, deer, startCell, cal } = disturbanceScene();
+    for (const cell of neighbours(world, startCell)) {
+      setGround(world, cell, barrier === "region edge" ? "meadow" : "water", barrier === "region edge" ? state.player.region + 1 : undefined);
+    }
+    state.weather.iceCm = barrier === "thin ice" ? 3 : 0;
+    evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
+    state.minute = 10;
+    stepWildlife(state, world, calendar(10), new Rng(2), 1, "detailed");
+    expect(deer.active!.cell).toBe(startCell);
+    expect(deer.active!.alarm).toBeGreaterThanOrEqual(50);
+    expect(deer.active!.intent).toBe("flee");
+    expect(deer.active!.escapeRemainingM).toBeGreaterThan(0);
+    expect(state.wildlife.subjects).toContain(deer);
+  });
+
+  it("uses a passable adjacent escape when the route directly away is blocked", () => {
+    const { state, world, deer, startCell, cal } = disturbanceScene();
+    const exits = neighbours(world, startCell);
+    for (const cell of exits.slice(1)) setGround(world, cell, "water");
+    evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
+    expect(deer.active!.cell).toBe(exits[0]);
+  });
+
+  it("requires both elapsed time and metric separation before settling", () => {
+    const { state, world, deer, cal } = disturbanceScene();
+    evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
+    const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
+    state.player.x = (point.xM + 500) / 300;
+    state.player.y = point.yM / 300;
+    state.minute = 30;
+    evaluateWildlifeDisturbance(state, world, calendar(30), true, noDetection);
+    expect(deer.active!.intent).toBe("flee");
+    state.player.x = point.xM / 300;
+    state.minute = 31;
+    evaluateWildlifeDisturbance(state, world, calendar(31), true, noDetection);
+    expect(deer.active!.intent).toBe("flee");
+    state.player.x = (point.xM + 500) / 300;
+    evaluateWildlifeDisturbance(state, world, calendar(31), true, noDetection);
+    expect(deer.active).toMatchObject({ alarm: 0, intent: "wander", escapeStartedMinute: null, escapeRemainingM: 0 });
+  });
+
+  it("resumes a saved escape without replaying its cue or log", () => {
+    const { state, world, deer, cal } = disturbanceScene();
+    const events: WildlifeStartleEvent[] = [];
+    setWildlifeEventSink((event) => events.push(event));
+    evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
+    const loaded = deserialize(serialize(state))!.state;
+    expect(loaded.wildlife.subjects[0].active).toEqual(deer.active);
+    const logBefore = loaded.log.length;
+    loaded.minute = 10;
+    stepWildlife(loaded, world, calendar(10), new Rng(2), 1, "detailed", true);
+    expect(events).toHaveLength(1);
+    expect(loaded.log).toHaveLength(logBefore);
+    expect(loaded.wildlife.subjects[0].active!.escapeEpisode).toBe(1);
+  });
+
+  it("collapses escapes during offline advance and never queues a presentation", () => {
+    const { state, world, deer, cal } = disturbanceScene();
+    setWildlifeEventSink(null);
+    evaluateWildlifeDisturbance(state, world, cal, false, seesStartle);
+    const events: WildlifeStartleEvent[] = [];
+    setWildlifeEventSink((event) => events.push(event));
+    advance(state, world, 1);
+    expect(deer.active).toBeNull();
+    expect(state.wildlife.activeRegion).toBeNull();
+    expect(events).toHaveLength(0);
+  });
+
+  it("pauses an alerted herd immediately without starting an escape", () => {
+    const { state, world, deer, startCell, cal } = disturbanceScene();
+    deer.active!.alarm = 30;
+    evaluateWildlifeDisturbance(state, world, cal, true, noDetection);
+    expect(deer.active!.intent).toBe("rest");
+    expect(deer.active!.cell).toBe(startCell);
+    expect(deer.active!.escapeStartedMinute).toBeNull();
+  });
+
+  it("does not impose flight on distant occupants of the same coarse cell during a tick", () => {
+    const { state, world, deer, startCell } = disturbanceScene();
+    const x = startCell % world.w;
+    const y = Math.floor(startCell / world.w);
+    const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, startCell)!)!;
+    state.player.x = x + (point.xM / 300 - x < 0.5 ? 0.999 : 0.001);
+    state.player.y = y + (point.yM / 300 - y < 0.5 ? 0.999 : 0.001);
+    deer.active!.rest = 100;
+    state.minute = 10;
+    stepWildlife(state, world, calendar(10), new Rng(2), 1, "detailed");
+    expect(deer.active!.alarm).toBe(0);
+    expect(deer.active!.cell).toBe(startCell);
+    expect(deer.active!.cell).toBe(cellOf(state, world));
+  });
+
+  it("uses one seeded detection threshold across fractional updates in the same minute", () => {
+    const { state, world, deer, cal } = disturbanceScene();
+    evaluateWildlifeDisturbance(state, world, cal, false);
+    expect(deer.active!.intent).toBe("wander");
+    for (let frame = 1; frame < 60; frame++) {
+      state.minute = 1 + frame / 60;
+      evaluateWildlifeDisturbance(state, world, calendar(state.minute), false);
+    }
+    expect(deer.active!.intent).toBe("wander");
+  });
+
+  it("emits another unique event only after the first episode settles", () => {
+    const { state, world, deer, cal } = disturbanceScene();
+    const events: WildlifeStartleEvent[] = [];
+    setWildlifeEventSink((event) => events.push(event));
+    evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
+    const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
+    state.minute = 31;
+    state.player.x = (point.xM + 500) / 300;
+    state.player.y = point.yM / 300;
+    evaluateWildlifeDisturbance(state, world, calendar(31), true, noDetection);
+    state.minute = 32;
+    state.player.x = point.xM / 300;
+    evaluateWildlifeDisturbance(state, world, calendar(32), true, seesStartle);
+    expect(deer.active!.escapeEpisode).toBe(2);
+    expect(events).toHaveLength(2);
+    expect(events[1].id).not.toBe(events[0].id);
+  });
+
+  it("sends no presentation from detailed advance unless live was explicitly requested", () => {
+    const { state, world, deer } = disturbanceScene();
+    state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
+    const events: WildlifeStartleEvent[] = [];
+    setWildlifeEventSink((event) => events.push(event));
+    advance(state, world, 1, { wildlife: "detailed" });
+    expect(deer.active!.intent).toBe("flee");
+    expect(events).toHaveLength(0);
+  });
+});
 
 function campCell(st: { campCell: number | null }): number {
   if (st.campCell === null) throw new Error("test needs a camp");

@@ -5,17 +5,21 @@ import { calendar, type Calendar } from "./calendar";
 import { popOf } from "./animals";
 import { regionDensity } from "./animals";
 import { regionState, siteAt } from "./regionstate";
-import { skillLevel } from "./skills";
+import { oddsFactor, skillLevel } from "./skills";
 import type { AgentSpecies, GameState, WildlifeMode, WildlifeState, WildlifeSubject } from "./types";
 import { cellOf } from "./position";
 import { visibleCells } from "./sight";
 import { record } from "./record";
-import { SPECIES_DEFS } from "./species";
-import { pile, qty, removeItem } from "./inventory";
+import { DISTURBANCE_PROFILES, SPECIES_DEFS } from "./species";
+import { carried, pile, qty, removeItem } from "./inventory";
 import { log } from "./log";
-import { die, sheltered } from "./player";
+import { die, sheltered, walkSpeed } from "./player";
 import { hasQuirk } from "./person";
 import { cue } from "./cues";
+import { illuminance } from "./light";
+import { encounterGeometry, metricAreaForCell, metricPointForPlayer, resolveSpatialEstimate, type MetricPoint } from "./wildlife-space";
+import { escapeDistanceM, evaluateUngulateEncounter, neutralMovementProfile, startleLogText, type UngulateEncounterInput, type WildlifeStartleEvent } from "./wildlife-encounter";
+import { emitWildlifeEvent } from "./wildlife-events";
 
 export const AGENT_SPECIES: AgentSpecies[] = ["deer", "reindeer", "elk", "wolf", "wolverine", "bear"];
 export const MAX_ACTIVE_SUBJECTS = 12;
@@ -140,7 +144,121 @@ export function activateWildlife(state: GameState, world: World, rng: Rng): void
     if (subject.active) continue;
     const cells = suitableCells(world, region, subject.species);
     if (!cells.length) continue;
-    subject.active = { cell: cells[rng.int(cells.length)], hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [] };
+    subject.active = {
+      cell: cells[rng.int(cells.length)], hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [],
+      escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
+    };
+  }
+}
+
+const COVER = { water: 0, fell: 0.05, rock: 0.1, bog: 0.2, spruce: 0.85, pine: 0.5, birch: 0.4, meadow: 0.1 };
+const NOISY_WORK = new Set(["chop", "split", "splitWedges", "build", "mend", "iceHole", "crack", "stone"]);
+type EncounterRolls = Pick<UngulateEncounterInput, "detectionRoll" | "auditoryDetectionRoll" | "sightRoll" | "hearingRoll">;
+
+function subjectPoint(state: GameState, world: World, subject: WildlifeSubject, cell: number): MetricPoint | null {
+  const area = metricAreaForCell(world, cell);
+  return area && resolveSpatialEstimate(state.seed, subject.id, area);
+}
+
+/** A coarse movement pass spends real distance and never crosses an impassable edge. */
+function spendEscape(state: GameState, world: World, subject: WildlifeSubject): void {
+  const active = subject.active;
+  if (!active || active.escapeRemainingM <= 0) return;
+  const actor = metricPointForPlayer(state, world);
+  const from = subjectPoint(state, world, subject, active.cell);
+  if (!actor || !from) return;
+  const candidates = neighbours4(world, active.cell)
+    .filter((cell) => cellAt(world, cell).region === subject.region && passable(cellAt(world, cell).terrain))
+    .map((cell) => ({ cell, point: subjectPoint(state, world, subject, cell) }))
+    .filter((candidate): candidate is { cell: number; point: MetricPoint } => candidate.point !== null)
+    .sort((a, b) => Math.hypot(b.point.xM - actor.xM, b.point.yM - actor.yM) - Math.hypot(a.point.xM - actor.xM, a.point.yM - actor.yM));
+  const next = candidates[0];
+  if (!next) return;
+  active.cell = next.cell;
+  active.escapeRemainingM = Math.max(0, active.escapeRemainingM - Math.hypot(next.point.xM - from.xM, next.point.yM - from.yM));
+}
+
+/** Evaluated after player movement/work and again after a detailed animal tick. */
+export function evaluateWildlifeDisturbance(state: GameState, world: World, cal: Calendar, live: boolean, rolls: EncounterRolls = {}): void {
+  if (state.wildlife.activeRegion !== state.player.region) return;
+  const actor = metricPointForPlayer(state, world);
+  if (!actor) return;
+  const playerTerrain = cellAt(world, cellOf(state, world)).terrain;
+  const movement = neutralMovementProfile(state.route ? walkSpeed(state, cal, state.weather, playerTerrain, undefined, state.route.ice) : 0, carried(state.player));
+  movement.deliberateApproach = state.task?.id === "hunt";
+  if (state.task && NOISY_WORK.has(state.task.id)) movement.noiseFactor = 3;
+  if (state.task?.id === "sleep" || state.task?.id === "rest") {
+    movement.noiseFactor = 0.1;
+    movement.visibilityFactor = 0.3;
+  }
+  movement.footingFactor = playerTerrain === "bog" ? 1.3 : playerTerrain === "rock" ? 1.15 : 1;
+  for (const subject of state.wildlife.subjects) {
+    const active = subject.active;
+    const profile = DISTURBANCE_PROFILES[subject.species];
+    if (!active || subject.region !== state.player.region || profile.alarmGain === 0) continue;
+    const area = metricAreaForCell(world, active.cell);
+    if (!area) continue;
+    // Broad-phase bounds come from the metric adapter, never a fixed cell radius.
+    const range = Math.max(profile.visualRangeM, profile.auditoryRangeM);
+    if (active.alarm === 0 && active.escapeStartedMinute === null && area.kind === "area") {
+      const dx = Math.max(area.min.xM - actor.xM, 0, actor.xM - area.max.xM);
+      const dy = Math.max(area.min.yM - actor.yM, 0, actor.yM - area.max.yM);
+      if (Math.hypot(dx, dy) > range) continue;
+    }
+    const point = resolveSpatialEstimate(state.seed, subject.id, area);
+    if (!point) continue;
+    const uncertaintyM = area.kind === "area" ? Math.hypot(area.max.xM - area.min.xM, area.max.yM - area.min.yM) / 2 : 0;
+    const geometry = encounterGeometry(actor, point, uncertaintyM);
+    if (!geometry) continue;
+    const terrain = cellAt(world, active.cell).terrain;
+    const eventId = `wildlife:${state.seed}:${state.year}:${subject.id}:${state.minute}:${active.escapeEpisode + 1}`;
+    // Live advance receives fractional frame time. Hold the random threshold
+    // for one simulation minute while movement and activity change its odds.
+    const evaluationId = `wildlife:${state.seed}:${state.year}:${subject.id}:${Math.floor(state.minute)}:${active.escapeEpisode + 1}`;
+    const result = evaluateUngulateEncounter({
+      seed: state.seed, eventId: evaluationId, species: subject.species, geometry, movement, terrain,
+      lux: illuminance(state, world, cal, active.cell), precip: state.weather.precip,
+      cover: Math.max(COVER[playerTerrain], COVER[terrain]), huntingFactor: oddsFactor(state, subject.species),
+      alarm: active.alarm, minutesSinceDetection: active.lastDetectionMinute === null ? 0 : state.minute - active.lastDetectionMinute,
+      escaping: active.escapeStartedMinute !== null,
+      recognized: Boolean(state.wildlife.recognized[subject.id]), speciesKnown: skillLevel(state, "hunting") >= 4,
+      competingNoise: state.task && NOISY_WORK.has(state.task.id) ? 0.5 : 0,
+      ...rolls,
+    });
+    active.alarm = result.alarm;
+    if (result.detected) active.lastDetectionMinute = state.minute;
+    if (result.settled) {
+      active.escapeRemainingM = 0;
+      active.escapeStartedMinute = null;
+      if (active.intent === "flee" || active.intent === "rest") active.intent = "wander";
+    } else if (result.alert && !result.fleeing) {
+      active.intent = "rest";
+      active.target = null;
+      active.route = [];
+    }
+    if (!result.startsEscape) continue;
+    active.escapeEpisode++;
+    active.escapeStartedMinute = state.minute;
+    active.escapeRemainingM = escapeDistanceM(state.seed, eventId, profile);
+    active.intent = "flee";
+    active.target = null;
+    active.route = [];
+    const group = wildlifeMembers(subject) > 1 ? "group" : "single";
+    const logText = startleLogText({
+      perception: result.perception, species: subject.species, subjectName: subject.name ?? undefined,
+      group, terrain, bearingRad: geometry.bearingRad, distanceM: geometry.distanceM,
+    });
+    if (result.perception.kind !== "none" && logText !== null) {
+      const event: WildlifeStartleEvent = {
+        id: eventId, subjectId: subject.id, source: geometry.subject,
+        bearingRad: geometry.bearingRad, distanceM: geometry.distanceM,
+        uncertaintyM: result.perception.kind === "heard" ? result.perception.uncertaintyM : geometry.uncertaintyM,
+        perception: result.perception, terrain, body: subject.species === "deer" ? "light" : "heavy", group, logText,
+      };
+      log(state, event.logText);
+      if (live) emitWildlifeEvent(event);
+    }
+    spendEscape(state, world, subject);
   }
 }
 
@@ -225,9 +343,20 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
   if (stealCampFood(state, subject)) return;
   const st = state.regions[subject.region];
   const playerCell = cellOf(state, world);
-  const distanceFromPlayer = Math.abs((active.cell % world.w) - (playerCell % world.w)) + Math.abs(Math.floor(active.cell / world.w) - Math.floor(playerCell / world.w));
-  if (subject.form === "herd" && distanceFromPlayer <= 2) active.alarm = Math.max(50, active.alarm);
-  else if (subject.form === "herd") active.alarm = Math.max(0, active.alarm - 10);
+  if (subject.form === "herd") {
+    if (active.escapeStartedMinute !== null) {
+      active.intent = "flee";
+      // The transition already spent its first step in this same update.
+      if (active.escapeStartedMinute !== state.minute) spendEscape(state, world, subject);
+      return;
+    }
+    if (active.alarm >= DISTURBANCE_PROFILES[subject.species].alertAlarm) {
+      active.intent = "rest";
+      active.target = null;
+      active.route = [];
+      return;
+    }
+  }
   if (active.alarm >= 50) {
     active.intent = "flee";
     active.target = null;
@@ -341,6 +470,12 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
       if (prey.active) {
         prey.active.intent = "flee";
         prey.active.alarm = 100;
+        // A wolf's pursuit already caused this flight. Do not reinterpret it
+        // as a newly perceived reaction to the survivor on the next evaluation.
+        prey.active.escapeStartedMinute ??= state.minute;
+        prey.active.lastDetectionMinute = state.minute;
+        prey.active.escapeRemainingM = Math.max(prey.active.escapeRemainingM,
+          escapeDistanceM(state.seed, `predation:${prey.id}:${state.minute}`, DISTURBANCE_PROFILES[prey.species]));
       }
       if (wildlifeMembers(prey) === 0) removeSubject(state, prey);
     }
@@ -363,7 +498,7 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
   }
 }
 
-export function stepWildlife(state: GameState, world: World, _cal: Calendar, rng: Rng, _dt: number, mode: WildlifeMode): void {
+export function stepWildlife(state: GameState, world: World, cal: Calendar, rng: Rng, _dt: number, mode: WildlifeMode, live = false): void {
   if (mode !== "detailed") {
     if (state.wildlife.activeRegion !== null) {
       for (const subject of state.wildlife.subjects) subject.active = null;
@@ -373,13 +508,15 @@ export function stepWildlife(state: GameState, world: World, _cal: Calendar, rng
     return;
   }
   activateWildlife(state, world, rng);
+  evaluateWildlifeDisturbance(state, world, cal, live);
   const tick = Math.floor(state.minute / WILDLIFE_TICK_MINUTES);
   if (tick <= state.wildlife.lastSpatialTick) return;
   state.wildlife.lastSpatialTick = tick;
-  for (const subject of [...state.wildlife.subjects]) if (subject.region === state.player.region) moveOne(state, world, _cal, subject, rng);
-  const visible = visibleWildlife(state, world, _cal).map((s) => s.id);
+  for (const subject of [...state.wildlife.subjects]) if (subject.region === state.player.region) moveOne(state, world, cal, subject, rng);
+  evaluateWildlifeDisturbance(state, world, cal, live);
+  const visible = visibleWildlife(state, world, cal).map((s) => s.id);
   const previous = new Set(state.wildlife.visible);
-  noteWildlifeSightings(state, visible.filter((id) => !previous.has(id)), _cal.day);
+  noteWildlifeSightings(state, visible.filter((id) => !previous.has(id)), cal.day);
   state.wildlife.visible = visible;
 }
 

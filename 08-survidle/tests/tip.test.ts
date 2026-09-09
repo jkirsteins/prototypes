@@ -80,7 +80,10 @@ describe("what the tooltip says", () => {
       condition: 70, reproductive: "none", dependentUntilYear: 0,
       name: null, nameKind: "field", colour: 0, lastKnownDay: -1,
       denCell: null,
-      active: { cell: here, hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [] },
+      active: {
+        cell: here, hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [],
+        escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
+      },
     });
 
     expect(tipHtml(state, world, cal, here)).toContain("deer, 7, wander");

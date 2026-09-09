@@ -32,6 +32,12 @@ export interface WildlifeActive {
   intent: WildlifeIntent;
   target: number | null;
   route: number[];
+  /** Metres left in the current escape, spent through passable spatial steps. */
+  escapeRemainingM: number;
+  escapeStartedMinute: number | null;
+  lastDetectionMinute: number | null;
+  /** Counts transitions into escape, rather than individual detection rolls. */
+  escapeEpisode: number;
 }
 export interface WildlifeSubject {
   id: number;
