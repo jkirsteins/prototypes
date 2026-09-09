@@ -564,6 +564,38 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   cursor: pointer;
   color: var(--dim);
 }
+
+/* At the two closest rungs a simulation cell becomes a field of cosmetic
+   details. The parent remains the one hit target, route step and accessibility
+   cell. Its border is gone so neighbouring fields join without a grid seam;
+   only genuine region boundaries restore one side below. */
+.grid.detailed .c { position: relative; overflow: hidden; border: 0; }
+.grid.detailed .detail-ground {
+  position: absolute; inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--detail), 1fr);
+  grid-template-rows: repeat(var(--detail), 1fr);
+  pointer-events: none;
+}
+.grid.detailed .micro-ground {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 0; min-height: 0;
+  font: inherit; font-style: normal;
+  line-height: 1;
+  opacity: 0.82;
+}
+.grid.detailed .micro-mark {
+  position: absolute;
+  left: calc(var(--sx) * 100% / var(--detail));
+  top: calc(var(--sy) * 100% / var(--detail));
+  width: calc(100% / var(--detail)); height: calc(100% / var(--detail));
+  z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+  transition: left 0.18s linear, top 0.18s linear;
+  box-shadow: 0 0 0 1px rgba(5, 7, 12, 0.42);
+  pointer-events: none;
+}
 .grid .c.t-water { color: #3a6fd8; background: #0a1633; }
 .grid .c.ice-thin { color: #6d8a9c; }
 .grid .c.ice-safe { color: #cfe6f0; }
@@ -633,17 +665,25 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.br { border-right-color: var(--border); }
 .grid .c.bt { border-top-color: var(--border); }
 .grid .c.bb { border-bottom-color: var(--border); }
+/* Border style is restored only on a real region edge. The colour continues
+   to come from the existing known, current and fog boundary rules. */
+.grid.detailed .c.bl { border-left-style: solid; border-left-width: 1px; }
+.grid.detailed .c.br { border-right-style: solid; border-right-width: 1px; }
+.grid.detailed .c.bt { border-top-style: solid; border-top-width: 1px; }
+.grid.detailed .c.bb { border-bottom-style: solid; border-bottom-width: 1px; }
 /* The region you stand in and the region you picked are marked by a wash over
    their whole area, and never by a frame drawn on each of their cells: a frame
    per cell says at cell scale what the wash and the accent-coloured region
    border below already say at region scale, and 69 of them read as graph paper
    laid over the ground rather than as a place. */
 .grid .c.cur { box-shadow: inset 0 0 0 20px rgba(255, 255, 255, 0.07); }
+.grid.detailed .c.cur { box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.07); }
 .grid .c.cur.bl { border-left-color: var(--accent); }
 .grid .c.cur.br { border-right-color: var(--accent); }
 .grid .c.cur.bt { border-top-color: var(--accent); }
 .grid .c.cur.bb { border-bottom-color: var(--accent); }
 .grid .c.sel { box-shadow: inset 0 0 0 20px rgba(230, 194, 41, 0.18); }
+.grid.detailed .c.sel { box-shadow: inset 0 0 0 100px rgba(230, 194, 41, 0.18); }
 /*
  * What stays legible once the night sheet is down: where you are, where camp
  * is, and the line of your walk. Those are the three things you would know in
@@ -680,6 +720,24 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.mk-animal.wildlife-4 { color: #111; background: #d77b68; }
 .grid .c.mk-animal.wildlife-5 { color: #111; background: #87a8dc; }
 
+/* Close-map marks occupy one visual subcell instead of repainting all 300 m
+   of their parent. They repeat the established mark palette exactly. */
+.grid .micro-mark.mk-player { color: #fff; background: #b8860b; }
+.grid .micro-mark.mk-fire { color: #fff; background: #b8431a; }
+.grid .micro-mark.mk-coals { color: #fff; background: #7a3d1a; }
+.grid .micro-mark.mk-shelter { color: #fff; background: #4a5a78; }
+.grid .micro-mark.mk-camp { color: #0c0f14; background: #6fcf6f; }
+.grid .micro-mark.mk-trap { color: #fff; background: #4a5a78; }
+.grid .micro-mark.mk-seep { color: #0c0f14; background: #6fa8dc; }
+.grid .micro-mark.mk-den { color: #d6aa72; background: #1a1c20; }
+.grid .micro-mark.mk-animal { color: #111; background: #b7ad87; }
+.grid .micro-mark.mk-animal.wildlife-0 { background: #e5a84b; }
+.grid .micro-mark.mk-animal.wildlife-1 { background: #76c7b7; }
+.grid .micro-mark.mk-animal.wildlife-2 { background: #cb8fc4; }
+.grid .micro-mark.mk-animal.wildlife-3 { background: #91bd62; }
+.grid .micro-mark.mk-animal.wildlife-4 { background: #d77b68; }
+.grid .micro-mark.mk-animal.wildlife-5 { background: #87a8dc; }
+
 /* The legend has no cell background to draw a marker against, so its letters take the
    background colour each mark uses on the map instead. */
 #map .legend b.mk-player { color: #b8860b; }
@@ -709,7 +767,15 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   --m0: #b8860b; --m1: #d8a327;
   animation: mood-toil 1.2s ease-in-out infinite alternate;
 }
+.grid .micro-mark.mk-player.mood-walk {
+  --m0: #b8860b; --m1: #d8a327;
+  animation: mood-toil 1.2s ease-in-out infinite alternate;
+}
 .grid .c.mk-player.mood-work {
+  --m0: #b8860b; --m1: #d8a327;
+  animation: mood-toil 2.4s ease-in-out infinite alternate;
+}
+.grid .micro-mark.mk-player.mood-work {
   --m0: #b8860b; --m1: #d8a327;
   animation: mood-toil 2.4s ease-in-out infinite alternate;
 }
@@ -781,10 +847,12 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 /* Somebody who has asked their system for less motion is asking this screen too. */
 @media (prefers-reduced-motion: reduce) {
   .grid .c.mk-player.mood-walk, .grid .c.mk-player.mood-work,
+  .grid .micro-mark.mk-player.mood-walk, .grid .micro-mark.mk-player.mood-work,
   .stat-face.mood-walk, .stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep,
   .portrait.is-focused, .portrait.is-cold, .portrait.is-firelit::before, .portrait.is-firelit::after {
     animation: none;
   }
+  .grid.detailed .micro-mark { transition: none; }
   .portrait.is-firelit::before { opacity: .32; transform: none; }
   .portrait.is-firelit::after { opacity: .18; transform: none; }
 }

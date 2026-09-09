@@ -44,7 +44,7 @@ export interface UiState {
   /** The day catchUp was called on, so the away report's since-line reads from where the player left off. */
   awayFromDay: number;
   /** The copy button reads "copied" until this real-time millisecond. */
-  /** Index into ZOOMS: 0 is one cell per glyph. */
+  /** Index into ZOOMS: 0 is the closest cosmetic detail view. */
   zoom: number;
   /** The Do row whose kinds are open, or null. */
   open: { id: TaskId; arg: string } | null;

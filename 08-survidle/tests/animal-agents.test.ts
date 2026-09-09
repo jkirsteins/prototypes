@@ -9,7 +9,7 @@ import { setSkillLevel } from "../src/sim/horizon";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { advance } from "../src/sim/advance";
 import { cellOf } from "../src/sim/position";
-import { mapHtml } from "../src/ui/map";
+import { animalVisualSlot, LEVELS, mapHtml } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { passable } from "../src/world/route";
 import { recognitionHtml } from "../src/ui/wildlife-panel";
@@ -26,6 +26,33 @@ function campCell(st: { campCell: number | null }): number {
 }
 
 describe("large animal agents", () => {
+  it("moves a routed animal from the entry edge to the exit edge within its visual cell", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const subject = state.wildlife.subjects.find((s) => s.active)!;
+    const here = subject.active!.cell;
+    const east = here + 1;
+    subject.active!.intent = "hunt";
+    subject.active!.target = east;
+    subject.active!.route = [east];
+
+    const slots = [0, 5, 9].map((minute) => animalVisualSlot(subject, world, minute, 6));
+    expect(slots.map((slot) => slot % 6)).toEqual([0, 3, 5]);
+    expect(new Set(slots.map((slot) => Math.floor(slot / 6))).size).toBe(1);
+  });
+
+  it("lets a wandering animal roam while a resting animal stays put", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const subject = state.wildlife.subjects.find((s) => s.active)!;
+    subject.active!.intent = "wander";
+    subject.active!.target = null;
+    subject.active!.route = [];
+    expect(animalVisualSlot(subject, world, 0, 6)).not.toBe(animalVisualSlot(subject, world, 2, 6));
+    subject.active!.intent = "rest";
+    expect(animalVisualSlot(subject, world, 0, 6)).toBe(animalVisualSlot(subject, world, 8, 6));
+  });
+
   it("keeps every modeled species' social and life-history rules in the catalogue", () => {
     for (const species of ["deer", "reindeer", "elk", "wolf", "wolverine", "bear"] as const) {
       expect(SPECIES_DEFS[species].agent).toBeDefined();
@@ -451,6 +478,10 @@ describe("animal recognition", () => {
     expect(html).toContain("mk-animal");
     expect(html).toContain("Mora");
     expect(html).toContain(`wildlife-${subject.colour}`);
+    const marker = html.match(new RegExp(`data-wildlife-id="${subject.id}"[^>]*data-visual-slot="(\\d+)"`));
+    expect(marker).not.toBeNull();
+    if (!marker) throw new Error("expected a visual wildlife slot");
+    expect(Number(marker[1])).toBeLessThan(LEVELS[0].detail ** 2);
 
     close.zoom = 3;
     expect(mapHtml(world, state, close, cal)).not.toContain("mk-animal");

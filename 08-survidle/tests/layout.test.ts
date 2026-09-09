@@ -8,6 +8,10 @@ import { newUiState } from "../src/ui/render";
 import { css, rule } from "./css";
 
 describe("the map's own surface", () => {
+  it("draws close terrain seamlessly without a border around every simulation cell", () => {
+    expect(rule(".grid.detailed .c")).toContain("border: 0");
+  });
+
   it("marks a region by a wash over it and never by a frame on each of its cells", () => {
     // A frame per cell repeats at cell scale what the wash and the region's
     // accent-coloured border already say once, and 69 of them read as graph
