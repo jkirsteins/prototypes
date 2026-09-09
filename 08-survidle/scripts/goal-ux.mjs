@@ -111,6 +111,19 @@ async function main() {
     await evaluate(`(() => {
       const s = window.survidle.state;
       for (const id of ['site', 'drink', 'firewood', 'fire', 'bed', 'roof', 'keptNight', 'forageMeal', 'cook']) s.goals.done[id] = true;
+      s.goals.queue = [];
+    })()`);
+    await waitFor(`document.querySelector('#overlay .goal-modal')?.textContent.includes('New goal available: Find useful cover')`, "shelter lesson did not open");
+    const shelter = await overlayText();
+    assert(shelter.includes("Natural cover can break the wind before a built shelter is ready."), "natural-cover guidance missing");
+    assert(shelter.includes("Find useful cover"), "natural-cover step missing");
+    assert(await layoutOk(), "desktop shelter-goal layout overflows");
+    await shot("shelter-goal-desktop");
+
+    await click('#overlay [data-act="goal-close"]');
+    await evaluate(`(() => {
+      const s = window.survidle.state;
+      for (const id of ['findUsefulCover', 'makeUsefulShelter', 'testShelter']) s.goals.done[id] = true;
       for (const id of ['snareMeal', 'huntMeal', 'fishMeal']) delete s.goals.introduced[id];
       s.goals.queue = [];
     })()`);
