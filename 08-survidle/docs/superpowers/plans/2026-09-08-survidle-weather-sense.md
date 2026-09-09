@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A survivor caught out by a storm can look for cover, improve what they find, build when the ground gives nothing, and light a fire where they stand - and can learn to see the storm coming in time for any of that to matter.
+**Goal:** A survivor caught out by a storm can find or build protection, use a field fire, anticipate weather, and learn that complete loop through meaningful event-backed goals.
 
-**Architecture:** One protection currency (0-3) that found cover, improved cover, partial emergency builds and the existing structures all produce, read by the shelter functions that already take a `Site | null`. Three new skills. A forecast that grows in three stages. Rain, snow and gale ask for different ground; optional Stage 4 adds lightning.
+**Architecture:** One protection currency (0-3) unifies found cover, improved cover, partial emergency builds and existing structures. Three skills feed one staged forecast and one storm-option evaluator used by the body, the UI and goal snapshots. Ten goals in three chapters use contextual simulation events and natural-first weather opportunities; optional Stage 5 adds lightning.
 
 **Tech Stack:** TypeScript, Vite, Vitest. No new dependencies.
 
@@ -20,7 +20,18 @@ rows, deed-driven goals, active gear and the sky weather wall.
 - `npm test` and `npm run build` must pass before every commit. Run them in the FOREGROUND.
 - No em dashes and no non-typable unicode anywhere. Only `-`, `->`, `"`, `'`, `...`.
 - Comments explain, never chronicle: no dates, no "before/after", no plan references.
-- **Numbers.** The shelter minutes are 30 / 90 / 240 and **do not change during this plan.** They are design values chosen inside sourced field ranges and the comment beside them must say so. Nothing else invents a constant: if a number seems needed, stop and ask.
+- **Numbers.** Emergency shelter thresholds are 30 / 90 / 240 effective
+  work minutes. Found cover expires after 7 days and emergency work after 14
+  days. A search takes `max(10, 31 - naturalShelterLevel)` minutes; levels 1-4
+  find protection 1 where cover exists and level 5+ reaches the terrain
+  ceiling. Improving to protection 2 costs 30 effective minutes and improving
+  to 3 costs 75. `readSky` costs 10 minutes. Forecast warning is
+  `60 + 5 * (weatherSenseLevel - 1) + 10 * min(6, survivedStorms) + 30` for
+  each of `weatherEye` and a current sky reading; stages begin at 60, 120 and
+  180 minutes. Gales are 20% of storms, with effective protection
+  `clamp(protection + lee - highProfile, 0, 3)`. These are conservative
+  starting design values and may move only when a functional test proves the
+  formula wrong; balance concerns belong in the final report.
 - **Do not tune a gate.** A gate measures the sim. If a reading moves, report the movement and its cause.
 - Game voice: `{You}`, `{your}` templates, lower case after a colon, no exclamation marks.
 - **One scheduler.** Weather response is served by the existing body care row.
@@ -31,9 +42,18 @@ rows, deed-driven goals, active gear and the sky weather wall.
   intent wording, orderability and capability coverage as applicable. Let the
   exhaustive tests identify every table; do not restore the removed region
   panel.
-- **Goals are outcomes.** Successful field lighting and cooking emit the
-  existing deeds. First reaching protection 2 emits one shelter deed for the
-  existing roof goal. Field fires emit none of the three hearth-keeping deeds.
+- **Goals are outcomes.** Emit contextual simulation events with minute,
+  location and weather identity rather than scanning state or inventing
+  goal-only deeds. A failed search, failed light or sky reading that reveals
+  nothing earns nothing. Field fires emit none of the three hearth-keeping
+  events.
+- **Guarantee the opportunity, not the outcome.** Weather teaching claims an
+  eligible natural storm first and synthesizes one only after three dawns.
+  It never grants protection, forces work, moves the survivor, weakens the
+  event or completes a failed attempt.
+- **Teaching weather is ordinary weather.** It uses the normal generator and
+  distributions, carries a stable storm ID, excludes lightning and is never
+  materially harsher than a comparable natural event at that progression.
 - **Active gear.** Field work uses the existing provisioning, `toolNear`,
   `takeUp` and carried-load paths. Do not add a parallel equipment check.
 - **Presentation.** Forecast detail belongs in the weather wall and sky;
@@ -44,9 +64,10 @@ rows, deed-driven goals, active gear and the sky weather wall.
 The stages exist so a random death mechanism cannot obscure whether the shelter and forecast system works. **Do not start a stage until the previous one is green.**
 
 1. **Shelter core** (Tasks 1-5) - protection, found cover, improvement, partial builds, fire anywhere.
-2. **Skills and forecast** (Tasks 6-8) - the three skills, weather sense, and the measurement that says whether the 48-110 minute case now produces a real decision.
+2. **Skills and forecast** (Tasks 6-8) - the three skills, weather sense, one shared storm decision, and its measurement.
 3. **Storm effects** (Tasks 9-10) - rain and snow, then gale.
-4. **Lightning** (Task 11) - optional for the first merge, last and isolated.
+4. **Goals and opportunities** (Tasks 11-15) - contextual events, reviewable introductions, natural-first weather opportunities and three teaching chapters.
+5. **Lightning** (Task 16) - optional for the first merge, last and isolated.
 
 ## The acceptance targets
 
@@ -54,7 +75,7 @@ These are the author's, and they outrank any individual test:
 
 > **Skill must visibly convert a hopeless situation into a manageable one.** With only the basic warning, sometimes there is no good answer. With better weather sense or shelter skill, the same situation becomes manageable often enough that the progression is visibly worth having. The target is NOT that an unskilled survivor always survives.
 
-If optional Stage 4 is included:
+If optional Stage 5 is included:
 
 > **Lightning should be rare enough to be memorable.** Across ordinary competent play, deaths by strike are rare. Across deliberately repeated bad-ground exposure, the risk becomes unmistakable. Do NOT tune it so every seed sees lightning - that turns a rare hazard into a scheduled mechanic.
 
@@ -244,9 +265,9 @@ and in the save migration. The `findShelter` task is legal on any passable
 land cell, costs minutes, writes `siteFor(st, cell).cover`, and resets its age.
 It creates a site - it is an authoring path, which is what `siteFor` is for.
 
-Before implementing the task timing and the low-skill result curve, ask for
-the novice and expert values if no current skill formula derives them. The
-terrain ceiling is fixed; the time and attained share are not yet specified.
+The task takes `max(10, 31 - naturalShelterLevel)` minutes. Levels 1-4 find
+protection 1 wherever the terrain ceiling is non-zero; level 5 and above find
+the terrain ceiling. No level exceeds it.
 
 Its refusal on ground with a ceiling of 0 is not a hard block: the survivor may look and find nothing, which costs the minutes and says so. That is what looking is.
 
@@ -280,8 +301,8 @@ Write the test first: a site with `cover` set, run `dailyCamp` past the
 window, and the cover is gone while the structures on that same site are
 untouched.
 
-**The number of days is not derivable from anything existing. Stop and ask
-the author for it rather than picking one.**
+Expire found cover after 7 days. This is a pacing value for remembered and
+lightly arranged natural cover, not the lifetime of the terrain itself.
 
 - [ ] **Step 7: Run and commit**
 
@@ -309,8 +330,9 @@ Improving on rock (ceiling 2) reaches 3. Improving on pine (ceiling 1) reaches 2
 
 `improveCover` is legal where `site.cover >= 1`, costs minutes, and raises `site.cover` by one, capped at 3. Its cost is lower than the equivalent step of building from nothing - that is the whole point of looking first.
 
-The labour cost is an author checkpoint unless a current task-time rule
-derives it. Do not choose a number merely because it sits below 30 or 90.
+Improving protection 1 to 2 costs 30 effective work minutes; improving 2 to 3
+costs 75. Both are half the equivalent incremental emergency-build work, which
+keeps found cover strictly cheaper than starting from nothing.
 
 Put the row under `Build > Shelter`. Emit the roof-goal shelter deed only when
 this work first crosses protection 2; improving an already-weatherproof place
@@ -403,7 +425,7 @@ week-old shelter should be told there is nothing there.
 Test it: build to protection 2, run the days out, and both the protection
 and both emergency fields are reset.
 
-**As with cover, the number of days is not derivable. Ask the author.**
+Expire emergency work after 14 days without work on it, resetting both fields.
 
 - [ ] **Step 6: Run and commit**
 
@@ -492,7 +514,8 @@ Skills are categories of technique, not of material. `naturalShelter` covers fin
 
 - [ ] **Step 4: The curve**
 
-The idle curve spec assigns jobs, grinds and keeps per skill. Add the entries for the three new ones, following the existing shape. **If this needs a number that is not derivable from the existing pattern, stop and ask.**
+The idle curve spec assigns jobs, grinds and keeps per skill. Add the entries
+for the three new ones using the existing rung levels unchanged.
 
 The current UI derives its skill list from the shared tables, so do not add a
 weather-specific panel. Extend the exhaustive coverage assertions and verify
@@ -554,11 +577,11 @@ line. `advance.ts`, `weatherHtml` and `stormStep` all consume the same forecast
 helpers; none reconstructs a private stage. Preserve the current stable sky
 markup and direct-update rules.
 
-Before implementation, fix the read duration and the contribution table from
-skill, survived storms, quirk and today's observation to warning minutes and
-forecast stage. Those values do not follow from main. Keep 60 as the base and
-use the measured 48-110 minute neighboring-region journey to judge the next
-stage; do not invent increments inside the task.
+`readSky` costs 10 minutes. Warning minutes use the formula in Global
+Constraints and forecast stages begin at 60, 120 and 180 minutes. This lets a
+level-1 survivor retain today's warning, a weather eye or current reading make
+visible progress, and combined practice and observation cover the measured
+48-110 minute neighbouring-region journey.
 
 - [ ] **Step 4: Run and commit**
 
@@ -633,7 +656,7 @@ git commit -m "feat(survidle): a storm is a choice, not an errand"
 
 **Interfaces:** `export type StormKind = "rain" | "snow" | "gale"`, on
 `Weather.storm.kind`. Only rain and snow are produced in this task. Optional
-Stage 4 extends the union with `"lightning"`.
+Stage 5 extends the union with `"lightning"`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -678,10 +701,11 @@ git commit -m "feat(survidle): wind finds a wet body faster with nothing over it
 In a gale the same protection level serves worse in a high-profile shelter than a low one, and lee ground beats a roof. A frame shelter is high profile; found cover and a scrape are low.
 
 - [ ] **Step 2: Run it and watch it fail**
-- [ ] **Step 3: Set the gale design values before implementing.** Main has no
-  storm-kind distribution, gale frequency, wind severity or profile penalty
-  to derive. Ask for them and record them as design values beside their
-  intended outcome; do not borrow lightning's rarity target.
+- [ ] **Step 3: Add the gale design values.** Twenty percent of ordinary
+  storms are gales. Effective gale protection is
+  `clamp(protection + (lee ? 1 : 0) - (highProfile ? 1 : 0), 0, 3)`; use it
+  wherever gale wind reads protection. Record that these are design values,
+  not sourced frequencies.
 - [ ] **Step 4: Implement.** Lee reads off terrain the world already generates: a depression or dense spruce is lee, rock and fell are exposed.
 - [ ] **Step 5: Run and commit**
 
@@ -693,14 +717,282 @@ git commit -m "feat(survidle): a gale asks how low you are, not how much is over
 
 ---
 
-## Stage 4: Lightning
+## Stage 4: Goals and opportunities
 
-This stage is optional for the first merge. Stages 1-3 are a complete feature
+### Task 11: Contextual goal events, phases and reviewable introductions
+
+**Files:** `src/sim/types.ts`, `src/sim/goals.ts`, `src/sim/save.ts`,
+`src/ui/goalpanel.ts`, `src/ui/render.ts`, `src/main.ts`, `tests/goals.test.ts`,
+`tests/goals-deeds.test.ts`, `tests/goalpanel.test.ts`
+
+**Interfaces:**
+- Rename the event union to `GoalEvent` and retain `export type Deed = GoalEvent`
+  as a migration alias until all call sites are changed in Tasks 12-15.
+- `GoalDef` gains `intro: string[]`, `phase: "opening" | "camp" | "range" | "seasonal"`,
+  `notBeforeDay?: number`, and `after?: GoalId[]`.
+- `GoalState` gains `introduced`, `introQueue`, and `noticeQueue`.
+- `GoalId` gains `findUsefulCover`, `makeUsefulShelter`, `testShelter`,
+  `readWeather`, `prepareWeather`, `surviveForecast`, `remoteRefuge`,
+  `fieldFire`, `fieldMeal`, and `remoteStorm`.
+
+- [ ] **Step 1: Write failing phase and introduction tests**
+
+Prove that Chapter 1 follows `cook` in the one-wide opening, `keptNight` and
+`bed` follow Chapter 1, Chapter 2 requires those goals and day 8, Chapter 3
+requires Chapter 2 and day 31, and eligible existing camp goals prevent a
+calendar gate from leaving the panel empty. Prove every goal has non-empty
+ASCII introduction copy, an introduction queues once per world, and an heir
+does not queue it again.
+
+- [ ] **Step 2: Write failing goal-row review tests**
+
+Render active goals as buttons with `data-goal`. Clicking opens the same intro
+copy without mutating `done`, `progress`, `introduced`, or any opportunity.
+The automatic intro uses the existing overlay priority and completion moments
+still outrank a newly queued introduction in the same minute.
+
+- [ ] **Step 3: Run the focused tests and verify the expected failures**
+
+Run: `npm test -- tests/goals.test.ts tests/goals-deeds.test.ts tests/goalpanel.test.ts`
+
+- [ ] **Step 4: Add the phase metadata and state migration**
+
+Insert Chapter 1 after `cook`; resume `keptNight` and `bed`; make Chapter 2
+eligible at day 8 after those prerequisites; make Chapter 3 eligible at day 31
+after Chapter 2. Preserve the current width rules for eligible goals and the
+single seasonal slot. Save migration defaults all new maps and queues without
+replaying old introductions.
+
+- [ ] **Step 5: Add introduction and review UI**
+
+Use the existing overlay box and voice rules. The introduction explains why
+the outcome matters and valid approaches, not a hidden recipe chain. A review
+is read-only. Add keyboard-accessible button markup without nesting a button
+inside another interactive element.
+
+- [ ] **Step 6: Run, build and commit**
+
+```bash
+npm test -- tests/goals.test.ts tests/goals-deeds.test.ts tests/goalpanel.test.ts
+npm run build
+git add src/sim/types.ts src/sim/goals.ts src/sim/save.ts src/ui/goalpanel.ts src/ui/render.ts src/main.ts tests/goals.test.ts tests/goals-deeds.test.ts tests/goalpanel.test.ts
+git commit -m "feat(survidle): goals explain the weather lessons they set"
+```
+
+---
+
+### Task 12: Stable storms and natural-first teaching opportunities
+
+**Files:** `src/sim/types.ts`, `src/sim/weather.ts`, `src/sim/advance.ts`,
+`src/sim/goals.ts`, create `src/sim/goalopportunity.ts`, `src/sim/save.ts`,
+`tests/storm.test.ts`, create `tests/goalopportunity.test.ts`
+
+**Interfaces:**
+- Every storm has `id: number` and `source: "natural" | "synthetic"`;
+  `Weather.nextStormId` supplies stable IDs and migrates from old saves.
+- `GoalOpportunity` has the exact fields and status union in spec section 7.
+- `stepGoalOpportunity(state, world, cal, rng)` claims or creates weather but
+  never executes survivor work.
+- `GoalState.opportunity: GoalOpportunity | null`.
+
+- [ ] **Step 1: Write failing identity and lifecycle tests**
+
+Prove IDs increase without reuse, survive save/load, and remain the same from
+warning through end. Prove `reserved -> announced -> running -> resolved` at
+the correct minutes and that a running ordinary storm delays reservation.
+
+- [ ] **Step 2: Write failing natural-first tests**
+
+With an eligible natural storm scheduled before the third dawn, prove the
+opportunity claims it without changing `from`, `until`, `kind`, or RNG state.
+With none by the third dawn, prove exactly one synthetic storm is created by
+the normal storm factory. Prove no overlap, no reroll, no lightning, and no
+event outside the opportunity's danger constraints.
+
+- [ ] **Step 3: Run and verify red**
+
+Run: `npm test -- tests/storm.test.ts tests/goalopportunity.test.ts`
+
+- [ ] **Step 4: Extract one storm factory and implement claiming**
+
+The ordinary dawn roll and synthesis call the same factory. Claiming only
+stores the existing ID in the opportunity. Chapter 1 constrains rain above
+freezing to the shortest third of the 6-19 hour range. Chapter 2 requires an
+event readable before the base warning. Chapter 3 requires current refuge
+travel time plus 30 minutes. The third-dawn fallback is a pacing rule, not a
+new daily weather loop.
+
+- [ ] **Step 5: Implement miss and heir retry**
+
+On a miss or death set `resolved`, queue a factual notice, and keep the goal
+open. After one full storm-free day, increment `attempts`, refresh `createdAt`,
+and begin natural-first reservation again. Completed earlier goals stay done.
+
+- [ ] **Step 6: Run, build and commit**
+
+```bash
+npm test -- tests/storm.test.ts tests/goalopportunity.test.ts tests/advance-save.test.ts
+npm run build
+git add src/sim/types.ts src/sim/weather.ts src/sim/advance.ts src/sim/goals.ts src/sim/goalopportunity.ts src/sim/save.ts tests/storm.test.ts tests/goalopportunity.test.ts tests/advance-save.test.ts
+git commit -m "feat(survidle): teaching weather claims the world before creating it"
+```
+
+---
+
+### Task 13: Chapter 1 - find, improve and test shelter
+
+**Files:** `src/sim/goals.ts`, `src/sim/goalopportunity.ts`,
+`src/sim/tasks.ts`, `src/sim/shelter.ts`, `src/sim/advance.ts`,
+`tests/goals-deeds.test.ts`, `tests/goalopportunity.test.ts`
+
+**Interfaces:** `GoalEvent` gains contextual `protectionChanged`,
+`stormStarted`, and `stormEnded` variants from spec section 7. The active
+opportunity accumulates `minutesByProtection`, camp/away minutes and wetness.
+
+- [ ] **Step 1: Write failing outcome tests**
+
+Prove a failed search earns nothing, protection 1 completes `findUsefulCover`,
+and protection 2 completes `makeUsefulShelter` at a different cell within 1 km
+in the same region. Prove a cell farther away or in another region does not.
+
+- [ ] **Step 2: Write failing storm-test metrics**
+
+For the matching Chapter 1 storm, prove 60 accumulated minutes at protection
+2 in the area plus being alive at storm end completes `testShelter`. Prove 59
+minutes, protection 1, death, time outside the area, and another storm ID do
+not. Metrics count the actual location each minute, not the final cell.
+
+- [ ] **Step 3: Run and verify red**
+
+Run: `npm test -- tests/goals-deeds.test.ts tests/goalopportunity.test.ts`
+
+- [ ] **Step 4: Emit and interpret general protection and storm events**
+
+Emit one `protectionChanged` event at each real transition, including partial
+emergency thresholds. Refactor the existing roof goal to accept `to >= 2`.
+Do not emit a specialized shelter-goal event. At storm end emit the accumulated
+general metrics with the stable ID and let the active goal interpret them.
+
+- [ ] **Step 5: Run, build and commit**
+
+```bash
+npm test -- tests/goals-deeds.test.ts tests/goalopportunity.test.ts tests/shelter.test.ts
+npm run build
+git add src/sim/goals.ts src/sim/goalopportunity.ts src/sim/tasks.ts src/sim/shelter.ts src/sim/advance.ts tests/goals-deeds.test.ts tests/goalopportunity.test.ts
+git commit -m "feat(survidle): shelter goals finish only when shelter works"
+```
+
+---
+
+### Task 14: Chapter 2 - read, prepare and survive forecast weather
+
+**Files:** `src/sim/goals.ts`, `src/sim/goalopportunity.ts`,
+`src/sim/weather.ts`, `src/sim/tasks.ts`, `src/sim/body.ts`,
+`src/sim/advance.ts`, `src/ui/panels.ts`, `tests/weathersense.test.ts`,
+`tests/goalopportunity.test.ts`, `tests/body.test.ts`
+
+**Interfaces:**
+- `GoalEvent` gains `forecastChanged` with before/after knowledge and source.
+- Extract `stormOptions(state, world, storm): StormPlanSnapshot` from the body
+  decision; each option records kind, inputs, arrival margin and `viable`.
+- `stormStarted` carries that pre-storm snapshot.
+
+- [ ] **Step 1: Write failing forecast-credit tests**
+
+Prove `readSky` earns `readWeather` only for the matching announced storm when
+at least one previously unknown fact becomes known. A repeated read, passive
+warning, unrelated storm, or observation with no new fact earns nothing.
+
+- [ ] **Step 2: Write failing snapshot tests**
+
+Before onset, construct viable return-home, local-shelter and remote-refuge
+cases and prove all can complete `prepareWeather`. Snapshot inputs include
+forecast facts, routes, travel times, protection, fire, fuel, active gear and
+supplies. Mutating those values after onset does not rewrite the snapshot.
+
+- [ ] **Step 3: Write failing completion tests**
+
+The matching `stormEnded` completes `surviveForecast` only if the survivor who
+read it remains alive. Another storm or an heir who did not read it does not.
+
+- [ ] **Step 4: Run and verify red**
+
+Run: `npm test -- tests/weathersense.test.ts tests/goalopportunity.test.ts tests/body.test.ts`
+
+- [ ] **Step 5: Implement one shared option evaluator and contextual forecast events**
+
+The body chooses the highest expected survival option from `stormOptions`;
+the weather wall describes those same options; the goal stores the same
+snapshot. `readSky` emits before and after knowledge, never a goal-only deed.
+
+- [ ] **Step 6: Run, build and commit**
+
+```bash
+npm test -- tests/weathersense.test.ts tests/goalopportunity.test.ts tests/body.test.ts tests/bodyorder.test.ts tests/sky.test.ts
+npm run build
+git add src/sim/goals.ts src/sim/goalopportunity.ts src/sim/weather.ts src/sim/tasks.ts src/sim/body.ts src/sim/advance.ts src/ui/panels.ts tests/weathersense.test.ts tests/goalopportunity.test.ts tests/body.test.ts
+git commit -m "feat(survidle): foresight becomes a plan before weather lands"
+```
+
+---
+
+### Task 15: Chapter 3 - live beyond camp
+
+**Files:** `src/sim/goals.ts`, `src/sim/goalopportunity.ts`,
+`src/sim/tasks.ts`, `src/sim/advance.ts`, `tests/goals-deeds.test.ts`,
+`tests/goalopportunity.test.ts`, `tests/fieldfire.test.ts`
+
+**Interfaces:** `GoalEvent` gains contextual `fireLit` and `taskCompleted`.
+
+- [ ] **Step 1: Write failing remote outcome tests**
+
+Prove protection 2 in a non-camp region completes `remoteRefuge`; protection
+at camp does not. A successful light and completed cook at a non-camp cell
+complete `fieldFire` and `fieldMeal`; attempts, failures and camp work do not.
+
+- [ ] **Step 2: Write failing remote storm tests**
+
+Prove the opportunity reserves when the refuge exists, not when the survivor
+arrives. It requires travel time plus 30 minutes. The matching end completes
+`remoteStorm` only with survival, at least 60 protected minutes in the refuge
+region, and zero storm minutes at camp. Going home resolves a miss and retries
+after cooldown without undoing the first nine goals.
+
+- [ ] **Step 3: Run and verify red**
+
+Run: `npm test -- tests/goals-deeds.test.ts tests/goalopportunity.test.ts tests/fieldfire.test.ts`
+
+- [ ] **Step 4: Emit the general field events and implement Chapter 3 credit**
+
+Replace legacy `lit` and `task` emissions at these call sites with contextual
+events while preserving credit for the existing fire and cook goals. Bind the
+refuge to its region and cell for travel evaluation; never wait for the player
+to stand there before reserving weather.
+
+- [ ] **Step 5: Run all Stage 4 tests, build and commit**
+
+```bash
+npm test -- tests/goals.test.ts tests/goals-deeds.test.ts tests/goalpanel.test.ts tests/goalopportunity.test.ts tests/fieldfire.test.ts tests/weathersense.test.ts tests/storm.test.ts
+npm run build
+git add src/sim/goals.ts src/sim/goalopportunity.ts src/sim/tasks.ts src/sim/advance.ts tests/goals-deeds.test.ts tests/goalopportunity.test.ts tests/fieldfire.test.ts
+git commit -m "feat(survidle): foresight makes a life beyond camp possible"
+```
+
+**Stage 4 gate.** Run the full fast suite, slow suite, build, `reference`,
+`horizon`, `year`, `december`, and the lineage probe. Functional failures and
+runner defects block completion. Record balance and calibration movement
+without tuning it away.
+
+---
+
+## Stage 5: Lightning
+
+This stage is optional for the first merge. Stages 1-4 are a complete feature
 and must not be held back if their implementation and calibration are sound.
 If lightning is deferred, leave this task in the roadmap with no placeholder
 storm kind produced by the live weather roll.
 
-### Task 11: The strike
+### Task 16: The strike
 
 Last, and alone, so a random death cannot obscure whether the rest works.
 
@@ -735,20 +1027,16 @@ git commit -m "feat(survidle): the tree you ran to is the worst place to be"
 
 ## Notes for the executor
 
-- **The fixed numbers are only 30 / 90 / 240 and the existing 60-minute base.**
-  The rebase audit found author checkpoints the earlier plan left implicit:
-  find-cover timing and low-skill result, improve-cover labour, the two decay
-  lives, read-sky duration, forecast contributions and stage thresholds, and
-  gale frequency/severity/profile effect. Ask at the task that names each one.
-  Optional lightning odds remain calibrated by Task 11's acceptance target.
+- **All required Stage 1-4 pacing values are fixed in Global Constraints.**
+  Optional lightning odds remain calibrated by Task 16's acceptance target.
 - In particular, do not use the lean-to's 365 days for either temporary life.
   It is a built structure's life and the wrong shape entirely.
-- Several tasks in Stages 2 to 4 give the shape of the work rather than the
+- Several tasks in Stages 2 to 5 give the shape of the work rather than the
   code. That is deliberate for the parts that depend on measurements taken
   in the task before them, but it means those tasks need a fuller read of
   the spec section they implement than the early ones do. The spec section
   is named in each task's Files list.
 - The 30 / 90 / 240 minutes do not move in this plan. If the measurements say they are wrong, that is a finding for the author, not a fix.
-- Task 8 has a measurement as its deliverable. If optional Stage 4 is included,
-  Task 11 does too. A task that ships the code and skips its reading is not done.
+- Task 8 has a measurement as its deliverable. If optional Stage 5 is included,
+  Task 16 does too. A task that ships the code and skips its reading is not done.
 - Stage boundaries are gates. Do not start a stage on a red previous one.
