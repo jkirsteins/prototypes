@@ -2,10 +2,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { newGame } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
 import { encounterGeometry, metricAreaForCell, metricPointForPlayer, resolveSpatialEstimate } from "../src/sim/wildlife-space";
+import { activateWildlife } from "../src/sim/wildlife-agents";
+import { Rng } from "../src/rng";
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("wildlife metric space", () => {
+  it("initializes an active animal at its stable metric point without consuming another random draw", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const subject = state.wildlife.subjects.find((s) => s.active)!;
+    const active = subject.active!;
+    expect(active.position).toEqual(resolveSpatialEstimate(state.seed, subject.id, metricAreaForCell(world, active.cell)!));
+    expect(active.travel).toBeNull();
+  });
+
   it("keeps a coarse subject point stable and separated inside the same area", () => {
     const { state, world } = newGame(1);
     const area = metricAreaForCell(world, cellOf(state, world));

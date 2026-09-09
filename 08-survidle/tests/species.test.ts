@@ -13,6 +13,10 @@ describe("the species catalogue", () => {
     for (const species of ["wolf", "wolverine", "bear"] as const) {
       expect(DISTURBANCE_PROFILES[species].alarmGain).toBe(0);
     }
+    for (const profile of Object.values(DISTURBANCE_PROFILES)) {
+      expect(profile.travelSpeedKmh).toBeGreaterThan(0);
+      expect(profile.escapeSpeedKmh).toBeGreaterThan(profile.travelSpeedKmh);
+    }
     for (const species of ["deer", "reindeer", "elk"] as const) {
       const profile = DISTURBANCE_PROFILES[species];
       expect(profile.flightAlarm).toBeGreaterThan(profile.alertAlarm);

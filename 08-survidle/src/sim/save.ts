@@ -16,6 +16,7 @@ import { intentMode } from "./intent";
 import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
 import { emptyWildlife } from "./wildlife-agents";
 import { DISTURBANCE_PROFILES } from "./species";
+import { metricPointForStoredCell } from "./wildlife-space";
 
 export const SAVE_KEY = "survidle.save";
 
@@ -98,6 +99,9 @@ export function migrate(state: GameState): void {
     active.escapeStartedMinute ??= active.intent === "flee" ? state.minute : null;
     active.lastDetectionMinute ??= active.alarm > 0 || active.escapeStartedMinute !== null ? state.minute : null;
     active.escapeEpisode ??= 0;
+    active.position ??= metricPointForStoredCell(state.seed, subject.id, active.cell)
+      ?? { xM: 0, yM: 0 };
+    active.travel ??= null;
   }
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
   state.survivors ??= [firstRecord(state.seed, state.startDoy)];

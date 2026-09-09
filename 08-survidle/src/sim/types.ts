@@ -25,6 +25,10 @@ export type WildlifeIntent = "forage" | "drink" | "rest" | "flee" | "hunt" | "ca
 export interface WildlifeCohort { sex: "f" | "m"; bornYear: number; count: number }
 export interface WildlifeActive {
   cell: number;
+  /** Exact world position in metres. The cell is only its current spatial bucket. */
+  position: { xM: number; yM: number };
+  /** One physical segment in progress; decisions choose it and elapsed game time traverses it. */
+  travel: { destination: { xM: number; yM: number }; cell: number } | null;
   hunger: number;
   thirst: number;
   rest: number;

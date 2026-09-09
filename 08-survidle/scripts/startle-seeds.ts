@@ -38,8 +38,10 @@ function configureScene(scene: StartleScene, scenario: StartleScenario): void {
   if (subject?.form !== "herd") throw new Error("Scenario subject is not a generated ungulate");
   // Isolate one naturally generated subject, retaining its identity and group.
   for (const other of state.wildlife.subjects) other.active = null;
+  const position = resolveSpatialEstimate(state.seed, subject.id, metricAreaForCell(world, scenario.startCell)!);
+  if (!position) throw new Error("Scenario subject position is invalid");
   subject.active = {
-    cell: scenario.startCell, hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [],
+    cell: scenario.startCell, position, travel: null, hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [],
     escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
   };
   state.minute = scenario.kind === "heard-only" ? 960 : 1;

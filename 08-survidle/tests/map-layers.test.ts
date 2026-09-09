@@ -7,7 +7,7 @@ import { newGame } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
 import { activateWildlife } from "../src/sim/wildlife-agents";
 import { mapHtml } from "../src/ui/map";
-import { newUiState } from "../src/ui/render";
+import { enqueueWildlifeStartle, newUiState } from "../src/ui/render";
 import { cellAt, neighbours } from "../src/world/gen";
 import { passable } from "../src/world/route";
 import { css, rule } from "./css";
@@ -34,11 +34,43 @@ describe("the map's compositing layers", () => {
     expect(rule(".maptools")).toContain("z-index: var(--map-control)");
   });
 
-  it("lets startles escape close-cell clipping above persistent signals and below controls", () => {
-    expect(rule(".grid .c.has-wildlife-startle")).toContain("overflow: visible");
-    expect(rule(".grid .c.has-wildlife-startle")).toContain("z-index: var(--map-startle)");
-    expect(rule(".wildlife-startle")).toContain("z-index: var(--map-startle)");
-    expect(rule(".wildlife-startle")).toContain("pointer-events: none");
+  it("keeps startles outside filtered, dimmed and clipped cells above signals and below controls", () => {
+    const { state, world } = newGame(79);
+    const ui = newUiState();
+    ui.zoom = 0;
+    state.weather.snowCm = 10;
+    enqueueWildlifeStartle(ui, {
+      id: "layer-startle", subjectId: 999,
+      source: { xM: state.player.x * 300, yM: state.player.y * 300 },
+      bearingRad: 0, distanceM: 45, uncertaintyM: 0,
+      perception: { kind: "heard", identification: "unknown", uncertaintyM: 0 },
+      terrain: "spruce", body: "light", group: "group", logText: "Something crashes away.",
+    }, 1000);
+    const sheet = document.createElement("style");
+    sheet.textContent = css;
+    document.head.append(sheet);
+    const map = document.createElement("div");
+    map.id = "mapdyn";
+    map.innerHTML = mapHtml(world, state, ui, calendar(state.minute, state.startDoy), 1100);
+    document.body.append(map);
+    try {
+      const cue = map.querySelector(".wildlife-startle")!;
+      const player = map.querySelector(".mk-player")!;
+      const source = player.closest(".c")!;
+      source.classList.add("tone-0", "dim");
+      const z = (element: Element) => Number(getComputedStyle(element).zIndex);
+      expect(getComputedStyle(source).overflow).toBe("hidden");
+      expect(getComputedStyle(source).filter).not.toBe("none");
+      expect(getComputedStyle(source).opacity).toBe("0.45");
+      expect(cue.parentElement).toBe(map.querySelector(".grid"));
+      expect(z(cue)).toBeGreaterThan(z(player));
+      expect(z(cue)).toBeGreaterThan(z(map.querySelector(".walk")!));
+      expect(z(cue)).toBeLessThan(z(map.querySelector(".maptools")!));
+      expect(getComputedStyle(cue).pointerEvents).toBe("none");
+    } finally {
+      sheet.remove();
+      map.remove();
+    }
   });
 
   it("keeps detailed player and camp signals above routes without lifting ordinary animals", () => {
@@ -97,8 +129,8 @@ describe("the map's compositing layers", () => {
           expect(Number(getComputedStyle(cell).zIndex)).toBeGreaterThan(route);
         }
       }
-      const animalCell = map.querySelector(`[data-wildlife-id="${animal.id}"]`)!.closest(".c")!;
-      expect(Number(getComputedStyle(animalCell).zIndex)).toBeLessThan(route);
+      const animalMark = map.querySelector(`[data-wildlife-id="${animal.id}"]`)!;
+      expect(Number(getComputedStyle(animalMark).zIndex)).toBeGreaterThan(route);
       const terrainCell = [...map.querySelectorAll(".c:not(.fog):not(.void)")].find((cell) => !cell.querySelector(".micro-mark"))!;
       expect(Number(getComputedStyle(terrainCell).zIndex)).toBeLessThan(route);
     } finally {

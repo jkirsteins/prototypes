@@ -931,6 +931,7 @@ declare global {
     get state(): GameState; get world(): World; advance(minutes: number): void; speed: number;
     startleSetup?(scenario: import("../scripts/startle-seeds").StartleScenario): Promise<void>;
     startleStep?(): void;
+    startleAdvance?(minutes: number): void;
     startleEnd?(): void;
   } }
 }
@@ -966,5 +967,9 @@ if (import.meta.env.DEV) {
     render();
   };
   window.survidle.startleStep = () => startleStep?.();
+  window.survidle.startleAdvance = (minutes) => {
+    advance(state, world, minutes, { wildlife: "detailed", live: false });
+    render();
+  };
   window.survidle.startleEnd = () => startleRestore?.();
 }

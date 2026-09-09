@@ -192,6 +192,11 @@ const last = new Map<string, string>();
  */
 function keyOf(el: Element): string | null {
   if (el.id) return `#${el.id}`;
+  // A close-map animal is keyed by identity, so position updates reach the
+  // same node and its existing left/top transition across cell boundaries.
+  if (el.classList.contains("micro-mark") && el.hasAttribute("data-wildlife-id")) {
+    return `${el.tagName}[wildlifeId=${el.getAttribute("data-wildlife-id")}]`;
+  }
   const data = Object.entries((el as HTMLElement).dataset ?? {})
     .map(([k, v]) => `${k}=${v}`)
     .sort()

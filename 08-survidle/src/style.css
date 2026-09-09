@@ -606,6 +606,13 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   box-shadow: 0 0 0 1px rgba(5, 7, 12, 0.42);
   pointer-events: none;
 }
+.grid.detailed > .wildlife-map-mark {
+  left: calc(var(--animal-x) - var(--px) / var(--detail) / 2);
+  top: calc(var(--animal-y) - var(--line) / var(--detail) / 2);
+  width: calc(var(--px) / var(--detail));
+  height: calc(var(--line) / var(--detail));
+  z-index: var(--map-signal);
+}
 .grid .c.t-water { color: #3a6fd8; background: #0a1633; }
 .grid .c.ice-thin { color: #6d8a9c; }
 .grid .c.ice-safe { color: #cfe6f0; }
@@ -732,10 +739,8 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.mk-animal.wildlife-4 { color: #111; background: #d77b68; }
 .grid .c.mk-animal.wildlife-5 { color: #111; background: #87a8dc; }
 /* An effect has its own ink and never replaces a glyph or becomes an inspection target. */
-.grid .c.has-wildlife-startle { position: relative; overflow: visible; z-index: var(--map-startle); }
 .wildlife-startle {
   position: absolute; z-index: var(--map-startle); pointer-events: none;
-  left: calc(50% + var(--startle-x, 0px)); top: calc(-25% + var(--startle-y, 0px));
   color: #ffe28a; font-size: max(18px, var(--font)); font-style: normal; font-weight: 900;
   line-height: 1; text-shadow: 0 1px 2px #05070c, 0 0 4px #05070c;
   /* The frame updates one wall-clock variable. A paused animation samples that

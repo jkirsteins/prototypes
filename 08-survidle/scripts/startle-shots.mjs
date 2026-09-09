@@ -18,6 +18,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const URL_BASE = process.env.STARTLE_SHOTS_URL ?? "http://127.0.0.1:5188/prototypes/08/?seed=1";
+const NATURAL_URL = new URL("?seed=19", URL_BASE).href;
+const NATURAL_CALM_URL = new URL("?seed=3", URL_BASE).href;
+const NATURAL_HEARD_URL = new URL("?seed=9&day=328", URL_BASE).href;
 const PORT = Number(process.env.STARTLE_SHOTS_PORT ?? 9446);
 const OUT = resolve(dirname(fileURLToPath(import.meta.url)), "../docs/startle-shots");
 const PROFILE = resolve(tmpdir(), `survidle-startle-shots-${PORT}`);
@@ -145,8 +148,9 @@ async function snapshot(evalJs) {
     const terrain = chunk ? ['water', 'fell', 'rock', 'bog', 'spruce', 'pine', 'birch', 'meadow'][chunk.terrain[(y % 64) * 64 + (x % 64)]] : null;
     const region = chunk ? chunk.region[(y % 64) * 64 + (x % 64)] : null;
     return JSON.stringify({
-      cues: cues.map((cue) => ({ cls: cue.className, key: cue.dataset.startle, style: cue.getAttribute('style'), animation: getComputedStyle(cue).animationName, rect: rect(cue), owner: cue.closest('.c')?.dataset.mapCell ?? null })),
+      cues: cues.map((cue) => ({ cls: cue.className, key: cue.dataset.startle, start: cue.style.getPropertyValue('--wildlife-start'), style: cue.getAttribute('style'), animation: getComputedStyle(cue).animationName, rect: rect(cue), owner: cue.closest('.c')?.dataset.mapCell ?? null })),
       recoil: document.querySelectorAll('.mk-animal.wildlife-recoil').length,
+      animalRect: document.querySelector('.mk-animal.wildlife-recoil') ? rect(document.querySelector('.mk-animal.wildlife-recoil')) : null,
       recoilAnimation: getComputedStyle(document.querySelector('.mk-animal.wildlife-recoil') ?? document.body).animationName,
       animal: document.querySelectorAll('#mapdyn .mk-animal').length,
       identityLeak: /data-wildlife-id|wildlife-(?:0|1|2|3|4|5)/.test(document.querySelector('#mapdyn').innerHTML),
@@ -158,6 +162,9 @@ async function snapshot(evalJs) {
       zoom: document.querySelector('#mapdyn .maptools .dim')?.textContent ?? '',
       intersection,
       active: { cell, terrain, region, playerRegion: window.survidle.state.player.region },
+      position: active?.position ?? null,
+      travel: active?.travel ?? null,
+      escapeRemainingM: active?.escapeRemainingM ?? null,
       audio: window.__startleAudioProbe?.starts.filter((start) => start.file?.includes('/audio/startle_')) ?? [],
     });
   })()`);
@@ -165,6 +172,16 @@ async function snapshot(evalJs) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function assertSeenAnchor(snapshot) {
+  const cue = snapshot.cues[0]?.rect;
+  const animal = snapshot.animalRect;
+  assert(cue && animal, "seen fixture is missing its cue or animal glyph");
+  // The animal can still be shaking by up to 2px during the recoil.
+  assert(Math.abs((cue.left + cue.right) / 2 - (animal.left + animal.right) / 2) <= 3,
+    "seen cue is not horizontally anchored to its rendered animal");
+  assert(cue.bottom <= animal.top + 1, "seen cue overlaps its animal instead of sitting above it");
 }
 
 async function main() {
@@ -186,7 +203,8 @@ async function main() {
     const visible = JSON.parse(await snapshot(evalJs));
     assert(visible.cues.length === 1 && visible.cues[0].cls.includes("seen"), "visible fixture did not render exactly one seen cue");
     assert(visible.recoil === 1, "visible fixture did not recoil the animal glyph");
-    assert(visible.logCount === 1 && visible.logText === "A herd of hoofed animals startles and bounds through the pine.", "visible fixture did not add its single expected log entry");
+    assertSeenAnchor(visible);
+    assert(visible.logCount === 1 && visible.logText === "A wild reindeer herd startles and bounds through the pine.", `visible fixture log mismatch: ${JSON.stringify({ count: visible.logCount, text: visible.logText })}`);
     assert(visible.audio.some((start) => start.file.includes("startle_contact_")) && visible.audio.some((start) => /startle_hoof_(light|heavy)_forest_/.test(start.file)), "visible fixture did not schedule contact and forest departure audio");
     await saveMap(send, evalJs, "visible");
 
@@ -194,12 +212,78 @@ async function main() {
     await sleep(90);
     const zoomed = JSON.parse(await snapshot(evalJs));
     assert(zoomed.zoom !== visible.zoom, "zoom control did not change map scale");
-    assert(zoomed.cues.length === 1 && zoomed.cues[0].key === visible.cues[0].key && zoomed.cues[0].style === visible.cues[0].style, "zoom replaced the active cue key or start timestamp");
+    assert(zoomed.cues.length === 1 && zoomed.cues[0].key === visible.cues[0].key && zoomed.cues[0].start === visible.cues[0].start, "zoom replaced the active cue key or start timestamp");
     assert(zoomed.cues[0].rect.left !== visible.cues[0].rect.left || zoomed.cues[0].rect.top !== visible.cues[0].rect.top, "zoom did not reproject the cue source");
     await evalJs("window.survidle.startleStep()");
     await sleep(90);
     const twice = JSON.parse(await snapshot(evalJs));
-    assert(twice.cues.length === 1 && twice.cues[0].key === visible.cues[0].key && twice.cues[0].style === visible.cues[0].style && twice.logCount === 1 && twice.escaped === 1, "a second step replayed the cue, log, or escape episode");
+    assert(twice.cues.length === 1 && twice.cues[0].key === visible.cues[0].key && twice.cues[0].start === visible.cues[0].start && twice.logCount === 1 && twice.escaped === 1, "a second step replayed the cue, log, or escape episode");
+
+    for (const zoom of [1, 0]) {
+      await setupAndStep(evalJs, SCENARIOS.visible);
+      await evalJs(`(() => { for (let i = 2; i > ${zoom}; i--) document.querySelector('[data-act=zoom][data-dir=in]').click(); })()`);
+      await sleep(90);
+      assertSeenAnchor(JSON.parse(await snapshot(evalJs)));
+    }
+
+    // Continuous travel is simulation state, not a cosmetic slot animation.
+    // The same grid-level glyph survives exact movement and a cell crossing.
+    await setupAndStep(evalJs, SCENARIOS.visible);
+    const motionStart = JSON.parse(await snapshot(evalJs));
+    assert(motionStart.travel?.destination, "startled animal has no scheduled first segment");
+    const firstDestination = motionStart.travel.destination;
+    const segmentVector = {
+      x: firstDestination.xM - motionStart.position.xM,
+      y: firstDestination.yM - motionStart.position.yM,
+    };
+    const segmentLengthM = Math.hypot(segmentVector.x, segmentVector.y);
+    const motionTrace = [{ minute: motionStart.minute, position: motionStart.position, escapeRemainingM: motionStart.escapeRemainingM }];
+    await evalJs(`document.querySelector('[data-wildlife-id="1"]').__wildlifeMotionProbe = true; window.survidle.startleAdvance(0.25)`);
+    await sleep(60);
+    const motionMid = JSON.parse(await snapshot(evalJs));
+    motionTrace.push({ minute: motionMid.minute, position: motionMid.position, escapeRemainingM: motionMid.escapeRemainingM });
+    const movedM = Math.hypot(motionMid.position.xM - motionStart.position.xM, motionMid.position.yM - motionStart.position.yM);
+    assert(movedM > 100 && movedM < 120, `quarter-minute reindeer escape moved ${movedM.toFixed(2)} m instead of gait-scaled distance`);
+    assert(Math.abs((motionStart.escapeRemainingM - motionMid.escapeRemainingM) - movedM) < 0.01, "escape budget did not match distance actually travelled");
+    assert(await evalJs(`document.querySelector('[data-wildlife-id="1"]')?.__wildlifeMotionProbe === true`), "exact movement replaced the animal DOM node");
+    await saveMap(send, evalJs, "visible-mid-travel");
+
+    // Trace the complete first segment with simulation-time samples. The
+    // final step uses exactly the remaining gait time, so it cannot spill into
+    // the next waypoint and hide a discontinuity at the boundary.
+    const speedMPerMinute = 28 * 1000 / 60;
+    for (let i = 0; i < 40; i++) {
+      const current = motionTrace.at(-1);
+      const remainingM = Math.hypot(firstDestination.xM - current.position.xM, firstDestination.yM - current.position.yM);
+      if (remainingM < 0.001) break;
+      const minutes = Math.min(0.05, remainingM / speedMPerMinute);
+      await evalJs(`window.survidle.startleAdvance(${minutes})`);
+      const sample = JSON.parse(await snapshot(evalJs));
+      motionTrace.push({ minute: sample.minute, position: sample.position, escapeRemainingM: sample.escapeRemainingM });
+    }
+    await sleep(60);
+    const crossed = JSON.parse(await snapshot(evalJs));
+    const finalSegmentErrorM = Math.hypot(crossed.position.xM - firstDestination.xM, crossed.position.yM - firstDestination.yM);
+    assert(finalSegmentErrorM < 0.001, `first travel segment ended ${finalSegmentErrorM.toFixed(4)} m from its destination`);
+    let tracedM = 0;
+    let priorProgress = -1;
+    for (let i = 1; i < motionTrace.length; i++) {
+      const previous = motionTrace[i - 1];
+      const current = motionTrace[i];
+      const stepM = Math.hypot(current.position.xM - previous.position.xM, current.position.yM - previous.position.yM);
+      const elapsed = current.minute - previous.minute;
+      assert(stepM > 0 && Math.abs(stepM - speedMPerMinute * elapsed) < 0.01, `full-segment sample ${i} did not follow gait speed`);
+      tracedM += stepM;
+      const fromStart = { x: current.position.xM - motionStart.position.xM, y: current.position.yM - motionStart.position.yM };
+      const progress = (fromStart.x * segmentVector.x + fromStart.y * segmentVector.y) / segmentLengthM;
+      const offLineM = Math.abs(fromStart.x * segmentVector.y - fromStart.y * segmentVector.x) / segmentLengthM;
+      assert(progress > priorProgress && offLineM < 0.001, `full-segment sample ${i} was not monotonic on its scheduled segment`);
+      priorProgress = progress;
+    }
+    assert(Math.abs(tracedM - segmentLengthM) < 0.01, `full segment traced ${tracedM.toFixed(2)} m for a ${segmentLengthM.toFixed(2)} m waypoint`);
+    assert(crossed.active.cell !== motionStart.active.cell, "continuous escape did not cross an adjacent cell boundary");
+    assert(await evalJs(`document.querySelector('[data-wildlife-id="1"]')?.__wildlifeMotionProbe === true`), "cell crossing replaced the animal DOM node");
+    await saveMap(send, evalJs, "visible-cell-crossing");
 
     await setupAndStep(evalJs, SCENARIOS.heard);
     const heard = JSON.parse(await snapshot(evalJs));
@@ -264,6 +348,113 @@ async function main() {
     await sleep(120);
     const restored = JSON.parse(await snapshot(evalJs));
     assert(restored.logCount === 1 && restored.escaped === 1 && restored.cues.length === 0, "hidden startle changed simulation or replayed on visibility restore");
+
+    // A separate pass uses only the shipped landing flow and a natural seed.
+    await evalJs("localStorage.removeItem('survidle.save'); localStorage.removeItem('survidle.audio')");
+    await send("Page.navigate", { url: NATURAL_URL });
+    await sleep(500);
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=land]')")), "seed 19 landing screen");
+    await evalJs("document.querySelector('[data-act=land]').click()");
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=welcome-close]')")), "seed 19 welcome");
+    await evalJs("document.querySelector('[data-act=welcome-close]').click()");
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=goal-close]')")), "seed 19 goals");
+    await evalJs("document.querySelector('[data-act=goal-close]').click()");
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('#mapdyn [data-wildlife-id]')")), "seed 19 natural deer");
+    const naturalInitial = JSON.parse(await evalJs(`(() => { const animal = document.querySelector('#mapdyn [data-wildlife-id]'); const r = animal.getBoundingClientRect(); return JSON.stringify({ id: Number(animal.dataset.wildlifeId), x: r.left + r.width / 2, y: r.top + r.height / 2, cell: Number(animal.dataset.mapCell), minute: window.survidle.state.minute }); })()`));
+    await saveMap(send, evalJs, "natural-seed-19-initial");
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: naturalInitial.x, y: naturalInitial.y, button: "left", clickCount: 1 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: naturalInitial.x, y: naturalInitial.y, button: "left", clickCount: 1 });
+    await waitFor(async () => await evalJs("window.survidle.state.task?.id === 'walk'"), "seed 19 walk order");
+    await waitFor(async () => await evalJs(`window.survidle.state.wildlife.subjects.find(s => s.id === ${naturalInitial.id})?.active?.escapeEpisode > 0 && Boolean(document.querySelector('.wildlife-startle'))`), "seed 19 natural startle", 15000);
+    const natural = JSON.parse(await snapshot(evalJs));
+    assert(natural.logCount > 0 && /startles|crashes away/.test(natural.logText), "seed 19 natural approach had no legible departure log");
+    await saveMap(send, evalJs, "natural-seed-19-startle");
+
+    // Seed 9 on 25 November is naturally dark enough that nearby wildlife can
+    // be heard without being rendered. The day query is the existing start-day
+    // test aid; generation, landing, walking, detection, and presentation are
+    // otherwise the normal game flow.
+    await evalJs("localStorage.removeItem('survidle.save'); localStorage.removeItem('survidle.audio')");
+    await send("Page.navigate", { url: NATURAL_HEARD_URL });
+    await sleep(500);
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=land]')")), "seed 9 landing screen");
+    await evalJs("document.querySelector('[data-act=land]').click()");
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=welcome-close]')")), "seed 9 welcome");
+    await evalJs("document.querySelector('[data-act=welcome-close]').click()");
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=goal-close]')")), "seed 9 goals");
+    await evalJs("document.querySelector('[data-act=goal-close]').click()");
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('#mapdyn .mk-player')")), "seed 9 map");
+    await waitFor(async () => Number(await evalJs("window.survidle.state.minute")) >= 1, "seed 9 08:01 approach time");
+    assert(Number(await evalJs("document.querySelectorAll('#mapdyn .mk-animal').length")) === 0, "seed 9 exposed an animal before the heard-only walk");
+    const heardTarget = JSON.parse(await evalJs(`(() => {
+      const player = document.querySelector('#mapdyn .mk-player');
+      const targetCell = Number(player.dataset.mapCell) + 1;
+      const target = document.querySelector('#mapdyn [data-map-cell="' + targetCell + '"]');
+      const r = target.getBoundingClientRect();
+      return JSON.stringify({ cell: targetCell, x: r.left + r.width / 2, y: r.top + r.height / 2 });
+    })()`));
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: heardTarget.x, y: heardTarget.y, button: "left", clickCount: 1 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: heardTarget.x, y: heardTarget.y, button: "left", clickCount: 1 });
+    await waitFor(async () => await evalJs("window.survidle.state.task?.id === 'walk'"), "seed 9 walk order");
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('.wildlife-startle.heard')")), "seed 9 natural heard-only startle", 15000);
+    const naturalHeard = JSON.parse(await snapshot(evalJs));
+    assert(naturalHeard.cues.length === 1 && naturalHeard.cues[0].cls.includes("heard") && naturalHeard.animal === 0 && !naturalHeard.identityLeak,
+      "seed 9 natural heard-only event disclosed an animal or missed its cue");
+    assert(naturalHeard.logText === "Hooves crash away through the pine to the east.", "seed 9 natural heard-only log changed");
+    await saveMap(send, evalJs, "natural-seed-9-heard");
+
+    // Seed 3 supplies the other side of the natural behavior: a visible deer
+    // completes ordinary travel while the survivor stands still, without a
+    // fixture, alarm, startle cue, or departure log.
+    await evalJs("localStorage.removeItem('survidle.save'); localStorage.removeItem('survidle.audio')");
+    await send("Page.navigate", { url: NATURAL_CALM_URL });
+    await sleep(500);
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=land]')")), "seed 3 landing screen");
+    await evalJs("document.querySelector('[data-act=land]').click()");
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=welcome-close]')")), "seed 3 welcome");
+    await evalJs("document.querySelector('[data-act=welcome-close]').click()");
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=goal-close]')")), "seed 3 goals");
+    await evalJs("document.querySelector('[data-act=goal-close]').click()");
+    await evalJs("document.querySelector('[data-act=zoom][data-dir=in]').click(); document.querySelector('[data-act=zoom][data-dir=in]').click()");
+    await waitFor(async () => Boolean(await evalJs("document.querySelector('#mapdyn [data-wildlife-id=\"1\"]')")), "seed 3 natural deer");
+    const calmInitial = JSON.parse(await evalJs(`(() => {
+      const animal = window.__naturalCalmAnimal = document.querySelector('#mapdyn [data-wildlife-id="1"]');
+      const active = window.survidle.state.wildlife.subjects.find(s => s.id === 1).active;
+      const r = animal.getBoundingClientRect();
+      return JSON.stringify({ minute: window.survidle.state.minute, cell: active.cell, position: active.position,
+        destination: active.travel.destination, x: r.left + r.width / 2, y: r.top + r.height / 2 });
+    })()`));
+    await saveMap(send, evalJs, "natural-seed-3-travel-start");
+    const calmTrace = [calmInitial];
+    await waitFor(async () => {
+      const sample = JSON.parse(await evalJs(`(() => {
+        const animal = document.querySelector('#mapdyn [data-wildlife-id="1"]');
+        const subject = window.survidle.state.wildlife.subjects.find(s => s.id === 1);
+        const active = subject.active;
+        const r = animal?.getBoundingClientRect();
+        return JSON.stringify({ minute: window.survidle.state.minute, cell: active.cell, position: active.position,
+          destination: active.travel?.destination ?? null, x: r ? r.left + r.width / 2 : null, y: r ? r.top + r.height / 2 : null,
+          sameNode: animal === window.__naturalCalmAnimal, alarm: active.alarm, episode: active.escapeEpisode,
+          startleLogs: window.survidle.state.log.filter(entry => /startles|crashes away/.test(entry.text)).length,
+          cues: document.querySelectorAll('.wildlife-startle').length });
+      })()`));
+      calmTrace.push(sample);
+      return sample.destination === null || sample.destination.xM !== calmInitial.destination.xM || sample.destination.yM !== calmInitial.destination.yM;
+    }, "seed 3 ordinary deer to finish its first segment", 25000);
+    const calm = calmTrace.at(-1);
+    assert(calm.cell !== calmInitial.cell, "seed 3 ordinary deer did not cross into its destination cell");
+    assert(calm.sameNode && calm.alarm === 0 && calm.episode === 0 && calm.startleLogs === 0 && calm.cues === 0,
+      "seed 3 ordinary travel changed identity or produced a startle");
+    let calmProgress = -1;
+    const calmVector = { x: calmInitial.destination.xM - calmInitial.position.xM, y: calmInitial.destination.yM - calmInitial.position.yM };
+    const calmLength = Math.hypot(calmVector.x, calmVector.y);
+    for (const sample of calmTrace.slice(1).filter(sample => sample.destination?.xM === calmInitial.destination.xM && sample.destination?.yM === calmInitial.destination.yM)) {
+      const offset = { x: sample.position.xM - calmInitial.position.xM, y: sample.position.yM - calmInitial.position.yM };
+      const progress = (offset.x * calmVector.x + offset.y * calmVector.y) / calmLength;
+      assert(progress > calmProgress, "seed 3 ordinary movement was not monotonic toward its waypoint");
+      calmProgress = progress;
+    }
+    await saveMap(send, evalJs, "natural-seed-3-travel-end");
     assert(consoleErrors.length === 0, `browser console errors: ${consoleErrors.join(" | ")}`);
     writeFileSync(resolve(OUT, "README.md"), [
       "# Wildlife startle browser evidence",
@@ -274,11 +465,15 @@ async function main() {
       "- [visible](visible.png): one seen marker and a recoiling animal glyph.",
       "- [heard-only](heard-only.png): one marker with no animal glyph or identity.",
       "- [reduced-motion](reduced-motion.png): the same cue under `prefers-reduced-motion: reduce`.",
+      "- [mid-travel](visible-mid-travel.png) and [cell crossing](visible-cell-crossing.png): exact simulated movement with one stable animal node.",
+      "- [natural seed 19](natural-seed-19-startle.png): an unmodified landing and ordinary map click, with no fixture command.",
+      "- [natural seed 9 on 25 November](natural-seed-9-heard.png): a normal eastward walk produces a heard-only departure with no animal glyph.",
+      "- [natural seed 3 start](natural-seed-3-travel-start.png) and [arrival](natural-seed-3-travel-end.png): visible ordinary deer travel with no player action or startle.",
       "",
-      "The script drives all six seeded scenarios. It asserts visible and heard-only disclosure, same-area non-detection, bog and snow audio slot selection, blocked-edge passability, cue timestamp/key survival across zoom and a second step, clipped edge bounds, reduced-motion fade, muted simulation equivalence, visibility suppression, and a console free of exceptions. Browser automation cannot objectively evaluate the subjective recognisability or quality of the rendered sound.",
+      "The script drives all six fixture scenarios plus the natural seeds. It asserts visible and heard-only disclosure, same-area non-detection, bog and snow audio slot selection, blocked-edge passability, cue timestamp/key survival, a time-stamped monotonic trace across one complete gait-scaled segment, animal-node identity across a cell boundary, clipped edge bounds, reduced-motion fade, muted simulation equivalence, normal landing and map-click flow, and a console free of exceptions. Browser automation cannot objectively evaluate the subjective recognisability or quality of the rendered sound.",
       "",
     ].join("\n"));
-    console.log(JSON.stringify({ visible, heard, sameArea, bog, snow, blockedEdge, edge, reduced, muted, consoleErrors }, null, 2));
+    console.log(JSON.stringify({ visible, heard, sameArea, bog, snow, blockedEdge, edge, reduced, muted, motionTrace, naturalInitial, natural, naturalHeard, calmInitial, calm, calmTraceSamples: calmTrace.length, consoleErrors }, null, 2));
     ws.close();
   } finally {
     chrome.kill();

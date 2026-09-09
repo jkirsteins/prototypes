@@ -1,7 +1,8 @@
 import { Rng, derive } from "../rng";
 import { CELL_KM } from "../units";
+import { WORLD_H, WORLD_W } from "../world/gen";
 import type { World } from "../world/gen";
-import type { GameState } from "./types";
+import type { GameState, WildlifeSubject } from "./types";
 
 export interface MetricPoint { xM: number; yM: number }
 
@@ -18,6 +19,7 @@ export interface EncounterGeometry {
 }
 
 function invalid(message: string): null {
+  // biome-ignore lint/suspicious/noConsole: expose corrupted spatial state during development without crashing production saves
   if (!import.meta.env.PROD) console.assert(false, message);
   return null;
 }
@@ -53,6 +55,39 @@ export function metricAreaForCell(world: World, cell: number): SpatialEstimate |
     min: { xM: x * metresPerCell, yM: y * metresPerCell },
     max: { xM: (x + 1) * metresPerCell, yM: (y + 1) * metresPerCell },
   };
+}
+
+/** Stable fallback used while loading saves written before exact wildlife positions. */
+export function metricPointForStoredCell(seed: number, subjectId: number, cell: number): MetricPoint | null {
+  if (!Number.isInteger(cell) || cell < 0 || cell >= WORLD_W * WORLD_H) return invalid("wildlife stored cell must be valid");
+  const metresPerCell = CELL_KM * 1000;
+  const x = cell % WORLD_W;
+  const y = Math.floor(cell / WORLD_W);
+  return resolveSpatialEstimate(seed, subjectId, {
+    kind: "area", key: `cell:${x},${y}`,
+    min: { xM: x * metresPerCell, yM: y * metresPerCell },
+    max: { xM: (x + 1) * metresPerCell, yM: (y + 1) * metresPerCell },
+  });
+}
+
+export function metricPointForWildlife(state: GameState, world: World, subject: WildlifeSubject): MetricPoint | null {
+  const active = subject.active;
+  if (!active) return null;
+  if (active.position && finitePoint(active.position) && cellForMetricPoint(world, active.position) === active.cell) return active.position;
+  const area = metricAreaForCell(world, active.cell);
+  const point = area ? resolveSpatialEstimate(state.seed, subject.id, area) : null;
+  if (point) active.position = point;
+  return point;
+}
+
+/** Grid conversion stays at this adapter boundary; callers reason in metres. */
+export function cellForMetricPoint(world: World, point: MetricPoint): number | null {
+  if (!finitePoint(point)) return invalid("wildlife metric position must be finite");
+  const metresPerCell = CELL_KM * 1000;
+  const x = Math.floor(point.xM / metresPerCell);
+  const y = Math.floor(point.yM / metresPerCell);
+  if (x < 0 || y < 0 || x >= world.w || y >= world.h) return null;
+  return y * world.w + x;
 }
 
 export function resolveSpatialEstimate(seed: number, subjectId: number, estimate: SpatialEstimate): MetricPoint | null {

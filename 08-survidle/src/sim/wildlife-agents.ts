@@ -17,7 +17,7 @@ import { die, sheltered, walkSpeed } from "./player";
 import { hasQuirk } from "./person";
 import { cue } from "./cues";
 import { illuminance } from "./light";
-import { encounterGeometry, metricAreaForCell, metricPointForPlayer, resolveSpatialEstimate, type MetricPoint } from "./wildlife-space";
+import { cellForMetricPoint, encounterGeometry, metricAreaForCell, metricPointForPlayer, metricPointForWildlife, resolveSpatialEstimate, type MetricPoint } from "./wildlife-space";
 import { escapeDistanceM, evaluateUngulateEncounter, neutralMovementProfile, startleLogText, type UngulateEncounterInput, type WildlifeStartleEvent } from "./wildlife-encounter";
 import { emitWildlifeEvent } from "./wildlife-events";
 
@@ -144,8 +144,11 @@ export function activateWildlife(state: GameState, world: World, rng: Rng): void
     if (subject.active) continue;
     const cells = suitableCells(world, region, subject.species);
     if (!cells.length) continue;
+    const cell = cells[rng.int(cells.length)];
+    const position = subjectPoint(state, world, subject, cell);
+    if (!position) continue;
     subject.active = {
-      cell: cells[rng.int(cells.length)], hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [],
+      cell, position, travel: null, hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [],
       escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
     };
   }
@@ -160,22 +163,89 @@ function subjectPoint(state: GameState, world: World, subject: WildlifeSubject, 
   return area && resolveSpatialEstimate(state.seed, subject.id, area);
 }
 
-/** A coarse movement pass spends real distance and never crosses an impassable edge. */
-function spendEscape(state: GameState, world: World, subject: WildlifeSubject): void {
+function beginSegment(state: GameState, world: World, subject: WildlifeSubject, cell: number): boolean {
   const active = subject.active;
-  if (!active || active.escapeRemainingM <= 0) return;
+  if (!active || active.travel || cell === active.cell) return false;
+  const position = metricPointForWildlife(state, world, subject);
+  const destination = subjectPoint(state, world, subject, cell);
+  if (!position || !destination) return false;
+  active.position = position;
+  active.travel = { destination, cell };
+  return true;
+}
+
+/** Selects a passable escape segment without moving through it. */
+function beginEscapeSegment(state: GameState, world: World, subject: WildlifeSubject): boolean {
+  const active = subject.active;
+  if (!active || active.travel || active.escapeRemainingM <= 0) return false;
   const actor = metricPointForPlayer(state, world);
-  const from = subjectPoint(state, world, subject, active.cell);
-  if (!actor || !from) return;
+  const from = metricPointForWildlife(state, world, subject);
+  if (!actor || !from) return false;
   const candidates = neighbours4(world, active.cell)
     .filter((cell) => cellAt(world, cell).region === subject.region && passable(cellAt(world, cell).terrain))
     .map((cell) => ({ cell, point: subjectPoint(state, world, subject, cell) }))
     .filter((candidate): candidate is { cell: number; point: MetricPoint } => candidate.point !== null)
     .sort((a, b) => Math.hypot(b.point.xM - actor.xM, b.point.yM - actor.yM) - Math.hypot(a.point.xM - actor.xM, a.point.yM - actor.yM));
   const next = candidates[0];
-  if (!next) return;
-  active.cell = next.cell;
-  active.escapeRemainingM = Math.max(0, active.escapeRemainingM - Math.hypot(next.point.xM - from.xM, next.point.yM - from.yM));
+  return next ? beginSegment(state, world, subject, next.cell) : false;
+}
+
+function continueSegment(state: GameState, world: World, subject: WildlifeSubject, rng: Rng): boolean {
+  const active = subject.active;
+  if (!active || active.travel) return false;
+  if (active.intent === "flee") return beginEscapeSegment(state, world, subject);
+  if (active.target !== null) {
+    if (active.cell === active.target) return false;
+    const candidates = neighbours4(world, active.cell)
+      .filter((cell) => cellAt(world, cell).region === subject.region && passable(cellAt(world, cell).terrain));
+    const routeStillFits = active.route.length > 0 && active.route.at(-1) === active.target && candidates.includes(active.route[0]);
+    if (!routeStillFits) active.route = findRoute(world, active.cell, active.target)?.filter((cell) => cellAt(world, cell).region === subject.region) ?? [];
+    const next = active.route.shift();
+    return next !== undefined && candidates.includes(next) ? beginSegment(state, world, subject, next) : false;
+  }
+  if (active.intent !== "wander") return false;
+  const candidates = neighbours4(world, active.cell)
+    .filter((cell) => cellAt(world, cell).region === subject.region && passable(cellAt(world, cell).terrain));
+  return candidates.length ? beginSegment(state, world, subject, candidates[rng.int(candidates.length)]) : false;
+}
+
+/** Advances only travel that existed during this elapsed interval. */
+function advanceWildlifeTravel(state: GameState, world: World, subject: WildlifeSubject, rng: Rng, dtMinutes: number): void {
+  const active = subject.active;
+  if (!active?.travel || dtMinutes <= 0) return;
+  const position = metricPointForWildlife(state, world, subject);
+  if (!position) return;
+  active.position = position;
+  let distanceBudget = DISTURBANCE_PROFILES[subject.species][active.intent === "flee" ? "escapeSpeedKmh" : "travelSpeedKmh"] * 1000 / 60 * dtMinutes;
+  let guard = 0;
+  while (active.travel && distanceBudget > 1e-9 && guard++ < 32) {
+    const dx = active.travel.destination.xM - active.position.xM;
+    const dy = active.travel.destination.yM - active.position.yM;
+    const segmentM = Math.hypot(dx, dy);
+    const escapeBudget = active.intent === "flee" ? active.escapeRemainingM : Number.POSITIVE_INFINITY;
+    const moveM = Math.min(distanceBudget, segmentM, escapeBudget);
+    if (moveM <= 1e-9) {
+      active.travel = null;
+      break;
+    }
+    const share = moveM / segmentM;
+    active.position = { xM: active.position.xM + dx * share, yM: active.position.yM + dy * share };
+    distanceBudget -= moveM;
+    if (active.intent === "flee") active.escapeRemainingM = Math.max(0, active.escapeRemainingM - moveM);
+    const crossed = cellForMetricPoint(world, active.position);
+    if (crossed !== null) active.cell = crossed;
+    if (moveM + 1e-9 < segmentM) break;
+    const arrivedCell = active.travel.cell;
+    active.position = active.travel.destination;
+    active.cell = arrivedCell;
+    active.travel = null;
+    if (active.intent === "drink" && active.cell === active.target) {
+      active.thirst = 0;
+      active.target = null;
+      break;
+    }
+    if (!continueSegment(state, world, subject, rng)) break;
+  }
 }
 
 /** Evaluated after player movement/work and again after a detailed animal tick. */
@@ -205,10 +275,9 @@ export function evaluateWildlifeDisturbance(state: GameState, world: World, cal:
       const dy = Math.max(area.min.yM - actor.yM, 0, actor.yM - area.max.yM);
       if (Math.hypot(dx, dy) > range) continue;
     }
-    const point = resolveSpatialEstimate(state.seed, subject.id, area);
+    const point = metricPointForWildlife(state, world, subject);
     if (!point) continue;
-    const uncertaintyM = area.kind === "area" ? Math.hypot(area.max.xM - area.min.xM, area.max.yM - area.min.yM) / 2 : 0;
-    const geometry = encounterGeometry(actor, point, uncertaintyM);
+    const geometry = encounterGeometry(actor, point, 0);
     if (!geometry) continue;
     const terrain = cellAt(world, active.cell).terrain;
     const eventId = `wildlife:${state.seed}:${state.year}:${subject.id}:${state.minute}:${active.escapeEpisode + 1}`;
@@ -237,6 +306,12 @@ export function evaluateWildlifeDisturbance(state: GameState, world: World, cal:
       active.route = [];
     }
     if (!result.startsEscape) continue;
+    // The map already discloses these subjects and their species. A failed
+    // independent perception roll cannot hide a departure already in sight.
+    // Read current visibility before movement, not the spatial-tick sighting cache.
+    if (visibleWildlife(state, world, cal).includes(subject)) {
+      result.perception = { kind: "seen", identification: state.wildlife.recognized[subject.id] ? "subject" : "species" };
+    }
     active.escapeEpisode++;
     active.escapeStartedMinute = state.minute;
     active.escapeRemainingM = escapeDistanceM(state.seed, eventId, profile);
@@ -258,7 +333,7 @@ export function evaluateWildlifeDisturbance(state: GameState, world: World, cal:
       log(state, event.logText);
       if (live) emitWildlifeEvent(event);
     }
-    spendEscape(state, world, subject);
+    beginEscapeSegment(state, world, subject);
   }
 }
 
@@ -341,13 +416,13 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
   active.thirst = Math.min(100, active.thirst + 3);
   active.rest = Math.min(100, active.rest + 1);
   if (stealCampFood(state, subject)) return;
+  if (active.travel) return;
   const st = state.regions[subject.region];
   const playerCell = cellOf(state, world);
   if (subject.form === "herd") {
     if (active.escapeStartedMinute !== null) {
       active.intent = "flee";
-      // The transition already spent its first step in this same update.
-      if (active.escapeStartedMinute !== state.minute) spendEscape(state, world, subject);
+      beginEscapeSegment(state, world, subject);
       return;
     }
     if (active.alarm >= DISTURBANCE_PROFILES[subject.species].alertAlarm) {
@@ -448,14 +523,16 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
   }
   if (subject.species === "wolf" && active.target === cellOf(state, world) && cal.isNight) {
     const distance = Math.abs((active.cell % world.w) - (active.target % world.w)) + Math.abs(Math.floor(active.cell / world.w) - Math.floor(active.target / world.w));
-    if (distance <= 1 && active.alarm === 0) {
+    if (distance === 1 && active.alarm === 0) {
       active.alarm = 1;
       log(state, "Wolves pace just beyond the dark. They are coming closer.", "bad");
+      if (routedStep !== undefined) beginSegment(state, world, subject, routedStep);
+      else if (candidates.length) beginSegment(state, world, subject, candidates[0]);
       return;
     }
   }
-  if (routedStep !== undefined) active.cell = routedStep;
-  else if (candidates.length) active.cell = candidates[active.target !== null || active.intent === "flee" ? 0 : rng.int(candidates.length)];
+  if (routedStep !== undefined) beginSegment(state, world, subject, routedStep);
+  else if (candidates.length) beginSegment(state, world, subject, candidates[active.target !== null || active.intent === "flee" ? 0 : rng.int(candidates.length)]);
   if (active.intent === "drink" && active.cell === active.target) {
     active.thirst = 0;
     active.target = null;
@@ -508,6 +585,9 @@ export function stepWildlife(state: GameState, world: World, cal: Calendar, rng:
     return;
   }
   activateWildlife(state, world, rng);
+  for (const subject of state.wildlife.subjects) {
+    if (subject.region === state.player.region) advanceWildlifeTravel(state, world, subject, rng, _dt);
+  }
   evaluateWildlifeDisturbance(state, world, cal, live);
   const tick = Math.floor(state.minute / WILDLIFE_TICK_MINUTES);
   if (tick <= state.wildlife.lastSpatialTick) return;

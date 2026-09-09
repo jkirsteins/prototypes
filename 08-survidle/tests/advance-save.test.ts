@@ -70,6 +70,28 @@ describe("advance", () => {
 });
 
 describe("save", () => {
+  it("migrates a cell-only wildlife position without relocating or restarting its escape", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const subject = state.wildlife.subjects[0];
+    const expectedPoint = resolveSpatialEstimate(state.seed, subject.id, metricAreaForCell(world, subject.active!.cell)!);
+    const raw = JSON.parse(serialize(state));
+    const active = raw.state.wildlife.subjects[0].active;
+    delete active.position;
+    delete active.travel;
+    active.intent = "flee";
+    active.escapeRemainingM = 123;
+    active.escapeStartedMinute = 4;
+    active.escapeEpisode = 2;
+    const loaded = deserialize(JSON.stringify(raw))!.state;
+    expect(loaded.wildlife.subjects[0].active).toMatchObject({
+      cell: active.cell, position: expectedPoint, travel: null,
+      escapeRemainingM: 123, escapeStartedMinute: 4, escapeEpisode: 2,
+    });
+    expect(loaded.rng).toBe(state.rng);
+    expect(loaded.log).toEqual(state.log);
+  });
+
   it("migrates old active wildlife without replaying an existing flight", () => {
     const { state, world } = newGame(79);
     activateWildlife(state, world, new Rng(1));
@@ -87,7 +109,12 @@ describe("save", () => {
       lastDetectionMinute: state.minute, escapeEpisode: 0,
     });
     advance(loaded, world, 1, { wildlife: "detailed" });
-    expect(loaded.wildlife.subjects[0].active!.cell).not.toBe(active.cell);
+    const scheduled = loaded.wildlife.subjects[0].active!;
+    expect(scheduled.cell).toBe(active.cell);
+    expect(scheduled.travel).not.toBeNull();
+    const before = { ...scheduled.position };
+    advance(loaded, world, 1, { wildlife: "detailed" });
+    expect(scheduled.position).not.toEqual(before);
   });
 
   it("lets a legacy zero-alarm flight settle without replaying an event or log", () => {

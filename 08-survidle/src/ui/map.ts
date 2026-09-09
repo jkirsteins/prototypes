@@ -25,6 +25,9 @@ import { elevationAt, groundGlyph, offshoreAt, toneCuts, toneOf, TREES, turnedGr
 import { moodOf } from "./mood";
 import { lighting } from "./sky";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
+import { metricPointForWildlife } from "../sim/wildlife-space";
+
+const CELL_M = CELL_KM * 1000;
 
 export const GLYPH: Record<Terrain, string> = {
   water: "~", fell: "^", rock: "n", bog: "\"", spruce: "A", pine: "T", birch: "Y", meadow: ".",
@@ -241,35 +244,6 @@ export function visualGround(seed: number, x: number, y: number, terrain: Terrai
   });
 }
 
-function animalDirection(subject: WildlifeSubject, world: World): { dx: number; dy: number } | null {
-  const active = subject.active;
-  if (!active) return null;
-  const next = active.route[0] ?? (active.target !== null ? active.target : undefined);
-  if (next === undefined || next === active.cell) return null;
-  const dx = Math.sign((next % world.w) - (active.cell % world.w));
-  const dy = Math.sign(Math.floor(next / world.w) - Math.floor(active.cell / world.w));
-  return Math.abs(dx) + Math.abs(dy) === 1 ? { dx, dy } : null;
-}
-
-/** Cosmetic position inside a cell. Directed animals cross it toward their next real cell. */
-export function animalVisualSlot(subject: WildlifeSubject, world: World, minute: number, detail = 3, ordinal = 0): number {
-  const active = subject.active;
-  if (!active) return Math.floor(detail / 2) * detail + Math.floor(detail / 2);
-  const seed = detailHash(world.seed, active.cell, subject.id, ordinal);
-  if (active.intent === "rest" || active.intent === "den") return seed % (detail * detail);
-  const phase = Math.min(detail - 1, Math.floor((((minute % 10) + 10) % 10) / 10 * detail));
-  const direction = animalDirection(subject, world);
-  if (direction) {
-    const across = direction.dx > 0 || direction.dy > 0 ? phase : detail - 1 - phase;
-    return direction.dx === 0 ? across * detail + seed % detail : (seed % detail) * detail + across;
-  }
-  const step = Math.floor(minute / 2);
-  const startX = seed % detail;
-  const x = (startX + step) % detail;
-  const y = (Math.floor(seed / detail) + Math.floor((startX + step) / detail)) % detail;
-  return y * detail + x;
-}
-
 function visualSlotStyle(slot: number, detail: number): string {
   return `--sx:${slot % detail};--sy:${Math.floor(slot / detail)}`;
 }
@@ -467,7 +441,10 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const discoveredSum = Object.values(state.discovered).reduce((a, b) => a + b, 0);
   const animals = level.cells === 1 ? visibleWildlife(state, world, cal)
     .filter((subject) => subject.active && (subject.active.cell % world.w) >= x0 && (subject.active.cell % world.w) < x0 + level.w && Math.floor(subject.active.cell / world.w) >= y0 && Math.floor(subject.active.cell / world.w) < y0 + level.h)
-    .map((s) => `${s.id}:${s.active?.cell}:${wildlifeMembers(s)}:${state.wildlife.recognized[s.id] ? s.name ?? "" : ""}:${s.active?.intent}:${level.detail > 1 ? animalVisualSlot(s, world, state.minute, level.detail) : ""}`).join(",") : "";
+    .map((s) => {
+      const point = level.detail > 1 ? metricPointForWildlife(state, world, s) : null;
+      return `${s.id}:${s.active?.cell}:${wildlifeMembers(s)}:${state.wildlife.recognized[s.id] ? s.name ?? "" : ""}:${s.active?.intent}:${point ? `${point.xM.toFixed(2)}:${point.yM.toFixed(2)}` : ""}`;
+    }).join(",") : "";
   const playerDetail = level.detail > 1 ? playerVisualSlot(state, level.detail) : "";
   const startles = activeWildlifeStartles(ui, nowMs).map((cue) => cue.key).join(",");
   const viewport = startles && ui.mapViewport ? Object.values(ui.mapViewport).join(",") : "";
@@ -485,48 +462,13 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const z = l.cells;
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const startles = activeWildlifeStartles(ui, nowMs);
-  const startleAt = new Map<number, string[]>();
-  const edgeStartles: string[] = [];
   const recoilAt = new Map<number, number>();
-  const viewport = ui.mapViewport ?? { left: 0, top: 0, right: l.w * l.px, bottom: l.h * l.line };
-  // Keep the whole exclamation mark and its pop/rise inside the clipped area.
-  const insetX = Math.min(24, (viewport.right - viewport.left) / 2);
-  const insetY = Math.min(24, (viewport.bottom - viewport.top) / 2);
-  for (const cue of startles) {
-    const { event, startedAtMs, key } = cue;
-    const gx = Math.floor((event.source.xM / (CELL_KM * 1000) - x0) / z);
-    const gy = Math.floor((event.source.yM / (CELL_KM * 1000) - y0) / z);
-    let jitterX = 0;
-    let jitterY = 0;
-    if (event.perception.kind === "heard") {
-      let hash = 0;
-      for (const char of event.id) hash = (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0;
-      const angle = (hash % 360) * Math.PI / 180;
-      const radius = Math.min(30, Math.max(0, event.uncertaintyM)) / (CELL_KM * 1000 * z);
-      jitterX = Number((Math.cos(angle) * radius * l.px).toFixed(2));
-      jitterY = Number((Math.sin(angle) * radius * l.line).toFixed(2));
-    }
-    // Match the cue's CSS anchor (left:50%, top:-25%), including hearing
-    // jitter. At close zoom the cell centre can be visible while the cue is
-    // entirely above the viewport. The inset also reserves its animated rise.
-    const px = (gx + 0.5) * l.px + jitterX;
-    const py = (gy - 0.25) * l.line + jitterY;
-    const x = Math.max(viewport.left + insetX, Math.min(viewport.right - insetX, px));
-    const y = Math.max(viewport.top + insetY, Math.min(viewport.bottom - insetY, py));
-    const offscreen = px !== x || py !== y;
-    const i = gy * l.w + gx;
-    const bearing = ["east", "southeast", "south", "southwest", "west", "northwest", "north", "northeast"];
-    const direction = bearing[(Math.round(event.bearingRad / (Math.PI / 4)) % 8 + 8) % 8];
-    // The presentation key is local and anonymous. Event IDs contain subject IDs
-    // and must never enter hidden-cue markup, including its data attributes.
-    const edge = offscreen ? ` edge bearing-${direction}` : "";
-    const jitter = event.perception.kind === "heard" ? `;--startle-x:${jitterX}px;--startle-y:${jitterY}px` : "";
-    const position = offscreen ? `;left:${x}px;top:${y}px` : jitter;
-    const markup = `<i aria-hidden="true" class="wildlife-startle ${event.perception.kind}${edge}" data-startle="${key}" style="--wildlife-start:${startedAtMs}ms${position}">!</i>`;
-    if (offscreen) edgeStartles.push(markup);
-    else startleAt.set(i, [...startleAt.get(i) ?? [], markup]);
+  for (const { event, startedAtMs } of startles) {
     if (event.perception.kind === "seen") recoilAt.set(event.subjectId, startedAtMs);
   }
+  // Filled by actual glyph placement below, after shared-cell collisions are
+  // resolved. A future exact-position glyph supplies its center here too.
+  const animalAnchors = new Map<number, { x: number; y: number }>();
   const playerCell = cellOf(state, world);
   const toGlyph = (cell: number): number => {
     const c = cellAt(world, cell);
@@ -703,7 +645,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   // The three closest rungs all read one simulation cell at a time. The two
   // detailed rungs name their visual grain; the span says how much real ground
   // is on screen. "centred on you" is the title and not the corner.
-  const span = `${(l.w * z * 0.3).toFixed(0)} by ${(l.h * z * 0.3).toFixed(0)} km`;
+  const span = `${(l.w * z * CELL_KM).toFixed(0)} by ${(l.h * z * CELL_KM).toFixed(0)} km`;
   const tools = `<div class="maptools"><button class="mini" data-act="zoom" data-dir="in" ${ui.zoom === 0 ? "disabled" : ""} title="Closer (plus key)">+</button><button class="mini" data-act="zoom" data-dir="out" ${ui.zoom === LEVELS.length - 1 ? "disabled" : ""} title="Farther (minus key)">-</button><span class="dim" title="${esc(`${span} on screen, centred on you`)}">${zoomLabel(ui.zoom)}, ${span}</span></div>`;
 
   const parts: string[] = [];
@@ -808,6 +750,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         const recognized = state.wildlife.recognized[animal.id];
         cls.push("mk", "mk-animal", recognized ? `wildlife-${animal.colour}` : "wildlife-unknown");
         glyph = ANIMAL_GLYPH[animal.species];
+        animalAnchors.set(animal.id, { x: (gx + 0.5) * l.px, y: (gy + 0.5) * l.line });
         const recoil = recoilAt.get(animal.id);
         if (recoil !== undefined) {
           cls.push("wildlife-recoil");
@@ -826,7 +769,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // flicker on the @ and the camp's x: they are the cells whose names
     // differ enough to be found and moved.
     const act = named ? ` data-act="select" data-i="${i}" data-r="${reg}"` : "";
-    const terrain = reg < 0 ? "beyond the mapped world" : seen === 0 ? "unknown ground" : `${TERRAIN_NAME[terrains[i]]}${z > 1 ? `, ${z * 300} m block` : ""}`;
+    const terrain = reg < 0 ? "beyond the mapped world" : seen === 0 ? "unknown ground" : `${TERRAIN_NAME[terrains[i]]}${z > 1 ? `, ${z * CELL_M} m block` : ""}`;
     const place = reg >= 0 && named ? world.regions.get(reg)?.name : undefined;
     const info = [terrain, place, ...featuresAt.get(i) ?? []].filter(Boolean).join("; ");
     const wildlife = animalId === null ? "" : ` data-wildlife-id="${animalId}"`;
@@ -836,8 +779,6 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // No title attribute: the board's own box says all of this, at once and
     // in the page's own voice, where the browser's tooltip said it after a
     // delay and stood over whatever it was next to.
-    const startle = startleAt.get(i)?.join("") ?? "";
-    if (startle) cls.push("has-wildlife-startle");
     let content = glyphHtml(glyph);
     if (detailGlyphs) {
       const overlays: string[] = [];
@@ -853,21 +794,64 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         const mood = m.cls === "mk-player" ? ` mood-${moodOf(state)}` : "";
         overlays.push(`<b class="micro-mark ${m.cls}${mood}" data-visual-slot="${slot}" style="${visualSlotStyle(slot, l.detail)}">${glyphHtml(m.glyph)}</b>`);
       }
-      for (const [ordinal, animal] of (animalAt.get(i) ?? []).entries()) {
-        let slot = animalVisualSlot(animal, world, state.minute, l.detail, ordinal);
-        while (used.has(slot)) slot = (slot + 1) % (l.detail * l.detail);
-        used.add(slot);
-        const recognized = state.wildlife.recognized[animal.id];
-        const recoil = recoilAt.get(animal.id);
-        const motionClass = recoil === undefined ? "" : " wildlife-recoil";
-        const motionStyle = recoil === undefined ? "" : `;--wildlife-start:${recoil}ms`;
-        overlays.push(`<b class="micro-mark mk-animal ${recognized ? `wildlife-${animal.colour}` : "wildlife-unknown"}${motionClass}" data-wildlife-id="${animal.id}" data-visual-slot="${slot}" style="${visualSlotStyle(slot, l.detail)}${motionStyle}">${ANIMAL_GLYPH[animal.species]}</b>`);
-      }
       const ground = detailGlyphs.map((g) => `<i class="micro-ground">${glyphHtml(g)}</i>`).join("");
       content = `<span class="detail-ground" aria-hidden="true">${ground}</span>${overlays.join("")}`;
     }
-    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${wildlife}${style}>${content}${startle}</span>`);
+    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${wildlife}${style}>${content}</span>`);
   }
-  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}${edgeStartles.join("")}</div><i class="shade"></i></div>${tools}`);
+  const animalMarkup: string[] = [];
+  if (l.detail > 1) {
+    for (const animal of visibleWildlife(state, world, cal)) {
+      const point = metricPointForWildlife(state, world, animal);
+      if (!point) continue;
+      const x = (point.xM / CELL_M - x0) * l.px;
+      const y = (point.yM / CELL_M - y0) * l.line;
+      if (x < 0 || y < 0 || x > l.w * l.px || y > l.h * l.line) continue;
+      animalAnchors.set(animal.id, { x, y });
+      const recognized = state.wildlife.recognized[animal.id];
+      const recoil = recoilAt.get(animal.id);
+      const motionClass = recoil === undefined ? "" : " wildlife-recoil";
+      const motionStyle = recoil === undefined ? "" : `;--wildlife-start:${recoil}ms`;
+      animalMarkup.push(`<b class="micro-mark wildlife-map-mark mk-animal ${recognized ? `wildlife-${animal.colour}` : "wildlife-unknown"}${motionClass}" data-wildlife-id="${animal.id}" style="--animal-x:${Number(x.toFixed(2))}px;--animal-y:${Number(y.toFixed(2))}px${motionStyle}">${ANIMAL_GLYPH[animal.species]}</b>`);
+    }
+  }
+  const viewport = ui.mapViewport ?? { left: 0, top: 0, right: l.w * l.px, bottom: l.h * l.line };
+  // Reserve room for the whole mark, including its pop and rise.
+  const insetX = Math.min(24, (viewport.right - viewport.left) / 2);
+  const insetY = Math.min(24, (viewport.bottom - viewport.top) / 2);
+  const startleMarkup = startles.map(({ event, startedAtMs, key }) => {
+    const gx = (event.source.xM / CELL_M - x0) / z;
+    const gy = (event.source.yM / CELL_M - y0) / z;
+    // Seen reactions follow the subject's rendered glyph, which may already
+    // have escaped its original cell. Hearing never consults hidden wildlife.
+    const animal = event.perception.kind === "seen" ? animalAnchors.get(event.subjectId) : undefined;
+    const anchor = animal ?? {
+      x: (l.detail > 1 ? gx : Math.floor(gx) + 0.5) * l.px,
+      y: (l.detail > 1 ? gy : Math.floor(gy) + 0.5) * l.line,
+    };
+    let jitterX = 0;
+    let jitterY = 0;
+    if (event.perception.kind === "heard") {
+      let hash = 0;
+      for (const char of event.id) hash = (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0;
+      const angle = (hash % 360) * Math.PI / 180;
+      const radius = Math.min(30, Math.max(0, event.uncertaintyM)) / (CELL_M * z);
+      jitterX = Math.cos(angle) * radius * l.px;
+      jitterY = Math.sin(angle) * radius * l.line;
+    }
+    // The cue sits above one rendered glyph, not above its 300 m parent.
+    // Its font height and the micro-glyph height stay constant across zooms.
+    const px = anchor.x + jitterX;
+    const py = anchor.y - l.line / l.detail / 2 - Math.max(18, l.font) + jitterY;
+    const x = Math.max(viewport.left + insetX, Math.min(viewport.right - insetX, px));
+    const y = Math.max(viewport.top + insetY, Math.min(viewport.bottom - insetY, py));
+    const bearing = ["east", "southeast", "south", "southwest", "west", "northwest", "north", "northeast"];
+    const direction = bearing[(Math.round(event.bearingRad / (Math.PI / 4)) % 8 + 8) % 8];
+    const edge = px !== x || py !== y ? ` edge bearing-${direction}` : "";
+    // All cues share the grid's transient layer, clear of cell clipping and
+    // snow filters. Their anonymous identity and start time survive movement.
+    return `<i aria-hidden="true" class="wildlife-startle ${event.perception.kind}${edge}" data-startle="${key}" style="--wildlife-start:${startedAtMs}ms;left:${Number(x.toFixed(2))}px;top:${Number(y.toFixed(2))}px">!</i>`;
+  });
+  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}${animalMarkup.join("")}${startleMarkup.join("")}</div><i class="shade"></i></div>${tools}`);
   return parts.join("");
 }

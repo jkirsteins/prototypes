@@ -18,9 +18,8 @@ design of a Walking skill and the many systems it could affect.
 
 - Wildlife behavior reasons in metres, elapsed minutes and physical context.
   It never reads cell counts or map-cell size.
-- Current saves keep cell-bound animal positions. A spatial adapter turns
-  coarse positions into stable metric estimates. A later detailed view can
-  supply exact positions through the same interface.
+- Active animals keep exact metric positions. Old cell-bound saves migrate to
+  their stable seeded point through the spatial adapter.
 - Sharing a coarse map cell is legal. An undetected animal may remain there.
 - Detection raises alarm. Alarm, not co-occupancy, makes an animal flee.
 - A newly startled animal begins escaping during the update that startled it,
@@ -40,8 +39,8 @@ ungulate detection and escape, sight and hearing of reactions, structured
 presentation events, the `!` effect, departure audio and log copy, the neutral
 movement-proficiency hook, and any necessary save migration.
 
-It does not add Walking progression, wind or scent, stored continuous animal
-positions, direct animal controls, clickable animals, hunt forks or new
+It does not add Walking progression, wind or scent, direct animal controls,
+clickable animals, hunt forks or new
 predator attacks. Wolves, bears and wolverines keep species-specific behavior
 and do not inherit the ungulate flee rule.
 
@@ -65,11 +64,11 @@ interface EncounterGeometry {
 }
 ```
 
-The current adapter converts the survivor's interpolated position to an exact
-metric point. An active animal cell becomes a metric area. Resolution derives
-one plausible point inside it from the world seed, subject ID and area key.
-That point remains stable while the subject remains in the area and consumes
-no simulation RNG.
+The adapter converts the survivor's interpolated position to an exact metric
+point. A newly activated animal begins at a stable point derived inside its
+cell from world seed, subject ID and area key, consuming no simulation RNG.
+Thereafter its stored metric position advances continuously with game time;
+the cell is only the spatial bucket containing that point.
 
 Two actors in one coarse area therefore do not automatically have zero
 separation. A future detailed branch returns exact estimates; all downstream
@@ -138,9 +137,10 @@ pauses or reorients. Flight starts one escape episode. A group shares its
 highest alarm because it remains one subject.
 
 Escape selects a direction away from the threat and a seeded physical distance
-between `escapeMinM` and `escapeMaxM`. The movement adapter spends that distance
-through coarse or detailed steps. The first movement happens immediately and
-later wildlife ticks continue it.
+between `escapeMinM` and `escapeMaxM`. The reaction immediately schedules a
+passable segment but does not relocate the animal. Later elapsed game minutes
+move it by physical gait speed and spend only distance actually travelled.
+Waypoint arrival continues the route independently of decision-tick cadence.
 
 Water, unsafe ice and the active-region boundary remain impassable. A blocked
 subject chooses the passable direction that most increases metric separation.
@@ -166,6 +166,15 @@ Sight may identify a recognized subject, known species, broad body type or
 nothing. Hearing reads distance, departure loudness, terrain, precipitation
 and competing noise. Hunting can improve classification, but cannot make an
 inaudible event audible.
+
+Current animal visibility is already observed evidence. When a subject in
+the map's current visibility result begins escaping, its departure is seen
+even if the independent reaction-perception rolls fail. That event retains
+the recognized name or species the map already discloses. This reads current
+visibility before escape movement, not the cached ten-minute sighting list;
+a formerly visible subject now hidden keeps the ordinary hearing and
+unperceived outcomes. Visibility never forces the animal to detect a person
+or turns routine wandering into a startle.
 
 Heard-only perception includes an uncertain source position. It may appear
 over hidden ground for a moment but is not written to mapped knowledge,
@@ -235,6 +244,11 @@ Initial slots, each with at least two variants, are:
 - `startle_hoof_snow`;
 - `startle_brush_predator`.
 
+The predator slot is reserved but unreachable in this build because predators
+retain their older behavior and have zero disturbance gain. Predator reaction,
+metric contact, and whether this slot belongs to that presentation are recorded
+in the roadmap rather than implied to be complete here.
+
 Distance selects gain, bearing selects pan and event ID selects light rate
 variation. Recorded movement recedes over one to three seconds. Ambience and
 survivor footsteps duck slightly at onset, then return smoothly. Simulation
@@ -302,7 +316,9 @@ At one-cell zoom with sound on:
 7. Zoom during the effect, mute, hide and restore the tab, and enable reduced
    motion. Nothing replays and every fallback stays understandable.
 
-What would look wrong: a fixed cell flight radius; same-cell contact; a
+For the ungulate disturbance behavior covered by this spec, what would look
+wrong is a fixed cell flight radius; co-occupancy treated as zero-distance
+contact; a
 ten-minute reaction delay; hidden identity or route disclosure; an ambiguous
 twig snap; non-receding hoofbeats; one marker per herd member; teleporting; or
 zoom replay.
