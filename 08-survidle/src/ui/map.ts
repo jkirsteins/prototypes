@@ -5,8 +5,9 @@
  * into cosmetic detail while retaining one hit target and one simulation
  * position: 3 by 3 at the first close rung, 6 by 6 at the closest. Beyond the
  * default a glyph is a block of cells drawn as its commonest ground. Regions
- * never visited are fog; regions only seen from next door are dim. The player
- * never pans; the world moves under them.
+ * never visited are fog; regions only seen from next door are dim. At the
+ * cell-scale rungs, ground known this life but outside the current viewshed is
+ * muted. The player never pans; the world moves under them.
  */
 import type { Calendar } from "../sim/calendar";
 import { fuelTotal, hasEmbers, roofed } from "../sim/fire";
@@ -26,8 +27,14 @@ import { moodOf } from "./mood";
 import { lighting } from "./sky";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
 import { metricPointForWildlife } from "../sim/wildlife-space";
+import { hasLineOfSight, sightRangeCells, visibleCells } from "../sim/sight";
 
 const CELL_M = CELL_KM * 1000;
+
+/** A small open camp fire remains a distinct light out to about five kilometres on a clear night. */
+const CAMPFIRE_VISIBLE_KM = 5;
+/** Inside one kilometre the map can resolve firelit ground as well as the point source itself. */
+const CAMPFIRE_LOCAL_LIGHT_KM = 1;
 
 export const GLYPH: Record<Terrain, string> = {
   water: "~", fell: "^", rock: "n", bog: "\"", spruce: "A", pine: "T", birch: "Y", meadow: ".",
@@ -92,6 +99,7 @@ export function legendHtml(): string {
     `<span class="tone-key">brighter ground stands higher; paler water is shallower</span>` +
     `<span class="pl-key">underlined: something lies there</span>` +
     `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +
+    `<span class="memory-key">muted: remembered, faint: inherited</span>` +
     `<span class="fog-key">dark: never been there</span>`
   );
 }
@@ -446,9 +454,10 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
       return `${s.id}:${s.active?.cell}:${wildlifeMembers(s)}:${state.wildlife.recognized[s.id] ? s.name ?? "" : ""}:${s.active?.intent}:${point ? `${point.xM.toFixed(2)}:${point.yM.toFixed(2)}` : ""}`;
     }).join(",") : "";
   const playerDetail = level.detail > 1 ? playerVisualSlot(state, level.detail) : "";
+  const viewRange = level.cells === 1 ? sightRangeCells(state, world, cal, cell) : "";
   const startles = activeWildlifeStartles(ui, nowMs).map((cue) => cue.key).join(",");
   const viewport = startles && ui.mapViewport ? Object.values(ui.mapViewport).join(",") : "";
-  return `${ui.zoom}|${x0}|${y0}|${cell}:${playerDetail}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${animals}|${startles}|${viewport}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}:${playerDetail}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|${animals}|${startles}|${viewport}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs = performance.now()): string {
@@ -470,6 +479,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   // resolved. A future exact-position glyph supplies its center here too.
   const animalAnchors = new Map<number, { x: number; y: number }>();
   const playerCell = cellOf(state, world);
+  // Current visibility has meaning only while one glyph is one mechanical
+  // cell. Coarser blocks remain a map of knowledge rather than pretending a
+  // majority-visible block is a precise view.
+  const visibleNow = z === 1 ? visibleCells(state, world, cal, playerCell) : null;
   const toGlyph = (cell: number): number => {
     const c = cellAt(world, cell);
     const gx = Math.floor((c.x - x0) / z);
@@ -479,6 +492,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   };
 
   const markerAt = new Map<number, (typeof MARKS)[keyof typeof MARKS]>();
+  const visibleFireDistance = new Map<number, number>();
   const featuresAt = new Map<number, string[]>();
   const addFeature = (glyph: number, feature: string): void => {
     if (glyph < 0) return;
@@ -493,8 +507,14 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       let m: (typeof MARKS)[keyof typeof MARKS];
       // Only the camp itself can carry the region's one fire; a site the camp has
       // moved away from is read by its roof alone.
-      if (isCamp && st.fire.lit) m = MARKS.fire;
-      else if (isCamp && hasEmbers(st.fire)) m = MARKS.coals;
+      const live = visibleNow === null || visibleNow.has(cell);
+      const fireDistanceKm = Math.hypot(cell % world.w - playerCell % world.w, Math.floor(cell / world.w) - Math.floor(playerCell / world.w)) * CELL_KM;
+      const fireVisible = isCamp && st.fire.lit && (live || (fireDistanceKm <= CAMPFIRE_VISIBLE_KM && hasLineOfSight(world, playerCell, cell, 1.5)));
+      if (fireVisible) {
+        visibleFireDistance.set(cell, fireDistanceKm);
+        m = MARKS.fire;
+      }
+      else if (isCamp && live && hasEmbers(st.fire)) m = MARKS.coals;
       else m = roofed(siteAt(st, cell)) ? MARKS.shelter : MARKS.camp;
       const g = toGlyph(cell);
       if (g >= 0) {
@@ -543,7 +563,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       addFeature(g, "supplies");
     }
   }
-  const rings = cal.isNight ? litRings(lightSources(state, world), toGlyph, z, l) : new Map<number, number>();
+  const sources = lightSources(state, world).filter((source) => {
+    const distanceKm = Math.hypot(source.cell % world.w - playerCell % world.w, Math.floor(source.cell / world.w) - Math.floor(playerCell / world.w)) * CELL_KM;
+    const observable = visibleNow === null || visibleNow.has(source.cell) || visibleFireDistance.has(source.cell);
+    return observable && distanceKm <= CAMPFIRE_LOCAL_LIGHT_KM;
+  });
+  const rings = cal.isNight ? litRings(sources, toGlyph, z, l) : new Map<number, number>();
 
   // Region, ground and discovery per glyph, then borders between glyphs.
   const regions = new Int32Array(l.w * l.h);
@@ -662,6 +687,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
+    const mechanicalCell = cellIdx(world, x0 + gx * z, y0 + gy * z);
     const reg = regions[i];
     const seen = reg >= 0 ? seenAt[i] : 0;
     const named = reg >= 0 && discovery(state, reg) > 0;
@@ -688,7 +714,11 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     } else {
       const t = terrains[i];
       cls.push(`t-${t}`);
-      if (seen === 1) cls.push("dim");
+      const lightRing = rings.get(i);
+      const firelit = lightRing !== undefined && hasLineOfSight(world, playerCell, mechanicalCell, 0.5);
+      const current = visibleNow === null || visibleNow.has(mechanicalCell) || visibleFireDistance.has(mechanicalCell) || firelit;
+      if (seen === 1 && !current) cls.push("dim");
+      if (seen === 2 && !current) cls.push("memory");
       if (drawBorders) {
         if (gx > 0 && ownsEdge(reg, regions[i - 1])) cls.push("bl");
         if (gx < l.w - 1 && ownsEdge(reg, regions[i + 1])) cls.push("br");
@@ -723,7 +753,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       }
       if (snow && t === "meadow") glyph = "*";
       if (pileGlyphs.has(i) && seen === 2) cls.push("pl");
-      const ring = rings.get(i);
+      const ring = current ? lightRing : undefined;
       if (ring !== undefined) {
         cls.push(`lit-${ring}`);
         style = ` style="--fd:${flickerDelay(i)}"`;
@@ -733,6 +763,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (m) {
       if (!detailGlyphs) {
         cls.push("mk", m.cls);
+        if (m.cls === "mk-fire" && (visibleFireDistance.get(mechanicalCell) ?? 0) > CAMPFIRE_LOCAL_LIGHT_KM) cls.push("fire-far");
         // The mood rides as a class and not as a data attribute: the morph keys an
         // element by its data attributes, so a mood written there would make every
         // change of task replace the glyph's node instead of retitling it.

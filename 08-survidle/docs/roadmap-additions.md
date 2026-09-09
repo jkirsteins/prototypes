@@ -135,6 +135,45 @@ example, if close animal approaches repeatedly feel misleading, or players need
 to choose a precise patch of ground inside a cell. At that point the work wants
 its own spec and balance pass rather than more visual exceptions.
 
+## Current viewshed refinements
+
+**Raised** 2026-09-09, after the first topographic viewshed pass.
+
+**Foundation built.** At the cell-scale zooms, current sight now has a circular
+maximum range, elevation and canopy occlusion, Earth-curvature drop, distinct
+remembered and inherited ground, and no live camp flame or glow through an
+occluder. A clear night fire uses a separate five-kilometre luminous-source
+range, so seeing the flame does not pretend the unlit ground is visible. The
+map is awareness gathered while standing in a cell, not a literal
+instantaneous gaze cone, so it remains 360 degrees unless facing and turning
+become simulation actions.
+
+Refine it in this order, and only where play or screenshots expose a problem:
+
+1. When roadmap 7 lands, give fog, low cloud, rain, falling snow and smoke one
+   per-cell atmospheric transmission field. Terrain rays and luminous-source
+   rays both accumulate it: dense fog can hide a nearby flame, haze weakens a
+   distant flame before hiding it, and heavy precipitation shortens both
+   ranges. Add physical distance contrast from that same field, not a cosmetic
+   feather around the viewshed edge. Never reveal an exact hidden fire merely
+   because an atmospheric glow is drawn; a diffuse glow needs its own uncertain
+   observation state.
+2. Add animal-specific visual detection, localized sound and observed dynamic
+   state in the order under Sensory map follow-ons below.
+3. If diagonal pinholes or missed blockers are visible at 300 m resolution,
+   replace rounded ray traversal with supercover traversal and keep a regression
+   gallery for ridge, valley and forest-edge cases. Do not add finer mechanical
+   cells merely to smooth the outline.
+4. When fires make terrain mutable, add a terrain observation generation to the
+   viewshed cache key or invalidate the cache for every changed burn, smoke and
+   regrowth cell before rendering or marking knowledge.
+
+The current rain overlay is presentation only for sight: overcast reduces
+ambient sky light, but rain and snow do not yet attenuate terrain or flame
+line-of-sight. Screenshot coverage must label that limitation until the shared
+transmission field exists. Fog is not yet simulated and must not be mocked only
+in CSS.
+
 ## Burn scars
 
 **Raised** 2026-09-08, during the seasonal colour pass.
@@ -144,36 +183,54 @@ and eventually growing back. It is the one mark on the map the survivor makes
 by living somewhere rather than by building something, and it would make a camp
 you have kept for a season look like a camp you have kept for a season.
 
-This is not part of the colour pass and was deliberately left out of it. A
-colour is a rule about a cell the world already describes; a scar is a fact the
-world has to remember, which means state, a cause, and a lifetime. Three
-decisions before it can be specced, and none of them are mine to take:
+This is not a separate cheap decoration any more. The realism roadmap already
+specifies the authoritative version in `8. Forest fire`: active burning cells,
+smouldering ground, the persistent burn overlay and ecological succession. This
+entry remains as a cross-reference until that sub-project lands.
 
-**What burns.** The cheap version is only your own fire sites: a hearth
-scorches the cell it sits on, and nothing else in the world ever burns. That is
-one class on one cell, no new state beyond what `regionState` already keeps,
-and it delivers most of the look - the camp you have lived at is ringed with
-old fire. The expensive version is fire that spreads: a lit fire in dry weather
-taking the ground around it, which is a hazard, a loss condition, and a reason
-to site a camp carefully. The second is a mechanic, not a decoration, and it
-would want its own spec.
+The implementation order is fixed by what each layer can honestly know:
 
-**How long a scar lasts, and in what terms.** A fire site used for a week is
-not a fire site used for a year, and the fade wants to be in days that mean
-something rather than a number picked to look right - the same rule the rest of
-this game's numbers hold to. Charcoal on a hearth outlasts the hearth; a burnt
-meadow greens in a season. If the two differ, the scar is per terrain.
+1. The current viewshed distinguishes visible ground from remembered ground,
+   with terrain and canopy occlusion. This is the foundation, not part of the
+   fire state.
+2. Roadmap 7 supplies wind, thunderstorms and fog visibility; item 8 replaces
+   the dry-day counter with litter and peat moisture.
+3. Item 8 adds ignition, active fire cells, spread, destruction and smouldering.
+4. Smoke reads those real cells and the real wind. Low smoke limits the local
+   viewshed; an elevated plume gives only an approximate distant bearing.
+5. A finished burn writes the persistent scar, then succession and wildlife
+   capacity read its age. The scar never predicts or substitutes for steps 2
+   through 4.
 
-**Whether it survives a life.** Camps, knowledge and the journal all carry
-between survivors in their own ways. An heir finding the ancestor's burnt hearth
-is a good moment; an heir finding a map speckled with ninety years of soot is
-not. Whatever the answer, it should be the same answer the dimmed journal
-ground already gives, or a deliberately different one.
+The old cheap option, scorching every occupied fire site without a fire, is
+withdrawn. It would make a visual claim that the simulation never caused and
+would leave two incompatible definitions of burned ground. The drawing follows
+the effective terrain in item 8 and gets rows in `scripts/map-shots.mjs` for
+flame, smoulder, fresh scar and succession.
 
-Once those are settled the drawing is small: a `scorched` class carrying a step
-for age, excluded from marked cells the way every other conditional ground rule
-in `style.css` is, plus a row in `scripts/map-shots.mjs` so the look is checked
-with the rest.
+## Sensory map follow-ons
+
+**Raised** 2026-09-09, during the current-viewshed pass.
+
+The viewshed can hide what the existing simulation locates, but it cannot make
+up observations the simulation does not record. Build these in order:
+
+1. **Detection.** Large wildlife uses its own distance, size, movement, cover,
+   light and weather check inside the terrain viewshed. Seeing a cell never by
+   itself means seeing every animal on it.
+2. **Localized sound.** A wildlife subject emits a real event with origin,
+   loudness and time. Rain, wind, fire and terrain affect whether it is heard
+   and how well it can be localized.
+3. **Uncertain map cue.** A heard but unseen subject produces a steady,
+   short-lived `?` at an approximate bearing or area. It never uses the hidden
+   subject's exact cell, never flickers, and is replaced by the animal glyph
+   only after visual detection.
+4. **Observed dynamic state.** Fires, coals, traps, piles and other changing
+   marks retain last-observed state and time. Until that exists the close map
+   must prefer hiding live off-screen changes over reading omniscient state.
+
+Fire and smoke consume the same observation interfaces after roadmap item 8
+creates their spatial state; they do not add renderer-only exceptions.
 
 ## The reference runner and a walking heir never reach for a seep
 
