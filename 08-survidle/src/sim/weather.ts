@@ -1,6 +1,10 @@
 import type { Rng } from "../rng";
-import type { Calendar } from "./calendar";
-import type { IceMode, Season, Weather } from "./types";
+import { fmtDuration } from "../units";
+import { calendar, type Calendar } from "./calendar";
+import { hasQuirk } from "./fears";
+import { survivedStorms } from "./record";
+import { skillLevel } from "./skills";
+import type { GameState, IceMode, Season, Weather } from "./types";
 
 /** Mean temperature over the year at 62 N inland: +15 in mid-July, -9 in mid-January, about 0 on 1 April. */
 export function seasonalMean(dayOfYear: number): number {
@@ -42,9 +46,47 @@ export function stormNow(w: Weather, minute: number): boolean {
   return w.storm !== null && minute >= w.storm.from && minute < w.storm.until;
 }
 
-/** True in the hour before a storm starts, for the one warning. */
-export function stormComing(w: Weather, minute: number): boolean {
-  return w.storm !== null && minute >= w.storm.from - 60 && minute < w.storm.from;
+/** Observations last until sunrise, including the hours across midnight. */
+export function skyReadDay(state: GameState): number {
+  const cal = calendar(state.minute, state.startDoy);
+  return cal.dayIndex - (cal.hour < cal.sunrise ? 1 : 0);
+}
+
+/** Practice, lived weather and deliberate observation all buy time to prepare. */
+export function warningMinutes(state: GameState): number {
+  return 60 + 5 * (skillLevel(state, "weatherSense") - 1)
+    + 10 * Math.min(6, survivedStorms(state))
+    + (hasQuirk(state, "weatherEye") ? 30 : 0)
+    + (state.player.skyReadDay === skyReadDay(state) ? 30 : 0);
+}
+
+export function forecastStage(state: GameState): 1 | 2 | 3 {
+  const minutes = warningMinutes(state);
+  return minutes >= 180 ? 3 : minutes >= 120 ? 2 : 1;
+}
+
+/** True when this survivor can read a storm that has not started yet. */
+export function stormComing(state: GameState): boolean {
+  const storm = state.weather.storm;
+  return storm !== null && state.minute >= storm.from - warningMinutes(state) && state.minute < storm.from;
+}
+
+/** Only known forecast facts, shared by observations, warnings and the weather wall. */
+export function forecastText(state: GameState): string {
+  const storm = state.weather.storm;
+  const blowing = stormNow(state.weather, state.minute);
+  if (!storm || (!blowing && !stormComing(state))) return "";
+  const stage = forecastStage(state);
+  if (stage === 1) return blowing ? "storm" : "a storm is coming";
+  // Storms bring heavy precipitation. Its phase follows the air at onset;
+  // an active storm is read from the air now, as the weather itself is.
+  const cal = calendar(blowing ? state.minute : storm.from, state.startDoy);
+  const kind = ambientTemperature(cal, { ...state.weather, precip: "heavy" }) <= 0 ? "snow" : "rain";
+  const arrival = blowing ? "" : ` in ${fmtDuration(storm.from - state.minute)}`;
+  const duration = stage === 3
+    ? blowing ? `, ${fmtDuration(storm.until - state.minute)} left` : `, lasting ${fmtDuration(storm.until - storm.from)}`
+    : "";
+  return `heavy ${kind} storm${arrival}${duration}`;
 }
 
 /** Ice above this bears a walker's weight without risk. */

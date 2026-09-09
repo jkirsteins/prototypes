@@ -36,7 +36,7 @@ import {
 } from "../sim/tasks";
 import { isWorkIntent, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
-import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
+import { forecastText, iceMode, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { routeKm } from "../world/route";
@@ -240,8 +240,8 @@ export function weatherHtml(state: GameState, world: World, cal: Calendar, ambie
   const snow = state.weather.snowCm >= 1 ? `snow ${Math.round(state.weather.snowCm)} cm` : "";
   const ice = state.weather.iceCm >= 1 ? `ice ${Math.round(state.weather.iceCm)} cm` : "";
   const ground = [snow, ice].filter(Boolean).join(", ");
-  const storm = state.weather.storm && stormNow(state.weather, state.minute)
-    ? `<div class="wx-warn">storm, ${fmtDuration(state.weather.storm.until - state.minute)} left</div>` : "";
+  const forecast = forecastText(state);
+  const storm = forecast ? `<div class="wx-warn" data-weather-forecast>${esc(forecast)}</div>` : "";
   const dry = groundDry(state.weather, cal) ? `<div class="wx-warn">tinder dry</div>` : "";
   const felt = Math.round(feltTemperature(state, world, ambient));
   return `<div class="wx">

@@ -61,6 +61,12 @@ function everyRow(): Row[] {
 }
 
 describe("every Do row has exactly one purpose", () => {
+  it("places reading the sky under Explore > Weather", () => {
+    expect(subtabOf("readSky")).toBe("Explore");
+    expect(purposeOf("readSky")).toBe("Weather");
+    expect(PURPOSES.Explore).toContain("Weather");
+    expect(everyRow().filter((row) => row.id === "readSky")).toHaveLength(1);
+  });
   const rows = everyRow();
 
   it("finds rows at all, so an empty pass cannot read as a pass", () => {

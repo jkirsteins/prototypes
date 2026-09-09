@@ -10,10 +10,58 @@ import { mapHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { bodyPosition, lighting, phaseName, skyHtml, updateSky, WALL } from "../src/ui/sky";
 import { siteCamp } from "./siting-helpers";
+import { current } from "../src/sim/record";
+import { levelMinutes } from "../src/sim/skills";
 
 const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
 /** Minutes since the run start for a clock hour on day one. */
 const at = (hour: number) => calendar((hour - 8) * 60);
+
+describe("forecast knowledge in the weather wall", () => {
+  it("hides distant storms and reveals arrival, kind, severity and duration only as learned", () => {
+    const { state, world } = newGame(17);
+    current(state).person.quirks = [];
+    state.weather.offset = 15;
+    state.weather.storm = { from: 100, until: 460, warned: false };
+    const line = () => {
+      const root = document.createElement("div");
+      root.innerHTML = weatherHtml(state, world, calendar(state.minute), 15);
+      return root.querySelector("[data-weather-forecast]")?.textContent ?? "";
+    };
+    expect(line()).toBe("");
+    state.minute = 40;
+    expect(line()).toBe("a storm is coming");
+    state.skills.weatherSense.xp = levelMinutes(13);
+    expect(line()).toBe("heavy rain storm in 1 h");
+    state.skills.weatherSense.xp = levelMinutes(25);
+    expect(line()).toBe("heavy rain storm in 1 h, lasting 6 h");
+    state.minute = 100;
+    state.skills.weatherSense.xp = 0;
+    expect(line()).toBe("storm");
+  });
+
+  it("updates accessible forecast detail without replacing the painted sky", () => {
+    resetPanels();
+    document.body.innerHTML = '<div id="weather"></div>';
+    const { state, world } = newGame(17);
+    current(state).person.quirks = [];
+    state.weather.offset = 15;
+    state.weather.storm = { from: 60, until: 420, warned: false };
+    const cal = calendar(0);
+    setPanel("weather", weatherHtml(state, world, cal, 15));
+    updateSky(state, cal, 15);
+    const sky = document.querySelector("svg.sky");
+    expect(sky?.getAttribute("aria-label")).toContain("a storm is coming");
+    state.skills.weatherSense.xp = levelMinutes(25);
+    setPanel("weather", weatherHtml(state, world, cal, 15));
+    updateSky(state, cal, 15);
+    expect(document.querySelector("svg.sky")).toBe(sky);
+    expect(sky?.getAttribute("aria-label")).toContain("lasting 6 h");
+    state.skills.weatherSense.xp = 0;
+    updateSky(state, cal, 15);
+    expect(sky?.getAttribute("aria-label")).not.toMatch(/rain|6 h|1 h/);
+  });
+});
 
 describe("sky arc", () => {
   it("puts the sun on the left horizon at sunrise, high at midday, right at sunset", () => {

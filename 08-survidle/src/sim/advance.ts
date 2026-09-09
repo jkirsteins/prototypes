@@ -21,7 +21,7 @@ import type { WildlifeMode } from "./types";
 import { stepSeeps } from "./seep";
 import { dailyWildlife, stepWildlife } from "./wildlife-agents";
 import { autoDrink } from "./water";
-import { ambientTemperature, stepWeather, stormComing } from "./weather";
+import { ambientTemperature, forecastStage, forecastText, stepWeather, stormComing } from "./weather";
 
 export const MAX_STEP = 1;
 
@@ -70,9 +70,9 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     if (ev.precipStarted) log(state, ambient <= 0 ? "Snow begins to fall." : "Rain sets in.");
     if (ev.precipStopped) log(state, state.weather.snowCm > 0 && ambient <= 0 ? "The snow stops." : "The rain stops.");
     if (hadStorm && state.weather.storm === null && !state.dead) record(state, { kind: "storm" });
-    if (state.weather.storm && !state.weather.storm.warned && stormComing(state.weather, state.minute)) {
+    if (state.weather.storm && !state.weather.storm.warned && stormComing(state)) {
       state.weather.storm.warned = true;
-      log(state, "The sky is closing in from the west.", "bad");
+      log(state, forecastStage(state) === 1 ? "The sky is closing in from the west." : `The sky is closing in: ${forecastText(state)}.`, "bad");
     }
   }
 

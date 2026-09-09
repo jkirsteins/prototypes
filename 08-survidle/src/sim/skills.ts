@@ -213,6 +213,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
     case "explore": case "searchHome": return "wayfinding";
     case "findShelter": case "improveCover": return "naturalShelter";
     case "emergencyShelter": return "shelterBuilding";
+    case "readSky": return "weatherSense";
     default: return null;
   }
 }
@@ -228,7 +229,7 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
     case "chop": return `chop:${cell === undefined ? hereTerrain(state, world) : cellAt(world, cell).terrain}`;
     case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone": case "eggs": case "roots": case "tapSap": case "seaweed":
     case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang": case "explore": case "searchHome": case "findDen":
-    case "findShelter": case "improveCover": case "emergencyShelter":
+    case "findShelter": case "improveCover": case "emergencyShelter": case "readSky":
       return id;
     // Grinding is foraging's too, the same practice as stripping the bark: the flour is the forager's.
     case "innerBark": case "grindBark": return "innerBark";

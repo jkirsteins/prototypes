@@ -53,7 +53,7 @@ import {
 import { isWorkIntent } from "./types";
 import { owningOrder } from "./orderowner";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
-import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
+import { ambientTemperature, DEEP_SNOW_CM, forecastText, ICE_SAFE_CM, iceMode, skyReadDay, stormNow, walkableIce } from "./weather";
 import { plain } from "./voice";
 import { AGENT_SPECIES, knownBearDen, takeWildlifeMember, unknownBearDen } from "./wildlife-agents";
 
@@ -951,6 +951,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       // Nobody can say how far the unmapped ground between here and camp actually runs, so no duration is offered.
       return { ...o, duration: 0, detail: "no telling how long; it ends the moment the way opens" };
     }
+    case "readSky":
+      return opt({ group: "move", label: "Read the sky", detail: "ten minutes watching the weather; the reading lasts until dawn", duration: 10, repeatable: true });
     case "findShelter": {
       const level = skillLevel(state, "naturalShelter");
       const duration = Math.max(10, 31 - level);
@@ -1158,6 +1160,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   for (const nb of r.neighbours) out.push(check(state, world, cal, "explore", `region:${nb.id}`));
   out.push(check(state, world, cal, "searchHome"));
   out.push(check(state, world, cal, "findShelter"));
+  out.push(check(state, world, cal, "readSky"));
   out.push(check(state, world, cal, "improveCover"));
   out.push(check(state, world, cal, "emergencyShelter"));
   return out.map((o) => withProgression(state, world, o));
@@ -2558,6 +2561,10 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       if (hadCampInAnotherRegion) goalDeed(state, { kind: "campedAgain", region: state.player.region });
       return;
     }
+    case "readSky":
+      state.player.skyReadDay = skyReadDay(state);
+      log(state, `{You} {read} the sky: ${forecastText(state) || "no storm can be read in it"}.`);
+      return;
     case "findShelter": {
       const cell = cellOf(state, world);
       const site = siteFor(st, cell);

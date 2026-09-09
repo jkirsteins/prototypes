@@ -108,7 +108,7 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   const p = state.player;
   // Read once, before the sleep clauses, because both have a say in them.
   const thirsty = p.water < THIRSTY_L && canQuench(state, world, cal);
-  const storming = stormComing(state.weather, state.minute) || stormNow(state.weather, state.minute);
+  const storming = stormComing(state) || stormNow(state.weather, state.minute);
   // Thirst defers a bedtime only when the body would actually get up and go to
   // the water. A storm outranks thirst, so a thirsty body sitting one out is
   // not going to drink first, and the exception would only keep it awake.

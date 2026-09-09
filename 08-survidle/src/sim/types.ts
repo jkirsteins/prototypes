@@ -132,7 +132,7 @@ export type TaskId =
   | "hunt" | "findDen" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
-  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome" | "findShelter" | "improveCover" | "emergencyShelter";
+  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome" | "findShelter" | "improveCover" | "emergencyShelter" | "readSky";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
@@ -140,7 +140,7 @@ export const TASK_IDS: TaskId[] = [
   "hunt", "findDen", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
-  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome", "findShelter", "improveCover", "emergencyShelter",
+  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome", "findShelter", "improveCover", "emergencyShelter", "readSky",
 ];
 
 export interface Task {
@@ -502,6 +502,8 @@ export interface RegionState {
 }
 
 export interface Player {
+  /** Day index of the dawn preceding the last sky reading; null until read. */
+  skyReadDay: number | null;
   /** Position in cell units; the cell under foot is floor(x), floor(y). */
   x: number;
   y: number;
@@ -610,7 +612,7 @@ export interface Died {
 }
 
 export type Grade = -2 | -1 | 0 | 1 | 2;
-export type QuirkId = "coastBorn" | "forestBorn" | "sleepsLight" | "bigEater" | "steadyByTheFire";
+export type QuirkId = "coastBorn" | "forestBorn" | "sleepsLight" | "bigEater" | "steadyByTheFire" | "weatherEye";
 /** Who the survivor is: rolled per candidate, kept on the record, read through person.ts. */
 export interface Person {
   sex: "f" | "m";

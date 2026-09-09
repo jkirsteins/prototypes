@@ -44,6 +44,7 @@ const TREE_TERRAINS = ["spruce", "pine", "birch"] as const;
  * concept names is not a bug: most rows say what they are for.
  */
 const VOCABULARY: { name: string; words: string; rows: string[] }[] = [
+  { name: "weather", words: "sky forecast storm warning rain snow", rows: ["readSky"] },
   { name: "fire", words: "tinder kindling", rows: ["light", "lightIndoors", "lightTorch", "craft:torch", "craft:fireDrill", "build:firePit", "chop", "deadwood", "sticks", "bark", "split", "splitWedges", "melt", "night"] },
   { name: "fuel", words: "firewood", rows: ["chop", "deadwood", "sticks", "split", "splitWedges"] },
   { name: "food", words: "eat hunger", rows: ["hunt", "findDen", "fish", "cook", "berries", "eggs", "roots", "innerBark", "seaweed", "tapSap", "crack", "grindBark", "hang", "setTrap", "emptyTrap", "build:snare", "build:dryingRack", "craft:snare", "craft:bow", "craft:arrows", "craft:fishingSpear", "craft:basketTrap"] },
@@ -215,6 +216,7 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
       { id: "read" as TaskId }, { id: "setTrap" as TaskId }, { id: "emptyTrap" as TaskId },
     ] },
     { label: "Explore", items: [
+      { id: "readSky" as TaskId },
       { id: "findShelter" as TaskId },
       { id: "explore" as TaskId, arg: `region:${r.id}` },
       ...r.neighbours.map((n) => ({ id: "explore" as TaskId, arg: `region:${n.id}` })),

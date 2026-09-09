@@ -34,6 +34,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
   const pack = emptyInventory();
   addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
   state.player = {
+    skyReadDay: null,
     x: (cell % world.w) + 0.5,
     y: Math.floor(cell / world.w) + 0.5,
     region,

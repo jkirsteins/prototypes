@@ -14,7 +14,7 @@ import {
   type ProjectedGalacticPoint,
 } from "../sim/celestial";
 import type { GameState, Weather } from "../sim/types";
-import { stormNow } from "../sim/weather";
+import { forecastText, stormNow } from "../sim/weather";
 import { clamp } from "../units";
 
 export const SKY_W = 220;
@@ -431,6 +431,8 @@ export function updateSky(state: GameState, cal: Calendar, ambient: number, root
 
 /** One sky, at the shape it was drawn: where the body sits, what colour the air is, and what is falling through it. */
 function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: number): void {
+  const forecast = forecastText(state);
+  svg.setAttribute("aria-label", forecast ? `sky: ${forecast}` : "sky");
   const d = (svg as unknown as HTMLElement).dataset;
   const g: SkyGeom = {
     w: Number(d.skyW ?? SKY_W), h: Number(d.skyH ?? SKY_H),
