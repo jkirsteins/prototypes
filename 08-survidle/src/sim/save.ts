@@ -69,6 +69,7 @@ export function migrate(state: GameState): void {
   const legacyGoals = state.goals.introduced === undefined;
   if (legacyGoals) migrateLegacyGoals(state);
   state.goals.introduced ??= {};
+  state.goals.stepProgress ??= {};
   const goalIds = new Set(GOALS.map((goal) => goal.id));
   state.goals.queue = (state.goals.queue ?? []).filter((id) => goalIds.has(id));
   if (state.task?.id === "explore" && state.task.originRegion === undefined) {

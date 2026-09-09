@@ -47,6 +47,21 @@ describe("finding the cell under the pointer", () => {
     expect(cellFromPoint(world, state, ui, p.x, p.y)).toBe(here);
   });
 
+  it("every closest-rung detail resolves to its one containing simulation cell", () => {
+    const close = newUiState();
+    close.zoom = 0;
+    const here = cellOf(state, world);
+    const centre = pointOf(world, state, close, here);
+    const l = levelAt(close.zoom);
+    for (let x = 0; x < l.detail; x++) {
+      for (let y = 0; y < l.detail; y++) {
+        const dx = (x + 0.5) / l.detail - 0.5;
+        const dy = (y + 0.5) / l.detail - 0.5;
+        expect(cellFromPoint(world, state, close, centre.x + dx * l.px, centre.y + dy * l.line)).toBe(here);
+      }
+    }
+  });
+
   it("subtracts a centered grid's screen offset before resolving a cell", () => {
     const here = cellOf(state, world);
     const p = pointOf(world, state, ui, here);

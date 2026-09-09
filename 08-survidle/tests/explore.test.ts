@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
+import { introduceGoals } from "../src/sim/goals";
 import { NOT_ORDERS } from "../src/sim/ladder";
 import { isKnown, knownShare } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -60,6 +61,7 @@ describe("explore", () => {
     const g = newGame(4);
     siteCamp(g.state, g.world);
     const { state, world } = g;
+    introduceGoals(state, ["explore", "secondCamp"]);
     const region = partlyKnownNeighbour(g);
     const before = knownShare(state, world, region);
     expect(before).toBeGreaterThan(0);

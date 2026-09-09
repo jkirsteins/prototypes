@@ -1,10 +1,12 @@
 /**
  * The map is a viewport of glyphs centred on the player, its size and its
- * ground per glyph set by the zoom level (LEVELS below). At the three
- * closest a glyph is one cell, drawn larger each rung; beyond them a glyph
- * is a block of cells drawn as its commonest ground. Regions never visited
- * are fog; regions only seen from next door are dim. The player never pans;
- * the world moves under them.
+ * ground per glyph set by the zoom level (LEVELS below). At the default a
+ * glyph is one 300 m simulation cell. The two closer rungs divide that cell
+ * into cosmetic detail while retaining one hit target and one simulation
+ * position: 3 by 3 at the first close rung, 6 by 6 at the closest. Beyond the
+ * default a glyph is a block of cells drawn as its commonest ground. Regions
+ * never visited are fog; regions only seen from next door are dim. The player
+ * never pans; the world moves under them.
  */
 import type { Calendar } from "../sim/calendar";
 import { fuelTotal, hasEmbers, roofed } from "../sim/fire";
@@ -100,6 +102,8 @@ export const SNOW_SHOWN_CM = 5;
 export interface ZoomLevel {
   /** Cells per glyph. */
   cells: number;
+  /** Cosmetic ground samples drawn across and down inside one simulation cell. */
+  detail: number;
   /** Glyphs across and down. */
   w: number;
   h: number;
@@ -110,21 +114,21 @@ export interface ZoomLevel {
 }
 
 /** The board every level from the cell outwards is drawn on: 72 by 36 small glyphs. */
-const BOARD = { w: 72, h: 36, px: 11, line: 14, font: 12 };
+const BOARD = { detail: 1, w: 72, h: 36, px: 11, line: 14, font: 12 };
 /** The farthest rung: the world at one glyph per block, in the world's own shape. */
 const FAR_CELLS = Math.ceil(WORLD_H / BOARD.h);
-const FAR = { cells: FAR_CELLS, w: Math.ceil(WORLD_W / FAR_CELLS), h: BOARD.h, px: BOARD.px, line: BOARD.line, font: BOARD.font };
+const FAR = { cells: FAR_CELLS, detail: 1, w: Math.ceil(WORLD_W / FAR_CELLS), h: BOARD.h, px: BOARD.px, line: BOARD.line, font: BOARD.font };
 
 /**
- * The ladder, closest first. Past one cell per glyph there is nothing finer
- * to draw, so the two closest rungs hold the cell and grow the glyph, which
- * means fewer of them: the map keeps the same box on screen throughout and
- * shows less ground the closer it goes, the way a zoom should. The last rung
- * is the smallest that fits the whole world.
+ * The ladder, closest first. The two closest rungs hold the 300 m simulation
+ * cell but draw a cosmetic field inside it, 3 by 3 and then 6 by 6, so they
+ * reveal smaller terrain forms without changing movement or resources. The
+ * map keeps the same box on screen throughout and shows less ground the closer
+ * it goes. The last rung is the smallest that fits the whole world.
  */
 export const LEVELS: ZoomLevel[] = [
-  { cells: 1, w: 36, h: 18, px: 22, line: 28, font: 23 },
-  { cells: 1, w: 49, h: 24, px: 16, line: 21, font: 17 },
+  { cells: 1, detail: 6, w: 12, h: 6, px: 66, line: 84, font: 10 },
+  { cells: 1, detail: 3, w: 24, h: 12, px: 33, line: 42, font: 10 },
   { cells: 1, ...BOARD },
   { cells: 3, ...BOARD },
   { cells: 9, ...BOARD },
@@ -199,8 +203,86 @@ export const ZOOMS = LEVELS.map((l) => l.cells);
 const TIE_ORDER: Terrain[] = ["water", "fell", "rock", "spruce", "pine", "birch", "bog", "meadow"];
 
 export function zoomLabel(zoom: number): string {
-  const km = levelAt(zoom).cells * 0.3;
-  return km < 1 ? `${Math.round(km * 1000)} m per glyph` : `${km.toFixed(1)} km per glyph`;
+  const l = levelAt(zoom);
+  const km = l.cells * 0.3 / l.detail;
+  const unit = l.detail > 1 ? "detail" : "glyph";
+  return km < 1 ? `${Math.round(km * 1000)} m per ${unit}` : `${km.toFixed(1)} km per ${unit}`;
+}
+
+const DETAIL_FORMS: Record<Terrain, string[]> = {
+  water: ["~", "-", "~", "~"],
+  fell: ["^", "^", "n", "."],
+  rock: ["n", "n", "o", "."],
+  bog: ["\"", ":", ",", "."],
+  spruce: ["A", "A", "A", "'"],
+  pine: ["T", "T", "T", "."],
+  birch: ["Y", "Y", "Y", "'"],
+  meadow: [".", ",", "'", "."],
+};
+
+/** A small integer hash for visual texture only. It never enters simulation state. */
+function detailHash(seed: number, x: number, y: number, n: number): number {
+  let h = (seed ^ Math.imul(x + 0x51ed, 0x9e3779b1) ^ Math.imul(y + 0x713d, 0x85ebca6b) ^ Math.imul(n + 1, 0xc2b2ae35)) >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x7feb352d);
+  h ^= h >>> 15;
+  return h >>> 0;
+}
+
+/** A deterministic field of cosmetic details inside one 300 m simulation cell. */
+export function visualGround(seed: number, x: number, y: number, terrain: Terrain, base: string, detail: number, snow: boolean, frozen: boolean): string[] {
+  const forms = DETAIL_FORMS[terrain];
+  return Array.from({ length: detail * detail }, (_, i) => {
+    if (frozen && terrain === "water") return i % detail === Math.floor(detail / 2) ? "-" : "=";
+    if (snow && terrain === "meadow") return detailHash(seed, x, y, i) % 4 === 0 ? "." : "*";
+    if (terrain === "water" && base === "-") return detailHash(seed, x, y, i) % 4 === 0 ? "~" : "-";
+    const pick = detailHash(seed, x, y, i) % forms.length;
+    return pick === 0 ? base : forms[pick];
+  });
+}
+
+function animalDirection(subject: WildlifeSubject, world: World): { dx: number; dy: number } | null {
+  const active = subject.active;
+  if (!active) return null;
+  const next = active.route[0] ?? (active.target !== null ? active.target : undefined);
+  if (next === undefined || next === active.cell) return null;
+  const dx = Math.sign((next % world.w) - (active.cell % world.w));
+  const dy = Math.sign(Math.floor(next / world.w) - Math.floor(active.cell / world.w));
+  return Math.abs(dx) + Math.abs(dy) === 1 ? { dx, dy } : null;
+}
+
+/** Cosmetic position inside a cell. Directed animals cross it toward their next real cell. */
+export function animalVisualSlot(subject: WildlifeSubject, world: World, minute: number, detail = 3, ordinal = 0): number {
+  const active = subject.active;
+  if (!active) return Math.floor(detail / 2) * detail + Math.floor(detail / 2);
+  const seed = detailHash(world.seed, active.cell, subject.id, ordinal);
+  if (active.intent === "rest" || active.intent === "den") return seed % (detail * detail);
+  const phase = Math.min(detail - 1, Math.floor((((minute % 10) + 10) % 10) / 10 * detail));
+  const direction = animalDirection(subject, world);
+  if (direction) {
+    const across = direction.dx > 0 || direction.dy > 0 ? phase : detail - 1 - phase;
+    return direction.dx === 0 ? across * detail + seed % detail : (seed % detail) * detail + across;
+  }
+  const step = Math.floor(minute / 2);
+  const startX = seed % detail;
+  const x = (startX + step) % detail;
+  const y = (Math.floor(seed / detail) + Math.floor((startX + step) / detail)) % detail;
+  return y * detail + x;
+}
+
+function visualSlotStyle(slot: number, detail: number): string {
+  return `--sx:${slot % detail};--sy:${Math.floor(slot / detail)}`;
+}
+
+/** The survivor's continuous simulation position projected into the visual field. */
+export function playerVisualSlot(state: GameState, detail: number): number {
+  const x = Math.min(detail - 1, Math.max(0, Math.floor((state.player.x - Math.floor(state.player.x)) * detail)));
+  const y = Math.min(detail - 1, Math.max(0, Math.floor((state.player.y - Math.floor(state.player.y)) * detail)));
+  return y * detail + x;
+}
+
+function glyphHtml(glyph: string): string {
+  return glyph === "\"" ? "&quot;" : glyph;
 }
 
 /** Top-left cell of the viewport, so the player sits in the middle glyph. */
@@ -385,10 +467,11 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const discoveredSum = Object.values(state.discovered).reduce((a, b) => a + b, 0);
   const animals = level.cells === 1 ? visibleWildlife(state, world, cal)
     .filter((subject) => subject.active && (subject.active.cell % world.w) >= x0 && (subject.active.cell % world.w) < x0 + level.w && Math.floor(subject.active.cell / world.w) >= y0 && Math.floor(subject.active.cell / world.w) < y0 + level.h)
-    .map((s) => `${s.id}:${s.active?.cell}:${wildlifeMembers(s)}:${state.wildlife.recognized[s.id] ? s.name ?? "" : ""}:${s.active?.intent}`).join(",") : "";
+    .map((s) => `${s.id}:${s.active?.cell}:${wildlifeMembers(s)}:${state.wildlife.recognized[s.id] ? s.name ?? "" : ""}:${s.active?.intent}:${level.detail > 1 ? animalVisualSlot(s, world, state.minute, level.detail) : ""}`).join(",") : "";
+  const playerDetail = level.detail > 1 ? playerVisualSlot(state, level.detail) : "";
   const startles = activeWildlifeStartles(ui, nowMs).map((cue) => cue.key).join(",");
   const viewport = startles && ui.mapViewport ? Object.values(ui.mapViewport).join(",") : "";
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${animals}|${startles}|${viewport}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}:${playerDetail}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${animals}|${startles}|${viewport}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs = performance.now()): string {
@@ -491,12 +574,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const playerGlyph = toGlyph(playerCell);
   addFeature(playerGlyph, "you");
   markerAt.set(playerGlyph, MARKS.you);
-  const animalAt = new Map<number, WildlifeSubject>();
+  const animalAt = new Map<number, WildlifeSubject[]>();
   if (z === 1) {
     for (const subject of visibleWildlife(state, world, cal)) {
       const g = subject.active ? toGlyph(subject.active.cell) : -1;
       if (g >= 0) {
-        if (!animalAt.has(g)) animalAt.set(g, subject);
+        animalAt.set(g, [...(animalAt.get(g) ?? []), subject]);
         const recognized = state.wildlife.recognized[subject.id];
         const count = wildlifeMembers(subject);
         const identity = recognized && subject.name ? subject.name : (subject.species === "wolf" ? "wolf pack" : subject.species);
@@ -611,8 +694,9 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   // The tools sit in the map's bottom left corner (drawn after the grid, placed
   // by the stylesheet), so they cost the panel no height of their own; the span
   // the two buttons stand over is the label's title rather than a line of text.
-  // The three closest rungs all read a cell per glyph, so the span is what tells
-  // them apart on the label; "centred on you" is the title and not the corner.
+  // The three closest rungs all read one simulation cell at a time. The two
+  // detailed rungs name their visual grain; the span says how much real ground
+  // is on screen. "centred on you" is the title and not the corner.
   const span = `${(l.w * z * 0.3).toFixed(0)} by ${(l.h * z * 0.3).toFixed(0)} km`;
   const tools = `<div class="maptools"><button class="mini" data-act="zoom" data-dir="in" ${ui.zoom === 0 ? "disabled" : ""} title="Closer (plus key)">+</button><button class="mini" data-act="zoom" data-dir="out" ${ui.zoom === LEVELS.length - 1 ? "disabled" : ""} title="Farther (minus key)">-</button><span class="dim" title="${esc(`${span} on screen, centred on you`)}">${zoomLabel(ui.zoom)}, ${span}</span></div>`;
 
@@ -626,7 +710,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
   const falling = light.precip === "rain" ? " rain" : light.precip === "snow" ? " snowing" : "";
   const lit = `--bright:${light.brightness.toFixed(3)};--sat:${light.saturation.toFixed(3)};--tint:${light.tint};--tint-a:${light.alpha.toFixed(3)}`;
-  parts.push(`<div class="scroll-x${cal.isNight ? " night" : ""}${falling}" style="--px:${l.px}px;--line:${l.line}px;${lit}"><div class="grid season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}" role="grid" tabindex="0" aria-label="Map. Use arrow keys to inspect cells." style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px">`);
+  parts.push(`<div class="scroll-x${cal.isNight ? " night" : ""}${falling}" style="--px:${l.px}px;--line:${l.line}px;${lit}"><div class="grid${l.detail > 1 ? " detailed" : ""} season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}" role="grid" tabindex="0" aria-label="Map. Use arrow keys to inspect cells." style="--cols:${l.w};--detail:${l.detail};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px">`);
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
@@ -635,6 +719,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const named = reg >= 0 && discovery(state, reg) > 0;
     const cls = ["c"];
     let glyph = " ";
+    let detailGlyphs: string[] | null = null;
     let style = "";
     let animalId: number | null = null;
     if (reg < 0) {
@@ -668,6 +753,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       // A coarser glyph is a block of mixed ground with no single field to report.
       if (z === 1) {
         glyph = groundGlyph(world.seed, x0 + gx * z, y0 + gy * z, t, glyph);
+        const detailBase = glyph;
         // Which ground has gone over. The season decides whether it shows.
         if (turnedGround(world.seed, x0 + gx * z, y0 + gy * z, t)) cls.push("turned");
         if (step) {
@@ -681,6 +767,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
             if (tone !== 1) cls.push(`tone-${tone}`);
           }
         }
+        if (l.detail > 1) detailGlyphs = visualGround(world.seed, x0 + gx, y0 + gy, t, detailBase, l.detail, snow, t === "water" && iceMode(state.weather) !== "none");
       }
       if (t === "water" && iceMode(state.weather) !== "none") {
         glyph = "=";
@@ -696,14 +783,16 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     }
     const m = markerAt.get(i);
     if (m) {
-      cls.push("mk", m.cls);
-      // The mood rides as a class and not as a data attribute: the morph keys an
-      // element by its data attributes, so a mood written there would make every
-      // change of task replace the glyph's node instead of retitling it.
-      if (m.cls === "mk-player") cls.push(`mood-${moodOf(state)}`);
-      glyph = m.glyph;
-    } else {
-      const animal = animalAt.get(i);
+      if (!detailGlyphs) {
+        cls.push("mk", m.cls);
+        // The mood rides as a class and not as a data attribute: the morph keys an
+        // element by its data attributes, so a mood written there would make every
+        // change of task replace the glyph's node instead of retitling it.
+        if (m.cls === "mk-player") cls.push(`mood-${moodOf(state)}`);
+        glyph = m.glyph;
+      }
+    } else if (!detailGlyphs) {
+      const animal = animalAt.get(i)?.[0];
       if (animal) {
         animalId = animal.id;
         const recognized = state.wildlife.recognized[animal.id];
@@ -739,7 +828,35 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // delay and stood over whatever it was next to.
     const startle = startleAt.get(i)?.join("") ?? "";
     if (startle) cls.push("has-wildlife-startle");
-    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${wildlife}${style}>${glyph === "\"" ? "&quot;" : glyph}${startle}</span>`);
+    let content = glyphHtml(glyph);
+    if (detailGlyphs) {
+      const overlays: string[] = [];
+      const used = new Set<number>();
+      if (m) {
+        const mid = Math.floor(l.detail / 2);
+        const slot = m === MARKS.you ? playerVisualSlot(state, l.detail)
+          : m === MARKS.trap ? (l.detail - 1) * l.detail
+            : m === MARKS.seep ? (l.detail - 1) * l.detail + mid
+              : m === MARKS.den ? l.detail - 1
+                : mid * l.detail + mid;
+        used.add(slot);
+        const mood = m.cls === "mk-player" ? ` mood-${moodOf(state)}` : "";
+        overlays.push(`<b class="micro-mark ${m.cls}${mood}" data-visual-slot="${slot}" style="${visualSlotStyle(slot, l.detail)}">${glyphHtml(m.glyph)}</b>`);
+      }
+      for (const [ordinal, animal] of (animalAt.get(i) ?? []).entries()) {
+        let slot = animalVisualSlot(animal, world, state.minute, l.detail, ordinal);
+        while (used.has(slot)) slot = (slot + 1) % (l.detail * l.detail);
+        used.add(slot);
+        const recognized = state.wildlife.recognized[animal.id];
+        const recoil = recoilAt.get(animal.id);
+        const motionClass = recoil === undefined ? "" : " wildlife-recoil";
+        const motionStyle = recoil === undefined ? "" : `;--wildlife-start:${recoil}ms`;
+        overlays.push(`<b class="micro-mark mk-animal ${recognized ? `wildlife-${animal.colour}` : "wildlife-unknown"}${motionClass}" data-wildlife-id="${animal.id}" data-visual-slot="${slot}" style="${visualSlotStyle(slot, l.detail)}${motionStyle}">${ANIMAL_GLYPH[animal.species]}</b>`);
+      }
+      const ground = detailGlyphs.map((g) => `<i class="micro-ground">${glyphHtml(g)}</i>`).join("");
+      content = `<span class="detail-ground" aria-hidden="true">${ground}</span>${overlays.join("")}`;
+    }
+    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${wildlife}${style}>${content}${startle}</span>`);
   }
   parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}${edgeStartles.join("")}</div><i class="shade"></i></div>${tools}`);
   return parts.join("");
