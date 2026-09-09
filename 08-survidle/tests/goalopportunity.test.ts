@@ -10,7 +10,7 @@ import { baseWalkSpeed, die } from "../src/sim/player";
 import { markKnown } from "../src/sim/mapped";
 import { fearsFell } from "../src/sim/fears";
 import { cellOf, placeAt, straightKm } from "../src/sim/position";
-import { siteFor } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { survivorRoute } from "../src/sim/routing";
 import { current } from "../src/sim/record";
 import { deserialize, serialize } from "../src/sim/save";
@@ -52,6 +52,12 @@ function activateRemoteStorm(state: GameState): void {
   ]);
   state.minute = 30 * 1440;
   introduceGoals(state, ["remoteStorm"]);
+}
+
+function activateRemoteRefuge(state: GameState): void {
+  finish(state, [...THROUGH_CAMP_SYSTEMS, "readWeather", "prepareWeather", "surviveForecast"]);
+  state.minute = 30 * 1440;
+  introduceGoals(state, ["remoteRefuge"]);
 }
 
 describe("weather teaching opportunity lifecycle", () => {
@@ -533,6 +539,53 @@ describe("natural-first weather", () => {
     expect(cellOf(state, world)).toBe(home);
     expect(state.goals.opportunity).toMatchObject({ stormId: 81, source: "natural" });
   });
+
+  it("reserves weather from refuge completion before the field fire and meal lessons", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    activateRemoteRefuge(state);
+    const home = state.player.region;
+    const remote = regionAt(world, home).neighbours[0].id;
+    const refuge = regionAt(world, remote).campCell;
+    placeAt(state, world, refuge);
+    siteFor(regionState(state, world, remote), refuge).cover = 2;
+    goalDeed(state, {
+      kind: "protectionChanged", minute: state.minute, region: remote, cell: refuge,
+      from: 1, to: 2, source: "improved",
+    }, world);
+    const opportunity = state.goals.opportunity!;
+    state.weather.storm = {
+      id: 82, source: "natural", kind: "rain", from: state.minute + 60,
+      until: state.minute + 420, warned: false,
+    };
+
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(82));
+
+    expect(state.goals.done.fieldFire).toBeUndefined();
+    expect(state.goals.done.fieldMeal).toBeUndefined();
+    expect(state.goals.opportunity).toBe(opportunity);
+    expect(state.goals.opportunity).toMatchObject({ goal: "remoteStorm", stormId: 82, source: "natural" });
+  });
+
+  it("synthesizes Chapter 3 weather after three dawns even before field lessons finish", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    activateRemoteRefuge(state);
+    const remote = regionAt(world, state.player.region).neighbours[0].id;
+    const refuge = regionAt(world, remote).campCell;
+    placeAt(state, world, refuge);
+    goalDeed(state, {
+      kind: "protectionChanged", minute: state.minute, region: remote, cell: refuge,
+      from: 1, to: 2, source: "improved",
+    }, world);
+    state.minute += 3 * 1440;
+
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(83));
+
+    expect(state.goals.done.fieldFire).toBeUndefined();
+    expect(state.goals.opportunity).toMatchObject({ goal: "remoteStorm", source: "synthetic" });
+    expect(state.weather.storm).toMatchObject({ source: "synthetic" });
+  });
 });
 
 describe("Chapter 3 refuge storm evidence", () => {
@@ -628,6 +681,22 @@ describe("Chapter 3 refuge storm evidence", () => {
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(91));
     expect(state.goals.opportunity).toMatchObject({ status: "reserved", attempts: 2, stormId: null });
     for (const id of ["remoteRefuge", "fieldFire", "fieldMeal"] as const) expect(state.goals.done[id]).toBe(true);
+  });
+
+  it("treats a later camp in the refuge region as beyond the original home", () => {
+    const { state, world } = newGame(17);
+    const { remote } = remoteAttempt(state, world, 95);
+    state.goals.chapter3HomeRegion = state.player.region;
+    state.regions[remote.id] = structuredClone(state.regions[state.player.region]);
+    state.regions[remote.id].campCell = remote.campCell;
+    placeAt(state, world, remote.campCell);
+    siteFor(state.regions[remote.id], remote.campCell).structures.leanTo = true;
+    state.weather.storm = { id: 95, source: "natural", kind: "rain", from: state.minute, until: state.minute + 60, warned: true };
+
+    advance(state, world, 60);
+
+    expect(state.goals.opportunity?.atCampMinutes).toBe(0);
+    expect(state.goals.done.remoteStorm).toBe(true);
   });
 });
 

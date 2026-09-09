@@ -82,7 +82,7 @@ describe("the goal ladder", () => {
     expect(activeGoals(state, cal)).toEqual(["bed", "roof", "keptNight"]);
   });
 
-  it("widens to two for first-night preparation", () => {
+  it("widens to three for first-night preparation", () => {
     const { state } = newGame(3);
     for (const id of ["site", "drink", "firewood", "fire"] as const) state.goals.done[id] = true;
     expect(activeGoals(state, cal)).toEqual(["bed", "roof", "keptNight"]);
@@ -108,29 +108,30 @@ describe("the goal ladder", () => {
     expect(activeGoals(state, cal)).toEqual(["snareMeal", "huntMeal", "fishMeal"]);
   });
 
-  it("skips an ineligible weather chapter instead of blocking the journey", () => {
+  it("keeps ordinary goals visible before Chapter 2 opens, then adds the lesson at day 8", () => {
     const { state } = newGame(3);
-    finish(state, GOALS.map((goal) => goal.id).filter((id) => !CHAPTER_2.includes(id as typeof CHAPTER_2[number]) && !CHAPTER_3.includes(id as typeof CHAPTER_3[number]) && SEASON_ORDER.includes(id) === false));
+    finish(state, ["site", "drink", "firewood", "fire", "forageMeal", "cook", ...CHAPTER_1, "bed", "roof", "keptNight"]);
     const day7 = calendar(6 * 1440, state.startDoy);
     const day8 = calendar(7 * 1440, state.startDoy);
-    expect(activeGoals(state, day7)).toEqual(["summer"]);
-    expect(activeGoals(state, day8)).toEqual(["readWeather"]);
+    expect(activeGoals(state, day7)).toEqual(["snareMeal", "huntMeal", "fishMeal"]);
+    expect(activeGoals(state, day8)).toEqual(["readWeather", "snareMeal", "huntMeal"]);
   });
 
-  it("keeps Chapters 2 and 3 ordered when their calendar gates open", () => {
+  it("keeps Chapters 2 and 3 ordered beside the current ordinary stage", () => {
     const { state } = newGame(3);
-    finish(state, GOALS.map((goal) => goal.id).filter((id) => !CHAPTER_2.includes(id as typeof CHAPTER_2[number]) && !CHAPTER_3.includes(id as typeof CHAPTER_3[number]) && SEASON_ORDER.includes(id) === false));
+    finish(state, ["site", "drink", "firewood", "fire", "forageMeal", "cook", ...CHAPTER_1, "bed", "roof", "keptNight"]);
     const day8 = calendar(7 * 1440, state.startDoy);
     for (const id of CHAPTER_2) {
-      expect(activeGoals(state, day8)).toEqual([id]);
+      expect(activeGoals(state, day8)).toEqual([id, "snareMeal", "huntMeal"]);
       state.goals.done[id] = true;
     }
-    expect(activeGoals(state, day8)).toEqual(["summer"]);
+    expect(activeGoals(state, day8)).toEqual(["snareMeal", "huntMeal", "fishMeal"]);
     const day31 = calendar(30 * 1440, state.startDoy);
     for (const id of CHAPTER_3) {
-      expect(activeGoals(state, day31)).toEqual([id]);
+      expect(activeGoals(state, day31)).toEqual([id, "snareMeal", "huntMeal"]);
       state.goals.done[id] = true;
     }
+    expect(activeGoals(state, day31)).toEqual(["snareMeal", "huntMeal", "fishMeal"]);
   });
 
   it("finishes authored work before opening the seasonal tail", () => {

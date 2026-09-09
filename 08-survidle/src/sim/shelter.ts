@@ -60,9 +60,9 @@ export function improveCoverMinutes(cover: Protection): number | null {
   return null;
 }
 
-/** Raises found cover by one, never beyond the protection scale. */
-export function improveCover(site: Site): Protection {
-  site.cover = Math.min(3, site.cover + 1) as Protection;
+/** Raises found cover by one, never beyond this terrain's workable ceiling. */
+export function improveCover(site: Site, maximum: Protection = 3): Protection {
+  site.cover = Math.min(maximum, site.cover + 1) as Protection;
   site.coverAge = 0;
   return site.cover;
 }

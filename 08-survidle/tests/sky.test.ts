@@ -72,6 +72,25 @@ describe("forecast knowledge in the weather wall", () => {
     expect(line()).toBe("storm");
   });
 
+  it("shows the vague teaching sign before ordinary forecast knowledge", () => {
+    const { state, world } = newGame(17);
+    current(state).person.quirks = [];
+    state.minute = 10;
+    state.weather.storm = { id: 9, source: "natural", kind: "gale", from: 100, until: 460, warned: false };
+    state.goals.opportunity = {
+      goal: "readWeather", status: "announced", createdAt: 0, attempts: 1,
+      stormId: 9, source: "natural", area: null, announcedAt: 10, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    };
+
+    const root = document.createElement("div");
+    root.innerHTML = weatherHtml(state, world, calendar(state.minute), 15);
+
+    expect(root.querySelector("[data-weather-forecast]")?.textContent).toBe("conditions are changing");
+    expect(root.querySelector("[data-weather-plan]")).toBeNull();
+    expect(root.textContent).not.toContain("gale");
+  });
+
   it("describes the same recommended option as the body without leaking hidden storm detail", () => {
     const { state, world } = newGame(17);
     current(state).person.quirks = [];

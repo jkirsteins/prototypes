@@ -66,6 +66,9 @@ describe("the carcass", () => {
   it("cracking a bone gives marrow as fat and a cracked bone that still makes a needle", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
+    const fire = regionState(state, world, state.player.region).fire;
+    fire.lit = true;
+    fire.fuelKg = 3;
     addItem(state.player.pack, "bone", 2);
     addItem(state.player.pack, "stone", 1);
     const cal = calendar(0);

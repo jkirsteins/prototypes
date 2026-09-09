@@ -85,7 +85,7 @@ describe("a fire where you stand", () => {
     state.minute = 30 * 1440;
     introduceGoals(state, ["fieldFire"]);
     state.goals.opportunity = {
-      goal: "fieldFire", status: "reserved", createdAt: state.minute, attempts: 1,
+      goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
@@ -111,7 +111,7 @@ describe("a fire where you stand", () => {
     state.minute = 30 * 1440;
     introduceGoals(state, ["fieldFire", "fieldMeal"]);
     state.goals.opportunity = {
-      goal: "fieldFire", status: "reserved", createdAt: state.minute, attempts: 1,
+      goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
@@ -125,7 +125,6 @@ describe("a fire where you stand", () => {
     expect(state.goals.done.fieldFire).toBeUndefined();
 
     state.goals.done.fieldFire = true;
-    state.goals.opportunity.goal = "fieldMeal";
     state.weather.precip = "none";
     state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 3 };
     addItem(state.player.pack, "rawMeat", 1);
@@ -134,8 +133,16 @@ describe("a fire where you stand", () => {
     for (let n = 0; state.task && n < 60; n++) stepTask(state, world, cal, new Rng(1), 1);
     expect(state.goals.done.fieldMeal).toBeUndefined();
   });
+  it("requires a lit fire to crack bones or grind bark", () => {
+    const { state, world } = field();
+    addItem(state.player.pack, "bone", 1);
+    addItem(state.player.pack, "driedBark", 1);
+    addItem(state.player.pack, "stone", 1);
+    expect(check(state, world, cal, "crack")).toMatchObject({ ok: false, why: "needs a lit fire" });
+    expect(check(state, world, cal, "grindBark")).toMatchObject({ ok: false, why: "needs a lit fire" });
+  });
   it.each(["axe", "stoneAxe", "flakedAxe"] as const)("takes up a nearby %s for marrow, with its weight still carried", axe => {
-    const game = field();
+    const game = lightField();
     const { state, world } = game;
     addItem(state.player.pack, "bone", 1);
     addItem(pile(state, cellOf(state, world)), axe, 1);
@@ -146,7 +153,7 @@ describe("a fire where you stand", () => {
     expect(qty(state.player.pack, "fat")).toBeGreaterThan(0);
   });
   it("grinds with a stone in the pack, and refuses missing equipment by name", () => {
-    const game = field();
+    const game = lightField();
     const { state, world } = game;
     addItem(state.player.pack, "driedBark", 1);
     addItem(state.player.pack, "bone", 1);
@@ -265,8 +272,11 @@ describe("a fire where you stand", () => {
     siteCamp(state, world);
     const camp = cellOf(state, world);
     addItem(pile(state, camp), "stone", 1);
-    addItem(pile(state, camp + 1), "driedBark", 1);
-    expect(startIntent(state, world, cal, new Rng(1), { task: "grindBark", until: { kind: "once" }, deliver: "leave", where: { cell: camp + 1 } })).toBe(true);
+    addItem(pile(state, camp), "driedBark", 1);
+    const fire = regionState(state, world, state.player.region).fire;
+    fire.lit = true;
+    fire.fuelKg = 3;
+    expect(startIntent(state, world, cal, new Rng(1), { task: "grindBark", until: { kind: "once" }, deliver: "leave", where: { cell: camp } })).toBe(true);
     expect(qty(state.player.pack, "stone")).toBe(1);
     expect(qty(pile(state, camp), "stone")).toBe(0);
   });

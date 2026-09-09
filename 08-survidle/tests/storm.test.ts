@@ -65,6 +65,12 @@ describe("storms", () => {
     expect(state.weather.nextStormId).toBe(3);
   });
 
+  it("allows an explicit teaching lead longer than the ordinary three-hour window", () => {
+    const { state } = newGame(17);
+    const storm = createStorm(state.weather, calendar(0), new Rng(4), 0, "synthetic", { minLead: 240 });
+    expect(storm?.from).toBeGreaterThanOrEqual(240);
+  });
+
   it("a storm is announced an hour ahead, then it blows: heavy rain, six degrees of wind, half the odds, no felling or fishing", () => {
     const { state, world } = newGame(17);
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 60, until: state.minute + 60 + 6 * 60, warned: false };

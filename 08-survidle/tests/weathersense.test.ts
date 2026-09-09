@@ -79,6 +79,21 @@ describe("weather sense", () => {
     expect(weather.forecastKnowledge(state, state.weather.storm).stage).toBeGreaterThan(0);
   });
 
+  it("binds a new reader on a retry after the reading lesson is already complete", () => {
+    const { state, world } = game();
+    weatherLesson(state, 8);
+    state.goals.done.readWeather = true;
+    introduceGoals(state, ["prepareWeather"]);
+    state.goals.opportunity!.attempts = 2;
+    state.goals.opportunity!.readerIndex = null;
+    state.weather.storm = { id: 8, source: "natural", kind: "rain", from: state.minute + 90, until: state.minute + 450, warned: false };
+
+    expect(startTask(state, world, calendar(state.minute, state.startDoy), "readSky")).toBe(true);
+    stepTask(state, world, calendar(state.minute, state.startDoy), new Rng(1), 10);
+
+    expect(state.goals.opportunity?.readerIndex).toBe(current(state).index);
+  });
+
   it("does not credit a repeated read, a passive warning, an unrelated storm, or a read with no new fact", () => {
     const cases = ["repeated", "unrelated", "no-new-fact"] as const;
     for (const kind of cases) {

@@ -186,16 +186,15 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
 }
 
 /** Work goes slower when exhausted or hurt, and faster with practice. */
-export function workSpeed(state: GameState, world: World): number {
+export function workSpeed(state: GameState, world: World, task: Task | null = state.task): number {
   const p = state.player;
   let f = 1;
   if (p.energy < 20) f *= 0.5;
   if (p.injured > 0) f *= 0.7;
   if (p.water < THIRSTY_L) f *= 0.8;
   f *= 1 - 0.5 * starvation(state);
-  const t = state.task;
-  if (t) f *= speedFactor(state, world, t.id, t.arg);
-  if (p.frostbite.feet > 0 && activityOf(state.task) === "heavy") f *= 0.7;
+  if (task) f *= speedFactor(state, world, task.id, task.arg);
+  if (p.frostbite.feet > 0 && activityOf(task) === "heavy") f *= 0.7;
   const r = regionState(state, world, p.region);
   if (atCamp(state, world) && r.smoke > SMOKE_COUGH) f *= 0.7;
   return f;

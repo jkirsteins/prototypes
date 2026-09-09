@@ -51,7 +51,10 @@ export function recordStormMinute(state: GameState, world: World, stormId: numbe
   const opportunity = state.goals.opportunity;
   if (!opportunity || opportunity.stormId !== stormId) return;
   opportunity.maxWetness = Math.max(opportunity.maxWetness, state.player.wetness);
-  if (atCamp(state, world)) opportunity.atCampMinutes += minutes;
+  const homeCamp = opportunity.goal === "remoteStorm" && state.goals.chapter3HomeRegion !== null
+    ? atCamp(state, world) && state.player.region === state.goals.chapter3HomeRegion
+    : atCamp(state, world);
+  if (homeCamp) opportunity.atCampMinutes += minutes;
   else opportunity.awayFromCampMinutes += minutes;
   const area = opportunity.area;
   const cell = cellOf(state, world);
@@ -234,9 +237,8 @@ export function stepGoalOpportunity(state: GameState, world: World, cal: Calenda
   // Chapter 1 uses this slot as local-cover context until the shelter exists.
   // It must not reserve or synthesize weather before that outcome is earned.
   if (opportunity.goal === "makeUsefulShelter") return;
-  // Chapter 3 carries the refuge through its field-fire and field-meal lessons.
-  // Weather waits until the final lesson is active, but never waits for the
-  // survivor to stand at the refuge before evaluating travel to it.
+  // Chapter 3 reserves weather as soon as the refuge exists. The same remote
+  // opportunity stays alive through the field-fire and field-meal lessons.
   if (!WEATHER_GOALS.has(opportunity.goal)) return;
   if (opportunity.stormId !== null) {
     stepClaimed(state, world, cal, opportunity);

@@ -291,22 +291,27 @@ export const GOAL_STAGES: GoalId[][] = [
   ["findUsefulCover"],
   ["makeUsefulShelter"],
   ["testShelter"],
-  ["snareMeal", "huntMeal", "fishMeal"],
-  ["trapMeal", "foodSource", "store"],
-  ["fat"],
-  ["firstOrder", "water", "keptDays"],
   ["readWeather"],
   ["prepareWeather"],
   ["surviveForecast"],
-  ["longOrder", "toolCare"],
-  ["explore"],
   ["remoteRefuge"],
   ["fieldFire"],
   ["fieldMeal"],
   ["remoteStorm"],
+  ["snareMeal", "huntMeal", "fishMeal"],
+  ["trapMeal", "foodSource", "store"],
+  ["fat"],
+  ["firstOrder", "water", "keptDays"],
+  ["longOrder", "toolCare"],
+  ["explore"],
   ["secondCamp", "seasonalFood", "durableRoof"],
   ["winterStores"],
 ];
+
+const WEATHER_OVERLAY_GOALS = new Set<GoalId>([
+  "readWeather", "prepareWeather", "surviveForecast",
+  "remoteRefuge", "fieldFire", "fieldMeal", "remoteStorm",
+]);
 
 /** Calendar and prerequisite gates decide visibility, never whether an ordinary deed counted early. */
 export function goalEligible(state: GameState, cal: Calendar, goal: GoalDef): boolean {
@@ -330,6 +335,19 @@ function nextSeason(state: GameState, cal: Calendar): GoalId | null {
  * next season due.
  */
 export function activeGoals(state: GameState, cal: Calendar): GoalId[] {
+  const lesson = GOAL_STAGES
+    .flat()
+    .find((id) => WEATHER_OVERLAY_GOALS.has(id) && !state.goals.done[id] && goalEligible(state, cal, goalDef(id)));
+  if (lesson) {
+    for (const stage of GOAL_STAGES) {
+      if (stage.some((id) => WEATHER_OVERLAY_GOALS.has(id))) continue;
+      const pending = stage.filter((id) => !state.goals.done[id]);
+      if (pending.length === 0) continue;
+      const open = pending.filter((id) => goalEligible(state, cal, goalDef(id)));
+      if (open.length > 0) return [lesson, ...open.slice(0, 2)];
+    }
+    return [lesson];
+  }
   for (const stage of GOAL_STAGES) {
     const pending = stage.filter((id) => !state.goals.done[id]);
     if (pending.length === 0) continue;
@@ -371,9 +389,9 @@ function shelterOpportunity(goal: "makeUsefulShelter" | "testShelter", minute: n
   };
 }
 
-function fieldOpportunity(goal: "fieldFire" | "fieldMeal" | "remoteStorm", minute: number, area: { region: number; centre: number; radiusKm: 1 }): GoalState["opportunity"] {
+function fieldOpportunity(minute: number, area: { region: number; centre: number; radiusKm: 1 }): GoalState["opportunity"] {
   return {
-    goal, status: "reserved", createdAt: minute, attempts: 1,
+    goal: "remoteStorm", status: "reserved", createdAt: minute, attempts: 1,
     stormId: null, source: null, area, announcedAt: null, resolvedAt: null,
     minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     readerIndex: null, plan: null,
@@ -432,42 +450,39 @@ export function goalDeed(state: GameState, d: GoalEvent, world?: World): GoalId[
     const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
     const area = opportunity?.area;
     if (opportunity?.goal === "makeUsefulShelter" && area && world && activeNow.has("makeUsefulShelter") && state.goals.introduced.makeUsefulShelter
-      && d.to > d.from && d.to >= 2 && d.region === area.region && d.cell !== area.centre
+      && d.to > d.from && d.to >= 2 && d.region === area.region
       && straightKm(world, area.centre, d.cell) <= area.radiusKm) {
       finishGoal(state, "makeUsefulShelter", finished);
       state.goals.opportunity = shelterOpportunity("testShelter", d.minute, area);
     }
     if (activeNow.has("remoteRefuge") && state.goals.introduced.remoteRefuge && d.to > d.from && d.to >= 2
-      && state.goals.chapter3HomeRegion !== null && d.region !== state.goals.chapter3HomeRegion
-      && (state.regions[d.region]?.campCell ?? null) === null) {
+      && state.goals.chapter3HomeRegion !== null && d.region !== state.goals.chapter3HomeRegion) {
       finishGoal(state, "remoteRefuge", finished);
-      state.goals.opportunity = fieldOpportunity("fieldFire", d.minute, { region: d.region, centre: d.cell, radiusKm: 1 });
+      state.goals.opportunity = fieldOpportunity(d.minute, { region: d.region, centre: d.cell, radiusKm: 1 });
     }
   }
   if (d.kind === "fireLit" && !d.atCamp) {
     const opportunity = state.goals.opportunity;
     const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
-    if (opportunity?.goal === "fieldFire" && opportunity.area && activeNow.has("fieldFire") && state.goals.introduced.fieldFire) {
+    if (opportunity?.goal === "remoteStorm" && opportunity.area && activeNow.has("fieldFire") && state.goals.introduced.fieldFire) {
       finishGoal(state, "fieldFire", finished);
-      state.goals.opportunity = fieldOpportunity("fieldMeal", d.minute, opportunity.area);
     }
   }
   if (d.kind === "taskCompleted" && d.id === "cook" && !d.atCamp) {
     const opportunity = state.goals.opportunity;
     const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
-    if (opportunity?.goal === "fieldMeal" && opportunity.area && activeNow.has("fieldMeal") && state.goals.introduced.fieldMeal) {
+    if (opportunity?.goal === "remoteStorm" && opportunity.area && activeNow.has("fieldMeal") && state.goals.introduced.fieldMeal) {
       finishGoal(state, "fieldMeal", finished);
-      state.goals.opportunity = fieldOpportunity("remoteStorm", d.minute, opportunity.area);
     }
   }
   if (d.kind === "forecastChanged") {
     const opportunity = state.goals.opportunity;
     const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
     if (opportunity?.goal === "readWeather" && opportunity.status === "announced"
-      && opportunity.stormId === d.stormId && activeNow.has("readWeather") && state.goals.introduced.readWeather
+      && opportunity.stormId === d.stormId && state.goals.introduced.readWeather
       && d.source === "readSky" && gainedForecastFact(d.before, d.after)) {
-      finishGoal(state, "readWeather", finished);
       opportunity.readerIndex = current(state).index;
+      if (activeNow.has("readWeather")) finishGoal(state, "readWeather", finished);
     }
   }
   if (d.kind === "stormStarted") {

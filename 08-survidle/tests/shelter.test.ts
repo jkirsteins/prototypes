@@ -228,6 +228,26 @@ describe("improving shelter", () => {
     expect(site.cover).toBe(2);
     expect(site.coverAge).toBe(0);
     expect(g.state.goals.done.roof).toBe(true);
+    expect(check(g.state, g.world, cal, "improveCover")).toMatchObject({ ok: false, why: "cover cannot be improved further" });
+    expect(startTask(g.state, g.world, cal, "improveCover")).toBe(false);
+    expect(site.cover).toBe(2);
+  });
+
+  it("never lowers worked cover when the same ground is searched again", () => {
+    for (const [terrain, protection] of [["rock", 3], ["pine", 2]] as const) {
+      const g = newGame(17);
+      const cell = cellWith(g, terrain);
+      placeAt(g.state, g.world, cell);
+      const site = siteFor(regionState(g.state, g.world, g.state.player.region), cell);
+      site.cover = protection;
+      site.coverAge = 123;
+
+      expect(startTask(g.state, g.world, calendar(0), "findShelter")).toBe(true);
+      finishTask(g);
+
+      expect(site.cover, terrain).toBe(protection);
+      expect(site.coverAge, terrain).toBe(0);
+    }
   });
 
   it("works found rock cover to liveable in 75 effective minutes without repeating the roof deed", () => {

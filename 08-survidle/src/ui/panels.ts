@@ -36,7 +36,7 @@ import {
 } from "../sim/tasks";
 import { isWorkIntent, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
-import { forecastText, iceMode, walkableIce, weatherLabel } from "../sim/weather";
+import { forecastText, iceMode, stormComing, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { routeKm } from "../world/route";
@@ -242,7 +242,9 @@ export function weatherHtml(state: GameState, world: World, cal: Calendar, ambie
   const ground = [snow, ice].filter(Boolean).join(", ");
   const forecast = forecastText(state);
   const forecastLine = forecast ? `<div class="wx-warn" data-weather-forecast>${esc(forecast)}</div>` : "";
-  const plan = forecast && state.weather.storm ? stormOptions(state, world, state.weather.storm) : null;
+  const plan = forecast && state.weather.storm && (stormComing(state) || stormNow(state.weather, state.minute))
+    ? stormOptions(state, world, state.weather.storm)
+    : null;
   const planWords = plan?.recommended === "returnCamp" ? "return to camp"
     : plan?.recommended === "remoteRefuge" ? "go to the known refuge"
       : plan ? "shelter here" : "";

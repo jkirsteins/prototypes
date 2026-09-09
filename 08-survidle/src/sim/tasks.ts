@@ -37,7 +37,7 @@ import {
 } from "./position";
 import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { goalDeed } from "./goals";
-import { builtProtection, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
+import { builtProtection, coverCeiling, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare } from "./mapped";
 import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
@@ -48,7 +48,7 @@ import { fatSeason, fishItem, fishSpecies, huntedLand, inSpawn, isFish, LARGE_GA
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type PausedTask, type RecipeId,
-  type Site, type SkillId, type SpotId, type StructureId, type TaskId, type ToolId, type WorkOrder,
+  type Protection, type Site, type SkillId, type SpotId, type StructureId, type TaskId, type ToolId, type WorkOrder,
 } from "./types";
 import { isWorkIntent } from "./types";
 import { owningOrder } from "./orderowner";
@@ -757,6 +757,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (totalQty(invs, "bone") < 1) return { ...o, ok: false, why: "no bones here" };
       if (totalQty(toolInvs, "stone") < 1 && !axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs a stone or the axe" };
       if (disabled("marrow")) return { ...o, ok: false, why: "disabled for the probe" };
+      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire" };
       return o;
     }
     case "eggs": {
@@ -775,6 +776,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (kg <= TRACE_KG) return { ...o, ok: false, why: "no dried bark here" };
       if (totalQty(toolInvs, "stone") < 1) return { ...o, ok: false, why: "needs a stone" };
       if (disabled("bark")) return { ...o, ok: false, why: "disabled for the probe" };
+      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire" };
       return o;
     }
     case "craft": {
@@ -963,10 +965,11 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "improveCover": {
       const cover = siteAt(st, at)?.cover ?? 0;
       const duration = improveCoverMinutes(cover) ?? 0;
-      const next = Math.min(3, cover + 1) as 1 | 2 | 3;
+      const maximum = Math.min(3, coverCeiling(world, at) + 1) as 1 | 2 | 3;
+      const next = Math.min(maximum, cover + 1) as 1 | 2 | 3;
       const o = opt({ group: "build", label: "Improve shelter", detail: `${PROTECTION_WORDS[cover]} to ${PROTECTION_WORDS[next]}`, duration });
       if (cover === 0) return { ...o, ok: false, why: "no cover found here" };
-      if (cover === 3) return { ...o, ok: false, why: "cover cannot be improved further" };
+      if (cover >= maximum) return { ...o, ok: false, why: "cover cannot be improved further" };
       return o;
     }
     case "emergencyShelter": {
@@ -2587,7 +2590,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const cell = cellOf(state, world);
       const site = siteFor(st, cell);
       const before = protectionOf(site);
-      site.cover = findCover(world, cell, shelterLevel ?? skillLevel(state, "naturalShelter"));
+      site.cover = Math.max(site.cover, findCover(world, cell, shelterLevel ?? skillLevel(state, "naturalShelter"))) as Protection;
       site.coverAge = 0;
       const after = protectionOf(site);
       if (after !== before) goalDeed(state, {
@@ -2601,7 +2604,8 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const cell = cellOf(state, world);
       const site = siteFor(st, cell);
       const before = protectionOf(site);
-      const after = improveCover(site);
+      const maximum = Math.min(3, coverCeiling(world, cell) + 1) as Protection;
+      const after = improveCover(site, maximum);
       if (after !== before) goalDeed(state, {
         kind: "protectionChanged", minute: state.minute, region: state.player.region, cell,
         from: before, to: after, source: "improved",

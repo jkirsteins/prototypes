@@ -739,6 +739,7 @@ describe("the shared storm plan", () => {
       && neighbours(world, cell).some((other) => cellAt(world, other).region === region.id && cellAt(world, other).terrain === "spruce"))!;
     const from = neighbours(world, camp).find((cell) => cellAt(world, cell).region === region.id && cellAt(world, cell).terrain === "spruce")!;
     regionState(state, world, region.id).campCell = camp;
+    siteFor(regionState(state, world, region.id), camp).structures.leanTo = true;
     placeAt(state, world, from);
     state.weather.storm = { id: 31, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
     const plan = stormOptions(state, world, state.weather.storm);
@@ -751,6 +752,42 @@ describe("the shared storm plan", () => {
     expect(plan.recommended).toBe("returnCamp");
     expect(currentNeed(state, world, calendar(0))).toBe("storm");
     expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)).toMatchObject({ id: "walk", arg: `cell:${camp}` });
+  });
+
+  it("improves nearby cover instead of reaching a bare camp too late to prepare it", () => {
+    const { state, world } = newGame(17);
+    const region = regionAt(world, state.player.region);
+    mapRegion(state, world, region.id);
+    const camp = region.campCell;
+    regionState(state, world, region.id).campCell = camp;
+    let field: number | null = null;
+    let travel = 0;
+    for (const cell of region.cells) {
+      if (!(["pine", "birch"] as const).includes(cellAt(world, cell).terrain as "pine" | "birch")) continue;
+      placeAt(state, world, cell);
+      const minutes = minutesToCamp(state, world, calendar(0));
+      if (minutes !== null && minutes >= 35 && minutes <= 55) {
+        field = cell;
+        travel = minutes;
+        break;
+      }
+    }
+    expect(field).not.toBeNull();
+    placeAt(state, world, field!);
+    siteFor(regionState(state, world, region.id), field!).cover = 1;
+    state.weather.storm = {
+      id: 39, source: "natural", kind: "rain", from: Math.ceil(travel) + 5,
+      until: Math.ceil(travel) + 365, warned: false,
+    };
+
+    const plan = stormOptions(state, world, state.weather.storm);
+    const home = plan.options.find((option) => option.kind === "returnCamp")!;
+    const local = plan.options.find((option) => option.kind === "localShelter")!;
+    expect(home).toMatchObject({ viable: true, inputs: { protection: 0, fireLit: false } });
+    expect(local).toMatchObject({ viable: true, inputs: { protection: 1 } });
+    expect(local.survivalScore).toBeGreaterThan(home.survivalScore);
+    expect(plan.recommended).toBe("localShelter");
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("improveCover");
   });
 
   it("records shelter, fire, fuel, active gear and carried supplies for a viable local plan", () => {

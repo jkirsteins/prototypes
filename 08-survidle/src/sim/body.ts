@@ -20,16 +20,17 @@ import type { StormPlanInputs, StormPlanOption, StormPlanSnapshot } from "./goal
 import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { log } from "./log";
-import { baseWalkSpeed } from "./player";
+import { baseWalkSpeed, workSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
 import { campSite, regionState, siteAt } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { seepStopped } from "./seep";
-import { coverCeiling, galeProtection, protectionOf } from "./shelter";
+import { builtProtection, coverCeiling, EMERGENCY_MINUTES, findCover, galeProtection, improveCoverMinutes, isLee, protectionOf } from "./shelter";
+import { skillLevel } from "./skills";
 import { collapseRecoveryPending, COLLAPSE_RECOVERED_AT, RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
-import { isWorkIntent, type BodyNeed, type CampNeed, type CareNeed, type GameState, type ItemId, type ToolId, type WorkIntent } from "./types";
+import { isWorkIntent, type BodyNeed, type CampNeed, type CareNeed, type GameState, type ItemId, type Protection, type Task, type TaskId, type ToolId, type WorkIntent } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
 import { ambientTemperature, forecastKnowledge, stormComing, stormNow, walkableIce } from "./weather";
 
@@ -561,12 +562,89 @@ function shelterAdequate(inputs: StormPlanInputs): boolean {
   return inputs.effectiveProtection >= 2;
 }
 
+interface ShelterPreparation {
+  minutes: number;
+  protection: Protection;
+  effectiveProtection: Protection;
+}
+
+function projectedEffectiveProtection(
+  inputs: StormPlanInputs,
+  world: World,
+  cell: number,
+  protection: Protection,
+): Protection {
+  if (inputs.forecast.kind !== "gale") return Math.max(inputs.effectiveProtection, protection) as Protection;
+  const lowProfile = Math.min(3, protection + (isLee(world, cell) ? 1 : 0)) as Protection;
+  return Math.max(inputs.effectiveProtection, lowProfile) as Protection;
+}
+
+function taskMinutes(state: GameState, world: World, id: TaskId, effectiveMinutes: number): number {
+  const task: Task = { id, progress: 0, duration: effectiveMinutes, repeat: false };
+  return Math.ceil(effectiveMinutes / workSpeed(state, world, task) - 1e-9);
+}
+
+/** The shelter work the body policy can actually finish here before onset. */
+function shelterPreparation(
+  state: GameState,
+  world: World,
+  cal: Calendar,
+  cell: number,
+  inputs: StormPlanInputs,
+): ShelterPreparation {
+  if (shelterAdequate(inputs)) {
+    return { minutes: 0, protection: inputs.protection, effectiveProtection: inputs.effectiveProtection };
+  }
+  const site = siteAt(state.regions[cellAt(world, cell).region], cell);
+  let minutes = 0;
+  let protection = inputs.protection;
+  let effectiveProtection = inputs.effectiveProtection;
+  let cover = site?.cover ?? 0;
+  const maximum = Math.min(3, coverCeiling(world, cell) + 1) as Protection;
+  const adequate = () => inputs.forecast.kind === "snow" ? effectiveProtection >= 1 : effectiveProtection >= 2;
+  const improveFoundCover = () => {
+    while (cover < maximum && !adequate()) {
+      const work = improveCoverMinutes(cover);
+      if (work === null) break;
+      minutes += taskMinutes(state, world, "improveCover", work);
+      cover = Math.min(maximum, cover + 1) as Protection;
+      protection = Math.max(protection, cover) as Protection;
+      effectiveProtection = projectedEffectiveProtection(inputs, world, cell, protection);
+    }
+  };
+
+  if (cover > 0) {
+    improveFoundCover();
+  } else if (coverCeiling(world, cell) > 0) {
+    const search = check(state, world, cal, "findShelter", undefined, cell);
+    if (search.ok) {
+      minutes += taskMinutes(state, world, "findShelter", search.duration);
+      cover = findCover(world, cell, skillLevel(state, "naturalShelter"));
+      protection = Math.max(protection, cover) as Protection;
+      effectiveProtection = projectedEffectiveProtection(inputs, world, cell, protection);
+      improveFoundCover();
+    }
+  } else {
+    let built = site?.emergencyMinutes ?? 0;
+    for (const level of [1, 2, 3] as const) {
+      if (built >= EMERGENCY_MINUTES[level] || adequate()) continue;
+      const work = EMERGENCY_MINUTES[level] - built;
+      minutes += taskMinutes(state, world, "emergencyShelter", work);
+      built = EMERGENCY_MINUTES[level];
+      protection = Math.max(protection, builtProtection(built)) as Protection;
+      effectiveProtection = projectedEffectiveProtection(inputs, world, cell, protection);
+    }
+  }
+  return { minutes, protection, effectiveProtection };
+}
+
 function optionSurvivalScore(
   inputs: StormPlanInputs,
   kind: StormPlanOption["kind"],
   arrivalMargin: number | null,
   viable: boolean,
   continuing = false,
+  preparationMinutes = 0,
 ): number {
   if (!viable && kind !== "localShelter") return 0;
 
@@ -577,11 +655,12 @@ function optionSurvivalScore(
   const supplies = Math.min(12, inputs.supplies.firewoodKg) * 2
     + Math.min(2, inputs.supplies.foodKg) * 10
     + Math.min(3, inputs.supplies.waterLitres) * 5;
-  const place = kind === "returnCamp" ? 80 : kind === "localShelter" ? 40 : 0;
+  const closeHome = kind === "returnCamp" && (inputs.travelMinutes ?? Infinity) <= 15;
+  const place = kind === "returnCamp" ? closeHome ? 300 : 80 : kind === "localShelter" ? 40 : 0;
   const margin = Math.min(60, Math.max(0, arrivalMargin ?? 0));
   const travelExposure = Math.min(120, inputs.travelMinutes ?? 0);
   return (viable ? 1000 : 0) + inputs.effectiveProtection * 100 + fire + supplies
-    + place + margin - travelExposure + (continuing ? 30 : 0);
+    + place + margin - travelExposure - preparationMinutes * 3 + (continuing ? 30 : 0);
 }
 
 function routeReading(state: GameState, world: World, cal: Calendar, target: number): { route: number[] | null; minutes: number | null } {
@@ -618,19 +697,36 @@ export function stormOptions(
     const reading = routeReading(state, world, cal, camp);
     const inputs = planInputs(state, world, storm, state.player.region, camp, reading.route, reading.minutes);
     const arrivalMargin = reading.minutes === null ? null : remaining - reading.minutes;
+    const preparation = shelterPreparation(state, world, cal, camp, inputs);
     const viable = arrivalMargin !== null && arrivalMargin >= 0;
+    const canPrepare = arrivalMargin !== null && arrivalMargin >= preparation.minutes;
+    const projectedInputs = canPrepare
+      ? { ...inputs, protection: preparation.protection, effectiveProtection: preparation.effectiveProtection }
+      : inputs;
     options.push({
       kind: "returnCamp", target: { region: state.player.region, cell: camp }, inputs, arrivalMargin, viable,
-      survivalScore: optionSurvivalScore(inputs, "returnCamp", arrivalMargin, viable),
+      survivalScore: optionSurvivalScore(
+        projectedInputs, "returnCamp", canPrepare && arrivalMargin !== null ? arrivalMargin - preparation.minutes : arrivalMargin,
+        viable, false, canPrepare ? preparation.minutes : 0,
+      ),
     });
   }
 
   const localInputs = planInputs(state, world, storm, state.player.region, here, [], 0);
-  const localViable = shelterAdequate(localInputs);
+  const localPreparation = shelterPreparation(state, world, cal, here, localInputs);
+  const localViable = localPreparation.minutes <= remaining
+    && (localInputs.forecast.kind === "snow" ? localPreparation.effectiveProtection >= 1 : localPreparation.effectiveProtection >= 2);
+  const projectedLocalInputs = {
+    ...localInputs,
+    protection: localPreparation.protection,
+    effectiveProtection: localPreparation.effectiveProtection,
+  };
   options.push({
     kind: "localShelter", target: { region: state.player.region, cell: here }, inputs: localInputs,
     arrivalMargin: remaining, viable: localViable,
-    survivalScore: optionSurvivalScore(localInputs, "localShelter", remaining, localViable),
+    survivalScore: optionSurvivalScore(
+      projectedLocalInputs, "localShelter", remaining - localPreparation.minutes, localViable, false, localPreparation.minutes,
+    ),
   });
 
   const remote: StormPlanOption[] = [];

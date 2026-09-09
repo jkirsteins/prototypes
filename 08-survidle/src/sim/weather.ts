@@ -83,7 +83,7 @@ export function createStorm(
   constraints: StormConstraints = {},
 ): NonNullable<Weather["storm"]> | null {
   const minLead = Math.max(60, Math.ceil(constraints.minLead ?? 60));
-  const maxLead = Math.min(180, Math.floor(constraints.maxLead ?? 180));
+  const maxLead = Math.floor(constraints.maxLead ?? Math.max(180, minLead));
   const startDoy = cal.dayOfYear - cal.dayIndex;
   const allowed = constraints.kinds;
   const leads: number[] = [];
@@ -210,7 +210,14 @@ export function stormComing(state: GameState): boolean {
 export function forecastText(state: GameState): string {
   const storm = state.weather.storm;
   const blowing = stormNow(state.weather, state.minute);
-  if (!storm || (!blowing && !stormComing(state))) return "";
+  if (!storm) return "";
+  if (!blowing && !stormComing(state)) {
+    const opportunity = state.goals.opportunity;
+    return opportunity?.goal === "readWeather" && opportunity.status === "announced"
+      && opportunity.stormId === storm.id && state.minute < storm.from
+      ? "conditions are changing"
+      : "";
+  }
   const stage = blowing ? forecastStage(state) : forecastKnowledge(state, storm).stage;
   if (stage === 1) return blowing ? "storm" : "a storm is coming";
   const arrival = blowing ? "" : ` in ${fmtDuration(storm.from - state.minute)}`;
