@@ -113,7 +113,7 @@ const sounds = createScheduler(audio);
 function onWildlifeStartle(event: WildlifeStartleEvent): void {
   if (document.visibilityState !== "visible") return;
   if (!enqueueWildlifeStartle(ui, event, performance.now())) return;
-  // The departure audio consumer shares this first-delivery gate.
+  sounds.wildlifeStartle(event, state.weather.snowCm >= 5);
 }
 const portraitMotion = createPortraitMotion();
 // Read by fresh() below (called from boot(), before the forecaster exists) and by

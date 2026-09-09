@@ -132,6 +132,182 @@ and the two generated sections of this file from scratch.
 - Duration: 0.60 s. Decoded peak: -4.1 dBFS.
 - Note: one struck flake off a core; short, because the crafting loop repeats it about once a second
 
+### startle_contact_01.ogg
+
+- Slot: `startle_contact` (oneshot).
+- Source: Freesound 452570, "branch breaking forest twig snap crunch.wav", https://freesound.org/people/kyles/sounds/452570/.
+- Author: kyles (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/452/452570_612689-hq.mp3
+- Processing: cut 0-0.36 s, highpass=f=220,treble=g=3,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.36 s. Decoded peak: -3.9 dBFS.
+- Note: short branch snap supplies the sharp contact onset; second cut is brighter and shorter in pitch; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_contact_02.ogg
+
+- Slot: `startle_contact` (oneshot).
+- Source: Freesound 452570, "branch breaking forest twig snap crunch.wav", https://freesound.org/people/kyles/sounds/452570/.
+- Author: kyles (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/452/452570_612689-hq.mp3
+- Processing: cut 0.035-0.49 s, asetrate=51840,aresample=48000,highpass=f=320,treble=g=2,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.42 s. Decoded peak: -3.7 dBFS.
+- Note: short branch snap supplies the sharp contact onset; second cut is brighter and shorter in pitch; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_light_forest_01.ogg
+
+- Slot: `startle_hoof_light_forest` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.1-0.92 s, asetrate=53760,aresample=48000,lowpass=f=2600,equalizer=f=900:t=q:w=1:g=3,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.73 s. Decoded peak: -3.9 dBFS.
+- Note: quick light hoofbeats and dirt/brush texture under the branch onset; forest filtering softens the hard attack; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_light_forest_02.ogg
+
+- Slot: `startle_hoof_light_forest` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.88-1.7 s, asetrate=51840,aresample=48000,lowpass=f=2300,equalizer=f=1200:t=q:w=1:g=3,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.76 s. Decoded peak: -3.9 dBFS.
+- Note: quick light hoofbeats and dirt/brush texture under the branch onset; forest filtering softens the hard attack; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_heavy_forest_01.ogg
+
+- Slot: `startle_hoof_heavy_forest` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.15-0.96 s, asetrate=38400,aresample=48000,lowpass=f=2100,bass=g=5,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 1.01 s. Decoded peak: -3.9 dBFS.
+- Note: lower, slower forest bounds with heavier thuds and fewer impacts per second; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_heavy_forest_02.ogg
+
+- Slot: `startle_hoof_heavy_forest` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.88-1.7 s, asetrate=40320,aresample=48000,lowpass=f=1900,bass=g=4,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.98 s. Decoded peak: -3.9 dBFS.
+- Note: lower, slower forest bounds with heavier thuds and fewer impacts per second; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_light_open_01.ogg
+
+- Slot: `startle_hoof_light_open` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.08-0.88 s, asetrate=54720,aresample=48000,highpass=f=180,treble=g=3,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.70 s. Decoded peak: -4.2 dBFS.
+- Note: quick open-ground hoof scrapes with hard-edged attacks and dry surface movement; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_light_open_02.ogg
+
+- Slot: `startle_hoof_light_open` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.88-1.7 s, asetrate=52800,aresample=48000,highpass=f=160,treble=g=4,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.75 s. Decoded peak: -4.4 dBFS.
+- Note: quick open-ground hoof scrapes with hard-edged attacks and dry surface movement; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_heavy_open_01.ogg
+
+- Slot: `startle_hoof_heavy_open` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.12-0.94 s, asetrate=39360,aresample=48000,bass=g=5,treble=g=1,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 1.00 s. Decoded peak: -4.3 dBFS.
+- Note: heavy open-ground hoof bounds retain the scrape and stone-like clatter above the lower impact; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_heavy_open_02.ogg
+
+- Slot: `startle_hoof_heavy_open` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.88-1.7 s, asetrate=41280,aresample=48000,bass=g=4,treble=g=2,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.95 s. Decoded peak: -4.0 dBFS.
+- Note: heavy open-ground hoof bounds retain the scrape and stone-like clatter above the lower impact; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_bog_01.ogg
+
+- Slot: `startle_hoof_bog` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.09-0.85 s, asetrate=42240,aresample=48000,lowpass=f=1700,equalizer=f=600:t=q:w=1:g=5,aecho=0.8:0.8:18|39:0.28|0.13,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.90 s. Decoded peak: -3.9 dBFS.
+- Note: bog foley treatment: hollow low impacts and short diffuse splash-like tails; processed dirt gallop, not a field recording of bog wildlife; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_bog_02.ogg
+
+- Slot: `startle_hoof_bog` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.88-1.7 s, asetrate=44160,aresample=48000,lowpass=f=1900,equalizer=f=750:t=q:w=1:g=4,aecho=0.8:0.8:23|47:0.24|0.12,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.94 s. Decoded peak: -4.0 dBFS.
+- Note: bog foley treatment: hollow low impacts and short diffuse splash-like tails; processed dirt gallop, not a field recording of bog wildlife; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_snow_01.ogg
+
+- Slot: `startle_hoof_snow` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.1-0.95 s, asetrate=51840,aresample=48000,highpass=f=650,treble=g=7,equalizer=f=2600:t=q:w=1:g=4,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.79 s. Decoded peak: -3.8 dBFS.
+- Note: snow foley treatment: emphasized granular scrape and crunchy upper impacts; processed dirt gallop, not a field recording on snow; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_hoof_snow_02.ogg
+
+- Slot: `startle_hoof_snow` (oneshot).
+- Source: Freesound 684446, "HorseGallop1.wav", https://freesound.org/people/gbnelso/sounds/684446/.
+- Author: gbnelso (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3
+- Processing: cut 0.88-1.7 s, asetrate=53760,aresample=48000,highpass=f=750,treble=g=6,equalizer=f=3200:t=q:w=1:g=4,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.73 s. Decoded peak: -4.1 dBFS.
+- Note: snow foley treatment: emphasized granular scrape and crunchy upper impacts; processed dirt gallop, not a field recording on snow; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_brush_predator_01.ogg
+
+- Slot: `startle_brush_predator` (oneshot).
+- Source: Freesound 452570, "branch breaking forest twig snap crunch.wav", https://freesound.org/people/kyles/sounds/452570/.
+- Author: kyles (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/452/452570_612689-hq.mp3
+- Processing: cut 0.015-0.5 s, asetrate=36000,aresample=48000,lowpass=f=2900,aecho=0.8:0.8:95|210:0.4|0.2,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.86 s. Decoded peak: -3.8 dBFS.
+- Note: brush thrash without hooves; reserved for a future species-specific predator departure, not selected by ungulate startles; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
+### startle_brush_predator_02.ogg
+
+- Slot: `startle_brush_predator` (oneshot).
+- Source: Freesound 452570, "branch breaking forest twig snap crunch.wav", https://freesound.org/people/kyles/sounds/452570/.
+- Author: kyles (Freesound).
+- Licence: CC0 1.0.
+- URL: https://cdn.freesound.org/previews/452/452570_612689-hq.mp3
+- Processing: cut 0-0.46 s, asetrate=40320,aresample=48000,lowpass=f=3300,aecho=0.8:0.8:80|185:0.35|0.18,afade=t=out:st=0.35:d=0.7, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 0.73 s. Decoded peak: -3.5 dBFS.
+- Note: brush thrash without hooves; reserved for a future species-specific predator departure, not selected by ungulate startles; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs
+
 ## Replace before distribution
 
 ### forest.ogg
