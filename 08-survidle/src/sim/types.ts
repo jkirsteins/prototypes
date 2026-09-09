@@ -105,6 +105,26 @@ export interface Garment { id: ClothingId; durability: number; /** 0 dry to 100 
 
 /** What an hour's watching told a survivor about one shore: which fish this water holds. Dies with the person. */
 export interface Observation { minute: number; fish: Species[] }
+export interface HuntSign { minute: number; species: Species[] }
+
+export interface CarcassYields {
+  meatKg: number;
+  hideKg?: number;
+  furKg?: number;
+  fatKg?: number;
+  bone?: number;
+  sinew?: number;
+}
+
+export interface Carcass {
+  id: number;
+  species: Species;
+  cell: number;
+  killedAt: number;
+  /** Minutes of decay accumulated above the frozen tier. */
+  warmAge: number;
+  yields: CarcassYields;
+}
 
 export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore" | "seep" | "snowShelter";
 /** Structures the weather takes down unless they are mended. */
@@ -151,6 +171,9 @@ export interface Task {
   repeat: boolean;
   /** Persistent large-animal subject selected when a detailed hunt begins. */
   wildlifeSubject?: number;
+  /** A successful pursuit becomes real field work without pretending the carcass is inventory. */
+  huntPhase?: "pursuit" | "field";
+  carcassId?: number;
   /** Started as "hunt anything" or "fish for anything": the arg is the species drawn, and a repeat draws again. */
   any?: boolean;
   /** The dark has already cost this task an attempt and been remarked on; the rest of them are silent. */
@@ -176,10 +199,15 @@ export interface Task {
 export interface PausedTask {
   id: TaskId;
   arg?: string;
+  /** The concrete species was drawn by an "any" hunt or fish order. */
+  any?: boolean;
   /** Share of the work done, 0..1. */
   fraction: number;
   /** The cell it was set aside in; -1 for carried work. */
   cell: number;
+  duration?: number;
+  huntPhase?: "pursuit" | "field";
+  carcassId?: number;
 }
 
 /** A walk under way: the cells still to step through, and what it is for. */
@@ -361,6 +389,8 @@ interface WorkIntentBase extends IntentBase {
   done: number;
   /** The scheduler has chosen another order: deliver what is owed, then end. */
   windDown: boolean;
+  /** Carcass meat still owed to camp by this hunt. Absent once any recovered meat reaches camp. */
+  recoveredMeatKg?: number;
 }
 
 /**
@@ -534,6 +564,8 @@ export interface Player {
   gut: { day: number; kg: Partial<Record<FoodId, number>>; leanKcal: number };
   /** Shores this survivor has read, by cell. */
   known: Record<number, Observation>;
+  /** Recent animal signs personally seen or found while hunting, by cell. */
+  huntSigns: Record<number, HuntSign>;
 }
 
 export interface Weather {
@@ -664,7 +696,7 @@ export interface SkillState {
 
 export type GoalId =
   | "site" | "firewood" | "fire" | "cook" | "keptNight" | "bed" | "keptDays" | "roof" | "keptRain"
-  | "water" | "snare" | "store" | "spring" | "summer" | "autumn" | "winter";
+  | "water" | "snare" | "sign" | "recover" | "store" | "spring" | "summer" | "autumn" | "winter";
 
 export interface GoalState {
   done: Partial<Record<GoalId, true>>;
@@ -708,6 +740,11 @@ export interface GameState {
   paused: Record<string, PausedTask>;
   /** What lies on the ground, by cell index. */
   piles: Record<number, Inventory>;
+  /** Kills awaiting field processing, still fixed to the cell where they fell. */
+  carcasses: Carcass[];
+  nextCarcassId: number;
+  /** Recent disturbance by cell, 0 calm to 1 strongly avoided. */
+  huntPressure: Record<number, number>;
   /** Seeps by the cell they are dug on. */
   seeps: Record<number, Seep>;
   route: Route | null;

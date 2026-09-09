@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
-import { placeAt, placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { hasSpot, regionAt } from "../src/world/gen";
 import { levelMinutes } from "../src/sim/skills";
+import { noteHuntSign } from "../src/sim/hunting";
 import { availableTasks } from "../src/sim/tasks";
 import { doHtml, doPurposesHtml, filterRows, intentGroups, keyedRows, makeFirst, purposeCounts, rankRows } from "../src/ui/dopanel";
 import { purposeOf, subtabOf } from "../src/ui/purpose";
@@ -15,6 +16,14 @@ import type { OrderWhen, TaskId } from "../src/sim/types";
 
 
 describe("the purposes and the filter", () => {
+  it("does not expose a specific game species until the survivor has fresh local sign", () => {
+    const { state, world } = newGame(3);
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Hunt" as const, purpose: "Game" } };
+    const cal = calendar(state.minute, state.startDoy);
+    expect(doHtml(state, world, cal, ui)).not.toContain("Hunt mountain hare");
+    noteHuntSign(state, cellOf(state, world), "hare");
+    expect(doHtml(state, world, cal, ui)).toContain("Hunt mountain hare");
+  });
   it("shows an initial walk separately from work duration in the selected format", () => {
     const { state, world } = newGame(3);
     placeAtSpot(state, world, state.player.region, "heath");

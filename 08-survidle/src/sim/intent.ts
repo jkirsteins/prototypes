@@ -11,6 +11,7 @@ import { absence, popOf } from "./animals";
 import { orderKit, provision, provisionKit, tooExhausted } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
+import { goalDeed } from "./goals";
 import { canConsume, isEmpty, listItems, pile, pileAt, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
 import { body, fearsFell } from "./person";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_POOR_SHARE, ROOT_TO_DOY, STRUCTURES } from "./items";
@@ -25,7 +26,8 @@ import { fishSpecies, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
-import { check, huntGroundValue, isShortAtCamp, loadPack, setAside, type InitialWalk, type TaskOption, whereIs } from "./tasks";
+import { check, isShortAtCamp, loadPack, setAside, type InitialWalk, type TaskOption, whereIs } from "./tasks";
+import { bestHuntCell, huntEstimate } from "./hunting";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, UntilChoice, Where, WorkIntent,
 } from "./types";
@@ -131,13 +133,13 @@ export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
  */
 function anyHuntCell(state: GameState, world: World, cal: Calendar, where: Where): { cell: number; note: string } {
   const r = regionAt(world, state.player.region);
-  const weigh = (cell: number) => huntGroundValue(state, world, cal, cell);
+  const weigh = (cell: number) => huntEstimate(state, world, cal, cell).kgPerHour;
   if (typeof where === "string" && where !== "nearest") {
     const s = spotOf(r, where);
     if (s && weigh(s.cell) > 0) return { cell: s.cell, note: "" };
     return { cell: nearestCell(state, world, (cell) => weigh(cell) > 0), note: `${SPOT_WORDS[where]} does not suit; going to the nearest hunting ground instead` };
   }
-  return { cell: nearestCell(state, world, (cell) => weigh(cell) > 0), note: "" };
+  return { cell: bestHuntCell(state, world, cal), note: "" };
 }
 
 /**
@@ -459,13 +461,21 @@ function dropEverything(state: GameState, world: World): boolean {
   const keep = new Set(orderKit(state));
   const atHome = isWorkIntent(state.intent) && state.intent.campCell === here;
   let moved = false;
+  let recoveredMeat = false;
   for (const { item, qty: q } of listItems(from)) {
     if (keep.has(item)) continue;
     const kg = transfer(from, to, item, q);
-    if (kg > 1e-9) moved = true;
+    if (kg > 1e-9) {
+      moved = true;
+      if (item === "rawMeat" && isWorkIntent(state.intent) && (state.intent.recoveredMeatKg ?? 0) > 0) recoveredMeat = true;
+    }
   }
   // Unloading at the home camp empties the vessels too, as far as the vessels and trough at camp have room.
   if (atHome) moved = pourVessels(state.player, to, campSite(regionState(state, world, state.player.region))) > 1e-9 || moved;
+  if (recoveredMeat && isWorkIntent(state.intent)) {
+    delete state.intent.recoveredMeatKg;
+    goalDeed(state, { kind: "recoveredAtCamp" });
+  }
   return moved;
 }
 

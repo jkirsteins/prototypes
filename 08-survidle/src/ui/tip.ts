@@ -28,6 +28,7 @@ import { plain } from "../sim/voice";
 import { fmtKg } from "../units";
 import { walkableIce } from "../sim/weather";
 import { cellAt, regionAt, terrainPeek, type World } from "../world/gen";
+import { SPECIES_DEFS } from "../sim/species";
 import { esc } from "./render";
 import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
 import { compactEquipmentHtml } from "./equipment";
@@ -57,7 +58,8 @@ export function tipKey(state: GameState, world: World, cell: number): string {
   const heap = state.piles[cell] ? weight(state.piles[cell]).toFixed(1) : "";
   const known = isKnown(state, cell) ? "k" : "";
   const trap = st.trap?.cell === cell ? "T" : "";
-  return `${cell}|${cellOf(state, world)}|${known}|${heap}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}`;
+  const carcasses = state.carcasses.filter((carcass) => carcass.cell === cell).map((carcass) => `${carcass.id}:${carcass.yields.meatKg.toFixed(1)}`).join(",");
+  return `${cell}|${cellOf(state, world)}|${known}|${heap}|${carcasses}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}`;
 }
 
 /** The named place this cell is, if it is one. */
@@ -90,6 +92,17 @@ function inventoryRow(label: string, inv: Inventory | undefined): string {
   return inv && weight(inv) > 0 ? `<div><b>${label}:</b> ${esc(inventoryItems(inv))}</div>` : "";
 }
 
+function cellInventoryRow(state: GameState, label: string, cell: number | null): string {
+  if (cell === null) return "";
+  const parts: string[] = [];
+  const inv = state.piles[cell];
+  if (inv && weight(inv) > 0) parts.push(inventoryItems(inv));
+  const counts = new Map<string, number>();
+  for (const carcass of state.carcasses) if (carcass.cell === cell) counts.set(carcass.species, (counts.get(carcass.species) ?? 0) + 1);
+  for (const [species, count] of counts) parts.push(`${count} ${SPECIES_DEFS[species as keyof typeof SPECIES_DEFS].name} carcass${count === 1 ? "" : "es"}`);
+  return parts.length ? `<div><b>${label}:</b> ${esc(parts.join(", "))}</div>` : "";
+}
+
 /** Camp stores, plus a non-empty known pile on the cell currently highlighted. */
 export function mapInventoryHtml(state: GameState, world: World, highlighted: number | null): string;
 export function mapInventoryHtml(state: GameState, world: World, cal: Calendar, highlighted: number | null): string;
@@ -99,11 +112,11 @@ export function mapInventoryHtml(state: GameState, world: World, calOrHighlighte
   const camp = campCellOf(state, world);
   const here = cellOf(state, world);
   const rows = [
-    inventoryRow("Camp", camp === null ? undefined : state.piles[camp]),
+    cellInventoryRow(state, "Camp", camp),
     inventoryRow("Carried", state.player.pack),
-    here !== camp ? inventoryRow("Here", state.piles[here]) : "",
+    here !== camp ? cellInventoryRow(state, "Here", here) : "",
     highlighted !== null && highlighted !== camp && highlighted !== here && isKnown(state, highlighted)
-      ? inventoryRow("Highlighted", state.piles[highlighted])
+      ? cellInventoryRow(state, "Highlighted", highlighted)
       : "",
   ].join("");
   const equipment = compactEquipmentHtml(state, world, cal);

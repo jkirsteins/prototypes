@@ -4,6 +4,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { intentOption, type IntentRequest, intentSentence, resolveCell, startIntent } from "../src/sim/intent";
 import { addItem, hasTool, herePile, isEmpty, pile, qty } from "../src/sim/inventory";
+import { huntEstimate } from "../src/sim/hunting";
 import { ITEM_KG, SAP_FROM_DOY } from "../src/sim/items";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -11,7 +12,7 @@ import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import { candidateWeight, check, huntGroundValue, stepTask, stopTask , isShortAtCamp } from "../src/sim/tasks";
+import { check, stepTask, stopTask , isShortAtCamp } from "../src/sim/tasks";
 import { setSkillLevel } from "../src/sim/horizon";
 import { SKILL_IDS } from "../src/sim/skills";
 import { takeStep } from "../src/sim/steps";
@@ -147,7 +148,7 @@ describe("where the work is done", () => {
     expect(resolveCell(state, world, cal, "craft", "cordage", "nearest").cell).toBe(cellOf(state, world));
   });
 
-  it("a hunt for anything stays on ground that suits something, and otherwise goes where most is about", () => {
+  it("a hunt for anything stays on plausible ground without reading the hidden population", () => {
     // Seed 1: with the forest-spot species zeroed below, heath is the strict
     // heaviest ground left; seed 3's camp cell now also weighs in (tied with
     // shore), which the fixture needs not to happen.
@@ -169,12 +170,8 @@ describe("where the work is done", () => {
     placeAtSpot(state, world, state.player.region, "camp");
     const st = regionState(state, world, state.player.region);
     for (const s of huntedLand()) if (SPECIES_DEFS[s].hunt!.spot === "forest" || SPECIES_DEFS[s].hunt!.spot === "shore") st.pop[s] = 0;
-    const heaviest = r.spots
-      .map((s) => ({ cell: s.cell, w: candidateWeight(state, world, cal, "hunt", s.cell) }))
-      .reduce((a, b) => (b.w > a.w ? b : a));
-    expect(heaviest.cell).toBe(heath);
-    expect(resolveCell(state, world, cal, "hunt", "any", "nearest").cell).toBe(heaviest.cell);
-    expect(resolveCell(state, world, cal, "hunt", "any", "nearest").cell).not.toBe(spotOf(r, "forest")!.cell);
+    const chosen = resolveCell(state, world, cal, "hunt", "any", "nearest").cell;
+    expect(["fell", "bog", "meadow", "spruce", "pine", "birch"]).toContain(cellAt(world, chosen).terrain);
   });
 
   // A camp sited on a shore where mallard swim read "something is about here"
@@ -183,7 +180,7 @@ describe("where the work is done", () => {
   // and starved at the lean ceiling. Ground is ranked by the meat a day's
   // hunting on it would bring home, and the value reads the hunter's own odds,
   // so a beginner is not sent after game they cannot take.
-  it("a hunt for anything uses the nearest usable ground at every skill level", () => {
+  it("a hunt for anything lets hunting skill trade proximity for better ground", () => {
     // The same fixture as the test above, which pins the beginner's half: on a
     // heath full of hare, a level-1 hunter stays put, because the roe deer in
     // the forest are over their head and do not count toward that ground.
@@ -197,11 +194,11 @@ describe("where the work is done", () => {
     const heath = spotOf(r, "heath")!.cell;
     placeAt(state, world, heath);
     expect(resolveCell(state, world, cal, "hunt", "any", "nearest").cell).toBe(heath);
-    // Skill changes the available quarry, not the meaning of nearest.
+    // Practice changes what the generic instruction can infer from the ground.
     for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
     const chosen = resolveCell(state, world, cal, "hunt", "any", "nearest").cell;
-    expect(chosen).toBe(heath);
-    expect(huntGroundValue(state, world, cal, forest)).toBeGreaterThan(0);
+    expect(cellAt(world, chosen).terrain).toMatch(/spruce|pine|birch/);
+    expect(huntEstimate(state, world, cal, forest).kgPerHour).toBeGreaterThan(0);
   });
 
   it("the button is judged at the resolved cell, so ground is never the reason", () => {

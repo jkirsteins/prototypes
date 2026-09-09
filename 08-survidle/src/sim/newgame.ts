@@ -67,6 +67,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     fingers: false,
     gut: { day: 1, kg: {}, leanKcal: 0 },
     known: {},
+    huntSigns: {},
   };
   state.task = null;
   state.log = [];
@@ -125,6 +126,9 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     lastHour: 0,
     lastDay: 0,
     piles: {},
+    carcasses: [],
+    nextCarcassId: 1,
+    huntPressure: {},
     seeps: {},
     survivors: [firstRecord(seed, startDoy, person)],
     year: 1,
@@ -134,7 +138,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     goals: newGoals(calendar(0, startDoy).season),
     shopping: null,
     wildlife: emptyWildlife(),
-  } as GameState;
+  } as unknown as GameState;
   // The same fresh slate a landing gives, from the one door that gives it.
   resetTeaching(state);
   newPerson(state, world, start.campCell, world.start);

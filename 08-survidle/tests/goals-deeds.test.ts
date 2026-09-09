@@ -5,12 +5,13 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { activeGoals, goalDeed, GOALS } from "../src/sim/goals";
 import { startIntent } from "../src/sim/intent";
+import { createCarcass, carcassMinutes } from "../src/sim/hunting";
 import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
 import { ITEM_KG } from "../src/sim/items";
 import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
-import { placeAt, placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, DEADWOOD_KG, startTask, stepTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
@@ -212,6 +213,36 @@ describe("deeds reach the ladder", () => {
     advance(state, world, o.duration + 1);
     expect(st.rack.kg).toBeGreaterThan(0);
     expect(state.goals.done.store).toBe(true);
+  });
+
+  it("teaches the hunting loop through real sign and camp recovery deeds", () => {
+    const { state } = newGame(17);
+    expect(goalDeed(state, { kind: "foundSign" })).toEqual(["sign"]);
+    expect(goalDeed(state, { kind: "recoveredAtCamp" })).toEqual(["recover"]);
+    expect(state.goals.done.sign).toBe(true);
+    expect(state.goals.done.recover).toBe(true);
+  });
+
+  it("credits recovered meat only when a field-dressed carcass reaches camp", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const camp = regionState(state, world, state.player.region).campCell!;
+    placeAtSpot(state, world, state.player.region, "forest");
+    const field = cellOf(state, world);
+    const carcass = createCarcass(state, world, "deer", { meatKg: 12 });
+    state.intent = {
+      mode: "hand", task: "hunt", arg: "deer", cell: field, campCell: camp,
+      until: { kind: "once" }, deliver: "camp", done: 0, step: "", orderId: null, windDown: false,
+    };
+    state.task = {
+      id: "hunt", arg: "deer", progress: 0, duration: carcassMinutes(carcass), repeat: false,
+      huntPhase: "field", carcassId: carcass.id,
+    };
+    stepTask(state, world, cal, new Rng(1), state.task.duration + 1);
+    expect(state.goals.done.recover).toBeUndefined();
+    placeAt(state, world, camp);
+    advance(state, world, 1);
+    expect(state.goals.done.recover).toBe(true);
   });
 
   it("credits nothing when the meat is gone before the hang finishes", () => {

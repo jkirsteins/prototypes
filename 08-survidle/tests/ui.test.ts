@@ -4,6 +4,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { bodyRowOf, campRowOf } from "../src/sim/bodyorder";
 import { addItem, herePile, pile } from "../src/sim/inventory";
+import { createCarcass, noteHuntSign } from "../src/sim/hunting";
 import { startIntent } from "../src/sim/intent";
 import { LEAN_KCAL_PER_DAY, RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { isKnown, knownShare, mapRegion, markKnown } from "../src/sim/mapped";
@@ -56,6 +57,8 @@ describe("reachability: everything in the catalogue has a button", () => {
   // question of a survivor who has been round their own valley and the next.
   mapRegion(state, world, state.player.region);
   for (const nb of regionAt(world, state.player.region).neighbours) mapRegion(state, world, nb.id);
+  const localGame = huntedLand().filter((s) => regionAt(world, state.player.region).capacity[s]);
+  for (const species of localGame) noteHuntSign(state, cellOf(state, world), species);
   const html = allActions(state, world);
 
   it("every recipe", () => {
@@ -67,12 +70,10 @@ describe("reachability: everything in the catalogue has a button", () => {
   it("every mend, even a lean-to and a rack not yet built", () => {
     for (const id of ["leanTo", "dryingRack"]) expect(html).toContain(`data-opt="intent:mend:${id}"`);
   });
-  it("every animal the region holds, and nothing it does not", () => {
-    const r = regionAt(world, state.player.region);
-    const here = huntedLand().filter((s) => r.capacity[s]);
-    expect(here.length).toBeGreaterThan(0);
-    for (const s of here) expect(html).toContain(`data-opt="intent:hunt:${s}"`);
-    for (const s of huntedLand()) if (!r.capacity[s]) expect(html).not.toContain(`data-opt="intent:hunt:${s}"`);
+  it("every animal with fresh local sign, and nothing without it", () => {
+    expect(localGame.length).toBeGreaterThan(0);
+    for (const s of localGame) expect(html).toContain(`data-opt="intent:hunt:${s}"`);
+    for (const s of huntedLand()) if (!localGame.includes(s)) expect(html).not.toContain(`data-opt="intent:hunt:${s}"`);
     expect(html).toContain('data-opt="intent:fish:any"');
     expect(html).toContain('data-specific="fish"');
   });
@@ -272,12 +273,15 @@ describe("panels", () => {
     addItem(herePile(state, world), "stone", 2);
     setPanel("map", mapHtml(world, state, ui, cal));
     expect(document.querySelectorAll("#map .c.pl").length).toBe(piles + 1);
-    const nb = neighbours(world, cellOf(state, world)).find((c) => cellAt(world, c).terrain !== "water")!;
+    const nb = neighbours(world, cellOf(state, world)).find((c) => cellAt(world, c).terrain !== "water" && !state.piles[c])!;
     placeAt(state, world, nb);
     setPanel("map", mapHtml(world, state, ui, cal));
     // The stone's cell is underlined with no marker on it; camp's pile sits under its x.
     expect(document.querySelectorAll("#map .c.pl").length).toBe(piles + 1);
     expect(document.querySelectorAll("#map .c.pl:not(.mk)").length).toBe(1);
+    createCarcass(state, world, "deer", { meatKg: 12 });
+    setPanel("map", mapHtml(world, state, ui, cal));
+    expect(document.querySelectorAll("#map .c.pl").length).toBe(piles + 2);
   });
 
   it("marks this region's camp with an x whenever you are not on its glyph", () => {
@@ -666,6 +670,8 @@ describe("the Do panel", () => {
     // whole of them. Nothing is hidden behind a "more" any more: a pane holds
     // a handful of rows, and what a survivor cannot do yet still shows and
     // says why.
+    const roster = regionAt(world, state.player.region);
+    for (const species of huntedLand()) if (roster.capacity[species]) noteHuntSign(state, cellOf(state, world), species);
     const html = allPanesHtml(state, world, cal);
     // Eating and drinking stand over the stores they draw on, in Inventory,
     // rather than in the Do pane beside the work or under the map, where
@@ -678,7 +684,6 @@ describe("the Do panel", () => {
     expect(html).not.toContain('class="opt off" data-opt="intent:chop:"');
     for (const id of RECIPE_IDS) expect(html).toContain(`data-opt="intent:craft:${id}"`);
     for (const id of STRUCTURE_IDS) expect(html).toContain(`data-opt="intent:build:${id}"`);
-    const roster = regionAt(world, state.player.region);
     for (const s of huntedLand()) if (roster.capacity[s]) expect(html).toContain(`data-opt="intent:hunt:${s}"`);
     expect(html).toContain('data-opt="intent:fish:any"');
     expect(html).toContain('data-specific="fish"');

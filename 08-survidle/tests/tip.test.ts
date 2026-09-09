@@ -16,6 +16,7 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, emptyInventory, pile } from "../src/sim/inventory";
 import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
+import { createCarcass } from "../src/sim/hunting";
 import { seeFrom } from "../src/sim/sight";
 import { siteCamp } from "./siting-helpers";
 import { campCellOf, cellOf, placeAt } from "../src/sim/position";
@@ -259,5 +260,20 @@ describe("the map inventory", () => {
 
     placeAt(state, world, empty);
     expect(mapInventoryHtml(state, world, null)).toBe("");
+  });
+
+  it("shows recoverable carcasses at camp, here, and a highlighted cell", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const camp = campCellOf(state, world)!;
+    const other = regionAt(world, state.player.region).cells.find((cell) => cell !== camp)!;
+    createCarcass(state, world, "deer", { meatKg: 10 });
+    placeAt(state, world, other);
+    markKnown(state, other);
+    createCarcass(state, world, "hare", { meatKg: 1 });
+
+    const html = read(mapInventoryHtml(state, world, camp));
+    expect(html).toContain("Camp: 1 roe deer carcass");
+    expect(html).toContain("Here: 1 mountain hare carcass");
   });
 });

@@ -319,6 +319,33 @@ describe("the world save", () => {
     expect(loadGame(store)!.state.dead!.cause).toBe("froze");
   });
 
+  it("round-trips carcasses, hunting pressure, and personal signs", () => {
+    const { state } = newGame(8);
+    state.carcasses.push({ id: 3, species: "deer", cell: 12, killedAt: 40, warmAge: 5, yields: { meatKg: 9, hideKg: 2 } });
+    state.nextCarcassId = 4;
+    state.huntPressure[12] = 0.45;
+    state.player.huntSigns[12] = { minute: 40, species: ["deer"] };
+    const back = deserialize(serialize(state))!.state;
+    expect(back.carcasses).toEqual(state.carcasses);
+    expect(back.nextCarcassId).toBe(4);
+    expect(back.huntPressure).toEqual({ 12: 0.45 });
+    expect(back.player.huntSigns).toEqual({ 12: { minute: 40, species: ["deer"] } });
+  });
+
+  it("initializes hunting recovery state in older saves", () => {
+    const { state } = newGame(8);
+    const old = JSON.parse(serialize(state));
+    delete old.state.carcasses;
+    delete old.state.nextCarcassId;
+    delete old.state.huntPressure;
+    delete old.state.player.huntSigns;
+    const back = deserialize(JSON.stringify(old))!.state;
+    expect(back.carcasses).toEqual([]);
+    expect(back.nextCarcassId).toBe(1);
+    expect(back.huntPressure).toEqual({});
+    expect(back.player.huntSigns).toEqual({});
+  });
+
   it("writes version 6 and reads 4 by wrapping the survivor as the first of the world", () => {
     const { state } = newGame(8);
     expect(JSON.parse(serialize(state)).version).toBe(8);

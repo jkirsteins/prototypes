@@ -39,7 +39,6 @@ import { SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY } from "../src/sim/items";
 import { readShore } from "../src/sim/knowledge";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
-import { SPECIES_DEFS } from "../src/sim/species";
 import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
 import { ICE_SHORE_CM } from "../src/sim/water";
 import { cellIdx, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
@@ -88,8 +87,8 @@ describe("the reference player", () => {
     player.tick(state, world);
     // Neither care row is one of the reference's own wants.
     const list = ordersHere(state, world).filter(isWorkOrder);
-    // Two readings shut a want on the opening morning. The runner's own rules shut the three
-    // named hunts (the species' recommended level), the two ice-hole fetches and the two melts
+    // Two readings shut a want on the opening morning. The runner's own rules shut the
+    // two ice-hole fetches and the two melts
     // (the shore is open), the fire indoors (no hut), the hide coat, trousers and boots
     // (Crafting 8), the celt and the flaked axe, the wedge split and the dead wood (an axe is
     // in hand), and seaweed (an inland lake). The wants' own conditions shut the nests, the
@@ -100,8 +99,7 @@ describe("the reference player", () => {
     const cal = calendar(state.minute, state.startDoy);
     const shape = (w: (typeof REFERENCE_ORDERS)[number]) => ({ id: -1, kind: w.kind, req: w.req, done: 0, minutes: 0, skipped: "" });
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w) && conditionOpen(state, world, cal, shape(w)) === null);
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 27);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 27);
+    expect(list.length).toBe(open.length);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -164,11 +162,10 @@ describe("the reference player", () => {
     // keep, the sap tap and seaweed, all above the fish keep. Inner bark and its grind are off
     // the list; see tests/list.test.ts for why.
     expect(tasks.slice(cook + 1, cook + 5)).toEqual(["crack:", "build:dryingRack", "build:snare", "hang:"]);
-    expect(tasks.slice(cook + 5, cook + 10)).toEqual(["split:", "splitWedges:", "deadwood:", "chop:", "hunt:any"]);
-    expect(tasks.slice(cook + 10, cook + 16)).toEqual(["eggs:", "roots:", "roots:", "cook:roots", "tapSap:", "seaweed:"]);
-    expect(tasks[cook + 16]).toBe("fish:any");
-    expect(tasks[cook + 17]).toBe("berries:");
-    expect(tasks[cook + 18]).toBe("craft:bow");
+    expect(tasks.slice(cook + 5, cook + 12)).toEqual(["craft:bow", "craft:arrows", "hunt:any", "split:", "splitWedges:", "deadwood:", "chop:"]);
+    expect(tasks.slice(cook + 12, cook + 18)).toEqual(["eggs:", "roots:", "roots:", "cook:roots", "tapSap:", "seaweed:"]);
+    expect(tasks[cook + 18]).toBe("fish:any");
+    expect(tasks[cook + 19]).toBe("berries:");
     const spear = tasks.indexOf("craft:fishingSpear");
     expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
     // The rendered-fat keep sits above the two cook keeps, fat first: raw fat rots in three
@@ -178,24 +175,23 @@ describe("the reference player", () => {
     expect(tasks).not.toContain("emptyTrap:");
     // The clothing block follows the arrows, then the stone restock, then the edge's whole life with
     // the spare axe: a whetstone in the opening cost the knife its stone and the snares an hour.
-    const arrows = tasks.indexOf("craft:arrows");
-    expect(tasks.slice(arrows + 1, arrows + 8)).toEqual(["craft:needle", "repair:", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"]);
-    expect(tasks.slice(arrows + 8, arrows + 14)).toEqual(["stone:", "craft:whetstone", "hone:", "craft:wedges", "craft:stoneAxe", "craft:flakedAxe"]);
+    const needle = tasks.indexOf("craft:needle");
+    expect(tasks.slice(needle, needle + 7)).toEqual(["craft:needle", "repair:", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"]);
+    expect(tasks.slice(needle + 7, needle + 13)).toEqual(["stone:", "craft:whetstone", "hone:", "craft:wedges", "craft:stoneAxe", "craft:flakedAxe"]);
     const axe = tasks.indexOf("craft:flakedAxe");
     // The forty-snare keep sits right after the water trough, pushing the fill, melt, winter-stock and hang block one further down.
     expect(tasks.slice(axe + 1, axe + 9)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "build:snare", "fill:shore", "fill:hole", "melt:"]);
-    // The three named hunts are what is left of the surplus loop: the winter stock's own keeps
-    // sit above the hunt keep, where a promise due on a date belongs, and the hang grind above
-    // the plant band once its own stock line shut it on anything a body can eat in time.
-    expect(tasks.slice(axe + 9, axe + 12)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
-    expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
+    expect(tasks.slice(axe + 9)).toEqual([]);
+    expect(tasks).not.toContain("hunt:elk");
+    expect(tasks).not.toContain("hunt:reindeer");
+    expect(tasks).not.toContain("hunt:deer");
     // 74: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
     // twenty-snare keep and the rack above the gathering block, the forty-snare keep after the
     // water trough, the thaw grind at the head of the water block, the fat and carbohydrate
     // item's eight insertions around the cook keeps - the rendered-fat keep, the oily-fish cook
     // keep, the bone crack, eggs, roots and its cook keep, the sap tap and seaweed - and the
     // winter dig, the root row's second window, which the frozen months want an ice hole for.
-    expect(REFERENCE_ORDERS.length).toBe(74);
+    expect(REFERENCE_ORDERS.length).toBe(71);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
@@ -566,18 +562,15 @@ describe("the lineage", () => {
 });
 
 describe("wants by level", () => {
-  it("opens the large-game hunts at the species' recommended hunting level and not below", () => {
+  it("uses one skill-sensitive generic hunt instead of fixed species orders", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
-    const elk = REFERENCE_ORDERS.find((w) => w.req.task === "hunt" && w.req.arg === "elk")!;
     const any = REFERENCE_ORDERS.find((w) => w.req.task === "hunt" && w.req.arg === "any")!;
-    expect(wantOpen(state, world, elk)).toBe(false);
     expect(wantOpen(state, world, any)).toBe(true);
-    setSkillLevel(state, "hunting", SPECIES_DEFS.elk.hunt!.level!);
-    expect(wantOpen(state, world, elk)).toBe(true);
+    expect(REFERENCE_ORDERS.filter((w) => w.req.task === "hunt")).toEqual([any]);
   });
 
-  it("the list hangs as a grind, keeps eight cordage, pins the winter woodpile at the stock, and hunts elk, reindeer and roe deer by name", () => {
+  it("the list hangs as a grind, keeps eight cordage, and pins bounded food and wood reserves", () => {
     const hang = REFERENCE_ORDERS.find((w) => w.req.task === "hang")!;
     expect(hang.kind).toBe("grind");
     expect(hang.req.until.kind).toBe("forever");
@@ -587,16 +580,13 @@ describe("wants by level", () => {
     // measured hut winter rather than pinned at a literal here.
     const woodpile = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg)!;
     expect(woodpile.req.until).toEqual({ kind: "campHas", qty: WINTER_STOCK.firewoodKg });
-    const named = REFERENCE_ORDERS.filter((w) => w.req.task === "hunt" && w.req.arg !== "any").map((w) => w.req.arg);
-    expect(named).toEqual(["elk", "reindeer", "deer"]);
+    const hunt = REFERENCE_ORDERS.find((w) => w.req.task === "hunt")!;
+    expect(hunt.kind).toBe("keep");
+    expect(hunt.req.until.kind).toBe("campHas");
   });
 
-  it("hunts the named species as grinds, never keeps: a keep on raw meat can never read met while the rack is above it in the list", () => {
-    const named = REFERENCE_ORDERS.filter((w) => w.req.task === "hunt" && w.req.arg !== "any");
-    for (const w of named) {
-      expect(w.kind, w.req.arg).toBe("grind");
-      expect(w.req.until.kind, w.req.arg).toBe("forever");
-    }
+  it("has no unbounded hunt order", () => {
+    expect(REFERENCE_ORDERS.some((w) => w.req.task === "hunt" && w.req.until.kind === "forever")).toBe(false);
   });
 
   it("stands in for the pace by hand at woodcraft 10: a plain keep at today's target, withdrawn when the thaw closes the window", () => {
@@ -691,10 +681,7 @@ describe("wants by level", () => {
     expect(at(stones[1])).toBe(at(REFERENCE_ORDERS.find((w) => w.req.task === "craft" && w.req.arg === "whetstone")!) - 1);
   });
 
-  it("the winter log keep sits beside the woodpile keep, the four of them above the hunt keep", () => {
-    // A grind is never met and a grind above a keep starves it: with the log keep last, below the three
-    // named hunts, camp logs never passed five through the autumn and a level-20 camp froze in December.
-    // The four sit above the hunt keep, since what they promise is due on a date and a hunt is not.
+  it("puts the bounded food runway ahead of future winter wood and has no unbounded named hunts", () => {
     const logs = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.logs)!;
     expect(logs.kind).toBe("keep");
     expect(REFERENCE_ORDERS.some((w) => w.req.task === "chop" && w.kind === "grind")).toBe(false);
@@ -702,10 +689,8 @@ describe("wants by level", () => {
     // The wedge split and dead wood, the woodpile's two methods for a camp with no axe, sit between the two.
     expect(REFERENCE_ORDERS.indexOf(logs)).toBe(REFERENCE_ORDERS.indexOf(woodpile) + 3);
     const hunt = REFERENCE_ORDERS.find((w) => w.req.task === "hunt" && w.req.arg === "any")!;
-    expect(REFERENCE_ORDERS.indexOf(hunt)).toBe(REFERENCE_ORDERS.indexOf(logs) + 1);
-    // The three named hunts are all that is left at the foot of the list.
-    const tail = REFERENCE_ORDERS.slice(-3);
-    expect(tail.map((w) => `${w.req.task}:${w.req.arg}:${w.kind}`)).toEqual(["hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"]);
+    expect(REFERENCE_ORDERS.indexOf(hunt)).toBeLessThan(REFERENCE_ORDERS.indexOf(woodpile));
+    expect(REFERENCE_ORDERS.filter((w) => w.req.task === "hunt")).toEqual([hunt]);
     // The log keep carries the woodpile's window and date and, alone of the four, the
     // spending; the summer's 4-log keep carries none of it.
     expect(logs.req.when!.season).toEqual(woodpile.req.when!.season);
@@ -734,14 +719,12 @@ describe("wants by level", () => {
     for (const arg of ["hideCoat", "hideTrousers", "hideBoots"]) expect(wantOpen(state, world, want(arg)), arg).toBe(true);
   });
 
-  it("the clothing block is a needle kept like a tool, a mend grind and five garments as once jobs, right after the arrows", () => {
+  it("keeps the clothing block contiguous after the food-production block", () => {
     // The needle is a keep of one because a needle that wears out takes the mend grind with it: a once
     // job left two year seeds with the grind skipped "needs a bone needle" beside hundreds of kilos of hide.
-    // The block used to follow the small-game hunt keep; that keep moved above the plant band and the
-    // arrows, the last of the ranged kit, are what the block follows now.
     const block = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}:${o.kind}:${o.req.until.kind}`);
-    const hunt = block.indexOf("craft:arrows:keep:campHas");
-    expect(block.slice(hunt + 1, hunt + 8)).toEqual([
+    const needle = block.indexOf("craft:needle:keep:campHas");
+    expect(block.slice(needle, needle + 7)).toEqual([
       "craft:needle:keep:campHas", "repair::grind:forever",
       "craft:hideCoat:job:once", "craft:hideTrousers:job:once", "craft:hideBoots:job:once", "craft:furHat:job:once", "craft:furMittens:job:once",
     ]);

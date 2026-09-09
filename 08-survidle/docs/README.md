@@ -143,8 +143,10 @@ waiting, and everything done while you are away run at the one scale.
   the progress.
 - **Carrying matters.** Your pack is comfortable to 25 kg and impossible past
   35. Logs weigh 20 kg and never go in the pack: they lie where they fell.
-  Everything you make or kill that does not fit lands on the pile under your
-  feet, and cells with something on them are underlined on the map. "Bring
+  A kill remains a carcass on its cell while you field dress it. Skill and
+  a knife improve the usable share; warm delay loses meat to spoilage and
+  scavengers. Recovered goods that do not fit land on the pile under your
+  feet, and cells with goods or a carcass are underlined on the map. "Bring
   it to camp" hauls a full load at a time: load 35 kg, walk to camp, drop,
   walk back, and the rest when the work is over; "Haul to camp" under
   advanced does the same for whatever lies where you stand. Building uses

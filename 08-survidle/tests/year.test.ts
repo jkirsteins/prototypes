@@ -58,7 +58,7 @@ describe("the year script", () => {
     expect(ref.state.stats.killsKcal).toBe(0);
   });
 
-  /** Forces one elk kill by running the hunt task to completion, seed 3's home region having elk. Returns stats.killsKcal after the kill. */
+  /** Forces one elk kill and field dressing, then returns the recovered calories. */
   function killsKcalFromOneElk(startDoy: number): number {
     const { state, world } = newGame(3, startDoy);
     placeAtSpot(state, world, state.player.region, "forest");
@@ -67,7 +67,7 @@ describe("the year script", () => {
     regionState(state, world, state.player.region).pop.elk = regionAt(world, state.player.region).capacity.elk;
     startTask(state, world, calendar(state.minute, state.startDoy), "hunt", "elk", true);
     const rng = new Rng(9);
-    for (let m = 0; m < 240 * 60 && !state.stats.kills.elk; m++) stepTask(state, world, calendar(state.minute, state.startDoy), rng, 1);
+    for (let m = 0; m < 240 * 60 && state.stats.killsKcal <= 0; m++) stepTask(state, world, calendar(state.minute, state.startDoy), rng, 1);
     expect(state.stats.kills.elk).toBe(1);
     return state.stats.killsKcal;
   }

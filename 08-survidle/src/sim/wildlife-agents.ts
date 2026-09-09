@@ -6,6 +6,7 @@ import { popOf } from "./animals";
 import { regionDensity } from "./animals";
 import { regionState, siteAt } from "./regionstate";
 import { skillLevel } from "./skills";
+import { noteHuntSign } from "./hunting";
 import type { AgentSpecies, GameState, WildlifeMode, WildlifeState, WildlifeSubject } from "./types";
 import { cellOf } from "./position";
 import { visibleCells } from "./sight";
@@ -399,7 +400,9 @@ export function noteWildlifeSightings(state: GameState, visible: number[], day: 
   const gain = 1 + Math.floor((skillLevel(state, "hunting") - 1) / 5);
   for (const id of visible) {
     const subject = state.wildlife.subjects.find((s) => s.id === id);
-    if (!subject || state.wildlife.recognized[id]) continue;
+    if (!subject) continue;
+    if (subject.active) noteHuntSign(state, subject.active.cell, subject.species);
+    if (state.wildlife.recognized[id]) continue;
     const f = state.wildlife.familiarity[id] ?? { points: state.wildlife.inherited[id] ?? 0, lastDay: -1 };
     if (f.lastDay === day) continue;
     f.lastDay = day;

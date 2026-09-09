@@ -211,7 +211,7 @@ describe("tasks", () => {
     expect(campSite(st)!.structures.leanTo).toBe(true);
   });
 
-  it("hunts deer in the forest with a bow and eventually succeeds", () => {
+  it("turns a successful hunt into field work before any meat is recovered", () => {
     const g = newGame(3);
     siteCamp(g.state, g.world);
     const { state, world } = g;
@@ -221,8 +221,52 @@ describe("tasks", () => {
     regionState(state, world, state.player.region).pop.deer = regionAt(world, state.player.region).capacity.deer;
     expect(check(state, world, cal, "hunt", "deer").ok).toBe(true);
     startTask(state, world, cal, "hunt", "deer", true);
-    run(g, 180 * 12, 9);
+    const huntRng = new Rng(9);
+    for (let m = 0; m < 180 * 60 && !state.stats.animals; m++) stepTask(state, world, cal, huntRng, 1);
     expect(state.stats.animals).toBeGreaterThan(0);
+    expect(state.carcasses).toHaveLength(1);
+    expect(state.task?.huntPhase).toBe("field");
+    expect(qty(state.player.pack, "rawMeat") + qty(herePile(state, world), "rawMeat")).toBe(0);
+    for (let m = 0; m < 1000 && state.carcasses.length; m++) stepTask(state, world, cal, huntRng, 1);
+    expect(state.carcasses).toHaveLength(0);
+    expect(qty(state.player.pack, "rawMeat") + qty(herePile(state, world), "rawMeat")).toBeGreaterThan(0);
+  });
+
+  it("never invents animal sign on empty ground", () => {
+    const g = newGame(3);
+    siteCamp(g.state, g.world);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
+    state.player.tools.push({ id: "bow", durability: 100 });
+    addItem(state.player.pack, "arrow", 10);
+    regionState(state, world, state.player.region).pop.deer = 0;
+    expect(startTask(state, world, cal, "hunt", "deer")).toBe(true);
+    stepTask(state, world, cal, new Rng(9), state.task!.duration + 1);
+    expect(state.player.huntSigns).toEqual({});
+  });
+
+  it("resumes a generic hunt's carcass work without another animal or bow", () => {
+    const g = newGame(3);
+    siteCamp(g.state, g.world);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
+    state.player.tools.push({ id: "bow", durability: 100 });
+    addItem(state.player.pack, "arrow", 40);
+    regionState(state, world, state.player.region).pop.deer = regionAt(world, state.player.region).capacity.deer;
+    startTask(state, world, cal, "hunt", "any", true, new Rng(9));
+    const huntRng = new Rng(9);
+    for (let m = 0; m < 180 * 60 && state.task?.huntPhase !== "field"; m++) stepTask(state, world, cal, huntRng, 1);
+    expect(state.task?.huntPhase).toBe("field");
+    const species = state.task?.arg;
+    stopTask(state, world);
+    state.player.tools = state.player.tools.filter((held) => held.id !== "bow");
+    regionState(state, world, state.player.region).pop.deer = 0;
+
+    expect(check(state, world, cal, "hunt", "any")).toMatchObject({ ok: true, label: `Field dress ${SPECIES_DEFS[species as Species].name}` });
+    expect(beginTask(state, world, cal, "hunt", "any", false, huntRng)).toBe(true);
+    expect(state.task).toMatchObject({ arg: species, any: true, huntPhase: "field" });
+    done(g);
+    expect(state.carcasses).toHaveLength(0);
     expect(qty(state.player.pack, "rawMeat") + qty(herePile(state, world), "rawMeat")).toBeGreaterThan(0);
   });
 
@@ -314,12 +358,12 @@ describe("anything", () => {
     expect(rows[0]).toMatchObject({ id: "hunt", arg: "any", label: "Hunt anything" });
     const fishAt = rows.findIndex((o) => o.id === "fish");
     expect(rows[fishAt]).toMatchObject({ id: "fish", arg: "any", label: "Fish for anything" });
-    // Only species with capacity here have rows. Read is a hunt-group row with no species of its own.
-    const r = regionAt(g.world, g.state.player.region);
-    for (const o of rows) if (o.arg && o.arg !== "any") expect(r.capacity[o.arg as Species]).toBeGreaterThan(0);
+    // Specific game stays hidden until this survivor has found sign. Fish retain
+    // their water-reading rules and are the only specific species here at first.
+    for (const o of rows) if (o.id === "hunt") expect(o.arg).toBe("any");
   });
 
-  it("draws only from species about, on ground that suits them", () => {
+  it("draws from ecologically plausible species without consulting the hidden population", () => {
     const g = newGame(3);
     siteCamp(g.state, g.world);
     const { state, world } = g;
@@ -332,11 +376,10 @@ describe("anything", () => {
       const s = drawSpecies(state, world, cal, rng, "hunt", at)!;
       expect(huntedLand()).toContain(s);
       expect(SPECIES_DEFS[s].hunt!.spot).toBe("forest");
-      expect(st.pop[s]!).toBeGreaterThanOrEqual(1);
     }
     for (const s of huntedLand()) st.pop[s] = 0;
-    expect(drawSpecies(state, world, cal, rng, "hunt", at)).toBeNull();
-    expect(check(state, world, cal, "hunt", "any").why).toBe("nothing about");
+    expect(drawSpecies(state, world, cal, rng, "hunt", at)).not.toBeNull();
+    expect(check(state, world, cal, "hunt", "any").ok).toBe(true);
   });
 
   it("starts as the species drawn, trains it, and draws again on repeat", () => {
@@ -351,7 +394,7 @@ describe("anything", () => {
     expect(first.arg).not.toBe("any");
     expect(huntedLand()).toContain(first.arg);
     expect(first.duration).toBe(SPECIES_DEFS[first.arg as Species].hunt!.minutes);
-    expect(state.log.at(-1)!.text).toMatch(/^Fresh sign: /);
+    expect(state.player.huntSigns).toEqual({});
     const rng = new Rng(1);
     for (let m = 0; m < first.duration + 1 && state.task === first; m++) stepTask(state, world, cal, rng, 1);
     expect(state.skills.hunting.mastery[`hunt:${first.arg}`]).toBeGreaterThan(0);
@@ -465,16 +508,14 @@ describe("away for the season", () => {
     expect(check(g.state, g.world, october, "hunt", "mallard").why).toBe("gone until April");
   });
 
-  it("a hunt for anything counts only the kinds that can be met, and a cast only this water's", () => {
+  it("a generic hunt does not reveal a hidden roster, and a cast counts only this water's fish", () => {
     const world = newGame(5).world;
     const g = armedAt(5, lakeShore(world));
     const { state } = g;
     const june = calendar(1440 * 70);
-    const kinds = (o: { detail: string }) => Number(o.detail.match(/(\d+) kinds? here/)![1]);
-    const summer = kinds(check(state, g.world, june, "hunt", "any"));
-    // In January the migrants are away and the count says so.
-    const january = kinds(check(state, g.world, calendar(1440 * 275), "hunt", "any"));
-    expect(january).toBeLessThan(summer);
+    const hunt = check(state, g.world, june, "hunt", "any");
+    expect(hunt.detail).toBe("follow whatever sign you find");
+    expect(hunt.detail).not.toMatch(/\d+ kinds? here/);
     // The lake shore counts lake fish; the region's sea fish are no comfort there.
     const st = regionState(state, g.world, REGION);
     for (const s of fishSpecies()) if (waterOf(s) === "lake") st.pop[s] = 0;

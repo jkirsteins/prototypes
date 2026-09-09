@@ -132,7 +132,7 @@ describe("arrows in the pack", () => {
     expect(qty(p.pack, "arrow")).toBe(10);
   });
 
-  it("a hunt that cannot start pockets nothing: the check fails with the bow already in hand", () => {
+  it("an empty hidden population does not leak through generic hunt availability", () => {
     const g = newGame(17);
     siteCamp(g.state, g.world);
     const { state, world } = g;
@@ -142,14 +142,13 @@ describe("arrows in the pack", () => {
     addItem(p.pack, "bow", 1);
     takeUp(state, world, "bow");
     addItem(pile(state, st.campCell!), "arrow", 12);
-    // Nothing huntable about at all: the check fails on "nothing about" with the bow
-    // (and, until reverted, the pocketed arrows) already in hand, not on the bow or arrows.
+    // The ecological roster and known ground remain plausible after the live
+    // population is empty. Only resolving the pursuit may discover failure.
     for (const s of huntedLand()) st.pop[s] = 0;
-    const before = state.intent;
     const ok = startIntent(state, world, cal, new Rng(1), { task: "hunt", arg: "any", until: { kind: "campHas", qty: 3 }, deliver: "camp", where: "nearest" });
-    expect(ok).toBe(false);
-    expect(state.intent).toBe(before);
-    expect(qty(pile(state, st.campCell!), "arrow")).toBe(12);
+    expect(ok).toBe(true);
+    expect(state.intent).not.toBeNull();
+    expect(qty(pile(state, st.campCell!), "arrow") + qty(p.pack, "arrow")).toBe(12);
   });
 });
 

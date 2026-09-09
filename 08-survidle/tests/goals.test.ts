@@ -71,12 +71,12 @@ describe("the goal ladder", () => {
   it("widens to three once the camp jobs run in parallel", () => {
     const { state } = newGame(3);
     for (const g of GOALS.slice(0, 9)) state.goals.done[g.id] = true;
-    expect(activeGoals(state, cal)).toEqual(["water", "snare", "store"]);
+    expect(activeGoals(state, cal)).toEqual(["water", "snare", "sign"]);
   });
 
   it("never shows more than the seasons can fill, and never narrows", () => {
     const { state } = newGame(3);
-    for (const g of GOALS.slice(0, 11)) state.goals.done[g.id] = true;
+    for (const g of GOALS) if (!SEASON_ORDER.includes(g.id) && g.id !== "store") state.goals.done[g.id] = true;
     const active = activeGoals(state, cal);
     // One worked goal left and the whole tail behind it, which is one slot.
     expect(active[0]).toBe("store");
@@ -117,6 +117,8 @@ describe("goal guards", () => {
         ...SEASON_ORDER.map((s) => ({ kind: "season", season: s as Season }) as const),
         { kind: "lit" } as const,
         { kind: "stored" } as const,
+        { kind: "foundSign" } as const,
+        { kind: "recoveredAtCamp" } as const,
         { kind: "gathered", item: "firewood", kg: 99 } as const,
         { kind: "gathered", item: "wetFirewood", kg: 99 } as const,
         { kind: "keptNight" } as const,

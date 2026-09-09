@@ -219,7 +219,7 @@ describe("the list after the axe", () => {
     expect(want("crack::grind").req.when).toEqual({ stock: { item: "bone", atLeast: 1 } });
     expect(want("build:dryingRack:job").req.when).toEqual({ stock: { item: "rawMeat", atLeast: TRACE_KG } });
     const tasks = REFERENCE_ORDERS.map(key);
-    expect(REFERENCE_ORDERS.indexOf(reserve)).toBeLessThan(tasks.indexOf("hunt:any:keep"));
+    expect(tasks.indexOf("hunt:any:keep")).toBeLessThan(REFERENCE_ORDERS.indexOf(reserve));
     // A winter's dried meat at camp is the two food rows' own business, read off their
     // band and their stock line by whoever holds the order, and no rule in the runner.
     const { state, world } = newGame(17);
@@ -254,16 +254,15 @@ describe("the list after the axe", () => {
     expect(player.attention(1, 5).mornings).toBeGreaterThan(0);
   });
 
-  it("hunts above the plant band and above the fish keep, with the bow and the arrows left below them", () => {
+  it("builds hunting kit before the bounded hunt, above plants and fishing", () => {
     // The hunt keep is a promise about raw meat at camp and a large kill meets it for days, so
     // it is not the treadmill a fish keep is. Under the block it got nine minutes to an hour and
     // twenty a day and three of four level-20 seeds killed nothing all summer. The bow and the
-    // arrows stay below: lifted with it they cost seed 19 the woodpile and a cold death on day 22.
     const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks.indexOf("craft:bow:keep")).toBeLessThan(tasks.indexOf("hunt:any:keep"));
+    expect(tasks.indexOf("craft:arrows:keep")).toBe(tasks.indexOf("craft:bow:keep") + 1);
     expect(tasks.indexOf("hunt:any:keep")).toBeLessThan(tasks.indexOf("roots::job"));
     expect(tasks.indexOf("hunt:any:keep")).toBeLessThan(tasks.indexOf("fish:any:keep"));
-    expect(tasks.indexOf("craft:bow:keep")).toBeGreaterThan(tasks.indexOf("fish:any:keep"));
-    expect(tasks.indexOf("craft:arrows:keep")).toBe(tasks.indexOf("craft:bow:keep") + 1);
   });
 
   it("renders raw fat as a grind while any is at camp, above the cook keeps", () => {

@@ -365,6 +365,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   }).join(",");
   const route = state.route ? `${state.route.target}:${state.route.path.length}` : "";
   const piles = Object.keys(state.piles).join(",");
+  const carcasses = state.carcasses.map((c) => `${c.id}:${c.cell}:${c.warmAge}:${JSON.stringify(c.yields)}`).join(",");
   const dens = Object.keys(state.wildlife.knownDens).join(",");
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const level = levelAt(ui.zoom);
@@ -373,7 +374,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const animals = level.cells === 1 ? visibleWildlife(state, world, cal)
     .filter((subject) => subject.active && (subject.active.cell % world.w) >= x0 && (subject.active.cell % world.w) < x0 + level.w && Math.floor(subject.active.cell / world.w) >= y0 && Math.floor(subject.active.cell / world.w) < y0 + level.h)
     .map((s) => `${s.id}:${s.active?.cell}:${wildlifeMembers(s)}:${state.wildlife.recognized[s.id] ? s.name ?? "" : ""}:${s.active?.intent}`).join(",") : "";
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${animals}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${carcasses}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${animals}`;
 }
 
 /**
@@ -482,12 +483,19 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       }
     }
   }
-  const pileGlyphs = new Set<number>();
+  const lyingGlyphs = new Set<number>();
   for (const k of Object.keys(state.piles)) {
     const g = toGlyph(Number(k));
     if (g >= 0) {
-      pileGlyphs.add(g);
+      lyingGlyphs.add(g);
       addFeature(g, "supplies");
+    }
+  }
+  for (const carcass of state.carcasses) {
+    const g = toGlyph(carcass.cell);
+    if (g >= 0) {
+      lyingGlyphs.add(g);
+      addFeature(g, `${carcass.species} carcass`);
     }
   }
   const rings = cal.isNight ? litRings(lightSources(state, world), toGlyph, z, l) : new Map<number, number>();
@@ -665,7 +673,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         cls.push(iceMode(state.weather) === "safe" ? "ice-safe" : "ice-thin");
       }
       if (snow && t === "meadow") glyph = "*";
-      if (pileGlyphs.has(i) && seen === 2) cls.push("pl");
+      if (lyingGlyphs.has(i) && seen === 2) cls.push("pl");
       const ring = rings.get(i);
       if (ring !== undefined) {
         cls.push(`lit-${ring}`);

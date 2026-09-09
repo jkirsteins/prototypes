@@ -1,12 +1,13 @@
 import { itemLabel } from "../sim/actions";
 import { calendar, type Calendar, monthName, monthStartDoy } from "../sim/calendar";
 import { capabilityFor } from "../sim/capabilities";
+import { knownHuntSpecies } from "../sim/hunting";
 import { groundOf, intentOption, yieldItem } from "../sim/intent";
 import { DECAYING, ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { RUNG_LEVEL, skillLevel } from "../sim/skills";
-import { fishSpecies, huntedLand } from "../sim/species";
+import { fishSpecies, huntedLand, type Species } from "../sim/species";
 import { plain } from "../sim/voice";
 import { check, leftBehind, type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
@@ -208,7 +209,7 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
     ] },
     { label: "Hunt", items: [
       { id: "hunt" as TaskId, arg: "any" },
-      ...huntedLand().filter((s) => r.capacity[s]).map((s) => ({ id: "hunt" as TaskId, arg: s })),
+      ...huntedLand().map((s) => ({ id: "hunt" as TaskId, arg: s })),
       { id: "findDen" as TaskId },
       { id: "fish" as TaskId, arg: "any" },
       ...fishSpecies().filter((s) => r.capacity[s]).map((s) => ({ id: "fish" as TaskId, arg: s })),
@@ -448,7 +449,8 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
 
 /** A group's rows, built at the open row's own chosen spot, so its duration and ok reflect that spot. */
 function groupRows(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
-  return g.items.map(({ id, arg }) => {
+  const knownGame = new Set(knownHuntSpecies(state, world));
+  return g.items.filter(({ id, arg }) => id !== "hunt" || arg === "any" || knownGame.has(arg as Species)).map(({ id, arg }) => {
     const argKey = arg ?? "";
     const open = ui.open !== null && ui.open.id === id && ui.open.arg === argKey;
     const where = open ? ui.choice.where : "nearest";

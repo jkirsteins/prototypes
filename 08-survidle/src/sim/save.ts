@@ -89,7 +89,11 @@ export function migrate(state: GameState): void {
     l.oldCamp ??= null;
   }
   state.player.known ??= {};
+  state.player.huntSigns ??= {};
   state.seeps ??= {};
+  state.carcasses ??= [];
+  state.nextCarcassId ??= 1;
+  state.huntPressure ??= {};
   state.stats.kills ??= {};
   state.stats.killsKcal ??= 0;
   for (const st of Object.values(state.regions)) {

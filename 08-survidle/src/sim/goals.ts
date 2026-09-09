@@ -28,6 +28,10 @@ export type Deed =
   | { kind: "keptRain"; minutes: number }
   /** Meat actually went on the rack. A hang that racked nothing put nothing by. */
   | { kind: "stored" }
+  /** A real animal left evidence this survivor noticed. */
+  | { kind: "foundSign" }
+  /** Meat recovered from a carcass reached this survivor's camp. */
+  | { kind: "recoveredAtCamp" }
   | { kind: "season"; season: Season };
 
 export interface GoalDef {
@@ -77,6 +81,8 @@ export const GOALS: GoalDef[] = [
   },
   { id: "water", title: "Keep water at camp", target: 1, credit: built("waterStore", "seep") },
   { id: "snare", title: "Set a snare", target: 1, credit: built("snare") },
+  { id: "sign", title: "Find fresh animal sign", target: 1, credit: (d) => (d.kind === "foundSign" ? 1 : 0) },
+  { id: "recover", title: "Bring meat back to camp", target: 1, credit: (d) => (d.kind === "recoveredAtCamp" ? 1 : 0) },
   { id: "store", title: "Put food by for later", target: 1, credit: (d) => (d.kind === "stored" ? 1 : 0) },
   { id: "spring", title: "Live to see the spring", target: 1, credit: season("spring") },
   { id: "summer", title: "Live to see the summer", target: 1, credit: season("summer") },

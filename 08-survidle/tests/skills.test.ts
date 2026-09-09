@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { newGame } from "../src/sim/newgame";
 import { addItem, hasTool, qty, tool } from "../src/sim/inventory";
-import { placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAtSpot } from "../src/sim/position";
 import { deserialize, serialize } from "../src/sim/save";
 import {
   chopSticks, craftSuccess, effectiveNeeds, EXTRAS, fishKg, gap, gapInjury, huntExtras, injuryChance,
@@ -15,6 +15,7 @@ import { calendar } from "../src/sim/calendar";
 import { availableTasks, check, huntOdds, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { workSpeed } from "../src/sim/player";
 import { regionDensity } from "../src/sim/animals";
+import { noteHuntSign } from "../src/sim/hunting";
 import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "../src/sim/species";
 import { regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
@@ -250,14 +251,16 @@ describe("the button text agrees with the sim", () => {
     expect(stone.detail).toContain("5 stone");
 
     state.skills.hunting.mastery["hunt:hare"] = masteryMinutes(20);
+    noteHuntSign(state, cellOf(state, world), "hare");
     const hare = availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "hare")!;
     expect(hare.detail).toContain("0.3 kg fur");
   });
 
-  it("odds that round to nothing but are not zero read \"under 1%\", not \"about 0%\"", () => {
+  it("named game does not reveal exact encounter odds", () => {
     const { state, world } = newGame(3);
+    noteHuntSign(state, cellOf(state, world), "elk");
     const elk = availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "elk")!;
-    expect(elk.detail).toContain("under 1%");
+    expect(elk.detail).not.toMatch(/(?:about|under) \d+% per try/);
   });
 });
 
@@ -493,6 +496,8 @@ describe("options carry progression", () => {
 
   it("a recommendation reads on the button, and says when you are under it", () => {
     const { state, world } = newGame(3);
+    noteHuntSign(state, cellOf(state, world), "elk");
+    noteHuntSign(state, cellOf(state, world), "hare");
     const elk = availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "elk")!;
     expect(elk.recommended).toEqual({ text: "Hunting 8, {you} {are} 1", under: true, short: 7 });
     expect(elk.detail).not.toContain("Hunting 8");

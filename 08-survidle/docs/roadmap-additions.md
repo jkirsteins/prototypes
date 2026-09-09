@@ -162,3 +162,69 @@ The reading is that the world got more permissive and the runner's policy did
 not adapt - nothing teaches it that far ground is expensive when the day is
 short. That is a reference-player question rather than a world-model one, and
 seed 1 is the case to trace it on.
+
+## Post-recovery balance calibration
+
+**Raised** 2026-09-09, during the hunting economy repair.
+
+Do not tune the skill curve, food-source rates, cold constants, or lineage
+targets against results produced by instant whole-animal recovery. Hunting now
+has ground selection, field processing, hauling, spoilage, and local avoidance,
+but those downstream bands need fresh multi-seed evidence before their numbers
+move.
+
+Revisit these in order after the hunting gate has settled:
+
+- Replace horizon stages derived from the changing reference order list with
+  explicit per-stage fixtures, then raise the diagnostic cap beyond 60 days.
+  Until then, horizon movement can mean the fixture changed rather than the
+  simulated capability changed.
+- Calibrate how quickly Hunting improves signs, ground choice, recovery, and
+  consistency. Skill should not primarily multiply kill chance.
+- Re-run the April and late-August source probes before changing fish, traps,
+  plants, fat, or carbohydrate rates. Run each disabled-source probe beside an
+  otherwise identical baseline seed so the delta, not two unrelated lives, is
+  the measurement.
+- Qualify deep-cold samples by actual outdoor cold exposure before changing
+  metabolic or shelter constants.
+- Replace raw lineage lifespan monotonicity with paired inherited and fresh
+  survivors in the same world and season, then set lineage targets from those
+  matched results.
+- Consider species-specific butchery, pack frames, sledges, meat caches, and
+  explicit carcass-quarter hauling only if the common carcass pipeline still
+  leaves meaningful decisions missing. They are extensions, not prerequisites
+  for realistic recovery.
+
+Large game should usually respond to repeated hunting through local avoidance
+and worse encounters. Population depletion belongs mainly to small, localized
+animals such as beaver unless later evidence justifies a broader population
+model.
+
+The first post-recovery seed 17 run at Hunting 20 took 11 reindeer and one
+ptarmigan, yielding 1,918 large-game kcal a day. That is far below the old
+3,400-14,100 range but still above the experienced 300-1,500 band. A stronger
+14-day, 4 km pressure experiment perversely raised it to 13 reindeer and 2,264
+kcal a day by changing where the reference hunter ranged. It was reverted.
+This is evidence that isolated pressure constants are not a safe balancing
+lever. Rebuild the paired production evaluator, then calibrate the whole
+selection, cadence, recovery and runway loop against multiple seeds.
+
+The final late-August five-seed probe passed first snow on seeds 17, 79 and
+45, but seeds 17 and 79 starved soon afterwards; seeds 19 and 42 starved
+before the gate. The early deaths held only 14, 23 and 53 kg of firewood,
+not the former 181-253 kg plus dozens of logs. Food now outranks speculative
+fuel correctly, but the underlying late-start food supply succeeds on only
+three of five seeds and is still unhealthy.
+
+The ordinary April reference gate passed only two of seeds 17, 19 and 42;
+all three starved on days 26-28. This is a real bootstrap regression after
+instant whole-animal recovery was removed, not evidence for restoring that
+abstraction. Revisit the first-month mix of passive food, inexpensive food
+work and hunting only after the paired source probes identify the missing
+calories.
+
+The current horizon output also demonstrates why its fixtures must be
+rebuilt: seed 17 held 5, 5, 35, 29 and 35 days across stages whose bands are
+0-2, 1-2, 3-5, 10-20 and 20-60. Those stages are transformed snapshots of
+the changing reference list, so the readings mix capability with policy and
+must not be used to tune the game.

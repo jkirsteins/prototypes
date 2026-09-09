@@ -171,26 +171,14 @@ export const PLANT_HOURS_ROOTS = PLANT_HOURS_PER_DAY - PLANT_HOURS_WINDOW_ROW;
  * the hut group below it; without it every garment on every year seed was
  * a ghost at durability 0 by autumn, with 168 kg of hide lying at camp on
  * one of them. The hide set opens at Crafting 8 (wantOpen), the hat and
- * mittens at once. Below the hut group sits the surplus loop, in this
- * order: the two winter-stock keeps and the three named hunts as grinds. A
- * roof and water outrank days spent chasing an elk, which is why this loop
- * sits below the hut group rather than above it. Hunting elk, reindeer or
- * roe deer here is a grind and not a keep, the way felling is a grind and
- * not a firewood keep: a keep measured in raw meat at camp can never read
- * met while the hang grind takes that meat to the rack as fast as it comes
- * in. Each named hunt opens only
- * at its species' recommended level (wantOpen), since a competent player
- * does not walk at an elk with a stone point at level 1: elk, reindeer
- * and roe deer, listed hardest first (8, 6, 4). A grind is never met, and a
- * grind above a keep starves the keep: with the log keep below the hunts,
- * camp logs never passed five from 1 September and a level-20 camp froze in
- * December beside 2.7 million kcal of food. A survivor with a full rack and
- * no woodpile cuts wood.
+ * mittens at once. The food runway is one bounded generic hunt keep. Skill
+ * decides which plausible ground is worth the trip; no policy names hidden
+ * species or hunts forever. It sits above future winter wood so a starving
+ * survivor does not keep cutting a reserve for next season.
  *
  * The winter stock's own four keeps - the split pile in its three methods
- * and the logs that are the stock's unsplit half - sit above the hunt keep
- * rather than in this loop, since what they promise is the winter itself and
- * a hunt is the one thing that can wait for it. All four carry the window
+ * and the logs that are the stock's unsplit half - follow that food keep.
+ * All four carry the window
  * they are stocked against, midsummer to the thaw, and the same date, so a
  * list that reaches these rows in April or May asks for nothing at all. Only
  * the log row is spent by the season's close: the reserve is what the autumn
@@ -381,11 +369,16 @@ export const REFERENCE_ORDERS: Want[] = [
   job("build", { kind: "once" }, "dryingRack", "camp", { stock: { item: "rawMeat", atLeast: TRACE_KG } }),
   keep("build", 20, "snare"),
   { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest", when: { stock: { item: "rawMeat", atLeast: HANG_ABOVE_KG } } }, kind: "grind" },
+  keep("craft", 1, "bow"),
+  keep("craft", 10, "arrows"),
+  // Immediate food runway outranks stores promised for winter. This keep closes
+  // at its target; named forever hunts below it once made surplus game dominate
+  // the whole food economy while a starving survivor still cut wood.
+  keep("hunt", WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO, "any", "camp", { restart: (WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO * 4) / 5 }),
   keep("split", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_BUFFER_WHEN),
   keep("splitWedges", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_BUFFER_WHEN),
   keep("deadwood", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_BUFFER_WHEN),
   keep("chop", WINTER_STOCK.logs, undefined, "camp", WINTER_RESERVE_WHEN),
-  keep("hunt", WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO, "any", "camp", { restart: (WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO * 4) / 5 }),
   job("eggs", { kind: "daily", n: PLANT_HOURS_WINDOW_ROW }, undefined, "camp", { season: { from: EGG_FROM_DOY, to: EGG_TO_DOY } }),
   job("roots", { kind: "daily", n: PLANT_HOURS_ROOTS }, undefined, "camp", { season: { from: ROOT_FROM_DOY, to: ROOT_TO_DOY } }),
   job("roots", { kind: "daily", n: PLANT_HOURS_ROOTS }, undefined, "camp", { season: { from: ROOT_TO_DOY + 1, to: ROOT_FROM_DOY - 1 } }),
@@ -397,8 +390,6 @@ export const REFERENCE_ORDERS: Want[] = [
   // from under the snow at a fifth of the rate. The two months the row is shut are the
   // ones with neither ripe fruit on the heath nor snow to dig it out of.
   keep("berries", 2, undefined, "camp", { season: { from: MIDSUMMER_DOY, to: 120 } }),
-  keep("craft", 1, "bow"),
-  keep("craft", 10, "arrows"),
   keep("craft", 1, "needle"),
   { req: { task: "repair", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   job("craft", { kind: "once" }, "hideCoat"),
@@ -420,9 +411,6 @@ export const REFERENCE_ORDERS: Want[] = [
   keep("fill", 20, "shore"),
   keep("fill", 20, "hole"),
   keep("melt", 20),
-  { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
-  { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
-  { req: { task: "hunt", arg: "deer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
 ];
 
 /** The home shore is under ice: a shore fetch is shut and the winter methods are the question. */

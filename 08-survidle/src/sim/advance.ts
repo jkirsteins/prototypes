@@ -21,6 +21,7 @@ import type { WildlifeMode } from "./types";
 import { stepSeeps } from "./seep";
 import { dailyWildlife, stepWildlife } from "./wildlife-agents";
 import { autoDrink } from "./water";
+import { stepCarcasses } from "./hunting";
 import { ambientTemperature, stepWeather, stormComing } from "./weather";
 
 export const MAX_STEP = 1;
@@ -85,6 +86,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   stepWildlife(state, world, cal, rng, dt, wildlife);
 
   stepCamp(state, world, ambient, dt, who);
+  stepCarcasses(state, dt, ambient);
   stepSeeps(state, world, ambient, dt);
 
   let drains: Drains | null = null;
