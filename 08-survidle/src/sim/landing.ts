@@ -161,6 +161,7 @@ export function beginAgain(state: GameState, world: World): void {
   state.year = landedYear;
   state.startDoy = date.doy;
   state.minute = 0;
+  state.advanceCarry = 0;
   state.lastHour = 0;
   state.lastDay = 0;
   state.weather.rolledDay = 0;
@@ -232,6 +233,7 @@ export function nextBoat(state: GameState, world: World): void {
   state.year = worldDate(state).year;
   state.startDoy = date.doy;
   state.minute = 0;
+  state.advanceCarry = 0;
   state.lastHour = 0;
   state.lastDay = 0;
   state.weather.rolledDay = 0;

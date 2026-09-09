@@ -24,6 +24,7 @@ import { autoDrink } from "./water";
 import { ambientTemperature, stepWeather, stormComing } from "./weather";
 
 export const MAX_STEP = 1;
+const CARRY_EPSILON = 1e-9;
 
 /** Where a body is, for the world half to shape itself around without touching the body. */
 export interface Presence {
@@ -32,8 +33,9 @@ export interface Presence {
 }
 
 /**
- * Moves the world forward by dtMinutes, in steps of at most one minute so
- * every per-minute rate below means what it says. Safe to call with any dt.
+ * Moves the world forward by dtMinutes. Fractional time is banked on the
+ * state and the world runs in fixed one-minute ticks, so frame cadence cannot
+ * change how many seeded rolls a minute consumes. Safe to call with any dt.
  * With `nobody: true` the person half (tasks, orders, intents, eating,
  * drinking, the death check) is skipped and a dead flag no longer halts
  * time: this is how the months between two survivors run, on the same
@@ -43,13 +45,14 @@ export function advance(state: GameState, world: World, dtMinutes: number, opts:
   const nobody = opts.nobody ?? false;
   const wildlife = nobody ? "aggregate" : (opts.wildlife ?? "aggregate");
   if (state.dead && !nobody) return;
-  let left = dtMinutes;
+  if (!(dtMinutes > 0)) return;
+  const elapsed = state.advanceCarry + dtMinutes;
+  const ticks = Math.floor(elapsed + CARRY_EPSILON);
+  const carry = elapsed - ticks;
+  state.advanceCarry = Math.abs(carry) < CARRY_EPSILON ? 0 : carry;
   const rng = new Rng(state.rng);
-  while (left > 1e-9 && (nobody || !state.dead)) {
-    const dt = Math.min(MAX_STEP, left);
-    left -= dt;
-    step(state, world, rng, dt, nobody, wildlife);
-  }
+  for (let tick = 0; tick < ticks && (nobody || !state.dead); tick++) step(state, world, rng, MAX_STEP, nobody, wildlife);
+  if (state.dead && !nobody) state.advanceCarry = 0;
   state.rng = rng.s;
 }
 

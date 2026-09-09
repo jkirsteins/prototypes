@@ -78,7 +78,8 @@ function stepIce(w: Weather, cal: Calendar): void {
 export interface WeatherEvents { coldSnap: boolean; precipStarted: boolean; precipStopped: boolean }
 
 /**
- * Advances precipitation and snow by dt minutes. dt is at most one minute.
+ * Advances precipitation and snow by dt minutes. Production calls arrive on
+ * advance's fixed one-minute tick; direct unit callers may use any dt up to one.
  * `minute` defaults from `cal` for callers that have not adopted it.
  */
 export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, minute = cal.dayIndex * 1440 + cal.hour * 60): WeatherEvents {

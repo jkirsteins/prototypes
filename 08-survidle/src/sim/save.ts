@@ -23,18 +23,18 @@ export function awaySeconds(state: GameState): number {
   return state.awayHours * 3600;
 }
 
-export interface SaveFile { version: 8; savedAt: number; state: GameState }
+export interface SaveFile { version: 9; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  const file: SaveFile = { version: 8, savedAt: now, state };
+  const file: SaveFile = { version: 9, savedAt: now, state };
   return JSON.stringify(file);
 }
 
 export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
-    if (!(file?.version >= 3 && file?.version <= 8) || !file.state || typeof file.savedAt !== "number") return null;
-    migrate(file.state);
+    if (!(file?.version >= 3 && file?.version <= 9) || !file.state || typeof file.savedAt !== "number") return null;
+    migrate(file.state, file.version);
     return file as unknown as SaveFile;
   } catch {
     return null;
@@ -46,9 +46,10 @@ export function deserialize(text: string): SaveFile | null {
  * run in progress survives a new structure the same way it survives a new
  * region: by not having it yet.
  */
-export function migrate(state: GameState): void {
+export function migrate(state: GameState, version = 9): void {
   state.startDoy ??= START_DOY;
   state.awayHours ??= AWAY_HOURS_DEFAULT;
+  state.advanceCarry = version < 9 ? 0 : (state.advanceCarry ?? 0);
   state.skills ??= newSkills();
   // A skill added since the save was written is the harder half of the same
   // problem: the record is there, so the line above sees nothing missing, and

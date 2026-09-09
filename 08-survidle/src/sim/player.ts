@@ -532,6 +532,7 @@ export function die(state: GameState, cause: DeathCause, regionName = ""): void 
   if (state.dead) return;
   fillDied(state, cause, regionName);
   state.dead = { cause, minute: state.minute };
+  state.advanceCarry = 0;
   state.task = null;
   log(state, DEATH_LINES[cause], "bad");
 }

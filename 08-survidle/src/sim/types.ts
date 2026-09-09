@@ -696,6 +696,8 @@ export interface GameState {
   /** Real hours the world runs on without the player before the catch-up caps it: the away dial, 1 to AWAY_HOURS_MAX, set per run. */
   awayHours: number;
   minute: number;
+  /** Elapsed game minutes not yet large enough to run the next fixed simulation tick. */
+  advanceCarry: number;
   rng: number;
   player: Player;
   /** State of every region touched so far, by region id. */

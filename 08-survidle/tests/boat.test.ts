@@ -62,12 +62,14 @@ describe("the heir's boat", () => {
     const before = { date: { ...l.date }, gap: l.gapDays, names: l.candidates.map((c) => c.name) };
     const st = regionState(state, world, state.player.region);
     const age = campSite(st)?.structureAge ?? null;
+    state.advanceCarry = 0.5;
     nextBoat(state, world);
     expect(l.boat).toBe(1);
     expect(l.gapDays).toBe(before.gap + 7);
     expect(l.date.doy).toBe(before.date.doy + 7);
     expect(state.startDoy).toBe(before.date.doy + 7);
     expect(state.minute).toBe(0);
+    expect(state.advanceCarry).toBe(0);
     expect(l.candidates.map((c) => c.name)).not.toEqual(before.names);
     expect(l.chosen).toBe(0);
     expect(l.name).toEqual(l.candidates[0].name);

@@ -25,13 +25,12 @@ class MemStorage implements Storage {
 }
 
 describe("advance", () => {
-  it("moves the clock by exactly the minutes asked, in any step size", () => {
+  it("produces the same seeded state when time arrives in whole minutes or fractional frames", () => {
     const a = newGame(8);
     const b = newGame(8);
-    advance(a.state, a.world, 60);
-    for (let i = 0; i < 600; i++) advance(b.state, b.world, 0.1);
-    expect(a.state.minute).toBeCloseTo(60, 6);
-    expect(b.state.minute).toBeCloseTo(60, 6);
+    advance(a.state, a.world, 60, { wildlife: "detailed" });
+    for (let i = 0; i < 600; i++) advance(b.state, b.world, 0.1, { wildlife: "detailed" });
+    expect(b.state).toEqual(a.state);
   });
 
   it("kills an idle character who runs out, and names the cause", () => {
@@ -74,6 +73,23 @@ describe("save", () => {
     const expected = JSON.parse(JSON.stringify(state));
     delete (expected as unknown as Record<string, unknown>).plan;
     expect(file!.state).toEqual(expected);
+  });
+
+  it("keeps a fractional tick across a save and reload", () => {
+    const uninterrupted = newGame(9);
+    const reloaded = newGame(9);
+    advance(uninterrupted.state, uninterrupted.world, 1, { wildlife: "detailed" });
+    advance(reloaded.state, reloaded.world, 0.4, { wildlife: "detailed" });
+    const file = deserialize(serialize(reloaded.state))!;
+    advance(file.state, reloaded.world, 0.6, { wildlife: "detailed" });
+    expect(file.state).toEqual(uninterrupted.state);
+  });
+
+  it("starts the fixed-step carry empty when loading a pre-version-9 save", () => {
+    const legacy = JSON.parse(serialize(newGame(9).state));
+    legacy.version = 8;
+    legacy.state.advanceCarry = 0.75;
+    expect(deserialize(JSON.stringify(legacy))!.state.advanceCarry).toBe(0);
   });
 
   it("a new game starts with the new body fields, and an old save gets them filled", () => {
@@ -319,11 +335,12 @@ describe("the world save", () => {
     expect(loadGame(store)!.state.dead!.cause).toBe("froze");
   });
 
-  it("writes version 6 and reads 4 by wrapping the survivor as the first of the world", () => {
+  it("writes version 9 and reads 4 by wrapping the survivor as the first of the world", () => {
     const { state } = newGame(8);
-    expect(JSON.parse(serialize(state)).version).toBe(8);
+    expect(JSON.parse(serialize(state)).version).toBe(9);
     const v4 = JSON.parse(serialize(state)) as { version: number; savedAt: number; state: Record<string, unknown> };
     v4.version = 4;
+    delete v4.state.advanceCarry;
     delete v4.state.survivors;
     delete v4.state.year;
     delete v4.state.landing;
@@ -336,6 +353,7 @@ describe("the world save", () => {
     expect(file.state.survivors[0].name.first.length).toBeGreaterThan(0);
     expect(file.state.survivors[0].landed).toEqual({ year: 1, doy: file.state.startDoy });
     expect(file.state.spine).toEqual({ fired: {}, announced: {} });
+    expect(file.state.advanceCarry).toBe(0);
     for (const st of Object.values(file.state.regions)) expect(campSite(st)?.structureAge ?? {}).toEqual({});
   });
 });
@@ -344,7 +362,7 @@ describe("the version 6 save", () => {
   it("writes version 6 and fills the producers' fields into an older save", () => {
     const { state } = newGame(8);
     const text = serialize(state);
-    expect(JSON.parse(text).version).toBe(8);
+    expect(JSON.parse(text).version).toBe(9);
     const old = JSON.parse(text);
     old.version = 5;
     delete old.state.player.known;

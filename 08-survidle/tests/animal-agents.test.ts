@@ -487,10 +487,10 @@ describe("animal recognition", () => {
     expect(mapHtml(world, state, close, cal)).not.toContain("mk-animal");
   });
 
-  it("round-trips version 8 and fills older saves with empty wildlife", () => {
+  it("round-trips version 9 and fills older saves with empty wildlife", () => {
     const { state } = newGame(79);
     const current = JSON.parse(serialize(state));
-    expect(current.version).toBe(8);
+    expect(current.version).toBe(9);
     expect(deserialize(JSON.stringify(current))!.state.wildlife).toEqual(state.wildlife);
 
     current.version = 7;
