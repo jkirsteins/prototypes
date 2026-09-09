@@ -7,4 +7,4 @@ Each screenshot is captured about 240 ms into the 1200 ms effect.
 - [heard-only](heard-only.png): one marker with no animal glyph or identity.
 - [reduced-motion](reduced-motion.png): the same cue under `prefers-reduced-motion: reduce`.
 
-The script asserts the DOM/runtime contracts for one cue/log, no replay on a second step or zoom, clipped edge projection, reduced-motion fade, muted simulation equivalence, visibility suppression, and a console free of exceptions. Audio file format and scheduling have separate automated checks. Browser automation cannot objectively evaluate the subjective recognisability or quality of the rendered sound.
+The script drives all six seeded scenarios. It asserts visible and heard-only disclosure, same-area non-detection, bog and snow audio slot selection, blocked-edge passability, cue timestamp/key survival across zoom and a second step, clipped edge bounds, reduced-motion fade, muted simulation equivalence, visibility suppression, and a console free of exceptions. Browser automation cannot objectively evaluate the subjective recognisability or quality of the rendered sound.
