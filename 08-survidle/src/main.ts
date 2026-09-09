@@ -12,6 +12,8 @@ import { addFirewood, drop, dropAll, eat, take } from "./sim/actions";
 import { advance } from "./sim/advance";
 import { calendar, dayNumber } from "./sim/calendar";
 import { setCueSink } from "./sim/cues";
+import { setWildlifeEventSink } from "./sim/wildlife-events";
+import type { WildlifeStartleEvent } from "./sim/wildlife-encounter";
 import { since } from "./sim/epitaph";
 import { createForecaster, noteMonthRow } from "./sim/forecaster";
 import { startIntent, type Where } from "./sim/intent";
@@ -50,7 +52,7 @@ import {
   manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
-import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
+import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
 import { advanceHurry, hurryClick, hurryKind, newHurry } from "./ui/hurry";
 import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
@@ -108,6 +110,11 @@ try {
 let awayInfo: { seconds: number; capped: boolean } | null = null;
 const audio = createAudioEngine(SLOTS);
 const sounds = createScheduler(audio);
+function onWildlifeStartle(event: WildlifeStartleEvent): void {
+  if (document.visibilityState !== "visible") return;
+  if (!enqueueWildlifeStartle(ui, event, performance.now())) return;
+  // The departure audio consumer shares this first-delivery gate.
+}
 const portraitMotion = createPortraitMotion();
 // Read by fresh() below (called from boot(), before the forecaster exists) and by
 // requestForecast() (defined after boot(), once world is real) - declared here so
@@ -130,6 +137,8 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   ui.away = null;
   ui.hurry = newHurry();
   ui.speedHistory = newSpeedHistory();
+  ui.wildlifeStartles = [];
+  ui.wildlifeStartleIds.clear();
   ui.confirmAbandon = false;
   ui.panes = loadPanes(localStorage);
   ui.confirmCamp = false;
@@ -152,10 +161,12 @@ function boot() {
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
     if (elapsed > 30 && !state.dead && !state.landing) {
       setCueSink(null);
+      setWildlifeEventSink(null);
       ui.awayFromDay = calendar(state.minute, state.startDoy).day;
       ui.away = catchUp(state, world, elapsed, speed);
       ui.hurry = newHurry();
       setCueSink((c) => sounds.cue(c));
+      setWildlifeEventSink(onWildlifeStartle);
       awayInfo = { seconds: Math.min(elapsed, awaySeconds(state)), capped: elapsed > awaySeconds(state) };
       saveGame(state);
     }
@@ -166,7 +177,8 @@ function boot() {
 
 let lastTipKey = "";
 let lastMapKey = "";
-function render() {
+function render(nowMs = performance.now()) {
+  if (ui.wildlifeStartles.length) document.getElementById("mapdyn")!.style.setProperty("--wildlife-now", `${nowMs}ms`);
   // Arriving where you were looking ends the looking.
   if (ui.selected === state.player.region) ui.selected = null;
   const cal = calendar(state.minute, state.startDoy);
@@ -180,10 +192,10 @@ function render() {
   setPanel("goals", goalsHtml(state, world, cal));
   setPanel("shopping", shoppingHtml(state, world, cal));
   setPanel("weather", weatherHtml(state, world, cal, ambient, ui.hurry.rate));
-  const key = mapKey(state, world, ui, cal);
+  const key = mapKey(state, world, ui, cal, nowMs);
   if (key !== lastMapKey) {
     lastMapKey = key;
-    setPanel("mapdyn", mapHtml(world, state, ui, cal));
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, nowMs));
   }
   setPanel("task", taskHtml(state, world, cal, ui.hurry));
   setPanel("orders", queueHtml(state, world, cal));
@@ -267,15 +279,18 @@ function frame(now: number) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
+      setWildlifeEventSink(null);
+      ui.wildlifeStartles = [];
       ui.awayFromDay = calendar(state.minute, state.startDoy).day;
       ui.away = catchUp(state, world, dtSec, speed);
       ui.hurry = newHurry();
       setCueSink((c) => sounds.cue(c));
+      setWildlifeEventSink(onWildlifeStartle);
       awayInfo = { seconds: Math.min(dtSec, awaySeconds(state)), capped: dtSec > awaySeconds(state) };
     } else {
       // The hurry: extra minutes for work chosen by hand, on top of the frame's own. The speed test aid does not scale it.
       const extra = advanceHurry(ui.hurry, state, world, dtSec);
-      advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra, { wildlife: "detailed" });
+      advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra, { wildlife: "detailed", live: document.visibilityState === "visible" });
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
   } else if (ui.away || ui.teach || ui.welcome || ui.goalGuide || ui.recognition !== null) {
@@ -302,7 +317,7 @@ function frame(now: number) {
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
-  render();
+  render(now);
   updateSpeedHistory(document, ui.speedHistory, now, GAME_MINUTES_PER_REAL_SECOND * ui.hurry.rate);
   portraitMotion.frame(document, now, document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
   const cal = calendar(state.minute, state.startDoy);
@@ -672,6 +687,7 @@ function requestForecast(): void {
   forecastAt = { minute: state.minute, day: dayNumber(state.minute), region: state.player.region, real: performance.now() };
 }
 setCueSink((c) => sounds.cue(c));
+setWildlifeEventSink(onWildlifeStartle);
 // Registered before mountControl's own capture listeners, so unlock() always
 // runs before the control's show() on the same click or keydown - otherwise
 // the note reads stale for one extra interaction.

@@ -1,0 +1,130 @@
+// @vitest-environment happy-dom
+import { beforeEach, describe, expect, it } from "vitest";
+import { Rng } from "../src/rng";
+import { calendar } from "../src/sim/calendar";
+import { newGame } from "../src/sim/newgame";
+import { cellOf } from "../src/sim/position";
+import { activateWildlife } from "../src/sim/wildlife-agents";
+import type { WildlifeStartleEvent } from "../src/sim/wildlife-encounter";
+import { levelAt, mapHtml, mapKey, viewOrigin } from "../src/ui/map";
+import { enqueueWildlifeStartle, newUiState, resetPanels, setPanel } from "../src/ui/render";
+import { cellAt, neighbours } from "../src/world/gen";
+import { passable } from "../src/world/route";
+import { css, rule } from "./css";
+
+function scene() {
+  const { state, world } = newGame(79);
+  const ui = newUiState();
+  ui.zoom = 0;
+  const cal = calendar(state.minute, state.startDoy);
+  const event: WildlifeStartleEvent = {
+    id: "hidden-subject-987654321:episode-1", subjectId: 987654321,
+    source: { xM: (Math.floor(state.player.x) + 5.5) * 300, yM: (Math.floor(state.player.y) + 0.5) * 300 },
+    bearingRad: 0, distanceM: 1500, uncertaintyM: 40,
+    perception: { kind: "heard", identification: "unknown", uncertaintyM: 40 },
+    terrain: "spruce", body: "light", group: "group", logText: "Something crashes away.",
+  };
+  return { state, world, ui, cal, event };
+}
+
+beforeEach(() => {
+  resetPanels();
+  document.body.innerHTML = '<div id="mapdyn"></div>';
+});
+
+describe("transient wildlife map cues", () => {
+  it("adds one non-identifying cue over hidden ground, preserves map knowledge, and expires after 1200 ms", () => {
+    const { state, world, ui, cal, event } = scene();
+    state.mapped = {};
+    const before = JSON.stringify(state);
+    enqueueWildlifeStartle(ui, event, 1000);
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
+    const cue = document.querySelector(".wildlife-startle")!;
+    expect(cue?.className).toBe("wildlife-startle heard");
+    expect(cue?.parentElement?.classList.contains("fog")).toBe(true);
+    expect(cue?.textContent).toBe("!");
+    expect(cue?.getAttribute("aria-hidden")).toBe("true");
+    expect(document.querySelector(".mk-animal")).toBeNull();
+    expect(document.body.innerHTML).not.toContain(String(event.subjectId));
+    expect(document.body.innerHTML).not.toContain(event.id);
+    expect(JSON.stringify(state)).toBe(before);
+    expect(mapHtml(world, state, ui, cal, 2200)).not.toContain('class="wildlife-startle');
+    expect(ui.wildlifeStartles).toHaveLength(0);
+  });
+
+  it("ignores duplicate herd events, including after expiry, and changes the map key only at onset and expiry", () => {
+    const { state, world, ui, cal, event } = scene();
+    const initial = mapKey(state, world, ui, cal, 1000);
+    expect(enqueueWildlifeStartle(ui, event, 1000)).toBe(true);
+    expect(enqueueWildlifeStartle(ui, event, 1100)).toBe(false);
+    const active = mapKey(state, world, ui, cal, 1100);
+    expect(active).not.toBe(initial);
+    expect(mapKey(state, world, ui, cal, 1800)).toBe(active);
+    expect(mapHtml(world, state, ui, cal, 1800).match(/class="wildlife-startle heard"/g)).toHaveLength(1);
+    expect(mapKey(state, world, ui, cal, 2200)).toBe(initial);
+    expect(enqueueWildlifeStartle(ui, event, 2300)).toBe(false);
+  });
+
+  it("preserves the player glyph and original animation start across rerenders and zoom", () => {
+    const { state, world, ui, cal, event } = scene();
+    event.source = { xM: state.player.x * 300, yM: state.player.y * 300 };
+    enqueueWildlifeStartle(ui, event, 1000);
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
+    const first = document.querySelector(".wildlife-startle")!;
+    expect(first.parentElement?.classList.contains("mk-player")).toBe(true);
+    expect(first.parentElement?.firstChild?.textContent).toBe("@");
+    expect(first.getAttribute("style")).toContain("--wildlife-start:1000ms");
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1500));
+    expect(document.querySelector(".wildlife-startle")).toBe(first);
+    ui.zoom = 3;
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1800));
+    expect(document.querySelectorAll(".wildlife-startle")).toHaveLength(1);
+    expect(document.querySelector(".wildlife-startle")?.getAttribute("style")).toContain("--wildlife-start:1000ms");
+    expect(document.querySelector(".mk-player")?.firstChild?.textContent).toBe("@");
+    expect(mapHtml(world, state, ui, cal, 2200)).not.toContain('class="wildlife-startle');
+  });
+
+  it("recoils a currently visible animal without replacing its glyph or adding recoil to heard events", () => {
+    const { state, world, ui, cal, event } = scene();
+    activateWildlife(state, world, new Rng(1));
+    const subject = state.wildlife.subjects.find((s) => s.active)!;
+    subject.active!.cell = neighbours(world, cellOf(state, world)).find((c) => passable(cellAt(world, c).terrain) && cellAt(world, c).region === state.player.region)!;
+    const cell = cellAt(world, subject.active!.cell);
+    event.source = { xM: (cell.x + 0.5) * 300, yM: (cell.y + 0.5) * 300 };
+    event.subjectId = subject.id;
+    event.perception = { kind: "seen", identification: "species" };
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1000));
+    const original = document.querySelector(".mk-animal")?.textContent;
+    enqueueWildlifeStartle(ui, event, 1000);
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
+    const animal = document.querySelector(".mk-animal.wildlife-recoil");
+    expect(animal?.firstChild?.textContent).toBe(original);
+    expect(animal?.querySelector(".wildlife-startle.seen")?.textContent).toBe("!");
+    const heardUi = newUiState();
+    enqueueWildlifeStartle(heardUi, { ...event, perception: { kind: "heard", identification: "unknown", uncertaintyM: 40 } }, 1000);
+    expect(mapHtml(world, state, heardUi, cal, 1100)).not.toContain("wildlife-recoil");
+  });
+
+  it("projects a distant event to one nearest edge cue with its bearing", () => {
+    const { state, world, ui, cal, event } = scene();
+    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+    const level = levelAt(ui.zoom);
+    event.source = { xM: (x0 + level.w + 10) * 300, yM: (y0 + 4.5) * 300 };
+    enqueueWildlifeStartle(ui, event, 1000);
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
+    const cues = document.querySelectorAll(".wildlife-startle");
+    expect(cues).toHaveLength(1);
+    expect(cues[0].classList.contains("bearing-east")).toBe(true);
+    expect(cues[0].parentElement?.getAttribute("data-map-x")).toBe("35");
+    expect(cues[0].parentElement?.getAttribute("data-map-y")).toBe("4");
+  });
+
+  it("keeps the cue above glyphs and weather and removes motion when reduced motion is requested", () => {
+    expect(rule(".wildlife-startle")).toContain("pointer-events: none");
+    expect(rule(".wildlife-startle")).toMatch(/z-index:\s*[2-9]/);
+    expect(rule(".wildlife-startle")).toContain("paused");
+    expect(rule(".wildlife-startle")).toContain("--wildlife-now");
+    expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.wildlife-startle\s*\{[^}]*animation-name:\s*wildlife-startle-fade/);
+    expect(css).toMatch(/\.wildlife-recoil\s*\{\s*animation:\s*none/);
+  });
+});
