@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { mountMapInspection } from "../src/ui/map";
 
 describe("map inspection", () => {
-  it("uses one top-left readout for pointer and keyboard inspection", () => {
+  it("leaves pointer inspection to the cell tooltip and uses the readout for keyboard inspection", () => {
     document.body.innerHTML = `
       <div id="mapdyn">
         <div class="grid" tabindex="0">
@@ -18,7 +18,7 @@ describe("map inspection", () => {
     const output = root.querySelector<HTMLOutputElement>(".map-inspect")!;
 
     cells[0].dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
-    expect(output.textContent).toBe("spruce; known bear den");
+    expect(output.textContent).toBe("Map: point at a glyph.");
 
     const grid = root.querySelector<HTMLElement>(".grid")!;
     grid.focus();

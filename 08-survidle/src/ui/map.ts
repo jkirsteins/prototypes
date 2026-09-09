@@ -377,9 +377,10 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
 }
 
 /**
- * One stable inspection surface for every map glyph. Pointer users can sweep
- * across the map, while keyboard users enter the grid and move cell by cell.
- * Delegation keeps the listeners alive when the glyph markup is morphed.
+ * One stable keyboard inspection surface for every map glyph. Pointer users
+ * already have the richer cell tooltip, while keyboard users enter the grid
+ * and move cell by cell. Delegation keeps the listeners alive when the glyph
+ * markup is morphed.
  */
 export function mountMapInspection(root: HTMLElement): void {
   const show = (target: EventTarget | null): void => {
@@ -387,7 +388,6 @@ export function mountMapInspection(root: HTMLElement): void {
     const output = root.querySelector<HTMLOutputElement>(".map-inspect");
     if (cell && output) output.textContent = cell.dataset.mapInfo ?? "";
   };
-  root.addEventListener("pointerover", (event) => show(event.target));
   root.addEventListener("focusin", (event) => show(event.target));
   root.addEventListener("keydown", (event) => {
     if (!(event instanceof KeyboardEvent) || !event.key.startsWith("Arrow")) return;
