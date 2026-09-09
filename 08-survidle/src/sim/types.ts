@@ -684,7 +684,10 @@ export interface SkillState {
 
 export type GoalId =
   | "site" | "drink" | "firewood" | "fire" | "bed" | "roof" | "cook" | "keptNight" | "firstOrder"
+  | "findUsefulCover" | "makeUsefulShelter" | "testShelter"
+  | "readWeather" | "prepareWeather" | "surviveForecast"
   | "water" | "keptDays" | "foodSource" | "store" | "fat" | "longOrder" | "toolCare"
+  | "remoteRefuge" | "fieldFire" | "fieldMeal" | "remoteStorm"
   | "explore" | "secondCamp" | "seasonalFood" | "durableRoof" | "winterStores"
   | "spring" | "summer" | "autumn" | "winter";
 
@@ -695,6 +698,8 @@ export interface GoalState {
   introduced: Partial<Record<GoalId, true>>;
   /** Completions not yet shown, drained by the overlay one batch at a time. */
   queue: GoalId[];
+  /** Factual opportunity outcomes waiting for the same teaching surface. */
+  noticeQueue: string[];
   /** The season the last daily roll stood in: a turnover is this differing from now. */
   lastSeason: Season;
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { GOALS, goalDeed } from "../src/sim/goals";
-import { newGame } from "../src/sim/newgame";
+import { newGame, newPerson } from "../src/sim/newgame";
+import { cellOf } from "../src/sim/position";
 import { goalDoneHtml, goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalsHtml, updateGoalBars } from "../src/ui/goalpanel";
 import { GOAL_GUIDES } from "../src/ui/goalguide";
 import { newUiState } from "../src/ui/render";
@@ -16,6 +17,16 @@ describe("the goal panel", () => {
     expect(html).toContain('data-act="goal-open"');
     expect(html).toContain("0 / 1");
     expect(html).not.toContain("Your goal");
+  });
+
+  it("makes every active row one keyboard button with its goal id", () => {
+    const { state, world } = newGame(3);
+    for (const id of ["site", "drink", "firewood", "fire"] as const) state.goals.done[id] = true;
+    document.body.innerHTML = goalsHtml(state, world, cal);
+    const rows = [...document.querySelectorAll<HTMLLIElement>("li.goal")];
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => [...row.children].map((child) => child.tagName))).toEqual([["BUTTON"], ["BUTTON"]]);
+    expect(rows.map((row) => row.querySelector("button")?.dataset.goal)).toEqual(["bed", "roof"]);
   });
 
   it("shows nothing once the ladder is finished, so the panel can collapse", () => {
@@ -76,6 +87,14 @@ describe("goal guidance", () => {
     expect(GOAL_GUIDES.map((guide) => guide.id)).toEqual(GOALS.map((goal) => goal.id));
   });
 
+  it("gives every goal meaningful ASCII introduction copy", () => {
+    for (const guide of GOAL_GUIDES) {
+      const copy = [guide.reason, guide.path, guide.prompt].filter(Boolean).join(" ");
+      expect(copy.trim(), guide.id).not.toBe("");
+      expect(copy, guide.id).toMatch(/^[\x20-\x7e]+$/);
+    }
+  });
+
   it("opens an active goal until its introduction is dismissed", () => {
     const { state } = newGame(3);
     const ui = newUiState();
@@ -92,6 +111,30 @@ describe("goal guidance", () => {
     expect(html).toContain("Build &gt; Site");
     expect(html).not.toContain("Next step");
   });
+
+  it("reopens a weather lesson with the same copy without mutating world state", () => {
+    const { state, world } = newGame(3);
+    for (const id of ["site", "drink", "firewood", "fire", "bed", "roof", "cook"] as const) state.goals.done[id] = true;
+    state.goals.introduced.findUsefulCover = true;
+    const before = structuredClone(state.goals);
+    const html = goalsHtml(state, world, cal);
+    expect(html).toContain('data-goal="findUsefulCover"');
+    const modal = goalGuideHtml(state, world, cal, ["findUsefulCover"]);
+    const guide = GOAL_GUIDES.find((candidate) => candidate.id === "findUsefulCover")!;
+    expect(modal).toContain(guide.reason);
+    expect(modal).toContain("Explore &gt; Shelter");
+    expect(state.goals).toEqual(before);
+  });
+
+  it("does not automatically introduce a lesson again after an heir arrives", () => {
+    const { state, world } = newGame(3);
+    for (const id of ["site", "drink", "firewood", "fire", "bed", "roof", "cook"] as const) state.goals.done[id] = true;
+    state.goals.introduced.findUsefulCover = true;
+    const cell = cellOf(state, world);
+    const region = state.player.region;
+    newPerson(state, world, cell, region);
+    expect(goalIntroductionToOpen(state, cal, newUiState())).toBe(null);
+  });
 });
 
 describe("the congratulation", () => {
@@ -101,6 +144,17 @@ describe("the congratulation", () => {
     expect(goalMomentToOpen(state, ui)).toBe(null);
     goalDeed(state, { kind: "gathered", item: "firewood", kg: 20 });
     expect(goalMomentToOpen(state, ui)).toEqual(["firewood"]);
+  });
+
+  it("lets a completion outrank a new introduction in the same minute", () => {
+    const { state } = newGame(3);
+    state.goals.done.site = true;
+    state.goals.queue = ["site"];
+    const ui = newUiState();
+    const done = goalMomentToOpen(state, ui);
+    expect(done).toEqual(["site"]);
+    ui.goalGuide = { ids: ["drink"], done: done!, automatic: true };
+    expect(goalIntroductionToOpen(state, cal, ui)).toBe(null);
   });
 
   it("queues behind a rung moment, which is the larger event", () => {

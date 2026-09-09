@@ -10,6 +10,15 @@ import { TASK_IDS, type GoalId, type Season } from "../src/sim/types";
 
 const cal = calendar(0);
 
+const CHAPTER_1 = ["findUsefulCover", "makeUsefulShelter", "testShelter"] as const;
+const CHAPTER_2 = ["readWeather", "prepareWeather", "surviveForecast"] as const;
+const CHAPTER_3 = ["remoteRefuge", "fieldFire", "fieldMeal", "remoteStorm"] as const;
+const WEATHER_GOALS = [...CHAPTER_1, ...CHAPTER_2, ...CHAPTER_3] as readonly GoalId[];
+
+function finish(state: ReturnType<typeof newGame>["state"], ids: readonly GoalId[]): void {
+  for (const id of ids) state.goals.done[id] = true;
+}
+
 /**
  * Words no vocabulary hands us in the bare, singular shape a title would
  * use: ITEM_NAMES only keeps the plural, and "fire drill" and "bone
@@ -76,9 +85,76 @@ describe("the goal ladder", () => {
     expect(activeGoals(state, cal)).toEqual(["bed", "roof"]);
   });
 
+  it("keeps bed and roof before cook, then teaches Chapter 1 one step at a time", () => {
+    const { state } = newGame(3);
+    finish(state, ["site", "drink", "firewood", "fire"]);
+    expect(activeGoals(state, cal)).toEqual(["bed", "roof"]);
+    finish(state, ["bed", "roof"]);
+    expect(activeGoals(state, cal)).toEqual(["cook"]);
+    state.goals.done.cook = true;
+    expect(activeGoals(state, cal)).toEqual(["findUsefulCover"]);
+    state.goals.done.findUsefulCover = true;
+    expect(activeGoals(state, cal)).toEqual(["makeUsefulShelter"]);
+    state.goals.done.makeUsefulShelter = true;
+    expect(activeGoals(state, cal)).toEqual(["testShelter"]);
+    state.goals.done.testShelter = true;
+    expect(activeGoals(state, cal)).toEqual(["keptNight", "firstOrder"]);
+  });
+
+  it("does not fill a spare opening row by leaping over an unmet safety goal", () => {
+    const { state } = newGame(3);
+    finish(state, ["site", "drink", "firewood", "fire", "bed"]);
+    expect(activeGoals(state, cal)).toEqual(["roof"]);
+  });
+
+  it("gates Chapter 2 by Chapter 1, the first night, a bed, and day 8", () => {
+    const { state } = newGame(3);
+    finish(state, ["site", "drink", "firewood", "fire", "bed", "roof", "cook", ...CHAPTER_1, "firstOrder"]);
+    const day7 = calendar(6 * 1440, state.startDoy);
+    const day8 = calendar(7 * 1440, state.startDoy);
+    expect(day7.day).toBe(7);
+    expect(day8.day).toBe(8);
+
+    expect(activeGoals(state, day8)).not.toContain("readWeather");
+    state.goals.done.keptNight = true;
+    expect(activeGoals(state, day7)).toEqual(["water", "keptDays", "foodSource"]);
+    expect(activeGoals(state, day8)).toEqual(["readWeather", "water", "keptDays"]);
+  });
+
+  it("keeps Chapter 2 ordered while ordinary camp goals remain beside it", () => {
+    const { state } = newGame(3);
+    finish(state, ["site", "drink", "firewood", "fire", "bed", "roof", "cook", ...CHAPTER_1, "keptNight", "firstOrder"]);
+    const day8 = calendar(7 * 1440, state.startDoy);
+    state.goals.done.readWeather = true;
+    expect(activeGoals(state, day8)).toEqual(["prepareWeather", "water", "keptDays"]);
+    state.goals.done.prepareWeather = true;
+    expect(activeGoals(state, day8)).toEqual(["surviveForecast", "water", "keptDays"]);
+  });
+
+  it("gates Chapter 3 by Chapter 2 and day 31, then keeps its steps ordered at the established width", () => {
+    const { state } = newGame(3);
+    finish(state, [
+      "site", "drink", "firewood", "fire", "bed", "roof", "cook", ...CHAPTER_1,
+      "keptNight", "firstOrder", ...CHAPTER_2,
+      "water", "keptDays", "foodSource", "store", "fat", "longOrder", "toolCare",
+    ]);
+    const day30 = calendar(29 * 1440, state.startDoy);
+    const day31 = calendar(30 * 1440, state.startDoy);
+    expect(activeGoals(state, day30)).toEqual(["explore", "secondCamp", "seasonalFood"]);
+    expect(activeGoals(state, day31)).toEqual(["remoteRefuge", "explore", "secondCamp"]);
+    state.goals.done.remoteRefuge = true;
+    expect(activeGoals(state, day31)).toEqual(["fieldFire", "explore", "secondCamp"]);
+    state.goals.done.fieldFire = true;
+    state.goals.done.fieldMeal = true;
+    expect(activeGoals(state, day31)).toEqual(["remoteStorm", "explore", "secondCamp"]);
+  });
+
   it("widens to three once the camp jobs run in parallel", () => {
     const { state } = newGame(3);
-    for (const g of GOALS.slice(0, 9)) state.goals.done[g.id] = true;
+    finish(state, [
+      "site", "drink", "firewood", "fire", "bed", "roof", "cook", ...CHAPTER_1,
+      "keptNight", "firstOrder",
+    ]);
     expect(activeGoals(state, cal)).toEqual(["water", "keptDays", "foodSource"]);
   });
 
@@ -118,6 +194,7 @@ describe("the goal ladder", () => {
 describe("goal guards", () => {
   it("credits every goal by a deed the game actually emits", () => {
     for (const g of GOALS) {
+      if (WEATHER_GOALS.includes(g.id)) continue;
       const emitted = [
         ...TASK_IDS.map((id) => ({ kind: "task", id }) as const),
         ...STRUCTURE_IDS.map((s) => ({ kind: "built", structure: s }) as const),
@@ -210,12 +287,14 @@ describe("goals are the world's, not a life's", () => {
     expect(g.progress).toEqual({});
     expect(g.introduced).toEqual({});
     expect(g.queue).toEqual([]);
+    expect(g.noticeQueue).toEqual([]);
     expect(g.lastSeason).toBe("winter");
   });
 
   it("leaves state.goals alone when a new life is placed in the world or its teaching is reset", () => {
     const { state, world } = newGame(3);
     state.goals.progress.firewood = 6;
+    state.goals.introduced.findUsefulCover = true;
     const cell = cellOf(state, world);
     newPerson(state, world, cell, state.player.region);
     resetTeaching(state);
@@ -224,6 +303,7 @@ describe("goals are the world's, not a life's", () => {
     // extra key in either object, not just a wrong value in one already set.
     expect(state.goals.done).toEqual({});
     expect(state.goals.progress).toEqual({ firewood: 6 });
+    expect(state.goals.introduced.findUsefulCover).toBe(true);
   });
 
   it("migrate gives a save with no goals field an empty ladder standing in today's season", () => {
@@ -246,6 +326,7 @@ describe("goals are the world's, not a life's", () => {
     expect(loaded.goals.done.bed).toBe(true);
     expect(loaded.goals.done.roof).toBe(true);
     expect(loaded.goals.queue).toEqual(["cook"]);
+    expect(loaded.goals.noticeQueue).toEqual([]);
   });
 
   it("restores the origin of an old survey already inside its target region", () => {
