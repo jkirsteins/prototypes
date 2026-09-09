@@ -72,12 +72,13 @@ have changed:
 - Work, the body and the camp share one ranked order list. Shelter-in-place is
   a sequence of ordinary task steps owned by the body care row. It does not
   enqueue private work, jump the list, or create another runner.
-- Goals advance from deeds, not world state. A field fire emits the same
-  successful `lit` deed as a camp fire, and field cooking emits the same
-  completed task deed. A place first reaching protection 2 emits a shelter
-  deed so the outcome goal "Put a roof over your head" accepts natural,
-  emergency, snow and permanent answers alike. Field fires still do not emit
-  any of the hearth-keeping deeds.
+- Goals advance from contextual simulation events, not state scans. The old
+  deeds become the small end of that event vocabulary: successful lighting,
+  completed work, protection changes, forecast changes and storm endings all
+  carry where, when and under what weather they happened. This feature adds
+  three ordered teaching chapters and a world-scoped weather opportunity for
+  each chapter that needs one. The goal system may claim a normal event, but
+  it does not become a second weather generator.
 - Tools are active gear and carried load is explicit. A field task uses the
   normal provisioning and `toolNear` / `takeUp` paths. It must not invent a
   second notion of a drill or vessel being available.
@@ -110,6 +111,13 @@ have changed:
 - **Every route to weather sense is wanted**: a skill that levels with use,
   storms actually survived, a deliberate act of reading the sky, and a
   quirk landed with. They stack.
+- **Guarantee the opportunity, not the outcome.** A teaching goal may ensure
+  that meaningful weather arrives, but it never awards a failed search,
+  protects the survivor, changes the task order, or calls survival a success.
+- **Goals teach through consequential activity.** Reading the sky only counts
+  when it reveals something the survivor did not know. Finding shelter only
+  counts when useful cover is actually found. A missed opportunity stays
+  missed, says why, and another comes later without rewinding the chapter.
 - **Being caught out kills only when it compounds.** A storm alone is a hard
   night; wet, cold, hungry and stormbound together should end a run.
 
@@ -324,7 +332,220 @@ status. Stage 1 names only the warning, stage 2 adds arrival and kind/severity,
 and stage 3 adds duration. The body uses the same forecast value the wall
 shows, so the interface and the decision cannot disagree.
 
-### 7. What kind of storm
+### 7. Goals teach the weather loop
+
+The existing ladder is useful because it names concrete outcomes, but this
+feature needs more than adding `findShelter` and `readSky` to its deed list.
+Neither button is meaningful by itself. A search that finds nothing has not
+taught shelter, and an observation that reveals nothing has not taught
+forecasting.
+
+The rule is:
+
+> **Guarantee the opportunity, not the outcome.**
+
+Goals remain deterministic in their order and in whether the simulation gives
+the player a fair chance to attempt them. Completion still depends on what
+actually happens in the simulation. The goal system never changes protection,
+reduces damage, forces a task, moves the survivor, or completes a goal because
+an attempt was reasonable.
+
+#### The three chapters
+
+The ten new goals form three ordered chapters inside the existing ladder. A
+chapter step must be active before its teaching opportunity can credit it;
+weather experienced months early does not silently complete a lesson the game
+has not introduced. Ordinary non-teaching goals retain their current rule that
+an outcome reached early still counts.
+
+**Chapter 1: shelter is useful.** This joins the ordered opening after the
+immediate camp, firewood, fire and cooking goals, while the survivor is still
+in the first-week guidance.
+
+1. **Find useful cover.** Complete only when a search actually discovers
+   protection 1 or better. Finding nothing leaves the goal open.
+2. **Turn the ground into shelter.** Reach protection 2 anywhere in the same
+   local teaching area, defined as the original find's region and within 1 km
+   of it. The player may improve the first find, find a better cell 200 m away,
+   build an emergency shelter, or use another valid route. The goal teaches
+   the outcome, not loyalty to the first shrub inspected.
+3. **Put it to the test.** Reserve a mild rain storm, for which protection 2
+   is the intended answer. Complete when that storm ends with the survivor
+   alive after accumulating at least 60 storm minutes at protection 2 or
+   better inside the teaching area. A different shelter in the area counts.
+   A windbreak does not, because this opportunity deliberately chooses rain
+   that requires a roof rather than pretending every weather kind has the same
+   threshold.
+
+After Chapter 1, the existing ordered opening resumes with keeping the fire
+overnight and getting off the cold ground.
+
+**Chapter 2: weather can be anticipated.** This opens once Chapter 1,
+`keptNight` and `bed` are complete, but no earlier than day 8, so it sits in
+the weeks 2-4 camp-systems phase. If the player reaches the date first, the
+ordinary eligible camp goals remain visible rather than leaving an empty
+panel.
+
+4. **Read approaching weather.** The opportunity first exposes an honest,
+   vague sign that conditions are changing. `readSky` completes the goal only
+   if it raises forecast knowledge for the reserved storm and reveals at least
+   one fact that was previously unknown.
+5. **Prepare for what is coming.** At storm onset, record a pre-storm snapshot
+   of what was established before the weather began: known forecast facts,
+   routes and travel times to camp and known refuges, local protection, fire,
+   fuel, carried gear and supplies. Complete if that snapshot contains at
+   least one viable plan for this particular storm. Walking to a reachable
+   camp, sheltering locally, or travelling to a prepared refuge can all count.
+   Work done after the storm starts cannot retroactively make the preparation
+   goal true.
+6. **Come through the forecast storm.** Complete when the same storm ends and
+   the survivor who read it is alive. Death, or surviving some unrelated
+   storm, does not count.
+
+**Chapter 3: anticipation enables independence from camp.** This opens after
+Chapter 2, but no earlier than day 31, among the open-ended months 2-4 prompts.
+Existing camp goals remain available beside it at the ladder's established
+width.
+
+7. **Prepare a refuge beyond home.** Reach protection 2 in a region other than
+   the survivor's camp region. Found, improved, emergency and permanent
+   shelter all count.
+8. **Light a fire away from camp.** Complete on a successful fire light at a
+   non-camp cell. Failed tinder and a camp hearth do not count.
+9. **Make a meal away from camp.** Complete when food is actually cooked at a
+   field fire. Starting the task, carrying raw food through the cell, or
+   cooking at camp does not count.
+10. **Ride out weather beyond home.** Once the refuge exists, reserve an
+    eligible non-lightning storm with enough lead time to choose whether to
+    travel to it. Complete when the storm ends with the survivor alive, at
+    least 60 minutes were spent under adequate protection in the refuge's
+    region, and no storm minute was spent at camp. Going home may be the wise
+    survival choice, but it does not demonstrate this lesson; the goal remains
+    open and another opportunity comes later.
+
+The existing seasonal goals remain the broad later ambitions. The whole
+progression therefore reads: shelter is useful, weather can be anticipated,
+and anticipation makes life away from camp possible.
+
+#### Opportunity state and weather ownership
+
+Only one weather-backed teaching step can be active at a time, so `GoalState`
+needs one world-scoped opportunity rather than a parallel scheduler:
+
+```ts
+interface GoalOpportunity {
+  goal: GoalId;
+  status: "reserved" | "announced" | "running" | "resolved";
+  createdAt: number;
+  attempts: number;
+  stormId: number | null;
+  source: "natural" | "synthetic" | null;
+  area: { region: number; centre: number; radiusKm: 1 } | null;
+  announcedAt: number | null;
+  resolvedAt: number | null;
+}
+```
+
+`reserved` means an event exists in the simulation but the survivor cannot yet
+know it. `announced` begins at the first vague sign or forecast stage the
+survivor can perceive. `running` begins at the storm's `from` minute.
+`resolved` records either completion or a missed attempt before cooldown.
+`createdAt` makes expiry and cooldown inspectable; `attempts` survives retries
+so a goal that repeatedly offers unusable opportunities is visible in saves
+and diagnostics.
+
+The ordinary weather generator always gets first refusal. Once a weather goal
+needs an opportunity, each naturally scheduled event is checked against that
+goal's kind, danger and lead-time constraints. The first valid event is
+claimed by assigning it a stable `stormId`; its timing and rolled properties
+are not changed. If no valid natural event has appeared by the third dawn
+after `createdAt`, the normal generator is called once to create an event from
+the same distributions, constrained only by the goal's eligibility rules and
+lead time. It is tagged `source: "synthetic"` for tests and diagnostics but is
+presented exactly like natural weather.
+
+The Chapter 1 event is rain, above freezing, and in the shortest third of the
+normal duration range. Chapter 2 accepts the next non-lightning storm that a
+sky reading at the survivor's current weather-sense level can reveal before
+the ordinary one-hour warning. Chapter 3 accepts the next non-lightning storm
+whose lead time is at least the current travel time to the refuge plus 30
+minutes. If a storm is already reserved or running, the opportunity waits; it
+does not replace, overlap or reroll that storm.
+
+This is an event claim layered over weather, not a second weather director.
+There is no convenient rain when the survivor reaches a hut, and there is no
+storm spawned because the survivor happens to stand in the goal area. In
+particular, Chapter 3 reserves its storm when the refuge is ready and gives the
+survivor time to choose whether to use it.
+
+No teaching event may be materially more dangerous than a comparable natural
+event available at that point in progression. Synthesis increases the chance
+of exposure, so it does not also increase severity, duration, cold, strike
+risk or effect multipliers. Lightning is never eligible.
+
+#### Failure, death and retries
+
+A missed opportunity resolves the attempt, not the chapter. The goal remains
+open and says what happened in simulation terms, for example: "The storm
+passed before {you} prepared a refuge. Another opportunity will come." After
+one full day without another active storm, it returns to `reserved`, increments
+`attempts`, refreshes `createdAt`, and again prefers natural weather for three
+dawns before synthesis.
+
+Death is the same kind of miss. Goals and opportunities belong to the world,
+not one life. The dead survivor receives no completion; after an heir lands
+and the one-day cooldown has passed, the open goal can reserve another event.
+The chapter never restarts and completed earlier steps stay complete.
+
+#### General events, not goal-only deeds
+
+The goal seam widens from narrow deeds to reusable contextual simulation
+events. At minimum it needs:
+
+```ts
+type GoalEvent =
+  | { kind: "protectionChanged"; minute: number; region: number; cell: number;
+      from: Protection; to: Protection; source: "found" | "improved" | "emergency" | "structure" }
+  | { kind: "forecastChanged"; minute: number; stormId: number;
+      before: ForecastKnowledge; after: ForecastKnowledge; source: "passive" | "readSky" }
+  | { kind: "fireLit"; minute: number; region: number; cell: number; atCamp: boolean }
+  | { kind: "taskCompleted"; minute: number; id: TaskId; arg?: string;
+      region: number; cell: number; atCamp: boolean }
+  | { kind: "stormStarted"; minute: number; stormId: number; plan: StormPlanSnapshot }
+  | { kind: "stormEnded"; minute: number; stormId: number; survivorAlive: boolean;
+      minutesByProtection: [number, number, number, number];
+      atCampMinutes: number; awayFromCampMinutes: number; maxWetness: number };
+```
+
+Existing gathered, built, kept-fire, stored and season deeds remain small
+events in the same union. The names above describe simulation facts useful to
+future goals; there is no `stormWeathered` or `chapterOneShelterFound` event.
+Goal interpretation decides whether a fact satisfies a currently active
+lesson. Every event that refers to weather carries the stable `stormId`, so a
+later event cannot be credited to the wrong opportunity.
+
+`StormPlanSnapshot` is produced by the same option evaluator used by the
+body's return-home versus shelter-in-place decision. It records inputs and the
+viable options before the storm, rather than a goal-specific Boolean. This
+keeps the goal, the AI and the weather wall from inventing three definitions
+of "prepared".
+
+#### Introduction and review
+
+Every goal definition gains explanatory copy. The first time a goal becomes
+active, its introduction is queued once in `GoalState.introduced` and shown in
+the existing teaching overlay shape. The row remains a button after dismissal;
+clicking it opens the same copy for review without changing progress or
+pausing the simulation beyond the overlay's normal behavior. An heir does not
+receive the automatic introduction again, because the goals and their teaching
+history belong to the world, but the row remains reviewable.
+
+The introduction explains why the outcome matters, the facts the survivor can
+reason from, and several valid approaches where they exist. It does not name a
+hidden recipe chain or command a meaningless click. Opportunity failures use
+the same overlay queue but are notices, not completions.
+
+### 8. What kind of storm
 
 One storm behaves one way today. Rain, snow and gale already ask for different
 answers and give weather sense something to be sense *about*: knowing a storm
@@ -406,7 +627,7 @@ The death wants its own cause in `causeFrom` and its own epitaph line. It is
 the one death in this game that is instant rather than the end of a slide,
 and the record should say so.
 
-### 8. The skills
+### 9. The skills
 
 Skills here are **categories of technique, not of material**. A snow cave
 dug into a drift is not a different skill from a rock overhang - both are
@@ -446,7 +667,7 @@ natural shelter searches first and rides out storms where they stand; one
 strong in shelter building carries an axe and raises what they need. Those
 are different players, which is the point.
 
-### 9. When it compounds
+### 10. When it compounds
 
 The stack is already modelled and should be used rather than replaced.
 Wetness costs 0.15 C of felt temperature per point, starvation up to 4 C, a
@@ -473,8 +694,11 @@ rule. No new death cause, no storm-specific health drain.
 - Anything that lets a found or emergency shelter drift into being a camp.
 - A second weather scheduler or any weather response that bypasses the ranked
   body row.
-- A replacement for the current goals ladder. Weather work supplies deeds to
-  the existing outcome goals; it does not add a tutorial chain of its own.
+- Replacing the existing goal ladder wholesale. The three weather chapters are
+  inserted into its phase progression; existing survival, camp and seasonal
+  goals remain.
+- Goal-created lightning, harsher teaching storms, forced task ordering, free
+  protection, or any other tutorial-only survival advantage or penalty.
 
 ## Testing
 
@@ -511,13 +735,35 @@ rule. No new death cause, no storm-specific health drain.
   coming goes to the wrong place.
 - A forecast that names the kind lets a survivor pick ground the plain
   warning would not have sent them to.
+- A failed shelter search does not complete "Find useful cover"; a successful
+  find at protection 1 does. Protection 2 anywhere within 1 km in the same
+  region completes the next goal, even when it is not the first-found cell.
+- A Chapter 1 opportunity claims the first eligible natural mild rain inside
+  its three-dawn window, synthesizes one only after that window, and never
+  accepts lightning or a stronger-than-natural event.
+- `readSky` with no new forecast fact does not complete a goal. Reading an
+  announced opportunity and increasing its forecast knowledge does.
+- The preparation snapshot is taken before storm onset and accepts each viable
+  strategy the shared storm-option evaluator finds. Work begun after onset
+  cannot alter that snapshot or earn preparation credit.
+- Every weather completion matches the opportunity's stable storm ID. An
+  unrelated storm cannot finish the goal.
+- A missed storm produces a failure notice, leaves earlier chapter steps done,
+  waits a full storm-free day, increments `attempts`, and offers another
+  natural-first opportunity. Death follows the same rule after an heir lands.
+- The remote-refuge storm is reserved when the refuge exists, not when the
+  survivor stands there, and its lead time covers travel plus 30 minutes.
+- A goal introduction opens exactly once per world and every active goal row
+  remains clickable to review it. Review changes no goal or opportunity state.
 - Every new action has exactly one Do-pane purpose, complete search vocabulary,
   skill/mastery/gerund coverage, and the intended orderability.
 - A body row ranked below work does not pre-empt that work for a forecast; when
   it wins, all shelter-in-place substeps remain owned by that same care row.
 - A field light and field cook credit the existing fire and cook goals. The
-  first transition to protection 2 credits the roof outcome. No field fire
-  credits overnight, three-day or rain-keeping goals.
+  contextual versions of those events also credit the new away-from-camp
+  goals only at non-camp cells. The first transition to protection 2 credits
+  the roof outcome. No field fire credits overnight, three-day or rain-keeping
+  goals.
 
 ## Gates
 
@@ -540,6 +786,12 @@ Two values remain deliberately unset: how many days a found cover observation
 lasts, and how many days an emergency shelter lasts. Neither follows from the
 current tables, so the executor asks rather than borrowing a permanent
 structure's lifetime.
+
+The teaching constants are settled: a local opportunity has a 1 km radius;
+weather waits three dawns for a natural event before synthesis; a missed
+attempt cools down for one full storm-free day; and each shelter test requires
+60 storm minutes. These are pacing values, not claims from the field sources,
+and the comments beside them must say so.
 
 The earlier author questions are settled: 30 / 90 / 240 are design values
 inside sourced ranges, and a lightning strike on bad ground may kill. Lightning
