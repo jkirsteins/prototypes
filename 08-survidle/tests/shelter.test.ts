@@ -218,6 +218,26 @@ describe("improving shelter", () => {
     finishTask(g);
     expect(g.state.shopping).toEqual({ task: "craft", arg: "knife" });
   });
+
+  it("stops without improving when found cover expires in the completion minute", () => {
+    const g = newGame(17);
+    const rock = cellWith(g, "rock");
+    placeAt(g.state, g.world, rock);
+    const site = siteFor(regionState(g.state, g.world, g.state.player.region), rock);
+    site.cover = 2;
+    site.coverAge = 7 * 1440 - 1;
+    expect(startTask(g.state, g.world, calendar(g.state.minute, g.state.startDoy), "improveCover")).toBe(true);
+    g.state.task!.progress = g.state.task!.duration - 1;
+    const logAtStart = g.state.log.length;
+
+    advance(g.state, g.world, 1);
+
+    expect(site.cover).toBe(0);
+    expect(g.state.goals.done.roof).toBeUndefined();
+    const completionLog = g.state.log.slice(logAtStart).map((entry) => entry.text);
+    expect(completionLog).toContain("Improve shelter: no cover found here. {You} {stop}.");
+    expect(completionLog.some((line) => line.includes("cover into something"))).toBe(false);
+  });
 });
 
 describe("found cover keeping", () => {

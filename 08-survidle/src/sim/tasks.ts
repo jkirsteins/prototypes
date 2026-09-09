@@ -1426,6 +1426,17 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   if (order) order.minutes += dt;
   t.progress += dt * pace;
   if (t.progress < t.duration) return;
+  // Existing cover ages before this task step. If it expires in the finishing
+  // interval, the improvement has nothing left to work and is not a completion.
+  if (t.id === "improveCover") {
+    const o = check(state, world, cal, t.id, t.arg);
+    if (!o.ok) {
+      state.task = null;
+      if (isWorkIntent(state.intent) && state.intent.task === t.id) state.intent = null;
+      log(state, `${o.label}: ${o.why}. {You} {stop}.`);
+      return;
+    }
+  }
   // The dark refuses nothing; it wastes the attempt. Work that needs light
   // to be sure of itself rolls when it would finish, and a failure puts the
   // attempt back to the start rather than ending the work: the yield when it
