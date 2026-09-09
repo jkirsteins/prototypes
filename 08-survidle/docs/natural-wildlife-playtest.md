@@ -13,8 +13,8 @@ Reloading this seeded URL starts the world over.
    automatic speed-up applies.
 5. Watch for `!` and departure, then open **Log** to read the lasting record.
 
-The verified browser run clicked at 08:01.14 and perceived the departure at
-08:07.20, after about **224 m** of walking. It showed one heard `!` and logged:
+The verified browser run clicked around 08:01 and perceived the departure
+around 08:07, after about **224 m** of walking. It showed one heard `!` and logged:
 
 > Hooves crash away over the rocks.
 
