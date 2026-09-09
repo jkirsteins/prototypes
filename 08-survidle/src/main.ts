@@ -40,7 +40,7 @@ import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
 import { introduceGoals, unintroducedGoals } from "./sim/goals";
-import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
+import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalsHtml } from "./ui/goalpanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
 import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, viewOrigin } from "./ui/map";
@@ -216,7 +216,6 @@ function render() {
   setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world);
   updateFills(state);
-  updateGoalBars(state, world, cal);
   updateSky(state, cal, ambient);
 
   // The settings panel is static markup with its own listeners (the slider must
@@ -248,7 +247,7 @@ function render() {
     setPanel("overlay", conceptHtml(state, world, cal, ui.teach));
     overlay.hidden = false;
   } else if (ui.goalGuide) {
-    setPanel("overlay", goalGuideHtml(state, world, cal, ui.goalGuide.ids, ui.goalGuide.done));
+    setPanel("overlay", goalGuideHtml(state, world, cal, ui.goalGuide.ids, ui.goalGuide.done, ui.goalGuide.automatic));
     overlay.hidden = false;
   } else if (ui.recognition !== null) {
     setPanel("overlay", recognitionHtml(state, ui.recognition));

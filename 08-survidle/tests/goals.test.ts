@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { activeGoals, goalDeed, goalDef, GOALS, introduceGoals, newGoals, SEASON_ORDER, unintroducedGoals } from "../src/sim/goals";
+import { activeGoals, goalDeed, goalDef, goalSteps, GOALS, introduceGoals, newGoals, SEASON_ORDER, unintroducedGoals } from "../src/sim/goals";
 import { ITEM_NAMES, RECIPE_IDS, RECIPES, STRUCTURE_IDS, STRUCTURES, TOOL_IDS, TOOLS } from "../src/sim/items";
 import { newGame, newPerson } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
@@ -43,6 +43,11 @@ const OWN_WORD: Partial<Record<GoalId, string[]>> = {
   water: ["water"],
   drink: ["water"],
   fat: ["fat"],
+  forageMeal: ["berries", "eggs", "roots", "seaweed"],
+  snareMeal: ["snare", "snare", "cooked meat"],
+  huntMeal: ["bow", "arrow", "cooked meat"],
+  fishMeal: ["fish", "fishing spear", "cooked fish"],
+  trapMeal: ["fish", "basket trap", "cooked fish"],
 };
 
 describe("the goal ladder", () => {
@@ -59,37 +64,37 @@ describe("the goal ladder", () => {
     expect(unintroducedGoals(state, cal)).toEqual([]);
   });
 
-  it("stays one goal at a time until the first fire", () => {
+  it("keeps the opening sequential until first-night work can run together", () => {
     const { state } = newGame(3);
-    // site is covered by the case above; walk the rest of the chain the
-    // same way, since a width bug widens silently rather than crashing.
-    for (const id of ["site", "drink", "firewood"] as const) {
+    for (const id of ["site", "drink", "firewood", "fire"] as const) {
+      expect(activeGoals(state, cal)).toEqual([id]);
       state.goals.done[id] = true;
-      expect(activeGoals(state, cal).length).toBe(1);
     }
-    expect(activeGoals(state, cal)).toEqual(["fire"]);
+    expect(activeGoals(state, cal)).toEqual(["bed", "roof", "keptNight"]);
   });
 
   it("widens to two for first-night preparation", () => {
     const { state } = newGame(3);
     for (const id of ["site", "drink", "firewood", "fire"] as const) state.goals.done[id] = true;
-    expect(activeGoals(state, cal)).toEqual(["bed", "roof"]);
+    expect(activeGoals(state, cal)).toEqual(["bed", "roof", "keptNight"]);
   });
 
-  it("widens to three once the camp jobs run in parallel", () => {
+  it("opens only the first unfinished authored stage", () => {
     const { state } = newGame(3);
-    for (const g of GOALS.slice(0, 9)) state.goals.done[g.id] = true;
-    expect(activeGoals(state, cal)).toEqual(["water", "keptDays", "foodSource"]);
+    for (const id of ["site", "drink", "firewood", "fire", "bed", "roof", "keptNight"] as GoalId[]) state.goals.done[id] = true;
+    expect(activeGoals(state, cal)).toEqual(["forageMeal", "cook"]);
+    state.goals.done.forageMeal = true;
+    expect(activeGoals(state, cal)).toEqual(["cook"]);
+    state.goals.done.cook = true;
+    expect(activeGoals(state, cal)).toEqual(["snareMeal", "huntMeal", "fishMeal"]);
   });
 
-  it("never shows more than the seasons can fill, and never narrows", () => {
+  it("finishes authored work before opening the seasonal tail", () => {
     const { state } = newGame(3);
     for (const g of GOALS) if (!SEASON_ORDER.includes(g.id) && g.id !== "winterStores") state.goals.done[g.id] = true;
-    const active = activeGoals(state, cal);
-    // One worked goal left and the whole tail behind it, which is one slot.
-    expect(active[0]).toBe("winterStores");
-    expect(active.length).toBe(2);
-    expect(SEASON_ORDER).toContain(active[1]);
+    expect(activeGoals(state, cal)).toEqual(["winterStores"]);
+    state.goals.done.winterStores = true;
+    expect(activeGoals(state, cal)).toEqual(["summer"]);
   });
 
   it("shows at most one season, and it is the next one due", () => {
@@ -120,6 +125,7 @@ describe("goal guards", () => {
     for (const g of GOALS) {
       const emitted = [
         ...TASK_IDS.map((id) => ({ kind: "task", id }) as const),
+        ...RECIPE_IDS.map((recipe) => ({ kind: "crafted", recipe }) as const),
         ...STRUCTURE_IDS.map((s) => ({ kind: "built", structure: s }) as const),
         // SEASON_ORDER's ids and the four seasons share their spelling, not their type.
         ...SEASON_ORDER.map((s) => ({ kind: "season", season: s as Season }) as const),
@@ -132,6 +138,17 @@ describe("goal guards", () => {
         { kind: "keptFor", minutes: 999999 } as const,
         { kind: "keptRain", minutes: 999999 } as const,
         { kind: "drank" } as const,
+        { kind: "foodAcquired", method: "forage" } as const,
+        { kind: "foodAcquired", method: "snare" } as const,
+        { kind: "foodAcquired", method: "hunt" } as const,
+        { kind: "foodAcquired", method: "fish" } as const,
+        { kind: "foodAcquired", method: "trap" } as const,
+        { kind: "ate", item: "berries" } as const,
+        { kind: "ate", item: "cookedMeat" } as const,
+        { kind: "ate", item: "cookedFish" } as const,
+        { kind: "ate", item: "driedMeat" } as const,
+        { kind: "preserved" } as const,
+        { kind: "fuelled" } as const,
         { kind: "ordered", task: "deadwood", long: true } as const,
         { kind: "foodSourced" } as const,
         { kind: "ateFat" } as const,
@@ -162,18 +179,36 @@ describe("goal guards", () => {
 });
 
 describe("goals are the world's, not a life's", () => {
+  it("ignores deeds until the goal has been announced, without replaying them later", () => {
+    const { state } = newGame(3);
+    expect(goalDeed(state, { kind: "drank" })).toEqual([]);
+    expect(state.goals.done.drink).toBeUndefined();
+    expect(state.goals.progress.drink).toBeUndefined();
+    expect(state.goals.queue).toEqual([]);
+
+    introduceGoals(state, ["drink"]);
+    expect(state.goals.done.drink).toBeUndefined();
+    expect(goalDeed(state, { kind: "drank" })).toEqual(["drink"]);
+    expect(state.goals.done.drink).toBe(true);
+  });
+
   it("advances on a deed and not on a state a survivor inherited", () => {
     const { state } = newGame(3);
+    introduceGoals(state, ["fire"]);
     // Standing in a camp whose fire is already burning is not lighting one.
     expect(state.goals.done.fire).toBeUndefined();
     // A light whose tinder failed emits the task and no "lit": no credit.
     expect(goalDeed(state, { kind: "task", id: "light" })).toEqual([]);
+    goalDeed(state, { kind: "built", structure: "firePit" });
+    goalDeed(state, { kind: "fuelled" });
+    goalDeed(state, { kind: "crafted", recipe: "fireDrill" });
     expect(goalDeed(state, { kind: "lit" })).toEqual(["fire"]);
     expect(state.goals.done.fire).toBe(true);
   });
 
   it("counts the kilos this survivor actually gathered, wet or dry alike", () => {
     const { state } = newGame(3);
+    introduceGoals(state, ["firewood"]);
     expect(goalDeed(state, { kind: "gathered", item: "firewood", kg: 4 })).toEqual([]);
     expect(state.goals.progress.firewood).toBeCloseTo(4);
     expect(goalDeed(state, { kind: "gathered", item: "wetFirewood", kg: 6 })).toEqual(["firewood"]);
@@ -188,13 +223,94 @@ describe("goals are the world's, not a life's", () => {
 
   it("queues each completion for its congratulation", () => {
     const { state } = newGame(3);
+    introduceGoals(state, ["firewood"]);
     goalDeed(state, { kind: "gathered", item: "firewood", kg: 20 });
     expect(state.goals.queue).toEqual(["firewood"]);
   });
 
-  it("gives a goal reached before it was asked for its credit anyway", () => {
+  it("does not credit later building goals before they are announced", () => {
     const { state } = newGame(3);
-    expect(goalDeed(state, { kind: "built", structure: "turfHut" })).toEqual(["roof", "durableRoof"]);
+    expect(goalDeed(state, { kind: "built", structure: "turfHut" })).toEqual([]);
+    expect(state.goals.done.roof).toBeUndefined();
+    expect(state.goals.done.durableRoof).toBeUndefined();
+  });
+
+  it("finishes a food method only when its acquired meal is eaten", () => {
+    const { state } = newGame(3);
+    introduceGoals(state, ["huntMeal"]);
+
+    goalDeed(state, { kind: "ate", item: "cookedMeat" });
+    expect(state.goals.done.huntMeal).toBeUndefined();
+
+    goalDeed(state, { kind: "crafted", recipe: "bow" });
+    goalDeed(state, { kind: "crafted", recipe: "arrows" });
+    goalDeed(state, { kind: "foodAcquired", method: "hunt" });
+    expect(goalSteps(state, "huntMeal").map((step) => [step.label, step.done])).toEqual([
+      ["Make a bow", true],
+      ["Make arrows", true],
+      ["Hunt an animal", true],
+      ["Eat cooked meat", false],
+    ]);
+    expect(goalDeed(state, { kind: "ate", item: "cookedMeat" })).toEqual(["huntMeal"]);
+  });
+
+  it.each([
+    {
+      id: "forageMeal" as const,
+      setup: [] as const,
+      acquire: { kind: "foodAcquired", method: "forage" } as const,
+      food: "berries" as const,
+    },
+    {
+      id: "snareMeal" as const,
+      setup: [
+        { kind: "crafted", recipe: "snare" },
+        { kind: "built", structure: "snare" },
+      ] as const,
+      acquire: { kind: "foodAcquired", method: "snare" } as const,
+      food: "cookedMeat" as const,
+    },
+    {
+      id: "huntMeal" as const,
+      setup: [
+        { kind: "crafted", recipe: "bow" },
+        { kind: "crafted", recipe: "arrows" },
+      ] as const,
+      acquire: { kind: "foodAcquired", method: "hunt" } as const,
+      food: "cookedMeat" as const,
+    },
+    {
+      id: "fishMeal" as const,
+      setup: [{ kind: "crafted", recipe: "fishingSpear" }] as const,
+      acquire: { kind: "foodAcquired", method: "fish" } as const,
+      food: "cookedFish" as const,
+    },
+    {
+      id: "trapMeal" as const,
+      setup: [
+        { kind: "crafted", recipe: "basketTrap" },
+        { kind: "task", id: "setTrap" },
+      ] as const,
+      acquire: { kind: "foodAcquired", method: "trap" } as const,
+      food: "cookedFish" as const,
+    },
+  ])("requires acquisition and eating for $id", ({ id, setup, acquire, food }) => {
+    const { state } = newGame(3);
+    introduceGoals(state, [id]);
+    expect(goalDeed(state, { kind: "ate", item: food })).toEqual([]);
+    for (const deed of setup) goalDeed(state, deed);
+    goalDeed(state, acquire);
+    expect(state.goals.done[id]).toBeUndefined();
+    expect(goalDeed(state, { kind: "ate", item: food })).toEqual([id]);
+  });
+
+  it("lets one matching meal close its method goal and the lasting-source umbrella", () => {
+    const { state } = newGame(3);
+    introduceGoals(state, ["trapMeal", "foodSource"]);
+    goalDeed(state, { kind: "crafted", recipe: "basketTrap" });
+    goalDeed(state, { kind: "task", id: "setTrap" });
+    goalDeed(state, { kind: "foodAcquired", method: "trap" });
+    expect(goalDeed(state, { kind: "ate", item: "cookedFish" })).toEqual(["trapMeal", "foodSource"]);
   });
 
   // Progress surviving a death only means something once a death actually
@@ -208,6 +324,7 @@ describe("goals are the world's, not a life's", () => {
     const g = newGoals("winter");
     expect(g.done).toEqual({});
     expect(g.progress).toEqual({});
+    expect(g.stepProgress).toEqual({});
     expect(g.introduced).toEqual({});
     expect(g.queue).toEqual([]);
     expect(g.lastSeason).toBe("winter");
@@ -241,7 +358,7 @@ describe("goals are the world's, not a life's", () => {
     const raw = JSON.parse(serialize(state)) as { state: { goals: Record<string, unknown> } };
     delete raw.state.goals.introduced;
     const loaded = deserialize(JSON.stringify(raw))!.state;
-    expect(activeGoals(loaded, calendar(loaded.minute, loaded.startDoy))).toEqual(["keptNight", "firstOrder"]);
+    expect(activeGoals(loaded, calendar(loaded.minute, loaded.startDoy))).toEqual(["keptNight"]);
     expect(loaded.goals.done.drink).toBe(true);
     expect(loaded.goals.done.bed).toBe(true);
     expect(loaded.goals.done.roof).toBe(true);

@@ -71,6 +71,7 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): num
   p.kcal = Math.min(KCAL_FULL, p.kcal + gain);
   p.fat += gain;
   creditEaten(state, gain, leanPart);
+  goalDeed(state, { kind: "ate", item: food });
   if (def.leanShare < 1) goalDeed(state, { kind: "ateFat" });
   if (def.sickChance && p.sick === 0 && rng.chance(def.sickChance)) {
     p.sick = 48 * 60;
@@ -231,7 +232,9 @@ export function addFirewood(state: GameState, world: World, kg: number): number 
   if (!atCamp(state, world)) return 0;
   const st = regionState(state, world, p.region);
   if (!st.fire.lit) return 0;
-  return feedFire(state, world, p.region, kg);
+  const added = feedFire(state, world, p.region, kg);
+  if (added > 1e-9) goalDeed(state, { kind: "fuelled" });
+  return added;
 }
 
 /** Hangs raw meat on the rack at this camp. Returns kg hung. */

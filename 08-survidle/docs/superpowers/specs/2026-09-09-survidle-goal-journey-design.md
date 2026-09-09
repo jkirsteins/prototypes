@@ -63,7 +63,7 @@ Stages:
 2. `drink`
 3. `firewood`
 4. `fire`
-5. `bed`, `roof`
+5. `bed`, `roof`, `keptNight`
 6. `forageMeal`, `cook`
 7. `snareMeal`, `huntMeal`, `fishMeal`
 8. `trapMeal`, `foodSource`, `store`
@@ -91,7 +91,7 @@ high-level steps:
 - `bed`, Get off the cold ground: Build a bed.
 - `roof`, Put a roof over your head: Build a roof.
 - `forageMeal`, Forage and eat a meal: Gather edible food; eat gathered food.
-- `cook`, Cook something over the fire: Cook food.
+- `cook`, Prepare and eat a hot meal: Cook food; eat the meal.
 - `snareMeal`, Eat from a snare: Make a snare; set a snare; collect its catch;
   eat cooked meat from it.
 - `huntMeal`, Hunt, cook, and eat meat: Make a bow; make arrows; hunt an animal;
@@ -100,8 +100,8 @@ high-level steps:
   cooked fish.
 - `trapMeal`, Eat from a basket trap: Make a basket trap; set it; collect fish;
   eat cooked fish.
-- `foodSource`, Find a lasting food source: Eat a meal from any repeatable or
-  passive acquisition method.
+- `foodSource`, Find a lasting food source: Establish a repeatable or passive
+  source; eat from it.
 - `store`, Put food by for later: Preserve food; eat preserved food.
 - `fat`, Find food with fat: Eat food containing fat.
 - `keptNight`, Keep the fire alive overnight: Keep the fire alive until dawn.
@@ -150,9 +150,10 @@ direct fishing emit their methods. Collecting a snare catch and emptying a
 basket trap emit separate methods. A successful hang emits `preserved`.
 `eat()` emits `ate` only after a positive quantity was consumed.
 
-Craft and build task deeds already contain the ids needed for equipment and
-placement steps. Cooking deeds carry the cooked input item so tests and future
-notes can distinguish the food without inspecting inventory.
+Successful crafts emit a separate `crafted` deed, so a failed craft cannot
+credit equipment. Build task deeds carry the ids needed for placement steps.
+Cooking deeds carry the cooked output item so tests and future notes can
+distinguish the food without inspecting inventory.
 
 ## Goal notes
 
