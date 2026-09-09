@@ -65,7 +65,9 @@ describe("the layout", () => {
     const mid = html.slice(html.indexOf('id="center"'), html.indexOf('id="right"'));
     const right = html.slice(html.indexOf('id="right"'), html.indexOf('id="build"'));
 
-    for (const id of ["goals", "stats", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
+    for (const id of ["goals", "shopping", "stats", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
+    expect(left.indexOf('id="goals"')).toBeLessThan(left.indexOf('id="shopping"'));
+    expect(left.indexOf('id="shopping"')).toBeLessThan(left.indexOf('id="stats"'));
     // The clock is gone: the day and the hour are three lines in the weather
     // widget, and the row it took is map now.
     for (const id of ["map", "task", "panes"]) expect(mid).toContain(`id="${id}"`);

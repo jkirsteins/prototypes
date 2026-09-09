@@ -28,6 +28,7 @@ import { campCellOf, cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
+import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
 import { insertWalkAtTop } from "./sim/walkorders";
@@ -54,6 +55,7 @@ import { advanceHurry, hurryClick, hurryKind, newHurry } from "./ui/hurry";
 import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
 import { newSpeedHistory, updateSpeedHistory } from "./ui/speed-history";
+import { shoppingHtml, shoppingQuery } from "./ui/shopping";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
 import { recognitionHtml } from "./ui/wildlife-panel";
 import { generateWorld, regionAt, type World } from "./world/gen";
@@ -176,6 +178,7 @@ function render() {
   setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("goals", goalsHtml(state, cal));
+  setPanel("shopping", shoppingHtml(state, world, cal));
   setPanel("weather", weatherHtml(state, world, cal, ambient, ui.hurry.rate));
   const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
@@ -511,6 +514,23 @@ function onClick(ev: Event) {
       // screen was open were paused, not spent away.
       lastReal = performance.now();
       break;
+    case "shopping-track": {
+      const id = target.dataset.id;
+      if (id === "craft" || id === "build") trackShopping(state, id, target.dataset.arg ?? "");
+      break;
+    }
+    case "shopping-clear":
+      clearShopping(state);
+      break;
+    case "shopping-find": {
+      const item = target.dataset.item as ItemId;
+      ui.filter = shoppingQuery(item);
+      ui.panes = { ...ui.panes, pane: "do" };
+      savePanes(localStorage, ui.panes);
+      const box = document.querySelector<HTMLInputElement>("[data-do=filter]");
+      if (box) box.value = ui.filter;
+      break;
+    }
     case "recognition-close":
       if (ui.recognition !== null && state.wildlife.recognitionQueue[0] === ui.recognition) state.wildlife.recognitionQueue.shift();
       ui.recognition = null;

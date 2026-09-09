@@ -168,6 +168,15 @@ small, .dim { color: var(--dim); }
 #goals .goal { margin: 0.35rem 0; }
 #goals .goal-title { font-weight: 600; }
 
+#shopping:empty { display: none; }
+#shopping ul { list-style: none; margin: 8px 0 0; padding: 0; }
+#shopping li { padding: 5px 0; border-top: 1px solid var(--line); }
+#shopping li small { display: block; margin-top: 2px; }
+.shopping-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.shopping-head > b { color: var(--accent); }
+.shopping-tool { margin-top: 6px; color: var(--dim); }
+.shopping-place { display: block; color: var(--accent); padding: 1px 4px 3px; }
+
 /* Bars */
 .bar {
   position: relative;
@@ -1201,6 +1210,7 @@ button.act small.gives, span.act small.gives,
   #app { grid-template-columns: 1fr; flex: none; }
   .col { display: contents; }
   #goals { order: 0; }
+  #shopping { order: 0; }
   #task { order: 1; }
   #stats { order: 2; }
   #weather { order: 3; }

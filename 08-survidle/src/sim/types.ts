@@ -675,6 +675,11 @@ export interface GoalState {
   lastSeason: Season;
 }
 
+/** One player-chosen outcome whose direct materials stay visible while they travel. */
+export type ShoppingTarget =
+  | { task: "craft"; arg: RecipeId }
+  | { task: "build"; arg: StructureId };
+
 export interface GameState {
   seed: number;
   /** Day of year the run began on, 0-based; 1 April unless the harness or the browser says otherwise. */
@@ -727,6 +732,8 @@ export interface GameState {
    * leave it alone.
    */
   goals: GoalState;
+  /** The one Make or Build outcome whose direct materials the player is tracking. */
+  shopping: ShoppingTarget | null;
   /**
    * The rungs this survivor has been shown a moment for, and the ones
    * earned but not yet shown. Per survivor rather than per world: a moment

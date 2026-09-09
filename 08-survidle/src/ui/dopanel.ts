@@ -12,6 +12,7 @@ import { check, leftBehind, type TaskOption, withProgression } from "../sim/task
 import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
 import { fmtDuration, fmtReal } from "../units";
 import { regionState } from "../sim/regionstate";
+import { shoppingTarget } from "../sim/shopping";
 import { walkableIce } from "../sim/weather";
 import { regionAt, type RegionDef, type World } from "../world/gen";
 import { masteryLine } from "./panels";
@@ -360,7 +361,12 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
   const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";
   // What the face no longer says, said here in full.
   const detail = o.detail ? `<div class="detail"><small>${esc(plain(o.detail))}</small></div>` : "";
-  return `${detail}<div class="expand">${buttons}${n}${deliver}${where}</div>${whenHtml(o, arg, ui, state)}`;
+  const target = (o.id === "craft" || o.id === "build") ? shoppingTarget(o.id, arg) : null;
+  const tracked = target && state.shopping?.task === target.task && state.shopping.arg === target.arg;
+  const track = target
+    ? `<button class="mini shopping-track${tracked ? " on" : ""}" data-act="shopping-track" data-id="${o.id}" data-arg="${esc(arg)}">${tracked ? "tracking materials" : "track materials"}</button>`
+    : "";
+  return `${detail}<div class="expand">${buttons}${n}${deliver}${where}${track}</div>${whenHtml(o, arg, ui, state)}`;
 }
 
 /**

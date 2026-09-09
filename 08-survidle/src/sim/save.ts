@@ -64,6 +64,7 @@ export function migrate(state: GameState): void {
   // it is in, so the load itself credits nothing. Under-crediting beats
   // inferring a history from state, which is the inference goals exist to avoid.
   state.goals ??= newGoals(calendar(state.minute, state.startDoy).season);
+  state.shopping ??= null;
   state.taught ??= {};
   state.teachQueue ??= [];
   state.wildlife ??= emptyWildlife();
