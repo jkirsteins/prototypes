@@ -12,6 +12,8 @@ import { addFirewood, drop, dropAll, eat, take } from "./sim/actions";
 import { advance } from "./sim/advance";
 import { calendar, dayNumber } from "./sim/calendar";
 import { setCueSink } from "./sim/cues";
+import { setWildlifeEventSink } from "./sim/wildlife-events";
+import type { WildlifeStartleEvent } from "./sim/wildlife-encounter";
 import { since } from "./sim/epitaph";
 import { createForecaster, noteMonthRow } from "./sim/forecaster";
 import { startIntent, type Where } from "./sim/intent";
@@ -43,14 +45,14 @@ import { introduceGoals, unintroducedGoals } from "./sim/goals";
 import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalNoticeToOpen, goalsHtml } from "./ui/goalpanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, viewOrigin } from "./ui/map";
+import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, mapViewportBounds, viewOrigin } from "./ui/map";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
-import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
+import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
 import { advanceHurry, hurryClick, hurryKind, newHurry } from "./ui/hurry";
 import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
@@ -96,6 +98,12 @@ let wasDead = false;
 // which cannot see the assignment through the function call.
 let state!: GameState;
 let world!: World;
+// Development fixtures hold their clock outside GameState and restore the run.
+let startleRestore: (() => void) | null = null;
+let startleStep: (() => void) | null = null;
+function persistGame(): void {
+  if (!(import.meta.env.DEV && startleRestore)) saveGame(state);
+}
 const ui = newUiState();
 ui.travelDisplay = loadTravelDisplay(localStorage);
 const SPECIFIC_KEY = "survidle.specific";
@@ -108,6 +116,11 @@ try {
 let awayInfo: { seconds: number; capped: boolean } | null = null;
 const audio = createAudioEngine(SLOTS);
 const sounds = createScheduler(audio);
+function onWildlifeStartle(event: WildlifeStartleEvent): void {
+  if (document.visibilityState !== "visible") return;
+  if (!enqueueWildlifeStartle(ui, event, performance.now())) return;
+  sounds.wildlifeStartle(event, state.weather.snowCm >= 5);
+}
 const portraitMotion = createPortraitMotion();
 // Read by fresh() below (called from boot(), before the forecaster exists) and by
 // requestForecast() (defined after boot(), once world is real) - declared here so
@@ -130,12 +143,14 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   ui.away = null;
   ui.hurry = newHurry();
   ui.speedHistory = newSpeedHistory();
+  ui.wildlifeStartles = [];
+  ui.wildlifeStartleIds.clear();
   ui.confirmAbandon = false;
   ui.panes = loadPanes(localStorage);
   ui.confirmCamp = false;
   resetPanels();
   resetForecastAt();
-  saveGame(state);
+  persistGame();
   awayDial?.refresh();
 }
 
@@ -152,12 +167,14 @@ function boot() {
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
     if (elapsed > 30 && !state.dead && !state.landing) {
       setCueSink(null);
+      setWildlifeEventSink(null);
       ui.awayFromDay = calendar(state.minute, state.startDoy).day;
       ui.away = catchUp(state, world, elapsed, speed);
       ui.hurry = newHurry();
       setCueSink((c) => sounds.cue(c));
+      setWildlifeEventSink(onWildlifeStartle);
       awayInfo = { seconds: Math.min(elapsed, awaySeconds(state)), capped: elapsed > awaySeconds(state) };
-      saveGame(state);
+      persistGame();
     }
   } else {
     fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy);
@@ -166,7 +183,8 @@ function boot() {
 
 let lastTipKey = "";
 let lastMapKey = "";
-function render() {
+function render(nowMs = performance.now()) {
+  if (ui.wildlifeStartles.length) document.getElementById("mapdyn")!.style.setProperty("--wildlife-now", `${nowMs}ms`);
   // Arriving where you were looking ends the looking.
   if (ui.selected === state.player.region) ui.selected = null;
   const cal = calendar(state.minute, state.startDoy);
@@ -180,10 +198,19 @@ function render() {
   setPanel("goals", goalsHtml(state, world, cal));
   setPanel("shopping", shoppingHtml(state, world, cal));
   setPanel("weather", weatherHtml(state, world, cal, ambient, ui.hurry.rate));
-  const key = mapKey(state, world, ui, cal);
-  if (key !== lastMapKey) {
+  // A zoom changes the grid's dimensions. Measure again after that morph so
+  // edge effects use the new visible intersection before the browser paints.
+  for (let pass = 0; pass < 2; pass++) {
+    if (ui.wildlifeStartles.length) {
+      const grid = document.querySelector<HTMLElement>("#mapdyn .grid");
+      const viewport = document.querySelector<HTMLElement>("#mapdyn .scroll-x");
+      ui.mapViewport = grid && viewport ? mapViewportBounds(grid.getBoundingClientRect(), viewport.getBoundingClientRect()) : null;
+    }
+    const key = mapKey(state, world, ui, cal, nowMs);
+    if (key === lastMapKey) break;
     lastMapKey = key;
-    setPanel("mapdyn", mapHtml(world, state, ui, cal));
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, nowMs));
+    if (!ui.wildlifeStartles.length) break;
   }
   setPanel("task", taskHtml(state, world, cal, ui.hurry));
   setPanel("orders", queueHtml(state, world, cal));
@@ -262,19 +289,27 @@ let lastSave = performance.now();
 function frame(now: number) {
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
+  if (import.meta.env.DEV && startleRestore) {
+    render(now);
+    requestAnimationFrame(frame);
+    return;
+  }
   if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalGuide && ui.recognition === null) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
+      setWildlifeEventSink(null);
+      ui.wildlifeStartles = [];
       ui.awayFromDay = calendar(state.minute, state.startDoy).day;
       ui.away = catchUp(state, world, dtSec, speed);
       ui.hurry = newHurry();
       setCueSink((c) => sounds.cue(c));
+      setWildlifeEventSink(onWildlifeStartle);
       awayInfo = { seconds: Math.min(dtSec, awaySeconds(state)), capped: dtSec > awaySeconds(state) };
     } else {
       // The hurry: extra minutes for work chosen by hand, on top of the frame's own. The speed test aid does not scale it.
       const extra = advanceHurry(ui.hurry, state, world, dtSec);
-      advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra, { wildlife: "detailed" });
+      advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra, { wildlife: "detailed", live: document.visibilityState === "visible" });
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
   } else if (ui.away || ui.teach || ui.welcome || ui.goalGuide || ui.recognition !== null) {
@@ -303,14 +338,14 @@ function frame(now: number) {
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
-  render();
+  render(now);
   updateSpeedHistory(document, ui.speedHistory, now, GAME_MINUTES_PER_REAL_SECOND * ui.hurry.rate);
   portraitMotion.frame(document, now, document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
   const cal = calendar(state.minute, state.startDoy);
   sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
   if (now - lastSave > 5000) {
     lastSave = now;
-    saveGame(state);
+    persistGame();
   }
   requestAnimationFrame(frame);
 }
@@ -644,7 +679,7 @@ function onClick(ev: Event) {
   state.rng = rng.s;
   // After the rng write-back, so the request the click triggers reads the committed rng.
   if (FORECAST_ACTS.includes(target.dataset.act!)) requestForecast();
-  saveGame(state);
+  persistGame();
   render();
   restoreScroll();
 }
@@ -674,6 +709,7 @@ function requestForecast(): void {
   forecastAt = { minute: state.minute, day: dayNumber(state.minute), region: state.player.region, real: performance.now() };
 }
 setCueSink((c) => sounds.cue(c));
+setWildlifeEventSink(onWildlifeStartle);
 // Registered before mountControl's own capture listeners, so unlock() always
 // runs before the control's show() on the same click or keydown - otherwise
 // the note reads stale for one extra interaction.
@@ -766,9 +802,9 @@ document.addEventListener("change", (ev) => {
   render();
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") saveGame(state);
+  if (document.visibilityState === "hidden") persistGame();
 });
-window.addEventListener("pagehide", () => saveGame(state));
+window.addEventListener("pagehide", persistGame);
 // The terrain letters never change, so the legend is set once rather than rebuilt with the map.
 document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
 
@@ -832,7 +868,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     const walk = insertWalkAtTop(state, world, cell);
     startIntent(state, world, cal, rng, walk.req, walk.id);
     state.rng = rng.s;
-    saveGame(state);
+    persistGame();
     render();
   });
   board.addEventListener("pointerleave", (ev) => {
@@ -894,7 +930,13 @@ requestAnimationFrame(frame);
 
 // For poking at the run from the console and for browser checks.
 declare global {
-  interface Window { survidle: { get state(): GameState; get world(): World; advance(minutes: number): void; speed: number } }
+  interface Window { survidle: {
+    get state(): GameState; get world(): World; advance(minutes: number): void; speed: number;
+    startleSetup?(scenario: import("../scripts/startle-seeds").StartleScenario): Promise<void>;
+    startleStep?(): void;
+    startleAdvance?(minutes: number): void;
+    startleEnd?(): void;
+  } }
 }
 window.survidle = {
   get state() { return state; },
@@ -902,3 +944,35 @@ window.survidle = {
   advance(minutes: number) { advance(state, world, minutes); render(); },
   speed,
 };
+if (import.meta.env.DEV) {
+  window.survidle.startleSetup = async (scenario) => {
+    const harness = await import("../scripts/startle-seeds");
+    const scene = harness.prepareStartleScenario(scenario);
+    startleRestore?.();
+    const previous = { state, world, ui: { ...ui } };
+    startleRestore = () => {
+      state = previous.state;
+      world = previous.world;
+      Object.assign(ui, previous.ui);
+      startleRestore = null;
+      startleStep = null;
+      lastReal = performance.now();
+      lastSave = lastReal;
+      resetPanels();
+      resetForecastAt();
+      render();
+    };
+    state = scene.state;
+    world = scene.world;
+    Object.assign(ui, newUiState(), { zoom: 0, welcome: false });
+    resetPanels();
+    startleStep = () => { harness.stepStartleScenario(scene, scenario, true); render(); };
+    render();
+  };
+  window.survidle.startleStep = () => startleStep?.();
+  window.survidle.startleAdvance = (minutes) => {
+    advance(state, world, minutes, { wildlife: "detailed", live: false });
+    render();
+  };
+  window.survidle.startleEnd = () => startleRestore?.();
+}

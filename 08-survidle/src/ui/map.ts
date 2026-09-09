@@ -5,8 +5,9 @@
  * into cosmetic detail while retaining one hit target and one simulation
  * position: 3 by 3 at the first close rung, 6 by 6 at the closest. Beyond the
  * default a glyph is a block of cells drawn as its commonest ground. Regions
- * never visited are fog; regions only seen from next door are dim. The player
- * never pans; the world moves under them.
+ * never visited are fog; regions only seen from next door are dim. At the
+ * cell-scale rungs, ground known this life but outside the current viewshed is
+ * muted. The player never pans; the world moves under them.
  */
 import type { Calendar } from "../sim/calendar";
 import { fuelTotal, hasEmbers, roofed } from "../sim/fire";
@@ -19,11 +20,21 @@ import type { AgentSpecies, GameState, RegionState, Terrain, WildlifeSubject } f
 import { ambientTemperature, DEEP_SNOW_CM, iceMode } from "../sim/weather";
 import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
 import { WORLD_H, WORLD_W } from "../world/terrain";
-import { esc, type UiState } from "./render";
+import { CELL_KM } from "../units";
+import { activeWildlifeStartles, esc, type UiState } from "./render";
 import { elevationAt, groundGlyph, offshoreAt, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
 import { lighting } from "./sky";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
+import { metricPointForWildlife } from "../sim/wildlife-space";
+import { hasLineOfSight, sightRangeCells, visibleCells } from "../sim/sight";
+
+const CELL_M = CELL_KM * 1000;
+
+/** A small open camp fire remains a distinct light out to about five kilometres on a clear night. */
+const CAMPFIRE_VISIBLE_KM = 5;
+/** Inside one kilometre the map can resolve firelit ground as well as the point source itself. */
+const CAMPFIRE_LOCAL_LIGHT_KM = 1;
 
 export const GLYPH: Record<Terrain, string> = {
   water: "~", fell: "^", rock: "n", bog: "\"", spruce: "A", pine: "T", birch: "Y", meadow: ".",
@@ -88,6 +99,7 @@ export function legendHtml(): string {
     `<span class="tone-key">brighter ground stands higher; paler water is shallower</span>` +
     `<span class="pl-key">underlined: something lies there</span>` +
     `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +
+    `<span class="memory-key">muted: remembered, faint: inherited</span>` +
     `<span class="fog-key">dark: never been there</span>`
   );
 }
@@ -184,6 +196,18 @@ export function cellFromClient(
   return cellFromPoint(world, state, ui, clientX - grid.left, clientY - grid.top);
 }
 
+/** The scroll viewport clips a centered grid on small panels and short windows. */
+export function mapViewportBounds(
+  grid: Pick<DOMRect, "left" | "top" | "right" | "bottom">,
+  viewport: Pick<DOMRect, "left" | "top" | "right" | "bottom">,
+): UiState["mapViewport"] {
+  const left = Math.max(grid.left, viewport.left) - grid.left;
+  const top = Math.max(grid.top, viewport.top) - grid.top;
+  const right = Math.min(grid.right, viewport.right) - grid.left;
+  const bottom = Math.min(grid.bottom, viewport.bottom) - grid.top;
+  return right > left && bottom > top ? { left, top, right, bottom } : null;
+}
+
 /** Cells per glyph at each zoom level. */
 export const ZOOMS = LEVELS.map((l) => l.cells);
 /** Priority when a block's ground is tied: what the eye should see first. */
@@ -226,35 +250,6 @@ export function visualGround(seed: number, x: number, y: number, terrain: Terrai
     const pick = detailHash(seed, x, y, i) % forms.length;
     return pick === 0 ? base : forms[pick];
   });
-}
-
-function animalDirection(subject: WildlifeSubject, world: World): { dx: number; dy: number } | null {
-  const active = subject.active;
-  if (!active) return null;
-  const next = active.route[0] ?? (active.target !== null ? active.target : undefined);
-  if (next === undefined || next === active.cell) return null;
-  const dx = Math.sign((next % world.w) - (active.cell % world.w));
-  const dy = Math.sign(Math.floor(next / world.w) - Math.floor(active.cell / world.w));
-  return Math.abs(dx) + Math.abs(dy) === 1 ? { dx, dy } : null;
-}
-
-/** Cosmetic position inside a cell. Directed animals cross it toward their next real cell. */
-export function animalVisualSlot(subject: WildlifeSubject, world: World, minute: number, detail = 3, ordinal = 0): number {
-  const active = subject.active;
-  if (!active) return Math.floor(detail / 2) * detail + Math.floor(detail / 2);
-  const seed = detailHash(world.seed, active.cell, subject.id, ordinal);
-  if (active.intent === "rest" || active.intent === "den") return seed % (detail * detail);
-  const phase = Math.min(detail - 1, Math.floor((((minute % 10) + 10) % 10) / 10 * detail));
-  const direction = animalDirection(subject, world);
-  if (direction) {
-    const across = direction.dx > 0 || direction.dy > 0 ? phase : detail - 1 - phase;
-    return direction.dx === 0 ? across * detail + seed % detail : (seed % detail) * detail + across;
-  }
-  const step = Math.floor(minute / 2);
-  const startX = seed % detail;
-  const x = (startX + step) % detail;
-  const y = (Math.floor(seed / detail) + Math.floor((startX + step) / detail)) % detail;
-  return y * detail + x;
 }
 
 function visualSlotStyle(slot: number, detail: number): string {
@@ -439,7 +434,7 @@ function markedCells(st: RegionState): number[] {
 }
 
 /** Everything the map's markup depends on, so it is rebuilt only when one of them changes. */
-export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar): string {
+export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar, nowMs = performance.now()): string {
   const marks = Object.entries(state.regions).map(([id, r]) => {
     const cells = markedCells(r);
     const roofs = cells.map((c) => (roofed(siteAt(r, c)) ? "H" : "-")).join("");
@@ -454,12 +449,18 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const discoveredSum = Object.values(state.discovered).reduce((a, b) => a + b, 0);
   const animals = level.cells === 1 ? visibleWildlife(state, world, cal)
     .filter((subject) => subject.active && (subject.active.cell % world.w) >= x0 && (subject.active.cell % world.w) < x0 + level.w && Math.floor(subject.active.cell / world.w) >= y0 && Math.floor(subject.active.cell / world.w) < y0 + level.h)
-    .map((s) => `${s.id}:${s.active?.cell}:${wildlifeMembers(s)}:${state.wildlife.recognized[s.id] ? s.name ?? "" : ""}:${s.active?.intent}:${level.detail > 1 ? animalVisualSlot(s, world, state.minute, level.detail) : ""}`).join(",") : "";
+    .map((s) => {
+      const point = level.detail > 1 ? metricPointForWildlife(state, world, s) : null;
+      return `${s.id}:${s.active?.cell}:${wildlifeMembers(s)}:${state.wildlife.recognized[s.id] ? s.name ?? "" : ""}:${s.active?.intent}:${point ? `${point.xM.toFixed(2)}:${point.yM.toFixed(2)}` : ""}`;
+    }).join(",") : "";
   const playerDetail = level.detail > 1 ? playerVisualSlot(state, level.detail) : "";
-  return `${ui.zoom}|${x0}|${y0}|${cell}:${playerDetail}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${animals}`;
+  const viewRange = level.cells === 1 ? sightRangeCells(state, world, cal, cell) : "";
+  const startles = activeWildlifeStartles(ui, nowMs).map((cue) => cue.key).join(",");
+  const viewport = startles && ui.mapViewport ? Object.values(ui.mapViewport).join(",") : "";
+  return `${ui.zoom}|${x0}|${y0}|${cell}:${playerDetail}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|${animals}|${startles}|${viewport}`;
 }
 
-export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar): string {
+export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs = performance.now()): string {
   const cur = state.player.region;
   const sel = ui.selected;
   const snow = state.weather.snowCm > SNOW_SHOWN_CM;
@@ -469,7 +470,19 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const l = levelAt(ui.zoom);
   const z = l.cells;
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+  const startles = activeWildlifeStartles(ui, nowMs);
+  const recoilAt = new Map<number, number>();
+  for (const { event, startedAtMs } of startles) {
+    if (event.perception.kind === "seen") recoilAt.set(event.subjectId, startedAtMs);
+  }
+  // Filled by actual glyph placement below, after shared-cell collisions are
+  // resolved. A future exact-position glyph supplies its center here too.
+  const animalAnchors = new Map<number, { x: number; y: number }>();
   const playerCell = cellOf(state, world);
+  // Current visibility has meaning only while one glyph is one mechanical
+  // cell. Coarser blocks remain a map of knowledge rather than pretending a
+  // majority-visible block is a precise view.
+  const visibleNow = z === 1 ? visibleCells(state, world, cal, playerCell) : null;
   const toGlyph = (cell: number): number => {
     const c = cellAt(world, cell);
     const gx = Math.floor((c.x - x0) / z);
@@ -479,6 +492,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   };
 
   const markerAt = new Map<number, (typeof MARKS)[keyof typeof MARKS]>();
+  const visibleFireDistance = new Map<number, number>();
   const featuresAt = new Map<number, string[]>();
   const addFeature = (glyph: number, feature: string): void => {
     if (glyph < 0) return;
@@ -493,8 +507,14 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       let m: (typeof MARKS)[keyof typeof MARKS];
       // Only the camp itself can carry the region's one fire; a site the camp has
       // moved away from is read by its roof alone.
-      if (isCamp && st.fire.lit) m = MARKS.fire;
-      else if (isCamp && hasEmbers(st.fire)) m = MARKS.coals;
+      const live = visibleNow === null || visibleNow.has(cell);
+      const fireDistanceKm = Math.hypot(cell % world.w - playerCell % world.w, Math.floor(cell / world.w) - Math.floor(playerCell / world.w)) * CELL_KM;
+      const fireVisible = isCamp && st.fire.lit && (live || (fireDistanceKm <= CAMPFIRE_VISIBLE_KM && hasLineOfSight(world, playerCell, cell, 1.5)));
+      if (fireVisible) {
+        visibleFireDistance.set(cell, fireDistanceKm);
+        m = MARKS.fire;
+      }
+      else if (isCamp && live && hasEmbers(st.fire)) m = MARKS.coals;
       else m = roofed(siteAt(st, cell)) ? MARKS.shelter : MARKS.camp;
       const g = toGlyph(cell);
       if (g >= 0) {
@@ -543,7 +563,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       addFeature(g, "supplies");
     }
   }
-  const rings = cal.isNight ? litRings(lightSources(state, world), toGlyph, z, l) : new Map<number, number>();
+  const sources = lightSources(state, world).filter((source) => {
+    const distanceKm = Math.hypot(source.cell % world.w - playerCell % world.w, Math.floor(source.cell / world.w) - Math.floor(playerCell / world.w)) * CELL_KM;
+    const observable = visibleNow === null || visibleNow.has(source.cell) || visibleFireDistance.has(source.cell);
+    return observable && distanceKm <= CAMPFIRE_LOCAL_LIGHT_KM;
+  });
+  const rings = cal.isNight ? litRings(sources, toGlyph, z, l) : new Map<number, number>();
 
   // Region, ground and discovery per glyph, then borders between glyphs.
   const regions = new Int32Array(l.w * l.h);
@@ -645,7 +670,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   // The three closest rungs all read one simulation cell at a time. The two
   // detailed rungs name their visual grain; the span says how much real ground
   // is on screen. "centred on you" is the title and not the corner.
-  const span = `${(l.w * z * 0.3).toFixed(0)} by ${(l.h * z * 0.3).toFixed(0)} km`;
+  const span = `${(l.w * z * CELL_KM).toFixed(0)} by ${(l.h * z * CELL_KM).toFixed(0)} km`;
   const tools = `<div class="maptools"><button class="mini" data-act="zoom" data-dir="in" ${ui.zoom === 0 ? "disabled" : ""} title="Closer (plus key)">+</button><button class="mini" data-act="zoom" data-dir="out" ${ui.zoom === LEVELS.length - 1 ? "disabled" : ""} title="Farther (minus key)">-</button><span class="dim" title="${esc(`${span} on screen, centred on you`)}">${zoomLabel(ui.zoom)}, ${span}</span></div>`;
 
   const parts: string[] = [];
@@ -662,6 +687,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
+    const mechanicalCell = cellIdx(world, x0 + gx * z, y0 + gy * z);
     const reg = regions[i];
     const seen = reg >= 0 ? seenAt[i] : 0;
     const named = reg >= 0 && discovery(state, reg) > 0;
@@ -688,7 +714,11 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     } else {
       const t = terrains[i];
       cls.push(`t-${t}`);
-      if (seen === 1) cls.push("dim");
+      const lightRing = rings.get(i);
+      const firelit = lightRing !== undefined && hasLineOfSight(world, playerCell, mechanicalCell, 0.5);
+      const current = visibleNow === null || visibleNow.has(mechanicalCell) || visibleFireDistance.has(mechanicalCell) || firelit;
+      if (seen === 1 && !current) cls.push("dim");
+      if (seen === 2 && !current) cls.push("memory");
       if (drawBorders) {
         if (gx > 0 && ownsEdge(reg, regions[i - 1])) cls.push("bl");
         if (gx < l.w - 1 && ownsEdge(reg, regions[i + 1])) cls.push("br");
@@ -723,7 +753,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       }
       if (snow && t === "meadow") glyph = "*";
       if (pileGlyphs.has(i) && seen === 2) cls.push("pl");
-      const ring = rings.get(i);
+      const ring = current ? lightRing : undefined;
       if (ring !== undefined) {
         cls.push(`lit-${ring}`);
         style = ` style="--fd:${flickerDelay(i)}"`;
@@ -733,11 +763,16 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (m) {
       if (!detailGlyphs) {
         cls.push("mk", m.cls);
+        if (m.cls === "mk-fire" && (visibleFireDistance.get(mechanicalCell) ?? 0) > CAMPFIRE_LOCAL_LIGHT_KM) cls.push("fire-far");
         // The mood rides as a class and not as a data attribute: the morph keys an
         // element by its data attributes, so a mood written there would make every
         // change of task replace the glyph's node instead of retitling it.
         if (m.cls === "mk-player") cls.push(`mood-${moodOf(state)}`);
         glyph = m.glyph;
+      } else if (m === MARKS.you || m === MARKS.camp || m === MARKS.fire || m === MARKS.coals) {
+        // Snow's brightness filter creates a stacking context on the cell.
+        // Lift the containing context along with its essential detail marker.
+        cls.push("has-map-signal");
       }
     } else if (!detailGlyphs) {
       const animal = animalAt.get(i)?.[0];
@@ -746,6 +781,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         const recognized = state.wildlife.recognized[animal.id];
         cls.push("mk", "mk-animal", recognized ? `wildlife-${animal.colour}` : "wildlife-unknown");
         glyph = ANIMAL_GLYPH[animal.species];
+        animalAnchors.set(animal.id, { x: (gx + 0.5) * l.px, y: (gy + 0.5) * l.line });
+        const recoil = recoilAt.get(animal.id);
+        if (recoil !== undefined) {
+          cls.push("wildlife-recoil");
+          style = style ? style.replace(/"$/, `;--wildlife-start:${recoil}ms"`) : ` style="--wildlife-start:${recoil}ms"`;
+        }
       }
     }
     // Named regions stay selectable so their ground can be inspected even when it
@@ -759,7 +800,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // flicker on the @ and the camp's x: they are the cells whose names
     // differ enough to be found and moved.
     const act = named ? ` data-act="select" data-i="${i}" data-r="${reg}"` : "";
-    const terrain = reg < 0 ? "beyond the mapped world" : seen === 0 ? "unknown ground" : `${TERRAIN_NAME[terrains[i]]}${z > 1 ? `, ${z * 300} m block` : ""}`;
+    const terrain = reg < 0 ? "beyond the mapped world" : seen === 0 ? "unknown ground" : `${TERRAIN_NAME[terrains[i]]}${z > 1 ? `, ${z * CELL_M} m block` : ""}`;
     const place = reg >= 0 && named ? world.regions.get(reg)?.name : undefined;
     const info = [terrain, place, ...featuresAt.get(i) ?? []].filter(Boolean).join("; ");
     const wildlife = animalId === null ? "" : ` data-wildlife-id="${animalId}"`;
@@ -784,18 +825,64 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         const mood = m.cls === "mk-player" ? ` mood-${moodOf(state)}` : "";
         overlays.push(`<b class="micro-mark ${m.cls}${mood}" data-visual-slot="${slot}" style="${visualSlotStyle(slot, l.detail)}">${glyphHtml(m.glyph)}</b>`);
       }
-      for (const [ordinal, animal] of (animalAt.get(i) ?? []).entries()) {
-        let slot = animalVisualSlot(animal, world, state.minute, l.detail, ordinal);
-        while (used.has(slot)) slot = (slot + 1) % (l.detail * l.detail);
-        used.add(slot);
-        const recognized = state.wildlife.recognized[animal.id];
-        overlays.push(`<b class="micro-mark mk-animal ${recognized ? `wildlife-${animal.colour}` : "wildlife-unknown"}" data-wildlife-id="${animal.id}" data-visual-slot="${slot}" style="${visualSlotStyle(slot, l.detail)}">${ANIMAL_GLYPH[animal.species]}</b>`);
-      }
       const ground = detailGlyphs.map((g) => `<i class="micro-ground">${glyphHtml(g)}</i>`).join("");
       content = `<span class="detail-ground" aria-hidden="true">${ground}</span>${overlays.join("")}`;
     }
     parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${wildlife}${style}>${content}</span>`);
   }
-  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}</div><i class="shade"></i></div>${tools}`);
+  const animalMarkup: string[] = [];
+  if (l.detail > 1) {
+    for (const animal of visibleWildlife(state, world, cal)) {
+      const point = metricPointForWildlife(state, world, animal);
+      if (!point) continue;
+      const x = (point.xM / CELL_M - x0) * l.px;
+      const y = (point.yM / CELL_M - y0) * l.line;
+      if (x < 0 || y < 0 || x > l.w * l.px || y > l.h * l.line) continue;
+      animalAnchors.set(animal.id, { x, y });
+      const recognized = state.wildlife.recognized[animal.id];
+      const recoil = recoilAt.get(animal.id);
+      const motionClass = recoil === undefined ? "" : " wildlife-recoil";
+      const motionStyle = recoil === undefined ? "" : `;--wildlife-start:${recoil}ms`;
+      animalMarkup.push(`<b class="micro-mark wildlife-map-mark mk-animal ${recognized ? `wildlife-${animal.colour}` : "wildlife-unknown"}${motionClass}" data-wildlife-id="${animal.id}" style="--animal-x:${Number(x.toFixed(2))}px;--animal-y:${Number(y.toFixed(2))}px${motionStyle}">${ANIMAL_GLYPH[animal.species]}</b>`);
+    }
+  }
+  const viewport = ui.mapViewport ?? { left: 0, top: 0, right: l.w * l.px, bottom: l.h * l.line };
+  // Reserve room for the whole mark, including its pop and rise.
+  const insetX = Math.min(24, (viewport.right - viewport.left) / 2);
+  const insetY = Math.min(24, (viewport.bottom - viewport.top) / 2);
+  const startleMarkup = startles.map(({ event, startedAtMs, key }) => {
+    const gx = (event.source.xM / CELL_M - x0) / z;
+    const gy = (event.source.yM / CELL_M - y0) / z;
+    // Seen reactions follow the subject's rendered glyph, which may already
+    // have escaped its original cell. Hearing never consults hidden wildlife.
+    const animal = event.perception.kind === "seen" ? animalAnchors.get(event.subjectId) : undefined;
+    const anchor = animal ?? {
+      x: (l.detail > 1 ? gx : Math.floor(gx) + 0.5) * l.px,
+      y: (l.detail > 1 ? gy : Math.floor(gy) + 0.5) * l.line,
+    };
+    let jitterX = 0;
+    let jitterY = 0;
+    if (event.perception.kind === "heard") {
+      let hash = 0;
+      for (const char of event.id) hash = (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0;
+      const angle = (hash % 360) * Math.PI / 180;
+      const radius = Math.min(30, Math.max(0, event.uncertaintyM)) / (CELL_M * z);
+      jitterX = Math.cos(angle) * radius * l.px;
+      jitterY = Math.sin(angle) * radius * l.line;
+    }
+    // The cue sits above one rendered glyph, not above its 300 m parent.
+    // Its font height and the micro-glyph height stay constant across zooms.
+    const px = anchor.x + jitterX;
+    const py = anchor.y - l.line / l.detail / 2 - Math.max(18, l.font) + jitterY;
+    const x = Math.max(viewport.left + insetX, Math.min(viewport.right - insetX, px));
+    const y = Math.max(viewport.top + insetY, Math.min(viewport.bottom - insetY, py));
+    const bearing = ["east", "southeast", "south", "southwest", "west", "northwest", "north", "northeast"];
+    const direction = bearing[(Math.round(event.bearingRad / (Math.PI / 4)) % 8 + 8) % 8];
+    const edge = px !== x || py !== y ? ` edge bearing-${direction}` : "";
+    // All cues share the grid's transient layer, clear of cell clipping and
+    // snow filters. Their anonymous identity and start time survive movement.
+    return `<i aria-hidden="true" class="wildlife-startle ${event.perception.kind}${edge}" data-startle="${key}" style="--wildlife-start:${startedAtMs}ms;left:${Number(x.toFixed(2))}px;top:${Number(y.toFixed(2))}px">!</i>`;
+  });
+  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}${animalMarkup.join("")}${startleMarkup.join("")}</div><i class="shade"></i></div>${tools}`);
   return parts.join("");
 }

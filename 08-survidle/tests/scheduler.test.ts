@@ -16,7 +16,7 @@ function fakeEngine() {
     setLoops(t) { loops.push({ ...t }); },
     play(slot, opts) { played.push({ slot, opts }); },
     settings: () => ({ volume: 1, muted: false, ambience: true }),
-    update() {}, suspend() {}, resume() {},
+    update() {}, suspend() {}, resume() {}, duck() {},
   };
   return { engine, played, loops };
 }

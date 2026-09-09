@@ -30,6 +30,10 @@ export type WildlifeIntent = "forage" | "drink" | "rest" | "flee" | "hunt" | "ca
 export interface WildlifeCohort { sex: "f" | "m"; bornYear: number; count: number }
 export interface WildlifeActive {
   cell: number;
+  /** Exact world position in metres. The cell is only its current spatial bucket. */
+  position: { xM: number; yM: number };
+  /** One physical segment in progress; decisions choose it and elapsed game time traverses it. */
+  travel: { destination: { xM: number; yM: number }; cell: number } | null;
   hunger: number;
   thirst: number;
   rest: number;
@@ -37,6 +41,12 @@ export interface WildlifeActive {
   intent: WildlifeIntent;
   target: number | null;
   route: number[];
+  /** Metres left in the current escape, spent through passable spatial steps. */
+  escapeRemainingM: number;
+  escapeStartedMinute: number | null;
+  lastDetectionMinute: number | null;
+  /** Counts transitions into escape, rather than individual detection rolls. */
+  escapeEpisode: number;
 }
 export interface WildlifeSubject {
   id: number;
@@ -751,6 +761,8 @@ export interface GameState {
   /** Real hours the world runs on without the player before the catch-up caps it: the away dial, 1 to AWAY_HOURS_MAX, set per run. */
   awayHours: number;
   minute: number;
+  /** Elapsed game minutes not yet large enough to run the next fixed simulation tick. */
+  advanceCarry: number;
   rng: number;
   player: Player;
   /** State of every region touched so far, by region id. */

@@ -347,14 +347,13 @@ describe("Chapter 1 shelter storm evidence", () => {
     const centre = cellOf(state, world);
     siteFor(state.regions[state.player.region], centre).structures.leanTo = true;
     shelterAttempt(state, world, 24);
-    state.weather.storm = { id: 24, source: "natural", kind: "rain", from: 1, until: 2, warned: false };
+    state.weather.storm = { id: 24, source: "natural", kind: "rain", from: 0.95, until: 1.05, warned: false };
 
-    state.minute = 0.95;
-    advance(state, world, 0.1);
+    state.minute = 0;
+    advance(state, world, 1);
     expect(state.goals.opportunity?.minutesByProtection[2]).toBeCloseTo(0.05);
 
-    state.minute = 1.95;
-    advance(state, world, 0.1);
+    advance(state, world, 1);
     expect(state.goals.opportunity?.minutesByProtection[2]).toBeCloseTo(0.1);
   });
 
@@ -366,7 +365,7 @@ describe("Chapter 1 shelter storm evidence", () => {
     shelterAttempt(state, world, 25);
     state.weather.storm = { id: 25, source: "natural", kind: "rain", from: 1.03, until: 61.03, warned: false };
 
-    for (let i = 0; i < 88; i++) advance(state, world, 0.7);
+    for (let i = 0; i < 89; i++) advance(state, world, 0.7);
 
     expect(state.goals.opportunity?.minutesByProtection[2]).toBeCloseTo(60);
     expect(state.goals.done.testShelter).toBe(true);

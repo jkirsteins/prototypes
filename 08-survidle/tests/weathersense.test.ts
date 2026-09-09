@@ -303,6 +303,7 @@ describe("the storm choice", () => {
       && neighbours(world, c).some(n => cellAt(world, n).region === r.id && cellAt(world, n).terrain === "spruce"))!;
     const from = neighbours(world, camp).find(c => cellAt(world, c).region === r.id && cellAt(world, c).terrain === "spruce")!;
     regionState(state, world, r.id).campCell = camp;
+    siteFor(regionState(state, world, r.id), camp).structures.leanTo = true;
     placeAt(state, world, from);
     state.player.frostbite.feet = 1;
     state.weather.snowCm = 0;
@@ -326,6 +327,7 @@ describe("the storm choice", () => {
       && neighbours(world, c).some(n => cellAt(world, n).region === r.id && cellAt(world, n).terrain === "spruce"))!;
     const from = neighbours(world, camp).find(c => cellAt(world, c).region === r.id && cellAt(world, c).terrain === "spruce")!;
     regionState(state, world, r.id).campCell = camp;
+    siteFor(regionState(state, world, r.id), camp).structures.leanTo = true;
     placeAt(state, world, from);
     state.player.frostbite.feet = 1;
     state.weather.snowCm = 0;

@@ -69,6 +69,7 @@ describe("the landing", () => {
     const deathCell = Math.floor(state.player.y) * world.w + Math.floor(state.player.x);
     die(state, "froze", regionAt(world, state.player.region).name);
     const packMeat = qty(state.player.pack, "driedMeat");
+    state.advanceCarry = 0.5;
     beginAgain(state, world);
     expect(state.landing).not.toBeNull();
     expect(state.landing!.gapDays).toBe(90);
@@ -78,6 +79,7 @@ describe("the landing", () => {
     // its 90 days from there.
     expect(state.landing!.date).toEqual({ year: 1, doy: 200 });
     expect(state.minute).toBe(0);
+    expect(state.advanceCarry).toBe(0);
     expect(state.startDoy).toBe(200);
     expect(state.year).toBe(1);
     expect(campSite(st)!.structures.leanTo).toBe(true);

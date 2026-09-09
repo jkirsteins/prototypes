@@ -101,8 +101,10 @@ describe("the record's seams", () => {
 
   it("abandoning is a death called gave up, recorded", () => {
     const { state } = newGame(8);
+    state.advanceCarry = 0.5;
     abandon(state);
     expect(state.dead!.cause).toBe("gaveUp");
+    expect(state.advanceCarry).toBe(0);
     expect(hasEvent(state, (e) => e.kind === "abandoned")).toBe(true);
     expect(state.log[state.log.length - 1].text).toBe(DEATH_LINES.gaveUp);
   });

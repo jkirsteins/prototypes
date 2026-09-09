@@ -119,6 +119,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     startDoy,
     awayHours: AWAY_HOURS_DEFAULT,
     minute: 0,
+    advanceCarry: 0,
     rng: derive(seed, 99),
     regions: {},
     discovered: {},

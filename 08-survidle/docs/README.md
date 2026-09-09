@@ -309,6 +309,9 @@ waiting, and everything done while you are away run at the one scale.
 
 ## Debug URL parameters
 
+- For an ordinary wildlife encounter, follow the
+  [natural seed 19 playtest](natural-wildlife-playtest.md): land, then click
+  the deer one map cell west of the survivor for a 300 m walk.
 - `?seed=123` starts a fresh run with that world seed. While present, every
   reload starts over instead of loading the save. Without it, a reload
   returns to whatever phase the save is in: alive, the tombstone, or the

@@ -6,6 +6,7 @@ import { DEFAULT_ZOOM } from "./map";
 import { defaultPanes, type Panes } from "./panes";
 import { DEFAULT_TRAVEL_DISPLAY, type TravelDisplay } from "./travel";
 import type { AwaySummary } from "../sim/save";
+import type { WildlifeStartleEvent } from "../sim/wildlife-encounter";
 import type { GoalId, IntentRequest, ItemId, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
 
 /** What the screen remembers that the game does not. */
@@ -33,6 +34,11 @@ export interface UiState {
   goalGuide: { ids: GoalId[]; done: GoalId[]; notices?: string[]; automatic: boolean } | null;
   /** The recognized wildlife subject whose naming moment is open. */
   recognition: number | null;
+  /** Perceived live reactions only; neither the queue nor its deduplication history is saved. */
+  wildlifeStartles: { event: WildlifeStartleEvent; startedAtMs: number; key: number }[];
+  wildlifeStartleIds: Set<string>;
+  /** Visible viewport intersection in pixels relative to the glyph grid. */
+  mapViewport: { left: number; top: number; right: number; bottom: number } | null;
   /** The landing's welcome is open. Every landing has one, fresh survivor or heir. */
   welcome: boolean;
   /** The settings panel (sound, and the play-data beacon) is open. */
@@ -138,8 +144,22 @@ export function newUiState(): UiState {
     panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, selected: null, hover: null, away: null, confirmAbandon: false, confirmCamp: false,
     cemetery: false, manual: false, teach: null, goalGuide: null, recognition: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false, regions: false },
-    hurry: newHurry(), speedHistory: newSpeedHistory(),
+    hurry: newHurry(), speedHistory: newSpeedHistory(), wildlifeStartles: [], wildlifeStartleIds: new Set(), mapViewport: null,
   };
+}
+
+/** Returns true only on first delivery, so the caller can share deduplication with audio. */
+export function enqueueWildlifeStartle(ui: UiState, event: WildlifeStartleEvent, nowMs: number): boolean {
+  if (ui.wildlifeStartleIds.has(event.id)) return false;
+  ui.wildlifeStartleIds.add(event.id);
+  activeWildlifeStartles(ui, nowMs);
+  ui.wildlifeStartles.push({ event, startedAtMs: nowMs, key: ui.wildlifeStartleIds.size });
+  return true;
+}
+
+export function activeWildlifeStartles(ui: UiState, nowMs: number): UiState["wildlifeStartles"] {
+  ui.wildlifeStartles = ui.wildlifeStartles.filter((cue) => nowMs - cue.startedAtMs < 1200);
+  return ui.wildlifeStartles;
 }
 
 const last = new Map<string, string>();
@@ -172,6 +192,11 @@ const last = new Map<string, string>();
  */
 function keyOf(el: Element): string | null {
   if (el.id) return `#${el.id}`;
+  // A close-map animal is keyed by identity, so position updates reach the
+  // same node and its existing left/top transition across cell boundaries.
+  if (el.classList.contains("micro-mark") && el.hasAttribute("data-wildlife-id")) {
+    return `${el.tagName}[wildlifeId=${el.getAttribute("data-wildlife-id")}]`;
+  }
   const data = Object.entries((el as HTMLElement).dataset ?? {})
     .map(([k, v]) => `${k}=${v}`)
     .sort()
