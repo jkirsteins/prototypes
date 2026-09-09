@@ -11,7 +11,7 @@
 import type { Rng } from "../rng";
 import { routeMinutes } from "../world/route";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
-import { autoEat, edible, hungerLine } from "./actions";
+import { addFirewood, autoEat, edible, hungerLine } from "./actions";
 import type { Calendar } from "./calendar";
 import { feedFire } from "./camp";
 import { fireAt, fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
@@ -21,9 +21,10 @@ import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNA
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
-import { campSite, regionState } from "./regionstate";
+import { campSite, regionState, siteAt } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { seepStopped } from "./seep";
+import { coverCeiling, protectionOf } from "./shelter";
 import { collapseRecoveryPending, COLLAPSE_RECOVERED_AT, RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
@@ -518,24 +519,38 @@ function thirstyStep(state: GameState, world: World, cal: Calendar, dry: boolean
 }
 
 /**
- * Walk to this region's camp, light a fire there if a cold pit allows it, keep
- * it fed against the wind with dry wood, then wait the storm out. A dry read
- * never feeds the fire, since that is fuel spent on the strength of a read
- * rather than a minute; the fire steps above it are already only
- * descriptions and need no guard, and the walk or the wait it falls back to
- * is the same answer either way.
+ * Return to this region's camp while the remaining warning covers the walk.
+ * Otherwise find and improve cover, or build where the ground offers none,
+ * then light a fire. These are ordinary steps owned by the winning body row;
+ * nothing is added to the list. A dry read never spends fuel.
  */
 function stormStep(state: GameState, world: World, cal: Calendar, dry: boolean): Step | null {
   const st = regionState(state, world, state.player.region);
   const camp = st.campCell;
-  if (camp === null) return null;
   const here = cellOf(state, world);
-  if (here !== camp) {
-    return check(state, world, cal, "walk", `cell:${camp}`).ok ? walkStep(state, world, camp, " before the storm") : null;
+  if (camp !== null && here !== camp) {
+    const minutes = minutesToCamp(state, world, cal);
+    const remaining = Math.max(0, (state.weather.storm?.from ?? state.minute) - state.minute);
+    if (minutes !== null && minutes <= remaining && check(state, world, cal, "walk", `cell:${camp}`).ok) {
+      return walkStep(state, world, camp, " before the storm");
+    }
   }
-  const fs = fireStep(state, world, cal, camp);
+  if (here !== camp) {
+    const site = siteAt(st, here);
+    if (protectionOf(site) < 2) {
+      if (check(state, world, cal, "improveCover").ok) return { id: "improveCover", step: "improving shelter for the storm" };
+      if (coverCeiling(world, here) > 0 && check(state, world, cal, "findShelter").ok) return { id: "findShelter", step: "finding shelter for the storm" };
+      if (check(state, world, cal, "emergencyShelter").ok) return { id: "emergencyShelter", step: "building shelter for the storm" };
+      return null;
+    }
+  }
+  const fs = fireStep(state, world, cal, here);
   if (fs) return fs;
-  if (!dry && st.fire.lit && fuelTotal(st.fire) < SPREAD_FUEL_KG) feedFire(state, world, state.player.region, SPREAD_FUEL_KG - fuelTotal(st.fire), true);
+  if (!dry) {
+    const field = state.player.fieldFire;
+    if (field && field.cell === here && field.fuelKg < SPREAD_FUEL_KG) addFirewood(state, world, SPREAD_FUEL_KG - field.fuelKg);
+    else if (here === camp && st.fire.lit && fuelTotal(st.fire) < SPREAD_FUEL_KG) feedFire(state, world, state.player.region, SPREAD_FUEL_KG - fuelTotal(st.fire), true);
+  }
   return { id: "rest", step: "waiting out the storm" };
 }
 

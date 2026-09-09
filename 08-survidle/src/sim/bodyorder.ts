@@ -148,7 +148,10 @@ export function careLogLine(state: GameState, world: World, cal: Calendar, o: Ca
  */
 function serveNeed(state: GameState, world: World, cal: Calendar, rng: Rng, o: CareOrder, need: CareNeed): void {
   const s = bodyStep(state, world, cal, rng, need);
-  if (!s || isRunning(state, s)) return;
+  if (!s) return;
+  // A storm step also claims a matching work task through the normal
+  // set-aside path, so its progress survives under the care row's name.
+  if (isRunning(state, s) && (need !== "storm" || state.intent?.orderId === o.id)) return;
   // A night out is the body's own errand under an order's name: the whole of
   // it is the sleep this row would take anyway, so the step goes under that
   // order rather than taking the night away from it.

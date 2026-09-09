@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { peekNeed } from "../src/sim/body";
+import { bodyStep, minutesToCamp, peekNeed } from "../src/sim/body";
 import { calendar } from "../src/sim/calendar";
 import { newGame, newPerson } from "../src/sim/newgame";
 import { orderGate } from "../src/sim/ladder";
@@ -13,6 +13,11 @@ import { check, startTask, stepTask } from "../src/sim/tasks";
 import { TASK_IDS } from "../src/sim/types";
 import * as weather from "../src/sim/weather";
 import { filterRows } from "../src/ui/dopanel";
+import { addItem, qty } from "../src/sim/inventory";
+import { cellOf, placeAt } from "../src/sim/position";
+import { regionState, siteFor } from "../src/sim/regionstate";
+import { cellAt, neighbours, regionAt } from "../src/world/gen";
+import { protectionOf } from "../src/sim/shelter";
 
 function game() {
   const g = newGame(17);
@@ -153,5 +158,74 @@ describe("weather sense", () => {
     state.weather.storm = { from: 4, until: 5, warned: false };
     advance(state, world, 2, { nobody: true });
     expect(weather.warningMinutes(state)).toBe(70);
+  });
+});
+
+describe("the storm choice", () => {
+  it("walks to a camp ten minutes away while the warning still allows it", () => {
+    const { state, world } = game();
+    const r = regionAt(world, state.player.region);
+    const camp = r.cells.find(c => cellAt(world, c).terrain === "spruce"
+      && neighbours(world, c).some(n => cellAt(world, n).region === r.id && cellAt(world, n).terrain === "spruce"))!;
+    const from = neighbours(world, camp).find(c => cellAt(world, c).region === r.id && cellAt(world, c).terrain === "spruce")!;
+    regionState(state, world, r.id).campCell = camp;
+    placeAt(state, world, from);
+    state.player.frostbite.feet = 1;
+    state.weather.snowCm = 0;
+    state.weather.storm = { from: 60, until: 420, warned: false };
+    expect(minutesToCamp(state, world, calendar(0))).toBeCloseTo(10);
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)).toMatchObject({ id: "walk", arg: `cell:${camp}` });
+  });
+
+  it("finds cover instead of taking a ninety-minute walk against an hour's warning", () => {
+    const { state, world } = game();
+    const r = regionAt(world, state.player.region);
+    regionState(state, world, r.id).campCell = r.campCell;
+    placeAt(state, world, 841858);
+    state.weather.snowCm = 40;
+    state.weather.storm = { from: 60, until: 420, warned: false };
+    expect(minutesToCamp(state, world, calendar(0))).toBeCloseTo(90.909);
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("findShelter");
+  });
+
+  it("finds and improves cover, then lights and feeds a field fire without a camp", () => {
+    const { state, world } = game();
+    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "spruce")!;
+    placeAt(state, world, cell);
+    state.weather.precip = "none";
+    state.weather.storm = { from: 60, until: 420, warned: false };
+    addItem(state.player.pack, "fireDrill", 1);
+    addItem(state.player.pack, "firewood", 10);
+    for (const expected of ["findShelter", "improveCover", "light"] as const) {
+      const step = bodyStep(state, world, calendar(0), new Rng(1), "storm", true)!;
+      expect(step?.id).toBe(expected);
+      expect(startTask(state, world, calendar(0), step.id, step.arg)).toBe(true);
+      stepTask(state, world, calendar(0), new Rng(1), 100);
+    }
+    expect(protectionOf(siteFor(regionState(state, world, state.player.region), cell))).toBe(2);
+    expect(state.player.fieldFire?.fuelKg).toBe(1);
+    const wood = qty(state.player.pack, "firewood");
+    bodyStep(state, world, calendar(0), new Rng(1), "storm", true);
+    expect(qty(state.player.pack, "firewood")).toBe(wood);
+    expect(state.player.fieldFire?.fuelKg).toBe(1);
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm")?.id).toBe("rest");
+    expect(state.player.fieldFire!.fuelKg).toBeGreaterThan(1);
+    expect(qty(state.player.pack, "firewood")).toBeLessThan(wood);
+  });
+
+  it("builds on open ground and stops work at weatherproof to light the fire", () => {
+    const { state, world } = game();
+    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
+    placeAt(state, world, cell);
+    state.weather.precip = "none";
+    state.weather.storm = { from: 60, until: 420, warned: false };
+    addItem(state.player.pack, "fireDrill", 1);
+    addItem(state.player.pack, "firewood", 2);
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("emergencyShelter");
+    const site = siteFor(regionState(state, world, state.player.region), cellOf(state, world));
+    site.emergencyMinutes = 89;
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("emergencyShelter");
+    site.emergencyMinutes = 90;
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("light");
   });
 });
