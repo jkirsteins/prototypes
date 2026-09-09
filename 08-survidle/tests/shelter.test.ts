@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
+import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { dailyCamp } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
@@ -66,6 +66,13 @@ describe("protection", () => {
     site.cover = 2;
     expect(protectionOf(site)).toBe(2);
     site.structures.cabin = true;
+    expect(protectionOf(site)).toBe(3);
+  });
+
+  it("keeps level-three found cover at its true maximum", () => {
+    const { state, world } = newGame(17);
+    const site = siteFor(regionState(state, world, state.player.region), cellOf(state, world));
+    site.cover = 3;
     expect(protectionOf(site)).toBe(3);
   });
 });
@@ -145,17 +152,30 @@ describe("finding shelter", () => {
 });
 
 describe("found cover keeping", () => {
-  it("expires after exactly seven days without touching structures on the site", () => {
+  it("expires after exactly seven elapsed days when a search finishes just before the daily roll", () => {
     const g = newGame(17);
+    const rock = cellWith(g, "rock");
+    placeAt(g.state, g.world, rock);
+    // The run starts at 08:00, so minute 1199 is 03:59 the next morning,
+    // one minute before the camp's 04:00 daily roll.
+    g.state.minute = 1173;
+    g.state.lastHour = Math.floor(g.state.minute / 60);
+    g.state.player.torch = { lit: true, minutes: 60 };
+    expect(startTask(g.state, g.world, calendar(g.state.minute, g.state.startDoy), "findShelter")).toBe(true);
+    advance(g.state, g.world, 26);
+    expect(g.state.minute).toBe(1199);
+
     const st = regionState(g.state, g.world, g.state.player.region);
-    const site = siteFor(st, cellOf(g.state, g.world));
-    site.cover = 2;
+    const site = siteFor(st, rock);
+    expect(site.cover).toBe(2);
+    expect(site.coverAge).toBe(0);
     site.structures.cabin = true;
     site.structures.firePit = true;
-    for (let day = 0; day < 6; day++) dailyCamp(g.state, g.world, calendar(day * 1440), new Rng(day), null);
+
+    advance(g.state, g.world, 7 * 1440 - 1, { nobody: true });
     expect(site.cover).toBe(2);
-    expect(site.coverAge).toBe(6 * 1440);
-    dailyCamp(g.state, g.world, calendar(6 * 1440), new Rng(6), null);
+    expect(site.coverAge).toBe(7 * 1440 - 1);
+    advance(g.state, g.world, 1, { nobody: true });
     expect(site.cover).toBe(0);
     expect(site.coverAge).toBe(0);
     expect(site.structures.cabin).toBe(true);

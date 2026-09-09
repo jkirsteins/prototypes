@@ -40,7 +40,6 @@ export function findCover(world: World, cell: number, naturalShelterLevel: numbe
 export function protectionOf(site: Site | null): Protection {
   if (!site) return 0;
   const s = site.structures;
-  if (s.cabin || s.turfHut) return 3;
-  if (s.leanTo || s.snowShelter || site.cover >= 2) return 2;
-  return site.cover;
+  const structure: Protection = s.cabin || s.turfHut ? 3 : s.leanTo || s.snowShelter ? 2 : 0;
+  return Math.max(structure, site.cover) as Protection;
 }
