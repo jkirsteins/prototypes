@@ -204,6 +204,29 @@ describe("the body row", () => {
 });
 
 describe("the body row takes its turn by rank", () => {
+  it("sets storm shelter work aside at storm end so ready work resumes with cover progress kept", () => {
+    const { state, world } = newGame(17);
+    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
+    placeAt(state, world, cell);
+    state.weather.storm = { from: 0, until: 10, warned: true };
+    const work = addOrder(state, world, { task: "readSky", where: "nearest", until: { kind: "once" }, deliver: "leave" }, "job");
+    const rows = ordersHere(state, world).map(o => o.id);
+    runOrders(state, world, cal, new Rng(1));
+    expect(state.task?.id).toBe("emergencyShelter");
+    advance(state, world, 9);
+    const progress = regionState(state, world, state.player.region).sites[cell].emergencyMinutes;
+    expect(progress).toBeGreaterThan(0);
+    advance(state, world, 2);
+    expect(state.weather.storm).toBeNull();
+    expect(state.intent?.orderId).toBe(work.id);
+    expect(state.task?.id).toBe("readSky");
+    const kept = regionState(state, world, state.player.region).sites[cell].emergencyMinutes;
+    expect(kept).toBeGreaterThanOrEqual(progress);
+    advance(state, world, 1);
+    expect(regionState(state, world, state.player.region).sites[cell].emergencyMinutes).toBe(kept);
+    expect(ordersHere(state, world).map(o => o.id)).toEqual(rows);
+  });
+
   it("claims a matching shelter task from lower-ranked work under the body row's name", () => {
     const { state, world } = newGame(17);
     const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "spruce")!;

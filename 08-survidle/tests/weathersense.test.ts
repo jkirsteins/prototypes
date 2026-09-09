@@ -162,6 +162,29 @@ describe("weather sense", () => {
 });
 
 describe("the storm choice", () => {
+  it("keeps an achievable return while the warning counts down within a cell", () => {
+    const { state, world } = game();
+    const r = regionAt(world, state.player.region);
+    const camp = r.cells.find(c => cellAt(world, c).terrain === "spruce"
+      && neighbours(world, c).some(n => cellAt(world, n).region === r.id && cellAt(world, n).terrain === "spruce"))!;
+    const from = neighbours(world, camp).find(c => cellAt(world, c).region === r.id && cellAt(world, c).terrain === "spruce")!;
+    regionState(state, world, r.id).campCell = camp;
+    placeAt(state, world, from);
+    state.player.frostbite.feet = 1;
+    state.weather.snowCm = 0;
+    state.weather.precip = "none";
+    state.weather.storm = { from: 11, until: 371, warned: false };
+    expect(minutesToCamp(state, world, calendar(0))).toBeCloseTo(10);
+    runOrders(state, world, calendar(0), new Rng(1));
+    expect(state.task?.id).toBe("walk");
+    advance(state, world, 2);
+    expect(cellOf(state, world)).toBe(from);
+    expect(state.task?.id).toBe("walk");
+    advance(state, world, 8);
+    expect(cellOf(state, world)).toBe(camp);
+    expect(regionState(state, world, r.id).sites[from]?.cover ?? 0).toBe(0);
+  });
+
   it("walks to a camp ten minutes away while the warning still allows it", () => {
     const { state, world } = game();
     const r = regionAt(world, state.player.region);

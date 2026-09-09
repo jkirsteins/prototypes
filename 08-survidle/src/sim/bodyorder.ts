@@ -181,6 +181,12 @@ function serveNeed(state: GameState, world: World, cal: Calendar, rng: Rng, o: C
  */
 export function serveBodyRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: CareOrder & { kind: "body" }): void {
   const need = currentNeed(state, world, cal);
+  if (need !== "storm" && state.intent?.mode === "care" && state.intent.orderId === o.id && state.intent.need === "storm") {
+    // Storm preparation owns no minutes after its need has ended. Keep
+    // unfinished shelter work through the ordinary task pause path.
+    setAside(state, world);
+    state.intent = null;
+  }
   if (state.task?.id === "sleep" && need !== "sleep") setAside(state, world);
   if (!need) return;
   serveNeed(state, world, cal, rng, o, need);
