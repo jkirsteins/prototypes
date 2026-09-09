@@ -15,6 +15,7 @@ import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
 import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
 import { emptyWildlife } from "./wildlife-agents";
+import { precipitationStormKind } from "./weather";
 
 export const SAVE_KEY = "survidle.save";
 
@@ -250,6 +251,7 @@ export function migrate(state: GameState): void {
   for (const inv of Object.values(state.piles)) stackBerries(inv);
   const w = state.weather;
   w.storm ??= null;
+  if (w.storm) w.storm.kind ??= precipitationStormKind(w, calendar(w.storm.from, state.startDoy));
   w.dryDays ??= 0;
   w.wetDay ??= false;
   w.dryWarned ??= false;

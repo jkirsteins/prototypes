@@ -63,36 +63,11 @@ describe("the epitaph", () => {
   });
 
   it("is deterministic for the reference seeds; trap yields more with larger capacities", () => {
-    // Inline snapshots fill themselves on the first run; a later change to the sim that moves a death shows here.
-    // A body need is the survivor's own, not the order's: exhaustion or cold from one job holds through the handover to the next.
-    // What these two deaths rest on: a shore's fish capacity is biomass per hectare over mean weight, tens of
-    // thousands per km2, so a trap and a spear both find fish; a hunted small-game range refills from its
-    // neighbours as well as from the herd migration, so the snares keep finding hares; a pole rack holds 40 kg
-    // and a second rack another 40; the named hunts are grinds below the hut group rather than keeps, so raw meat
-    // at camp never blocks a keep the hang grind is clearing; a soaked body under 5 C reads cold at warmth 45, so
-    // the early days buy warmth at the fire; and the winter woodpile keep runs from midsummer to the day
-    // before the thaw, which a 1 April start is one day past and neither of the sixty-day lives below
-    // reaches again. The log keep beside it carries the same window, so a spring runner with nothing
-    // else able to run rests instead of felling; and stone is wanted twice, a once job for eight at the
-    // opening and a keep of eight as the restock below the clothing block.
-    // The larder these seeds empty is meat, berries, roots, eggs and bark flour together;
-    // frozen lingon under the snow open a berries row through the April start itself, ahead
-    // of the wood-first grind order, so it empties where the ledger above finds it. Both
-    // seeds' larders give out weeks before the woodpile does, which is the shape a level-1
-    // opening holds: both seeds starve with wood still stacked at their own fire.
-    // Neither freezes, because fat is insulation as well as fuel and the reserve a body
-    // lands with carries it that far - a body that eats well early is warm later on the
-    // same food.
-    // Both live well past the point a body that could not bank a reserve reaches, and both
-    // leave wood behind: a fire that keeps itself costs the woodpile less, and food or cold
-    // is what ends the run.
-    // Seed 79 rather than seed 19: an epitaph needs a body, and seed 19's survivor is still
-    // alive at the end of her reference span, so she has no death to be read for.
-    // A few minutes moved either way swings the day by several, so the day numbers here are
-    // a determinism check rather than a reading; what the epitaph is asked for is where the
-    // body lies, what it carried and what it left.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 39. Starved at camp, with 1.2 kg of food in the pack and 5 kg of firewood at camp."`);
-    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 50. Starved at camp, with nothing in the pack and 67 kg of firewood at camp."`);
+    // The same reference policy gives one starvation epitaph and one living entry.
+    // These are measured deterministic outcomes, not survival targets: wetness,
+    // warmth and the work they interrupt can move the day substantially.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 32. Starved at camp, with nothing in the pack and 40 kg of firewood at camp."`);
+    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Landed 1 April, year 1."`);
   });
 
   it("writes the first snare set as its own line", () => {

@@ -6,6 +6,13 @@ import { survivedStorms } from "./record";
 import { skillLevel } from "./skills";
 import type { GameState, IceMode, Season, Weather } from "./types";
 
+export type StormKind = "rain" | "snow" | "gale";
+
+/** Precipitation at onset uses the same freezing threshold as fire burn. */
+export function precipitationStormKind(w: Weather, cal: Calendar): "rain" | "snow" {
+  return ambientTemperature(cal, { ...w, precip: "heavy" }) <= 0 ? "snow" : "rain";
+}
+
 /** Mean temperature over the year at 62 N inland: +15 in mid-July, -9 in mid-January, about 0 on 1 April. */
 export function seasonalMean(dayOfYear: number): number {
   return 3 + 12 * Math.cos((2 * Math.PI * (dayOfYear - 200)) / 365);
@@ -78,15 +85,11 @@ export function forecastText(state: GameState): string {
   if (!storm || (!blowing && !stormComing(state))) return "";
   const stage = forecastStage(state);
   if (stage === 1) return blowing ? "storm" : "a storm is coming";
-  // Storms bring heavy precipitation. Its phase follows the air at onset;
-  // an active storm is read from the air now, as the weather itself is.
-  const cal = calendar(blowing ? state.minute : storm.from, state.startDoy);
-  const kind = ambientTemperature(cal, { ...state.weather, precip: "heavy" }) <= 0 ? "snow" : "rain";
   const arrival = blowing ? "" : ` in ${fmtDuration(storm.from - state.minute)}`;
   const duration = stage === 3
     ? blowing ? `, ${fmtDuration(storm.until - state.minute)} left` : `, lasting ${fmtDuration(storm.until - storm.from)}`
     : "";
-  return `heavy ${kind} storm${arrival}${duration}`;
+  return `heavy ${storm.kind} storm${arrival}${duration}`;
 }
 
 /** Ice above this bears a walker's weight without risk. */
@@ -145,7 +148,9 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, min
     w.wetDay = w.precip !== "none";
     if (!w.storm && rng.chance(STORM_CHANCE[cal.season])) {
       const from = minute + 60 + rng.int(121);
-      w.storm = { from, until: from + 360 + rng.int(721), warned: false };
+      const startDoy = cal.dayOfYear - cal.dayIndex;
+      const kind = precipitationStormKind(w, calendar(from, startDoy));
+      w.storm = { kind, from, until: from + 360 + rng.int(721), warned: false };
     }
   }
   const ambient = ambientTemperature(cal, w);

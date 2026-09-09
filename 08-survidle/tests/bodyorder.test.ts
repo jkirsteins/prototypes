@@ -119,7 +119,7 @@ describe("the body row", () => {
     st.fire.lit = true;
     st.fire.fuelKg = 1;
     addItem(pile(state, st.campCell!), "firewood", 5);
-    state.weather.storm = { from: state.minute, until: state.minute + 200, warned: true };
+    state.weather.storm = { kind: "rain", from: state.minute, until: state.minute + 200, warned: true };
     for (let i = 0; i < 20; i++) judgeBodyRow(state, world, cal, new Rng(1));
     expect(st.fire.fuelKg).toBe(1);
     expect(qty(pile(state, st.campCell!), "firewood")).toBe(5);
@@ -191,7 +191,7 @@ describe("the body row", () => {
     const water = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "water")!;
     placeAt(state, world, water);
     addItem(state.player.pack, "log", 2);
-    state.weather.storm = { from: state.minute, until: state.minute + 200, warned: true };
+    state.weather.storm = { kind: "rain", from: state.minute, until: state.minute + 200, warned: true };
     // The row's own reading is the fragment, the same shape every other
     // skip reason takes, since the panel never resolves the log's voice.
     expect(judgeBodyRow(state, world, cal, new Rng(1))).toEqual({ v: "blocked", why: NEED_WORDS.storm });
@@ -208,7 +208,7 @@ describe("the body row takes its turn by rank", () => {
     const { state, world } = newGame(17);
     const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
     placeAt(state, world, cell);
-    state.weather.storm = { from: 0, until: 10, warned: true };
+    state.weather.storm = { kind: "rain", from: 0, until: 10, warned: true };
     const work = addOrder(state, world, { task: "readSky", where: "nearest", until: { kind: "once" }, deliver: "leave" }, "job");
     const rows = ordersHere(state, world).map(o => o.id);
     runOrders(state, world, cal, new Rng(1));
@@ -236,7 +236,7 @@ describe("the body row takes its turn by rank", () => {
     stepTask(state, world, cal, new Rng(1), 5);
     const progress = state.task!.progress;
     expect(state.intent?.orderId).toBe(work.id);
-    state.weather.storm = { from: 60, until: 420, warned: false };
+    state.weather.storm = { kind: "rain", from: 60, until: 420, warned: false };
     runOrders(state, world, cal, new Rng(1));
     expect(state.intent).toMatchObject({ mode: "care", orderId: bodyRowOf(state, world)!.id });
     expect(state.task?.id).toBe("findShelter");
@@ -248,7 +248,7 @@ describe("the body row takes its turn by rank", () => {
     const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
     placeAt(state, world, cell);
     state.weather.precip = "none";
-    state.weather.storm = { from: 60, until: 420, warned: false };
+    state.weather.storm = { kind: "rain", from: 60, until: 420, warned: false };
     addItem(state.player.pack, "fireDrill", 1);
     addItem(state.player.pack, "firewood", 2);
     const body = bodyRowOf(state, world)!;
@@ -270,7 +270,7 @@ describe("the body row takes its turn by rank", () => {
     const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "spruce")!;
     placeAt(state, world, cell);
     state.weather.precip = "none";
-    state.weather.storm = { from: 60, until: 420, warned: false };
+    state.weather.storm = { kind: "rain", from: 60, until: 420, warned: false };
     addItem(state.player.pack, "fireDrill", 1);
     addItem(state.player.pack, "firewood", 10);
     const work = addOrder(state, world, { task: "sticks", where: { cell }, until: { kind: "forever" }, deliver: "leave" }, "grind", "top");

@@ -70,7 +70,7 @@ describe("the quirks", () => {
     for (const g of [forest, median]) {
       placeAtSpot(g.state, g.world, g.state.player.region, "shore");
       g.state.player.tools.push(freshTool("fishingSpear"));
-      g.state.weather.storm = { from: 0, until: 600, warned: true };
+      g.state.weather.storm = { kind: "rain", from: 0, until: 600, warned: true };
     }
     expect(check(forest.state, forest.world, cal, "fish", "any").why).toBe(SHORE_FEAR_LINE);
     expect(check(median.state, median.world, cal, "fish", "any").why).not.toBe(SHORE_FEAR_LINE);
@@ -108,7 +108,7 @@ describe("the quirks", () => {
     for (const g of [stormy, calm]) {
       g.state.player.energy = 20;
       g.state.player.sleepDebt = 60;
-      g.state.weather.storm = { from: 0, until: 10 * 60, warned: true };
+      g.state.weather.storm = { kind: "rain", from: 0, until: 10 * 60, warned: true };
       g.state.task = { id: "sleep", progress: 0, duration: 120, repeat: false };
       advance(g.state, g.world, 60);
     }

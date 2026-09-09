@@ -116,7 +116,7 @@ describe("weather sense", () => {
     const { state, world } = game();
     state.skills.weatherSense.xp = levelMinutes(level);
     state.weather.offset = -30;
-    state.weather.storm = { from: 60, until: 420, warned: false };
+    state.weather.storm = { kind: "snow", from: 60, until: 420, warned: false };
     const cal = calendar(0);
     startTask(state, world, cal, "readSky");
     stepTask(state, world, cal, new Rng(1), 10);
@@ -139,7 +139,7 @@ describe("weather sense", () => {
     expect(weather.warningMinutes).toBeTypeOf("function");
     const { state, world } = game();
     state.skills.weatherSense.xp = levelMinutes(13);
-    state.weather.storm = { from: 120, until: 480, warned: false };
+    state.weather.storm = { kind: "rain", from: 120, until: 480, warned: false };
     expect(weather.stormComing(state)).toBe(true);
     expect(peekNeed(state, world, calendar(0))).toBe("storm");
     advance(state, world, 1);
@@ -150,12 +150,12 @@ describe("weather sense", () => {
   it("learns from a storm ending alive but never from a future roll or an empty world", () => {
     expect(weather.warningMinutes).toBeTypeOf("function");
     const { state, world } = game();
-    state.weather.storm = { from: 2, until: 3, warned: false };
+    state.weather.storm = { kind: "rain", from: 2, until: 3, warned: false };
     advance(state, world, 1);
     expect(weather.warningMinutes(state)).toBe(60);
     advance(state, world, 2);
     expect(weather.warningMinutes(state)).toBe(70);
-    state.weather.storm = { from: 4, until: 5, warned: false };
+    state.weather.storm = { kind: "rain", from: 4, until: 5, warned: false };
     advance(state, world, 2, { nobody: true });
     expect(weather.warningMinutes(state)).toBe(70);
   });
@@ -169,7 +169,7 @@ describe("the storm choice", () => {
     regionState(state, world, state.player.region).campCell = 847252;
     state.weather.snowCm = 0;
     state.weather.precip = "none";
-    state.weather.storm = { from: 13.25, until: 373.25, warned: false };
+    state.weather.storm = { kind: "rain", from: 13.25, until: 373.25, warned: false };
     return g;
   }
 
@@ -218,7 +218,7 @@ describe("the storm choice", () => {
     state.player.frostbite.feet = 1;
     state.weather.snowCm = 0;
     state.weather.precip = "none";
-    state.weather.storm = { from: 11, until: 371, warned: false };
+    state.weather.storm = { kind: "rain", from: 11, until: 371, warned: false };
     expect(minutesToCamp(state, world, calendar(0))).toBeCloseTo(10);
     runOrders(state, world, calendar(0), new Rng(1));
     expect(state.task?.id).toBe("walk");
@@ -240,7 +240,7 @@ describe("the storm choice", () => {
     placeAt(state, world, from);
     state.player.frostbite.feet = 1;
     state.weather.snowCm = 0;
-    state.weather.storm = { from: 60, until: 420, warned: false };
+    state.weather.storm = { kind: "rain", from: 60, until: 420, warned: false };
     expect(minutesToCamp(state, world, calendar(0))).toBeCloseTo(10);
     expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)).toMatchObject({ id: "walk", arg: `cell:${camp}` });
   });
@@ -251,7 +251,7 @@ describe("the storm choice", () => {
     regionState(state, world, r.id).campCell = r.campCell;
     placeAt(state, world, 841858);
     state.weather.snowCm = 40;
-    state.weather.storm = { from: 60, until: 420, warned: false };
+    state.weather.storm = { kind: "rain", from: 60, until: 420, warned: false };
     expect(minutesToCamp(state, world, calendar(0))).toBeCloseTo(90.909);
     expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("findShelter");
   });
@@ -261,7 +261,7 @@ describe("the storm choice", () => {
     const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "spruce")!;
     placeAt(state, world, cell);
     state.weather.precip = "none";
-    state.weather.storm = { from: 60, until: 420, warned: false };
+    state.weather.storm = { kind: "rain", from: 60, until: 420, warned: false };
     addItem(state.player.pack, "fireDrill", 1);
     addItem(state.player.pack, "firewood", 10);
     for (const expected of ["findShelter", "improveCover", "light"] as const) {
@@ -286,7 +286,7 @@ describe("the storm choice", () => {
     const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
     placeAt(state, world, cell);
     state.weather.precip = "none";
-    state.weather.storm = { from: 60, until: 420, warned: false };
+    state.weather.storm = { kind: "rain", from: 60, until: 420, warned: false };
     addItem(state.player.pack, "fireDrill", 1);
     addItem(state.player.pack, "firewood", 2);
     expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("emergencyShelter");

@@ -171,7 +171,10 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   const a = activityOf(state.task);
   felt += a === "heavy" ? 6 : a === "walk" ? 4 : a === "light" ? 2 : 0;
   felt -= 0.15 * p.wetness;
-  if (stormNow(state.weather, state.minute)) felt -= 6;
+  if (stormNow(state.weather, state.minute)) {
+    const snowWindbreak = state.weather.storm?.kind === "snow" && campTask && protectionOf(here) >= 1;
+    if (!snowWindbreak) felt -= 6;
+  }
   // A starving body has no insulation and no fuel: up to 4 C gone at the end of the fat.
   felt -= 4 * starvation(state);
   return felt;
@@ -340,18 +343,21 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const roof = sheltered(state, world);
   // Walls are the walls the survivor is standing inside, the same place roof reads.
   const site = siteAt(r, cellOf(state, world));
+  const protection = campTask ? protectionOf(site) : 0;
+  const snowing = w.precip !== "none" && ambient <= 0;
+  const snowWindbreak = stormNow(w, state.minute) && w.storm?.kind === "snow" && protection >= 1;
   const walled = roof && (site?.structures.cabin || site?.structures.turfHut || site?.structures.snowShelter);
   const h = dt / 60;
 
   const x: Exposure = {
     raining: w.precip !== "none",
     heavy: w.precip === "heavy",
-    snowing: w.precip !== "none" && ambient <= 0,
-    roof,
+    snowing,
+    roof: roof || snowWindbreak,
     walled: !!walled,
     fireAtCamp: fireAt(state, world) !== null && campTask,
     bedded: bedded(state.task),
-    storm: stormNow(w, state.minute),
+    storm: stormNow(w, state.minute) && protection === 0,
   };
   stepGarments(state, x, dt);
 
@@ -421,9 +427,10 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   p.energy = clamp(p.energy + energyRate * h, 0, 100);
 
   // Wetness.
-  if (x.raining && !x.walled) {
+  if (x.raining && !x.roof && !x.walled) {
     let wet = x.heavy ? 2 : 1;
-    if (x.roof) wet *= 0.5;
+    // The same wind that drives water into clothing drives it onto exposed skin.
+    if (x.storm) wet *= 2;
     // Snow brushes off; it dampens rather than soaks.
     const cap = x.snowing ? SNOW_DAMP_MAX : 100;
     if (x.snowing) wet *= 0.25;

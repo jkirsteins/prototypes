@@ -18,11 +18,42 @@ const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, roll
 const at = (hour: number) => calendar((hour - 8) * 60);
 
 describe("forecast knowledge in the weather wall", () => {
+  it("reads the stored kind only at an earned stage, without leaking it into stage-one markup", () => {
+    resetPanels();
+    document.body.innerHTML = '<div id="weather"></div>';
+    const { state, world } = newGame(17);
+    current(state).person.quirks = [];
+    state.weather.offset = 30;
+    state.weather.precip = "none";
+    state.weather.snowCm = 0;
+    state.weather.iceCm = 0;
+    state.weather.storm = { kind: "snow", from: 60, until: 420, warned: false };
+    const cal = calendar(0);
+    const render = () => {
+      setPanel("weather", weatherHtml(state, world, cal, 15));
+      updateSky(state, cal, 15);
+      return document.querySelector("#weather")!.innerHTML;
+    };
+    const noviceSnow = render();
+    const sky = document.querySelector("svg.sky");
+    state.weather.storm.kind = "rain";
+    expect(render()).toBe(noviceSnow);
+    state.weather.storm.kind = "snow";
+    state.skills.weatherSense.xp = levelMinutes(13);
+    render();
+    expect(document.querySelector("[data-weather-forecast]")?.textContent).toBe("heavy snow storm in 1 h");
+    expect(sky?.getAttribute("aria-label")).toBe("sky: heavy snow storm in 1 h");
+    expect(document.querySelector("svg.sky")).toBe(sky);
+    state.skills.weatherSense.xp = 0;
+    expect(render()).toBe(noviceSnow);
+    expect(document.querySelector("svg.sky")).toBe(sky);
+  });
+
   it("hides distant storms and reveals arrival, kind, severity and duration only as learned", () => {
     const { state, world } = newGame(17);
     current(state).person.quirks = [];
     state.weather.offset = 15;
-    state.weather.storm = { from: 100, until: 460, warned: false };
+    state.weather.storm = { kind: "rain", from: 100, until: 460, warned: false };
     const line = () => {
       const root = document.createElement("div");
       root.innerHTML = weatherHtml(state, world, calendar(state.minute), 15);
@@ -46,7 +77,7 @@ describe("forecast knowledge in the weather wall", () => {
     const { state, world } = newGame(17);
     current(state).person.quirks = [];
     state.weather.offset = 15;
-    state.weather.storm = { from: 60, until: 420, warned: false };
+    state.weather.storm = { kind: "rain", from: 60, until: 420, warned: false };
     const cal = calendar(0);
     setPanel("weather", weatherHtml(state, world, cal, 15));
     updateSky(state, cal, 15);

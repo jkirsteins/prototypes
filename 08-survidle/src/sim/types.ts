@@ -6,6 +6,7 @@
 import type { FoodId } from "./items";
 import type { DayLedger } from "./ledger";
 import type { Species } from "./species";
+import type { StormKind } from "./weather";
 
 export type Season = "spring" | "summer" | "autumn" | "winter";
 
@@ -564,7 +565,7 @@ export interface Weather {
   /** The day index whose dawn roll has happened. */
   rolledDay: number;
   /** A storm window: from and until in minutes; warned records the one-hour warning was logged. */
-  storm: { from: number; until: number; warned: boolean } | null;
+  storm: { kind: StormKind; from: number; until: number; warned: boolean } | null;
   /** Days running with no precipitation, for the drought warning. */
   dryDays: number;
   wetDay: boolean;
