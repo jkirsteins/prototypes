@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { drop, dropAll, eat, take } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { activeGoals, checkWinterStores, goalDeed, GOALS } from "../src/sim/goals";
+import { activeGoals, checkWinterStores, goalDeed, GOALS, introduceGoals } from "../src/sim/goals";
 import { setSkillLevel } from "../src/sim/horizon";
 import { startIntent } from "../src/sim/intent";
 import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
@@ -21,22 +21,28 @@ import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
 
+function announcedGame(seed: number) {
+  const game = newGame(seed);
+  introduceGoals(game.state, GOALS.map((g) => g.id));
+  return game;
+}
+
 describe("deeds reach the ladder", () => {
   it("the first goal is choosing where to live, credited by making camp", () => {
-    const { state } = newGame(3);
+    const { state } = announcedGame(3);
     expect(GOALS[0].id).toBe("site");
     expect(goalDeed(state, { kind: "task", id: "makeCamp" })).toContain("site");
   });
 
   it("does not treat ordinary sleep as exploration", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     state.task = { id: "sleep", progress: 0, duration: 0, repeat: false };
     stepTask(state, world, cal, new Rng(1), 1);
     expect(state.goals.done.explore).toBeUndefined();
   });
 
   it("credits a real drink and food with non-lean energy", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     state.player.water = 1;
     placeAtSpot(state, world, state.player.region, "shore");
     expect(drink(state, world)).toBe(true);
@@ -47,7 +53,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("distinguishes a first standing camp order from a longer one", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     setSkillLevel(state, "woodcraft", 3);
     orderByHand(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "times", n: 2 }, deliver: "camp", where: "nearest" }, "job");
@@ -59,7 +65,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("recognizes full winter food and fuel reserves on the daily roll", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const camp = pile(state, regionState(state, world, state.player.region).campCell!);
     addItem(camp, "driedMeat", 81);
@@ -71,7 +77,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("requires each named winter store instead of accepting substitutes", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const camp = pile(state, regionState(state, world, state.player.region).campCell!);
     addItem(camp, "driedMeat", 140);
@@ -85,7 +91,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("counts a newly made tool as preparing a replacement", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     addItem(state.player.pack, "stick", 2);
     addItem(state.player.pack, "cordage", 1);
@@ -97,7 +103,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("credits the fire when this survivor lights one", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     state.goals.done.firewood = true;
@@ -106,6 +112,8 @@ describe("deeds reach the ladder", () => {
     siteFor(st, st.campCell!).structures.firePit = true;
     addItem(state.player.pack, "firewood", 5);
     state.player.tools.push({ id: "fireDrill", durability: 100 });
+    goalDeed(state, { kind: "built", structure: "firePit" });
+    goalDeed(state, { kind: "crafted", recipe: "fireDrill" });
     const o = check(state, world, cal, "light");
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "light")).toBe(true);
@@ -117,7 +125,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("credits nothing when the tinder does not catch", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
@@ -136,7 +144,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("does not credit the fire to a survivor who only found one burning", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     st.fire.lit = true;
@@ -146,7 +154,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("credits nothing for firewood that just exists in a pile, since nobody gathered it", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     addItem(pile(state, st.campCell!), "firewood", 40);
@@ -155,7 +163,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("credits goal 1 by the kilos a real gather actually produces", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     const o = check(state, world, cal, "deadwood");
@@ -167,7 +175,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("credits goal 1 by the kilos a real split actually produces", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     // The landing kit's own axe is what split() needs; no forest cell required.
     addItem(state.player.pack, "log", 1);
@@ -175,11 +183,11 @@ describe("deeds reach the ladder", () => {
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "split")).toBe(true);
     advance(state, world, o.duration + 1);
-    expect(state.goals.progress.firewood).toBeCloseTo(ITEM_KG.log);
+    expect(state.goals.progress.firewood).toBeCloseTo(Math.min(10, ITEM_KG.log));
   });
 
   it("credits goal 1 by the kilos a real splitWedges actually produces", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     addItem(state.player.pack, "log", 1);
     addItem(state.player.pack, "wedge", 2);
@@ -187,11 +195,11 @@ describe("deeds reach the ladder", () => {
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "splitWedges")).toBe(true);
     advance(state, world, o.duration + 1);
-    expect(state.goals.progress.firewood).toBeCloseTo(ITEM_KG.log);
+    expect(state.goals.progress.firewood).toBeCloseTo(Math.min(10, ITEM_KG.log));
   });
 
   it("credits nothing when a standing order carries firewood home and drops it at camp", () => {
-    const { state, world } = newGame(17);
+    const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const camp = regionState(state, world, state.player.region).campCell!;
     // deadwood is the one gathering task whose yield is firewood itself.
@@ -207,7 +215,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("credits nothing for firewood taken out of the camp pile and put straight back", () => {
-    const { state, world } = newGame(17);
+    const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const camp = regionState(state, world, state.player.region).campCell!;
     placeAt(state, world, camp);
@@ -218,7 +226,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("credits a season goal when the calendar actually turns the corner", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     // Backdating lastSeason forces the very next day roll to see a turnover,
     // without simulating the months a real one would take.
@@ -229,7 +237,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("credits a season only when the calendar turns over into it", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     for (const id of ["firewood", "fire", "cook", "bed", "roof", "water", "store"] as const) {
       state.goals.done[id] = true;
@@ -241,7 +249,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("credits the bed goal when the survivor actually builds one", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     addItem(state.player.pack, "stick", 12);
@@ -253,8 +261,8 @@ describe("deeds reach the ladder", () => {
     expect(state.goals.done.bed).toBe(true);
   });
 
-  it("credits the cook goal when the survivor actually cooks over the fire", () => {
-    const { state, world } = newGame(3);
+  it("finishes the hot-meal goal when cooked food is eaten", () => {
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
@@ -266,11 +274,13 @@ describe("deeds reach the ladder", () => {
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
     advance(state, world, o.duration + 1);
+    expect(state.goals.done.cook).toBeUndefined();
+    expect(eat(state, world, "cookedMeat", new Rng(1))).toBeGreaterThan(0);
     expect(state.goals.done.cook).toBe(true);
   });
 
   it("does not credit cooking when the ingredient is gone at completion", () => {
-    const { state, world } = newGame(3);
+    const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
@@ -285,8 +295,8 @@ describe("deeds reach the ladder", () => {
     expect(state.goals.done.cook).toBeUndefined();
   });
 
-  it("credits the store goal when meat actually goes onto the rack", () => {
-    const { state, world } = newGame(17);
+  it("finishes the preserving goal only after preserved meat is eaten", () => {
+    const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
@@ -298,11 +308,14 @@ describe("deeds reach the ladder", () => {
     expect(startTask(state, world, cal, "hang")).toBe(true);
     advance(state, world, o.duration + 1);
     expect(st.rack.kg).toBeGreaterThan(0);
+    expect(state.goals.done.store).toBeUndefined();
+    addItem(state.player.pack, "driedMeat", 0.2);
+    expect(eat(state, world, "driedMeat", new Rng(1))).toBeGreaterThan(0);
     expect(state.goals.done.store).toBe(true);
   });
 
   it("credits nothing when the meat is gone before the hang finishes", () => {
-    const { state, world } = newGame(17);
+    const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
@@ -324,7 +337,7 @@ describe("deeds reach the ladder", () => {
 
 describe("a hand-played drop credits nothing, at camp or away", () => {
   it("drop() at camp moves the load but credits nothing: the gather already did", () => {
-    const { state, world } = newGame(17);
+    const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const camp = regionState(state, world, state.player.region).campCell!;
     placeAt(state, world, camp);
@@ -334,7 +347,7 @@ describe("a hand-played drop credits nothing, at camp or away", () => {
   });
 
   it("drop() away from camp credits nothing either", () => {
-    const { state, world } = newGame(17);
+    const { state, world } = announcedGame(17);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     addItem(state.player.pack, "firewood", 6);
@@ -343,7 +356,7 @@ describe("a hand-played drop credits nothing, at camp or away", () => {
   });
 
   it("dropAll() at camp credits nothing", () => {
-    const { state, world } = newGame(17);
+    const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const camp = regionState(state, world, state.player.region).campCell!;
     placeAt(state, world, camp);
@@ -353,7 +366,7 @@ describe("a hand-played drop credits nothing, at camp or away", () => {
   });
 
   it("dropAll() away from camp credits nothing", () => {
-    const { state, world } = newGame(17);
+    const { state, world } = announcedGame(17);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     addItem(state.player.pack, "firewood", 3);
@@ -364,7 +377,7 @@ describe("a hand-played drop credits nothing, at camp or away", () => {
 
 describe("an heir inherits the world and not the ladder's credit", () => {
   it("lands to a lit fire, a full camp and a standing hut, and advances nothing", () => {
-    const { state, world } = newGame(17);
+    const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const oldRegion = state.player.region;
     const st = regionState(state, world, oldRegion);
@@ -383,7 +396,7 @@ describe("an heir inherits the world and not the ladder's credit", () => {
   });
 
   it("carries an incomplete goal's progress across a real death", () => {
-    const { state, world } = newGame(17);
+    const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const region = state.player.region;
     goalDeed(state, { kind: "gathered", item: "firewood", kg: 6 });

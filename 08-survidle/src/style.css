@@ -168,14 +168,10 @@ small, .dim { color: var(--dim); }
 #goals .goal { margin: 0; }
 #goals .goal-title { font-weight: 600; }
 #goals .goal-open {
-  width: 100%; padding: 10px 12px; text-align: left; color: var(--text);
+  width: 100%; padding: 4px 0; text-align: left; color: var(--text);
   background: transparent; border: 0; font: inherit; cursor: pointer;
 }
 #goals .goal-open:hover, #goals .goal-open:focus-visible { background: #1a1f28; outline: 1px solid var(--accent); }
-#goals .goal-line { display: flex; justify-content: space-between; gap: 12px; }
-#goals .goal-value { color: var(--dim); white-space: nowrap; }
-#goals .goal-next { display: block; color: var(--accent); font-size: 12px; }
-#goals .bar { height: 5px; margin: 7px 0 5px; }
 
 #shopping:empty { display: none; }
 #shopping ul { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -1227,6 +1223,7 @@ button.act small.gives, span.act small.gives,
 
 #overlay .box.teach.welcome { max-width: 520px; }
 #overlay .box.teach .statuses { margin: 10px 0; }
+.welcome-label { color: var(--dim); font-weight: 600; margin-top: 14px !important; }
 #overlay .box.teach .example {
   font-weight: 600;
   padding: 8px 10px;
@@ -1235,13 +1232,12 @@ button.act small.gives, span.act small.gives,
 }
 #overlay .box.goal-modal { width: min(460px, calc(100vw - 36px)); text-align: left; }
 .goal-guide + .goal-guide { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
-.goal-guide-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
-.goal-guide-head h1 { margin: 0; }
-.goal-guide-head > span, .goal-deadline { color: var(--dim); white-space: nowrap; }
-.goal-steps { display: flex; flex-wrap: wrap; gap: 5px 12px; list-style: none; padding: 0; margin: 10px 0; }
+.goal-status { font-weight: 600; }
+.goal-complete { color: var(--good); }
+.goal-note { color: var(--dim); }
+.goal-steps { display: flex; flex-direction: column; gap: 5px; list-style: none; padding: 0; margin: 10px 0; }
 .goal-steps li { color: var(--dim); }
 .goal-steps li.done { color: var(--good); }
-.goal-met { display: flex; flex-direction: column; gap: 4px; color: var(--good); margin-bottom: 14px; }
 .cards { display: flex; gap: 12px; margin: 10px 0; align-items: stretch; }
 .card {
   flex: 1 1 0; min-width: 0; text-align: left;

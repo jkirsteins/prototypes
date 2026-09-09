@@ -11,7 +11,7 @@ import { fmtName } from "../sim/names";
 import { orderSentence } from "../sim/orders";
 import { current } from "../sim/record";
 import { RUNG_LEVEL, SKILL_IDS, SKILL_NAMES, skillLevel } from "../sim/skills";
-import { CONCEPTS, tipFor, welcomeLines } from "../sim/teach";
+import { CONCEPTS, tipFor } from "../sim/teach";
 import type { GameState, Order, Rung, TaskId } from "../sim/types";
 import { regionAt, type World } from "../world/gen";
 import { intentGroups } from "./dopanel";
@@ -91,14 +91,14 @@ ${shown}
  */
 export function welcomeHtml(state: GameState, cal: Calendar): string {
   const rec = current(state);
-  const { body } = welcomeLines(state);
   const skills = SKILL_IDS.map((s) => `<span class="tag">${esc(SKILL_NAMES[s])} ${skillLevel(state, s)}</span>`).join("");
   return `<div class="box teach welcome">
 <h1>${esc(fmtName(rec.name))}</h1>
 <p class="dim">${esc(fmtDate(cal))}, day ${cal.day}.</p>
-${body.map((l) => `<p>${esc(l)}</p>`).join("")}
+<p class="welcome-label">Starting skills</p>
 <div class="statuses">${skills}</div>
-<p class="example">${esc(tipFor(state.seed, state.survivors.length))}</p>
+<p class="welcome-label">Tip</p>
+<p>${esc(tipFor(state.seed, state.survivors.length))}</p>
 <button class="act" data-act="welcome-close">Begin</button>
 </div>`;
 }

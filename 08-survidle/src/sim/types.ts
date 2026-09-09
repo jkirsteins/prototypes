@@ -665,7 +665,8 @@ export interface SkillState {
 }
 
 export type GoalId =
-  | "site" | "drink" | "firewood" | "fire" | "bed" | "roof" | "cook" | "keptNight" | "firstOrder"
+  | "site" | "drink" | "firewood" | "fire" | "bed" | "roof" | "forageMeal" | "cook" | "keptNight"
+  | "snareMeal" | "huntMeal" | "fishMeal" | "trapMeal" | "firstOrder"
   | "water" | "keptDays" | "foodSource" | "store" | "fat" | "longOrder" | "toolCare"
   | "explore" | "secondCamp" | "seasonalFood" | "durableRoof" | "winterStores"
   | "spring" | "summer" | "autumn" | "winter";
@@ -673,6 +674,8 @@ export type GoalId =
 export interface GoalState {
   done: Partial<Record<GoalId, true>>;
   progress: Partial<Record<GoalId, number>>;
+  /** Credit earned after a goal was announced, keyed by the goal's stable step ids. */
+  stepProgress: Partial<Record<GoalId, Record<string, number>>>;
   /** Active goals whose introduction the player has dismissed. */
   introduced: Partial<Record<GoalId, true>>;
   /** Completions not yet shown, drained by the overlay one batch at a time. */

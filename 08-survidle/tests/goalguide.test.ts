@@ -1,67 +1,43 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { GOALS } from "../src/sim/goals";
-import { addItem } from "../src/sim/inventory";
+import { GOALS, goalDeed, introduceGoals } from "../src/sim/goals";
 import { newGame } from "../src/sim/newgame";
-import { regionState } from "../src/sim/regionstate";
-import { beginTask } from "../src/sim/tasks";
 import { goalGuide, goalProgress } from "../src/ui/goalguide";
-import { purposeOf, subtabOf } from "../src/ui/purpose";
-import { siteCamp } from "./siting-helpers";
 
 describe("goal guidance", () => {
-  it("gives every goal one concise route or prompt", () => {
-    const { state, world } = newGame(3);
-    const cal = calendar(state.minute, state.startDoy);
+  it("covers every goal without prescribing UI paths", () => {
     for (const goal of GOALS) {
       const guide = goalGuide(goal.id);
-      expect(guide.reason.trim()).not.toBe("");
-      expect(Boolean(guide.path) && Boolean(guide.prompt)).toBe(false);
-      expect(goalProgress(state, world, cal, goal.id).target).toBeGreaterThan(0);
+      expect(guide.id).toBe(goal.id);
+      expect(guide.note ?? "").not.toContain(">");
+      expect(guide.note ?? "").toMatch(/^[\x20-\x7e]*$/);
     }
   });
 
-  it("points opening goals at the panes that own their actions", () => {
-    expect(goalGuide("site").path).toBe(`${subtabOf("makeCamp")} > ${purposeOf("makeCamp")}`);
-    expect(goalGuide("firewood").path).toBe(`${subtabOf("deadwood")} > ${purposeOf("deadwood")}`);
-    expect(goalGuide("cook").path).toBe(`${subtabOf("cook")} > ${purposeOf("cook")}`);
+  it("explains automatic drinking and the activity queue exactly once", () => {
+    const note = goalGuide("drink").note;
+    expect(note).toBe("Below 1 litre, the survivor drinks automatically from water at hand. If travel is needed, Self-care handles it through the activity queue.");
   });
 
-  it("turns fire prerequisites into visible progress", () => {
+  it("leaves an obvious camp goal without explanatory copy", () => {
+    expect(goalGuide("site").note).toBeUndefined();
+  });
+
+  it("warns that raw meat rots and drying preserves it", () => {
+    expect(goalGuide("store").note).toBe("Raw meat rots quickly; drying makes it last.");
+  });
+
+  it("shows stored deed progress instead of inferring it from possessions", () => {
     const { state, world } = newGame(3);
-    siteCamp(state, world);
-    addItem(state.player.pack, "firewood", 2);
+    introduceGoals(state, ["fire"]);
     state.player.tools.push({ id: "fireDrill", durability: 100 });
+    goalDeed(state, { kind: "built", structure: "firePit" });
     const progress = goalProgress(state, world, calendar(state.minute, state.startDoy), "fire");
-    expect(progress.target).toBe(3);
     expect(progress.steps.map((step) => [step.label, step.done])).toEqual([
-      ["Site", false], ["Fuel", true], ["Ignition", true],
+      ["Establish a fire site", true],
+      ["Provide fuel", false],
+      ["Provide ignition", false],
+      ["Light the fire", false],
     ]);
-  });
-
-  it("shows continuous fire days rather than an inert one-shot", () => {
-    const { state, world } = newGame(3);
-    siteCamp(state, world);
-    const st = regionState(state, world, state.player.region);
-    st.fire.lit = true;
-    st.fire.litSince = 0;
-    state.minute = 36 * 60;
-    const progress = goalProgress(state, world, calendar(state.minute, state.startDoy), "keptDays");
-    expect(progress.at).toBe(1.5);
-    expect(progress.target).toBe(3);
-    expect(progress.unit).toBe("days");
-  });
-
-  it("shows shelter materials and only keeps the first dusk deadline", () => {
-    const { state, world } = newGame(3);
-    siteCamp(state, world);
-    addItem(state.player.pack, "stick", 12);
-    const firstDay = goalProgress(state, world, calendar(state.minute, state.startDoy), "bed");
-    expect(firstDay.steps.map((step) => [step.label, step.done])).toEqual([["12 sticks", true], ["Bed", false]]);
-    expect(firstDay.deadline).toBe("before dusk");
-    expect(beginTask(state, world, calendar(state.minute, state.startDoy), "build", "boughBed")).toBe(true);
-    expect(goalProgress(state, world, calendar(state.minute, state.startDoy), "bed").at).toBe(1);
-    state.minute = 2 * 1440;
-    expect(goalProgress(state, world, calendar(state.minute, state.startDoy), "bed").deadline).toBeUndefined();
   });
 });
