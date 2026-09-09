@@ -8,7 +8,35 @@
  * reordering the catalogue redraws every range. Append new species.
  */
 import { disabled } from "./probe";
-import type { SpotId, Terrain } from "./types";
+import type { AgentSpecies, SpotId, Terrain } from "./types";
+
+export interface DisturbanceProfile {
+  visualRangeM: number;
+  auditoryRangeM: number;
+  alertAlarm: number;
+  flightAlarm: number;
+  alarmGain: number;
+  settleMinutes: number;
+  settleDistanceM: number;
+  escapeMinM: number;
+  escapeMaxM: number;
+}
+
+// Gameplay calibration, not species-specific empirical estimates. Red deer:
+// https://nsojournals.onlinelibrary.wiley.com/doi/10.2981/wlb.00403
+// Off-trail median initiation 128 m and escape 610 m. Roe deer:
+// https://nsojournals.onlinelibrary.wiley.com/doi/abs/10.2981/wlb.2004.007
+// Initiation around 42-65 m, modified by habitat, wind and hunting.
+// Sensory limits exceed typical initiation distance because detection is probabilistic.
+// Predators retain their own behavior; zero gain disables the ungulate response.
+export const DISTURBANCE_PROFILES: Record<AgentSpecies, DisturbanceProfile> = {
+  deer: { visualRangeM: 140, auditoryRangeM: 190, alertAlarm: 25, flightAlarm: 50, alarmGain: 60, settleMinutes: 30, settleDistanceM: 260, escapeMinM: 420, escapeMaxM: 680 },
+  reindeer: { visualRangeM: 170, auditoryRangeM: 220, alertAlarm: 25, flightAlarm: 50, alarmGain: 60, settleMinutes: 30, settleDistanceM: 300, escapeMinM: 500, escapeMaxM: 760 },
+  elk: { visualRangeM: 160, auditoryRangeM: 230, alertAlarm: 25, flightAlarm: 50, alarmGain: 60, settleMinutes: 40, settleDistanceM: 320, escapeMinM: 520, escapeMaxM: 800 },
+  wolf: { visualRangeM: 0, auditoryRangeM: 0, alertAlarm: 25, flightAlarm: 50, alarmGain: 0, settleMinutes: 0, settleDistanceM: 0, escapeMinM: 0, escapeMaxM: 0 },
+  wolverine: { visualRangeM: 0, auditoryRangeM: 0, alertAlarm: 25, flightAlarm: 50, alarmGain: 0, settleMinutes: 0, settleDistanceM: 0, escapeMinM: 0, escapeMaxM: 0 },
+  bear: { visualRangeM: 0, auditoryRangeM: 0, alertAlarm: 25, flightAlarm: 50, alarmGain: 0, settleMinutes: 0, settleDistanceM: 0, escapeMinM: 0, escapeMaxM: 0 },
+};
 
 export type Habitat = Exclude<Terrain, "water"> | "lake" | "sea";
 export type SpeciesClass = "mammal" | "bird" | "fish";

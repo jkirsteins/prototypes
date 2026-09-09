@@ -4,8 +4,23 @@ import {
 } from "../src/sim/species";
 import { AUTO_EAT_ORDER, FOODS, ITEM_KG, KG_ITEMS, RECIPES } from "../src/sim/items";
 import { monthName } from "../src/sim/calendar";
+import { DISTURBANCE_PROFILES } from "../src/sim/species";
 
 describe("the species catalogue", () => {
+  it("calibrates every active species and leaves predators outside the ungulate response", () => {
+    const activeSpecies = SPECIES_IDS.filter((species) => SPECIES_DEFS[species].agent);
+    expect(Object.keys(DISTURBANCE_PROFILES).sort()).toEqual(activeSpecies.sort());
+    for (const species of ["wolf", "wolverine", "bear"] as const) {
+      expect(DISTURBANCE_PROFILES[species].alarmGain).toBe(0);
+    }
+    for (const species of ["deer", "reindeer", "elk"] as const) {
+      const profile = DISTURBANCE_PROFILES[species];
+      expect(profile.flightAlarm).toBeGreaterThan(profile.alertAlarm);
+      expect(profile.escapeMinM).toBeGreaterThan(profile.settleDistanceM);
+      expect(profile.settleDistanceM).toBeGreaterThan(profile.auditoryRangeM);
+    }
+  });
+
   it("has about thirty species, each with somewhere to live", () => {
     expect(SPECIES_IDS.length).toBeGreaterThanOrEqual(30);
     for (const s of SPECIES_IDS) {
