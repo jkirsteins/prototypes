@@ -3,7 +3,7 @@ import { calendar } from "../src/sim/calendar";
 import { GOALS, goalDeed } from "../src/sim/goals";
 import { newGame, newPerson } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
-import { goalDoneHtml, goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalsHtml, updateGoalBars } from "../src/ui/goalpanel";
+import { goalDoneHtml, goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalNoticeToOpen, goalsHtml, updateGoalBars } from "../src/ui/goalpanel";
 import { GOAL_GUIDES } from "../src/ui/goalguide";
 import { newUiState } from "../src/ui/render";
 
@@ -138,6 +138,24 @@ describe("goal guidance", () => {
 });
 
 describe("the congratulation", () => {
+  it("keeps factual notices behind completions and introductions until the shared overlay dismisses them", () => {
+    const { state, world } = newGame(3);
+    const ui = newUiState();
+    state.goals.noticeQueue = ["The storm passed. Another opportunity will come."];
+    state.goals.queue = ["site"];
+    expect(goalNoticeToOpen(state, ui)).toBe(null);
+    state.goals.queue = [];
+    expect(goalNoticeToOpen(state, ui)).toBe(null);
+    state.goals.introduced.site = true;
+    const notices = goalNoticeToOpen(state, ui);
+    expect(notices).toEqual(state.goals.noticeQueue);
+    const before = structuredClone(state.goals);
+    const html = goalGuideHtml(state, world, cal, [], [], notices!);
+    expect(html).toContain("The storm passed. Another opportunity will come.");
+    expect(html).toContain('data-act="goal-close"');
+    expect(state.goals).toEqual(before);
+  });
+
   it("opens on a queued completion", () => {
     const { state } = newGame(3);
     const ui = newUiState();

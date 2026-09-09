@@ -70,6 +70,7 @@ export function migrate(state: GameState): void {
   if (legacyGoals) migrateLegacyGoals(state);
   state.goals.introduced ??= {};
   state.goals.noticeQueue ??= [];
+  state.goals.opportunity ??= null;
   const goalIds = new Set(GOALS.map((goal) => goal.id));
   state.goals.queue = (state.goals.queue ?? []).filter((id) => goalIds.has(id));
   if (state.task?.id === "explore" && state.task.originRegion === undefined) {
@@ -253,6 +254,10 @@ export function migrate(state: GameState): void {
   const w = state.weather;
   w.storm ??= null;
   if (w.storm) w.storm.kind ??= precipitationStormKind(w, calendar(w.storm.from, state.startDoy));
+  if (w.storm) w.storm.id ??= 1;
+  if (w.storm) w.storm.source ??= "natural";
+  w.nextStormId = Math.max(w.nextStormId ?? 1, (w.storm?.id ?? 0) + 1);
+  w.stormFreeSince ??= state.minute;
   w.dryDays ??= 0;
   w.wetDay ??= false;
   w.dryWarned ??= false;

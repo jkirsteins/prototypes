@@ -10,7 +10,7 @@ import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { craftSuccess } from "../src/sim/skills";
 import { check, huntOdds } from "../src/sim/tasks";
 import type { GameState, Terrain } from "../src/sim/types";
-import { stepWeather, stormNow } from "../src/sim/weather";
+import { createStorm, stepWeather, stormNow } from "../src/sim/weather";
 import { cellAt, type World } from "../src/world/gen";
 
 const cal = calendar(0);
@@ -54,9 +54,20 @@ function burnForTerrain(state: GameState, world: World, terrains: Terrain[], sno
 }
 
 describe("storms", () => {
+  it("gives every created storm one increasing identity without reuse", () => {
+    const { state } = newGame(17);
+    const rng = new Rng(5);
+    const first = createStorm(state.weather, calendar(0), rng, 0, "natural");
+    state.weather.storm = null;
+    const second = createStorm(state.weather, calendar(1440), rng, 1440, "synthetic");
+    expect(first).toMatchObject({ id: 1, source: "natural" });
+    expect(second).toMatchObject({ id: 2, source: "synthetic" });
+    expect(state.weather.nextStormId).toBe(3);
+  });
+
   it("a storm is announced an hour ahead, then it blows: heavy rain, six degrees of wind, half the odds, no felling or fishing", () => {
     const { state, world } = newGame(17);
-    state.weather.storm = { kind: "rain", from: state.minute + 60, until: state.minute + 60 + 6 * 60, warned: false };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 60, until: state.minute + 60 + 6 * 60, warned: false };
     advance(state, world, 1);
     expect(state.log.some((e) => e.text === "The sky is closing in from the west.")).toBe(true);
     const calm = feltTemperature(state, world, 5);
@@ -98,7 +109,7 @@ describe("storms", () => {
     const day = 10;
     w.rolledDay = day;
     const stormMinute = day * 1440 + 6 * 60;
-    w.storm = { kind: "rain", from: stormMinute - 30, until: stormMinute + 600, warned: true };
+    w.storm = { id: 1, source: "natural", kind: "rain", from: stormMinute - 30, until: stormMinute + 600, warned: true };
     stepWeather(w, calendar(stormMinute), rng, 1, stormMinute);
     expect(w.wetDay).toBe(true);
     const nextRollMinute = (day + 1) * 1440 + 14 * 60;

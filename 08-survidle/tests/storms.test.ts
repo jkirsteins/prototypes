@@ -16,7 +16,7 @@ function exposure(protection: Protection, kind: "rain" | "snow", storm = true) {
   const { state, world } = g;
   state.task = { id: "rest", progress: 0, duration: 60, repeat: false };
   state.weather.precip = "heavy";
-  state.weather.storm = storm ? { kind, from: 0, until: 600, warned: true } : null;
+  state.weather.storm = storm ? { id: 1, source: "natural", kind, from: 0, until: 600, warned: true } : null;
   state.player.wetness = 10;
   for (const garment of state.player.clothing) garment.wet = kind === "snow" ? 10 : 50;
   siteFor(regionState(state, world, state.player.region), cellOf(state, world)).cover = protection;
@@ -51,7 +51,7 @@ describe("rain and snow storms", () => {
     const raw = JSON.parse(serialize(state));
     raw.state.weather.storm = { from: 60, until: 420, warned: true };
     const back = deserialize(JSON.stringify(raw))!.state;
-    expect(back.weather.storm).toEqual({ kind, from: 60, until: 420, warned: true });
+    expect(back.weather.storm).toEqual({ id: 1, source: "natural", kind, from: 60, until: 420, warned: true });
     expect(back.rng).toBe(state.rng);
     expect(back.goals).toEqual(state.goals);
     expect(back.shopping).toEqual(state.shopping);

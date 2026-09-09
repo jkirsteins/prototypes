@@ -564,8 +564,12 @@ export interface Weather {
   snowCm: number;
   /** The day index whose dawn roll has happened. */
   rolledDay: number;
-  /** A storm window: from and until in minutes; warned records the one-hour warning was logged. */
-  storm: { kind: StormKind; from: number; until: number; warned: boolean } | null;
+  /** The next stable identity issued to a storm in this world. */
+  nextStormId: number;
+  /** Minute the latest storm ended, for a full storm-free retry day. */
+  stormFreeSince: number;
+  /** A storm window: from and until in minutes; warned records the warning was logged. */
+  storm: { id: number; source: "natural" | "synthetic"; kind: StormKind; from: number; until: number; warned: boolean } | null;
   /** Days running with no precipitation, for the drought warning. */
   dryDays: number;
   wetDay: boolean;
@@ -691,6 +695,18 @@ export type GoalId =
   | "explore" | "secondCamp" | "seasonalFood" | "durableRoof" | "winterStores"
   | "spring" | "summer" | "autumn" | "winter";
 
+export interface GoalOpportunity {
+  goal: GoalId;
+  status: "reserved" | "announced" | "running" | "resolved";
+  createdAt: number;
+  attempts: number;
+  stormId: number | null;
+  source: "natural" | "synthetic" | null;
+  area: { region: number; centre: number; radiusKm: 1 } | null;
+  announcedAt: number | null;
+  resolvedAt: number | null;
+}
+
 export interface GoalState {
   done: Partial<Record<GoalId, true>>;
   progress: Partial<Record<GoalId, number>>;
@@ -700,6 +716,8 @@ export interface GoalState {
   queue: GoalId[];
   /** Factual opportunity outcomes waiting for the same teaching surface. */
   noticeQueue: string[];
+  /** The one weather teaching attempt owned by this world. */
+  opportunity: GoalOpportunity | null;
   /** The season the last daily roll stood in: a turnover is this differing from now. */
   lastSeason: Season;
 }

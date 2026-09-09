@@ -4,7 +4,7 @@
  * and never scrolls away; the overlay is the rung moment's shape, because
  * a goal reached and a rung opened are the same kind of event to a reader.
  */
-import type { Calendar } from "../sim/calendar";
+import { calendar, type Calendar } from "../sim/calendar";
 import { activeGoals, goalDef, type GoalId, unintroducedGoals } from "../sim/goals";
 import type { GameState } from "../sim/types";
 import type { World } from "../world/gen";
@@ -75,8 +75,9 @@ function stepsHtml(state: GameState, world: World, cal: Calendar, id: GoalId): s
   return `<ul class="goal-steps">${progress.steps.map((step) => `<li class="${step.done ? "done" : ""}"><span aria-hidden="true">[${step.done ? "x" : " "}]</span> ${esc(step.label)}</li>`).join("")}</ul>`;
 }
 
-export function goalGuideHtml(state: GameState, world: World, cal: Calendar, ids: GoalId[], done: GoalId[] = []): string {
+export function goalGuideHtml(state: GameState, world: World, cal: Calendar, ids: GoalId[], done: GoalId[] = [], notices: string[] = []): string {
   const completed = done.length > 0 ? `<div class="goal-met">${done.map((id) => `<span>[x] ${esc(goalDef(id).title)}</span>`).join("")}</div>` : "";
+  const notice = notices.map((text) => `<section class="goal-guide"><p>${esc(text)}</p></section>`).join("");
   const cards = ids.map((id) => {
     const def = goalDef(id);
     const guide = goalGuide(id);
@@ -84,7 +85,7 @@ export function goalGuideHtml(state: GameState, world: World, cal: Calendar, ids
     const cue = guide.path ?? guide.prompt ?? "";
     return `<section class="goal-guide"><div class="goal-guide-head"><h1>${esc(def.title)}</h1><span>${esc(figure(progress.at, progress.target, progress.unit))}</span></div>${progress.deadline ? `<p class="goal-deadline">${esc(progress.deadline)}</p>` : ""}${stepsHtml(state, world, cal, id)}<p>${esc(guide.reason)}</p>${cue ? `<p class="example">${esc(cue)}</p>` : ""}</section>`;
   }).join("");
-  return `<div class="box teach goal-modal">${completed}${cards}<button class="act" data-act="goal-close">Continue</button></div>`;
+  return `<div class="box teach goal-modal">${completed}${cards}${notice}<button class="act" data-act="goal-close">Continue</button></div>`;
 }
 
 /**
@@ -102,6 +103,13 @@ export function goalIntroductionToOpen(state: GameState, cal: Calendar, ui: UiSt
   if (ui.goalGuide || ui.teach || ui.welcome || ui.manual || ui.cemetery || ui.away || state.landing || state.dead) return null;
   const ids = unintroducedGoals(state, cal);
   return ids.length > 0 ? ids : null;
+}
+
+export function goalNoticeToOpen(state: GameState, ui: UiState): string[] | null {
+  if (ui.goalGuide || ui.teach || ui.welcome || ui.manual || ui.cemetery || ui.away || state.landing || state.dead) return null;
+  if (state.goals.queue.length > 0) return null;
+  if (unintroducedGoals(state, calendar(state.minute, state.startDoy)).length > 0) return null;
+  return state.goals.noticeQueue.length > 0 ? [...state.goals.noticeQueue] : null;
 }
 
 /**

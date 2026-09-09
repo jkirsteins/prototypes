@@ -140,21 +140,21 @@ describe("keeping a fire for three days", () => {
 describe("tracking rain held by a fire", () => {
   it("counts a fire that comes through twenty-four hours of rain", () => {
     const { state, world, st } = litCamp();
-    state.weather.storm = { kind: "rain", from: state.minute, until: state.minute + 26 * 60, warned: true };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute, until: state.minute + 26 * 60, warned: true };
     run(state, world, 26 * 60);
     expect(st.fire.rainHeld).toBeGreaterThanOrEqual(24 * 60);
   });
 
   it("credits nothing when the rain stops short of a day", () => {
     const { state, world, st } = litCamp();
-    state.weather.storm = { kind: "rain", from: state.minute, until: state.minute + 20 * 60, warned: true };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute, until: state.minute + 20 * 60, warned: true };
     run(state, world, 20 * 60); // exactly the storm's span, so no chance rain after it can pad the count
     expect(st.fire.rainHeld).toBeLessThan(24 * 60);
   });
 
   it("credits the day of rain even with a brief dip to embers along the way", () => {
     const { state, world, st } = litCamp();
-    state.weather.storm = { kind: "rain", from: state.minute, until: state.minute + 26 * 60, warned: true };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute, until: state.minute + 26 * 60, warned: true };
     run(state, world, 10 * 60); // ten hours of rain on an open flame
     st.fire.lit = false;
     st.fire.fuelKg = 0;
@@ -185,7 +185,7 @@ describe("the fire goals credit only the player's own region", () => {
     otherSt.fire.fuelKg = 1e7;
     otherSt.fire.wetKg = 0;
     otherSt.fire.litSince = state.minute;
-    state.weather.storm = { kind: "rain", from: state.minute, until: state.minute + 5 * 24 * 60, warned: true };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute, until: state.minute + 5 * 24 * 60, warned: true };
 
     run(state, world, 5 * 24 * 60);
     expect(state.goals.done.keptNight).toBeUndefined();
@@ -209,7 +209,7 @@ describe("leaving a camp kills its fire outright", () => {
 describe("a catch-up with nobody home", () => {
   it("credits none of the three fire goals, however long the camp's fire burns on unattended", () => {
     const { state, world, st } = litCamp();
-    state.weather.storm = { kind: "rain", from: state.minute, until: state.minute + 5 * 24 * 60, warned: true };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute, until: state.minute + 5 * 24 * 60, warned: true };
     advance(state, world, 5 * 24 * 60, { nobody: true });
     expect(st.fire.lit).toBe(true); // 1e7 kg of fuel never runs out, so nothing here ends the run early
     expect(state.goals.done.keptNight).toBeUndefined();

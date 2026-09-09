@@ -13,7 +13,7 @@ import { siteCamp } from "./siting-helpers";
 import { current } from "../src/sim/record";
 import { levelMinutes } from "../src/sim/skills";
 
-const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
+const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
 /** Minutes since the run start for a clock hour on day one. */
 const at = (hour: number) => calendar((hour - 8) * 60);
 
@@ -27,7 +27,7 @@ describe("forecast knowledge in the weather wall", () => {
     state.weather.precip = "none";
     state.weather.snowCm = 0;
     state.weather.iceCm = 0;
-    state.weather.storm = { kind, from: 60, until: 420, warned: false };
+    state.weather.storm = { id: 1, source: "natural", kind, from: 60, until: 420, warned: false };
     const cal = calendar(0);
     const render = () => {
       setPanel("weather", weatherHtml(state, world, cal, 15));
@@ -53,7 +53,7 @@ describe("forecast knowledge in the weather wall", () => {
     const { state, world } = newGame(17);
     current(state).person.quirks = [];
     state.weather.offset = 15;
-    state.weather.storm = { kind: "rain", from: 100, until: 460, warned: false };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 100, until: 460, warned: false };
     const line = () => {
       const root = document.createElement("div");
       root.innerHTML = weatherHtml(state, world, calendar(state.minute), 15);
@@ -77,7 +77,7 @@ describe("forecast knowledge in the weather wall", () => {
     const { state, world } = newGame(17);
     current(state).person.quirks = [];
     state.weather.offset = 15;
-    state.weather.storm = { kind: "rain", from: 60, until: 420, warned: false };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
     const cal = calendar(0);
     setPanel("weather", weatherHtml(state, world, cal, 15));
     updateSky(state, cal, 15);

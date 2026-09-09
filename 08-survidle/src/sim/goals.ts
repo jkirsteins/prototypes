@@ -159,7 +159,7 @@ export function goalDef(id: GoalId): GoalDef {
 }
 
 export function newGoals(s: Season): GoalState {
-  return { done: {}, progress: {}, introduced: {}, queue: [], noticeQueue: [], lastSeason: s };
+  return { done: {}, progress: {}, introduced: {}, queue: [], noticeQueue: [], opportunity: null, lastSeason: s };
 }
 
 /**

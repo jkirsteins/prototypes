@@ -30,7 +30,7 @@ export interface UiState {
   /** The rung whose moment is open, drained one at a time from state.teachQueue. */
   teach: Rung | null;
   /** Goal guidance open now, whether automatic or reopened from a pinned row. */
-  goalGuide: { ids: GoalId[]; done: GoalId[]; automatic: boolean } | null;
+  goalGuide: { ids: GoalId[]; done: GoalId[]; notices?: string[]; automatic: boolean } | null;
   /** The recognized wildlife subject whose naming moment is open. */
   recognition: number | null;
   /** The landing's welcome is open. Every landing has one, fresh survivor or heir. */

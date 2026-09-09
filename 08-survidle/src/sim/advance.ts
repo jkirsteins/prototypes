@@ -5,6 +5,7 @@ import { dailyAnimals } from "./animals";
 import { calendar, DAILY_HOUR } from "./calendar";
 import { dailyCamp, stepCamp, stepEmergencyShelter, stepFoundCover } from "./camp";
 import { hourlyEvents } from "./events";
+import { stepGoalOpportunity } from "./goalopportunity";
 import { checkWinterStores, goalDeed } from "./goals";
 import { hourlyWorld, iceUnderFoot } from "./hazards";
 import { runIntent } from "./intent";
@@ -129,4 +130,5 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   if (!nobody && drains && state.player.health <= 0 && !state.dead) {
     die(state, causeFrom(drains), regionAt(world, state.player.region).name);
   }
+  stepGoalOpportunity(state, world, cal, rng);
 }

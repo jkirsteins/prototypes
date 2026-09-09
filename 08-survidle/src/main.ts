@@ -40,7 +40,7 @@ import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
 import { introduceGoals, unintroducedGoals } from "./sim/goals";
-import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
+import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalNoticeToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
 import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, viewOrigin } from "./ui/map";
@@ -248,7 +248,7 @@ function render() {
     setPanel("overlay", conceptHtml(state, world, cal, ui.teach));
     overlay.hidden = false;
   } else if (ui.goalGuide) {
-    setPanel("overlay", goalGuideHtml(state, world, cal, ui.goalGuide.ids, ui.goalGuide.done));
+    setPanel("overlay", goalGuideHtml(state, world, cal, ui.goalGuide.ids, ui.goalGuide.done, ui.goalGuide.notices));
     overlay.hidden = false;
   } else if (ui.recognition !== null) {
     setPanel("overlay", recognitionHtml(state, ui.recognition));
@@ -296,6 +296,8 @@ function frame(now: number) {
   if (reached) ui.goalGuide = { ids: unintroducedGoals(state, calendar(state.minute, state.startDoy)), done: reached, automatic: true };
   const introduced = goalIntroductionToOpen(state, calendar(state.minute, state.startDoy), ui);
   if (introduced) ui.goalGuide = { ids: introduced, done: [], automatic: true };
+  const notices = goalNoticeToOpen(state, ui);
+  if (notices) ui.goalGuide = { ids: [], done: [], notices, automatic: true };
   if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.goalGuide && ui.recognition === null) {
     ui.recognition = state.wildlife.recognitionQueue[0] ?? null;
   }
@@ -511,6 +513,7 @@ function onClick(ev: Event) {
     case "goal-close":
       if (ui.goalGuide?.automatic) introduceGoals(state, ui.goalGuide.ids);
       if (ui.goalGuide) state.goals.queue = state.goals.queue.filter((id) => !ui.goalGuide!.done.includes(id));
+      if (ui.goalGuide?.notices) state.goals.noticeQueue = state.goals.noticeQueue.filter((notice) => !ui.goalGuide!.notices!.includes(notice));
       ui.goalGuide = null;
       // The same bump the rung moment's dismiss does: the minutes the
       // screen was open were paused, not spent away.

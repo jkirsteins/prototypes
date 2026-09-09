@@ -300,6 +300,7 @@ describe("goals are the world's, not a life's", () => {
     expect(g.introduced).toEqual({});
     expect(g.queue).toEqual([]);
     expect(g.noticeQueue).toEqual([]);
+    expect(g.opportunity).toBeNull();
     expect(g.lastSeason).toBe("winter");
   });
 

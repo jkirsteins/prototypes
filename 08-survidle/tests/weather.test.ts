@@ -6,7 +6,7 @@ import type { Weather } from "../src/sim/types";
 import { ambientTemperature, seasonalMean, SNOW_CM_PER_MINUTE, SNOW_SETTLE_PER_DAY, stepWeather } from "../src/sim/weather";
 
 function w(over: Partial<Weather> = {}): Weather {
-  return { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: -1, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0, ...over };
+  return { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: -1, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0, ...over };
 }
 
 describe("weather", () => {

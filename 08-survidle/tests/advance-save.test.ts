@@ -76,6 +76,33 @@ describe("save", () => {
     expect(file!.state).toEqual(expected);
   });
 
+  it("round-trips stable storm identity and an inspectable teaching opportunity", () => {
+    const { state } = newGame(9);
+    state.weather.storm = { id: 4, source: "synthetic", kind: "rain", from: 600, until: 960, warned: false };
+    state.weather.nextStormId = 5;
+    state.goals.opportunity = {
+      goal: "testShelter", status: "reserved", createdAt: 20, attempts: 2,
+      stormId: 4, source: "synthetic", area: { region: 7, centre: 99, radiusKm: 1 },
+      announcedAt: null, resolvedAt: null,
+    };
+    const back = deserialize(serialize(state))!.state;
+    expect(back.weather.storm).toEqual(state.weather.storm);
+    expect(back.weather.nextStormId).toBe(5);
+    expect(back.goals.opportunity).toEqual(state.goals.opportunity);
+  });
+
+  it("migrates storms and goals from before stable identity and opportunities", () => {
+    const { state } = newGame(9);
+    const raw = JSON.parse(serialize(state));
+    raw.state.weather.storm = { kind: "rain", from: 600, until: 960, warned: false };
+    delete raw.state.weather.nextStormId;
+    delete raw.state.goals.opportunity;
+    const back = deserialize(JSON.stringify(raw))!.state;
+    expect(back.weather.storm).toEqual({ id: 1, source: "natural", kind: "rain", from: 600, until: 960, warned: false });
+    expect(back.weather.nextStormId).toBe(2);
+    expect(back.goals.opportunity).toBeNull();
+  });
+
   it("a new game starts with the new body fields, and an old save gets them filled", () => {
     const { state, world } = newGame(8);
     siteCamp(state, world);
@@ -83,6 +110,8 @@ describe("save", () => {
     expect(state.player.frostbite).toEqual({ feet: 0, hands: 0 });
     expect(state.weather.iceCm).toBe(0);
     expect(state.weather.storm).toBeNull();
+    expect(state.weather.nextStormId).toBe(1);
+    expect(state.weather.stormFreeSince).toBe(0);
     const st = state.regions[state.player.region];
     expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0 });
     expect(st.smoke).toBe(0);
@@ -102,6 +131,8 @@ describe("save", () => {
     delete raw.state.player.tools.find((t: { id: string }) => t.id === "barkBucket").litres;
     delete raw.state.weather.iceCm;
     delete raw.state.weather.storm;
+    delete raw.state.weather.nextStormId;
+    delete raw.state.weather.stormFreeSince;
     delete raw.state.weather.dryDays;
     delete raw.state.weather.wetDay;
     delete raw.state.weather.dryWarned;
@@ -124,6 +155,8 @@ describe("save", () => {
     expect(back.player.tools.find((t) => t.id === "barkBucket")!.frozen).toBe(false);
     expect(back.weather.iceCm).toBe(0);
     expect(back.weather.storm).toBeNull();
+    expect(back.weather.nextStormId).toBe(1);
+    expect(back.weather.stormFreeSince).toBe(state.minute);
     expect(back.weather.dryDays).toBe(0);
     expect(back.weather.wetDay).toBe(false);
     expect(back.weather.dryWarned).toBe(false);

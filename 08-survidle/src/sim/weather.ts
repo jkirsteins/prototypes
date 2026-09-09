@@ -48,6 +48,64 @@ export const SNOW_SETTLE_PER_DAY = 0.05;
 /** Daily chance of a storm rolling in, by season. */
 const STORM_CHANCE: Record<Season, number> = { spring: 0.04, summer: 0.02, autumn: 0.04, winter: 0.08 };
 
+export interface StormConstraints {
+  minLead?: number;
+  maxLead?: number;
+  maxDuration?: number;
+  kinds?: readonly StormKind[];
+}
+
+/** One storm factory for both ordinary dawn weather and constrained teaching weather. */
+export function createStorm(
+  w: Weather,
+  cal: Calendar,
+  rng: Rng,
+  minute: number,
+  source: "natural" | "synthetic",
+  constraints: StormConstraints = {},
+): NonNullable<Weather["storm"]> | null {
+  const minLead = Math.max(60, Math.ceil(constraints.minLead ?? 60));
+  const maxLead = Math.min(180, Math.floor(constraints.maxLead ?? 180));
+  const startDoy = cal.dayOfYear - cal.dayIndex;
+  const allowed = constraints.kinds;
+  const leads: number[] = [];
+  for (let lead = minLead; lead <= maxLead; lead++) {
+    const precip = precipitationStormKind(w, calendar(minute + lead, startDoy));
+    if (!allowed || allowed.includes("gale") || allowed.includes(precip)) leads.push(lead);
+  }
+  if (leads.length === 0) return null;
+  const lead = constraints.minLead === undefined && constraints.maxLead === undefined
+    ? 60 + rng.int(121)
+    : leads[rng.int(leads.length)];
+  const from = minute + lead;
+  const precip = precipitationStormKind(w, calendar(from, startDoy));
+  const maxDuration = Math.min(1080, Math.floor(constraints.maxDuration ?? 1080));
+  let roll: number;
+  if (!allowed && constraints.maxDuration === undefined) {
+    roll = rng.int(721 * 5);
+  } else {
+    const rolls: number[] = [];
+    for (let candidate = 0; candidate < 721 * 5; candidate++) {
+      const duration = 360 + Math.floor(candidate / 5);
+      const kind = candidate % 5 === 0 ? "gale" : precip;
+      if (duration <= maxDuration && (!allowed || allowed.includes(kind))) rolls.push(candidate);
+    }
+    if (rolls.length === 0) return null;
+    roll = rolls[rng.int(rolls.length)];
+  }
+  const kind: StormKind = roll % 5 === 0 ? "gale" : precip;
+  const storm = {
+    id: w.nextStormId++,
+    source,
+    kind,
+    from,
+    until: from + 360 + Math.floor(roll / 5),
+    warned: false,
+  };
+  w.storm = storm;
+  return storm;
+}
+
 /** True while a storm is blowing at this minute. */
 export function stormNow(w: Weather, minute: number): boolean {
   return w.storm !== null && minute >= w.storm.from && minute < w.storm.until;
@@ -147,14 +205,7 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, min
     // not just from whatever transition into rain happens to land on this same minute.
     w.wetDay = w.precip !== "none";
     if (!w.storm && rng.chance(STORM_CHANCE[cal.season])) {
-      const from = minute + 60 + rng.int(121);
-      const startDoy = cal.dayOfYear - cal.dayIndex;
-      // One of five equal sub-buckets per duration is gale: 20% is a design
-      // value, not a sourced frequency. Sharing the duration draw preserves
-      // its 721 equiprobable minutes, every window, and the random stream.
-      const roll = rng.int(721 * 5);
-      const kind = roll % 5 === 0 ? "gale" : precipitationStormKind(w, calendar(from, startDoy));
-      w.storm = { kind, from, until: from + 360 + Math.floor(roll / 5), warned: false };
+      createStorm(w, cal, rng, minute, "natural");
     }
   }
   const ambient = ambientTemperature(cal, w);
@@ -166,6 +217,7 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, min
     }
   } else if (w.storm && minute >= w.storm.until) {
     w.storm = null;
+    w.stormFreeSince = minute;
     if (w.precip !== "none") {
       w.precip = "none";
       ev.precipStopped = true;

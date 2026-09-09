@@ -475,7 +475,7 @@ describe("the runner in the elements", () => {
     st.fire.fuelKg = 4;
     addItem(pile(state, camp), "firewood", 20);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    state.weather.storm = { kind: "rain", from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
     advance(state, world, 1);
     expect(state.player.bodyNeed).toBe("storm");
     expect(state.intent?.step).toBe("walking to camp before the storm");
@@ -495,7 +495,7 @@ describe("the runner in the elements", () => {
     addItem(pile(state, camp), "stone", 6);
     addItem(pile(state, camp), "firewood", 20);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    state.weather.storm = { kind: "rain", from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
     const steps: string[] = [];
     until(g, () => {
       const s = state.intent?.step ?? "";
@@ -594,7 +594,7 @@ describe("the runner in the elements", () => {
     st.fire.fuelKg = 4;
     addItem(pile(state, camp), "firewood", 20);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    state.weather.storm = { kind: "rain", from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
     advance(state, world, 1);
     expect(state.player.bodyNeed).toBe("storm");
     expect(until(g, () => state.task?.id === "rest")).toBe(true);
@@ -692,7 +692,7 @@ describe("the runner in the elements", () => {
     expect(state.dead).toBeNull();
 
     // Storm.
-    state.weather.storm = { kind: "rain", from: state.minute + 5, until: state.minute + 5 + 4 * 60, warned: false };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 5, until: state.minute + 5 + 4 * 60, warned: false };
     run(400);
     expect(state.dead).toBeNull();
 

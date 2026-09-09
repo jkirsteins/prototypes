@@ -123,7 +123,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     regions: {},
     discovered: {},
     mapped: {},
-    weather: { precip: "none", clear: true, offset: 0, snowCm: warm ? 0 : 3, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 },
+    weather: { precip: "none", clear: true, offset: 0, snowCm: warm ? 0 : 3, rolledDay: 0, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 },
     lastHour: 0,
     lastDay: 0,
     piles: {},
