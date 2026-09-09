@@ -561,6 +561,29 @@ function shelterAdequate(inputs: StormPlanInputs): boolean {
   return inputs.effectiveProtection >= 2;
 }
 
+function optionSurvivalScore(
+  inputs: StormPlanInputs,
+  kind: StormPlanOption["kind"],
+  arrivalMargin: number | null,
+  viable: boolean,
+  continuing = false,
+): number {
+  if (!viable && kind !== "localShelter") return 0;
+
+  const drill = inputs.activeGear.includes("fireDrill") || (inputs.packedGear.fireDrill ?? 0) > 0;
+  const fire = inputs.fireLit
+    ? 60 + Math.min(12, inputs.fuelKg) * 5
+    : drill && inputs.supplies.firewoodKg >= 1 ? 25 : 0;
+  const supplies = Math.min(12, inputs.supplies.firewoodKg) * 2
+    + Math.min(2, inputs.supplies.foodKg) * 10
+    + Math.min(3, inputs.supplies.waterLitres) * 5;
+  const place = kind === "returnCamp" ? 80 : kind === "localShelter" ? 40 : 0;
+  const margin = Math.min(60, Math.max(0, arrivalMargin ?? 0));
+  const travelExposure = Math.min(120, inputs.travelMinutes ?? 0);
+  return (viable ? 1000 : 0) + inputs.effectiveProtection * 100 + fire + supplies
+    + place + margin - travelExposure + (continuing ? 30 : 0);
+}
+
 function routeReading(state: GameState, world: World, cal: Calendar, target: number): { route: number[] | null; minutes: number | null } {
   const ongoing = state.task?.id === "walk" && state.route?.target === target ? state.route : null;
   if (ongoing?.path.length) {
@@ -598,7 +621,7 @@ export function stormOptions(
     const viable = arrivalMargin !== null && arrivalMargin >= 0;
     options.push({
       kind: "returnCamp", target: { region: state.player.region, cell: camp }, inputs, arrivalMargin, viable,
-      survivalScore: viable ? 400 + inputs.effectiveProtection * 10 + (inputs.fireLit ? 5 : 0) : 0,
+      survivalScore: optionSurvivalScore(inputs, "returnCamp", arrivalMargin, viable),
     });
   }
 
@@ -607,7 +630,7 @@ export function stormOptions(
   options.push({
     kind: "localShelter", target: { region: state.player.region, cell: here }, inputs: localInputs,
     arrivalMargin: remaining, viable: localViable,
-    survivalScore: localViable ? 375 + localInputs.effectiveProtection * 10 + (localInputs.fireLit ? 5 : 0) : 100 + localInputs.protection * 10,
+    survivalScore: optionSurvivalScore(localInputs, "localShelter", remaining, localViable),
   });
 
   const remote: StormPlanOption[] = [];
@@ -624,7 +647,7 @@ export function stormOptions(
       const continuing = state.task?.id === "walk" && state.route?.target === cell;
       remote.push({
         kind: "remoteRefuge", target: { region: regionId, cell }, inputs, arrivalMargin, viable,
-        survivalScore: viable ? 350 + inputs.effectiveProtection * 10 + (inputs.fireLit ? 5 : 0) + (continuing ? 20 : 0) : 0,
+        survivalScore: optionSurvivalScore(inputs, "remoteRefuge", arrivalMargin, viable, continuing),
       });
     }
   }
@@ -664,8 +687,7 @@ function stormStep(state: GameState, world: World, cal: Calendar, dry: boolean):
     return walkStep(state, world, choice.target.cell, choice.kind === "returnCamp" ? " before the storm" : " to shelter from the storm");
   }
   if (choice.kind !== "returnCamp" && here !== camp) {
-    const site = siteAt(st, here);
-    if (protectionOf(site) < 2) {
+    if (!shelterAdequate(choice.inputs)) {
       if (check(state, world, cal, "improveCover").ok) return { id: "improveCover", step: "improving shelter for the storm" };
       if (coverCeiling(world, here) > 0 && check(state, world, cal, "findShelter").ok) return { id: "findShelter", step: "finding shelter for the storm" };
       if (check(state, world, cal, "emergencyShelter").ok) return { id: "emergencyShelter", step: "building shelter for the storm" };

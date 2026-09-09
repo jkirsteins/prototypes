@@ -164,6 +164,17 @@ export function forecastKnowledge(
 ): ForecastKnowledge {
   const warning = warningMinutesAt(state, minute);
   const stage = warning >= 180 ? 3 : warning >= 120 ? 2 : 1;
+  if (minute >= storm.from && minute < storm.until) {
+    const activeStage = Math.max(2, stage) as 2 | 3;
+    return {
+      stage: activeStage,
+      coming: false,
+      arrivalMinute: storm.from,
+      kind: storm.kind,
+      severity: "heavy",
+      durationMinutes: activeStage === 3 ? storm.until - storm.from : null,
+    };
+  }
   if (minute < storm.from - warning || minute > storm.from) return { ...NO_FORECAST_KNOWLEDGE };
   return {
     stage,

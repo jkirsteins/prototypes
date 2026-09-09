@@ -315,6 +315,25 @@ describe("Chapter 2 forecast evidence", () => {
     expect(state.goals.done.prepareWeather).toBeUndefined();
   });
 
+  it("splits a fractional onset to freeze its exact pre-task state", () => {
+    const { state, world } = newGame(17);
+    chapter2Attempt(state, 43);
+    const meadow = regionAt(world, state.player.region).cells.find((cell) => cellAt(world, cell).terrain === "meadow")!;
+    placeAt(state, world, meadow);
+    const site = siteFor(state.regions[state.player.region], meadow);
+    site.emergencyMinutes = 89;
+    const onset = state.minute + 0.25;
+    state.weather.storm = { id: 43, source: "natural", kind: "rain", from: onset, until: onset + 360, warned: true };
+    expect(startTask(state, world, calendar(state.minute, state.startDoy), "emergencyShelter")).toBe(true);
+
+    advance(state, world, 1);
+
+    expect(state.goals.opportunity?.plan?.minute).toBe(onset);
+    expect(state.goals.opportunity?.plan?.options.find((option) => option.kind === "localShelter")?.inputs.protection).toBe(1);
+    expect(site.emergencyMinutes).toBe(90);
+    expect(state.minute).toBe(onset + 0.75);
+  });
+
   it("completes survival only for the matching storm, alive, with the same reader still current", () => {
     const ended = (stormId: number, survivorAlive: boolean) => ({
       kind: "stormEnded" as const, minute: 500, stormId, survivorAlive,

@@ -48,7 +48,11 @@ export function advance(state: GameState, world: World, dtMinutes: number, opts:
   let left = dtMinutes;
   const rng = new Rng(state.rng);
   while (left > 1e-9 && (nobody || !state.dead)) {
-    const dt = Math.min(MAX_STEP, left);
+    let dt = Math.min(MAX_STEP, left);
+    const onset = state.weather.storm?.from;
+    if (onset !== undefined && onset > state.minute && onset < state.minute + dt) {
+      dt = onset - state.minute;
+    }
     left -= dt;
     step(state, world, rng, dt, nobody, wildlife);
   }
