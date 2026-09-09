@@ -117,6 +117,25 @@ describe("the purposes and the filter", () => {
     expect(html).not.toContain('data-act="more"');
   });
 
+  it("offers material tracking only inside an eligible Make or Build row", () => {
+    const { state, world } = newGame(3);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = {
+      ...newUiState(),
+      panes: { pane: "do" as const, subtab: "Make" as const, purpose: "Tools" },
+      open: { id: "craft" as TaskId, arg: "knife" },
+    };
+    const knife = doHtml(state, world, cal, ui);
+    expect(knife).toContain('data-act="shopping-track" data-id="craft" data-arg="knife"');
+
+    const noMaterials = {
+      ...ui,
+      panes: { pane: "do" as const, subtab: "Build" as const, purpose: "Fire" },
+      open: { id: "build" as TaskId, arg: "firePit" },
+    };
+    expect(doHtml(state, world, cal, noMaterials)).not.toContain('data-act="shopping-track"');
+  });
+
   it("the invisible keywords find a row whose own words never say what it is for", () => {
     // Nothing on the torch row says "fire", and nothing on the bough bed says
     // "sleep": the keywords are the only route to them.

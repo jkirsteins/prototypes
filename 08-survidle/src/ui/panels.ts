@@ -42,6 +42,7 @@ import { regionAt, speciesHere, type World } from "../world/gen";
 import { routeKm } from "../world/route";
 import { hurryKind, type HurryState } from "./hurry";
 import { esc, type UiState } from "./render";
+import { shoppingPlaceCueHtml } from "./shopping";
 import { plain, voice } from "../sim/voice";
 import { skyHtml, WALL } from "./sky";
 import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
@@ -325,16 +326,17 @@ export function placesHtml(state: GameState, world: World, cal: Calendar, displa
       // for it.
       if (s.id !== "camp" && cell === camp) return "";
       const name = esc(SPOT_WORDS[s.id]);
-      if (cell === here) return `<div class="way" data-place="${s.id}"><b>${name}</b> <small class="dim">you are here</small></div>`;
+      const shopping = shoppingPlaceCueHtml(state, world, cal, s.id);
+      if (cell === here) return `<div class="way" data-place="${s.id}"><b>${name}</b> <small class="dim">you are here</small>${shopping}</div>`;
       const at = ` data-at="${cell}"`;
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
       const km = kmBetween(state, world, here, cell, walkableIce(state.weather));
-      if (!walk.ok) return `<div class="way" data-place="${s.id}"${at}><span class="dim">${name}: ${esc(plain(walk.why))}</span></div>`;
+      if (!walk.ok) return `<div class="way" data-place="${s.id}"${at}><span class="dim">${name}: ${esc(plain(walk.why))}</span>${shopping}</div>`;
       // The whole row is the button, and what it costs is in its own label:
       // a name in a button beside a sentence saying "from here" spent two
       // thirds of the row on words that never change.
       const cost = km === null ? esc(fmtDuration(walk.duration)) : esc(formatTravel(km, walk.duration, display));
-      return `<div class="way" data-place="${s.id}"${at}><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk)}</div>`;
+      return `<div class="way" data-place="${s.id}"${at}><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk)}${shopping}</div>`;
     })
     .join("");
   // The ways out, under the places and in the same corner - but only those

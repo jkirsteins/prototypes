@@ -132,6 +132,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     spine: { fired: {}, announced: {} },
     manualSeen: false,
     goals: newGoals(calendar(0, startDoy).season),
+    shopping: null,
     wildlife: emptyWildlife(),
   } as GameState;
   // The same fresh slate a landing gives, from the one door that gives it.

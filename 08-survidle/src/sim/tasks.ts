@@ -2303,6 +2303,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
           else if (takeUp(state, world, item as ToolId)) log(state, `{You} {have} a ${rec.name}.`, "good");
         }
       }
+      if (state.shopping?.task === "craft" && state.shopping.arg === rid) state.shopping = null;
       return;
     }
     case "repair": {
@@ -2350,6 +2351,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       // Once per structure per life; the first snare set is the record's snare line.
       if (!hasEvent(state, (e) => e.kind === "built" && e.structure === sid)) record(state, { kind: "built", structure: sid });
       goalDeed(state, { kind: "built", structure: sid });
+      if (state.shopping?.task === "build" && state.shopping.arg === sid) state.shopping = null;
       log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : sid === "seep" ? "dug" : "finished"}.`, "good");
       return;
     }
