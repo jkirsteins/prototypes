@@ -205,6 +205,8 @@ describe("weather teaching opportunity lifecycle", () => {
 
     expect(state.goals.opportunity).toMatchObject({ status: "reserved", stormId: 12, readerIndex: current(state).index });
     expect(state.goals.done.readWeather).toBe(true);
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.goals.opportunity).toMatchObject({ status: "announced", stormId: 12, readerIndex: current(state).index });
   });
 
   it("waits past a current sky reading before synthesizing a forecast lesson", () => {
