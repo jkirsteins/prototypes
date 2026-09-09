@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { bodyRowOf, isCampRow, isBodyRow } from "../src/sim/bodyorder";
@@ -14,7 +14,11 @@ import { isWorkOrder, type GameState } from "../src/sim/types";
 import { regionAt, speciesHere } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 import { Rng } from "../src/rng";
-import { activateWildlife } from "../src/sim/wildlife-agents";
+import { activateWildlife, evaluateWildlifeDisturbance } from "../src/sim/wildlife-agents";
+import { setWildlifeEventSink } from "../src/sim/wildlife-events";
+import { metricAreaForCell, resolveSpatialEstimate } from "../src/sim/wildlife-space";
+
+afterEach(() => setWildlifeEventSink(null));
 
 class MemStorage implements Storage {
   private m = new Map<string, string>();
@@ -84,6 +88,39 @@ describe("save", () => {
     });
     advance(loaded, world, 1, { wildlife: "detailed" });
     expect(loaded.wildlife.subjects[0].active!.cell).not.toBe(active.cell);
+  });
+
+  it("lets a legacy zero-alarm flight settle without replaying an event or log", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const raw = JSON.parse(serialize(state));
+    raw.state.wildlife.subjects = [raw.state.wildlife.subjects[0]];
+    const active = raw.state.wildlife.subjects[0].active;
+    active.intent = "flee";
+    active.alarm = 0;
+    delete active.escapeRemainingM;
+    delete active.escapeStartedMinute;
+    delete active.lastDetectionMinute;
+    delete active.escapeEpisode;
+    const events: string[] = [];
+    setWildlifeEventSink((event) => events.push(event.id));
+    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const deer = loaded.wildlife.subjects[0];
+    const point = resolveSpatialEstimate(loaded.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
+    // Remain 500 m away, beyond both detection and settlement ranges.
+    loaded.player.x = (point.xM + 500) / 300;
+    loaded.player.y = point.yM / 300;
+    loaded.minute = 29;
+    evaluateWildlifeDisturbance(loaded, world, calendar(29, loaded.startDoy), true);
+    expect(deer.active!.intent).toBe("flee");
+    loaded.minute = 30;
+    evaluateWildlifeDisturbance(loaded, world, calendar(30, loaded.startDoy), true);
+    expect(deer.active).toMatchObject({
+      intent: "wander", alarm: 0, escapeRemainingM: 0,
+      escapeStartedMinute: null, lastDetectionMinute: 0, escapeEpisode: 0,
+    });
+    expect(events).toHaveLength(0);
+    expect(loaded.log).toEqual(state.log);
   });
 
   it("round-trips the whole state", () => {

@@ -95,7 +95,7 @@ export function migrate(state: GameState): void {
     // An old fleeing animal resumes an existing episode without replaying it.
     active.escapeRemainingM ??= active.intent === "flee" ? DISTURBANCE_PROFILES[subject.species].escapeMinM : 0;
     active.escapeStartedMinute ??= active.intent === "flee" ? state.minute : null;
-    active.lastDetectionMinute ??= active.alarm > 0 ? state.minute : null;
+    active.lastDetectionMinute ??= active.alarm > 0 || active.escapeStartedMinute !== null ? state.minute : null;
     active.escapeEpisode ??= 0;
   }
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
