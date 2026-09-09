@@ -305,7 +305,7 @@ export function goalDeed(state: GameState, d: GoalEvent, world?: World): GoalId[
     const opportunity = state.goals.opportunity;
     const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
     if (opportunity?.goal === "testShelter" && opportunity.stormId === d.stormId && activeNow.has("testShelter")
-      && d.survivorAlive && d.minutesByProtection[2] + d.minutesByProtection[3] >= 60) {
+      && d.survivorAlive && d.minutesByProtection[2] + d.minutesByProtection[3] + 1e-9 >= 60) {
       finishGoal(state, "testShelter", finished);
     }
   }

@@ -229,6 +229,20 @@ describe("Chapter 1 shelter storm evidence", () => {
     advance(state, world, 0.1);
     expect(state.goals.opportunity?.minutesByProtection[2]).toBeCloseTo(0.1);
   });
+
+  it("completes a sixty-minute storm whose fractional overlaps total just below sixty", () => {
+    const { state, world } = newGame(17);
+    activateShelterTest(state);
+    const centre = cellOf(state, world);
+    siteFor(state.regions[state.player.region], centre).structures.leanTo = true;
+    shelterAttempt(state, world, 25);
+    state.weather.storm = { id: 25, source: "natural", kind: "rain", from: 1.03, until: 61.03, warned: false };
+
+    for (let i = 0; i < 88; i++) advance(state, world, 0.7);
+
+    expect(state.goals.opportunity?.minutesByProtection[2]).toBeCloseTo(60);
+    expect(state.goals.done.testShelter).toBe(true);
+  });
 });
 
 describe("natural-first weather", () => {
