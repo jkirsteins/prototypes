@@ -2,19 +2,23 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { stepGoalOpportunity } from "../src/sim/goalopportunity";
+import { recordStormMinute, stepGoalOpportunity, stormMetrics } from "../src/sim/goalopportunity";
 import { goalDeed, introduceGoals, type StormPlanSnapshot } from "../src/sim/goals";
 import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
-import { die } from "../src/sim/player";
+import { baseWalkSpeed, die } from "../src/sim/player";
+import { markKnown } from "../src/sim/mapped";
+import { fearsFell } from "../src/sim/fears";
 import { cellOf, placeAt, straightKm } from "../src/sim/position";
 import { siteFor } from "../src/sim/regionstate";
+import { survivorRoute } from "../src/sim/routing";
 import { current } from "../src/sim/record";
 import { deserialize, serialize } from "../src/sim/save";
 import { startTask } from "../src/sim/tasks";
 import type { GameState, GoalId } from "../src/sim/types";
 import { stepWeather } from "../src/sim/weather";
 import { cellAt, regionAt } from "../src/world/gen";
+import { findRoute, routeMinutes } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
 
 const THROUGH_SHELTER: GoalId[] = [
@@ -126,7 +130,7 @@ describe("Chapter 1 shelter storm evidence", () => {
     shelterAttempt(state, world);
 
     expect(goalDeed(state, {
-      kind: "stormEnded", minute: 120, stormId: 7, survivorAlive: true,
+      kind: "stormEnded", minute: 120, stormId: 7, stormKind: "rain", survivorAlive: true,
       minutesByProtection: [0, 0, 60, 0], atCampMinutes: 60, awayFromCampMinutes: 0, maxWetness: 12,
     })).toContain("testShelter");
   });
@@ -143,7 +147,7 @@ describe("Chapter 1 shelter storm evidence", () => {
       activateShelterTest(state);
       shelterAttempt(state, world);
       goalDeed(state, {
-        kind: "stormEnded", minute: 120, ...evidence, atCampMinutes: 0, awayFromCampMinutes: 60, maxWetness: 70,
+        kind: "stormEnded", minute: 120, stormKind: "rain", ...evidence, atCampMinutes: 0, awayFromCampMinutes: 60, maxWetness: 70,
       });
       expect(state.goals.done.testShelter).toBeUndefined();
     }
@@ -345,7 +349,7 @@ describe("Chapter 2 forecast evidence", () => {
 
   it("completes survival only for the matching storm, alive, with the same reader still current", () => {
     const ended = (stormId: number, survivorAlive: boolean) => ({
-      kind: "stormEnded" as const, minute: 500, stormId, survivorAlive,
+      kind: "stormEnded" as const, minute: 500, stormId, stormKind: "rain" as const, survivorAlive,
       minutesByProtection: [0, 0, 360, 0] as [number, number, number, number],
       atCampMinutes: 360, awayFromCampMinutes: 0, maxWetness: 10,
     });
@@ -497,6 +501,133 @@ describe("natural-first weather", () => {
     };
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.goals.opportunity!.stormId).toBe(1);
+  });
+
+  it("claims Chapter 3 weather from a stored refuge while the survivor is still at home", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    activateRemoteStorm(state);
+    const home = cellOf(state, world);
+    const remote = regionAt(world, state.player.region).neighbours
+      .map((neighbour) => regionAt(world, neighbour.id))
+      .find((region) => findRoute(world, home, region.campCell) !== null)!;
+    const refuge = remote.campCell;
+    const mapped = findRoute(world, home, refuge);
+    expect(mapped).not.toBeNull();
+    for (const cell of [home, ...(mapped ?? [])]) markKnown(state, cell);
+    const route = survivorRoute(state, world, home, refuge, "none", fearsFell(state));
+    expect(route).not.toBeNull();
+    const lead = routeMinutes(world, route!, baseWalkSpeed(state, calendar(state.minute, state.startDoy), state.weather), "none") + 30;
+    state.goals.opportunity = {
+      goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
+      stormId: null, source: null, area: { region: remote.id, centre: refuge, radiusKm: 1 },
+      announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
+      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    };
+    state.weather.storm = { id: 80, source: "natural", kind: "rain", from: state.minute + lead - 0.01, until: state.minute + lead + 360, warned: false };
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(80));
+    expect(state.goals.opportunity?.stormId).toBeNull();
+
+    state.weather.storm = { id: 81, source: "natural", kind: "rain", from: state.minute + lead, until: state.minute + lead + 360, warned: false };
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(81));
+    expect(cellOf(state, world)).toBe(home);
+    expect(state.goals.opportunity).toMatchObject({ stormId: 81, source: "natural" });
+  });
+});
+
+describe("Chapter 3 refuge storm evidence", () => {
+  function remoteAttempt(state: GameState, world: ReturnType<typeof newGame>["world"], stormId = 90) {
+    siteCamp(state, world);
+    activateRemoteStorm(state);
+    const home = state.player.region;
+    const remote = regionAt(world, regionAt(world, home).neighbours[0].id);
+    state.goals.opportunity = {
+      goal: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
+      stormId, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
+      announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
+      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    };
+    return { home, remote };
+  }
+
+  it("counts adequate protection anywhere in the refuge region, beyond the local one-kilometre radius", () => {
+    const { state, world } = newGame(17);
+    const { remote } = remoteAttempt(state, world);
+    const far = remote.cells.reduce((best, cell) => straightKm(world, remote.campCell, cell) > straightKm(world, remote.campCell, best) ? cell : best, remote.campCell);
+    expect(straightKm(world, remote.campCell, far)).toBeGreaterThan(1);
+    placeAt(state, world, far);
+    siteFor(state.regions[remote.id], far).structures.leanTo = true;
+    state.weather.storm = { id: 90, source: "natural", kind: "rain", from: state.minute, until: state.minute + 60, warned: true };
+
+    advance(state, world, 60);
+
+    expect(state.goals.opportunity?.minutesByProtection[2]).toBe(60);
+    expect(state.goals.opportunity?.atCampMinutes).toBe(0);
+    expect(state.goals.done.remoteStorm).toBe(true);
+  });
+
+  it("accepts a snow windbreak but rejects a high-profile lean-to in a gale", () => {
+    const snow = newGame(17);
+    const snowAttempt = remoteAttempt(snow.state, snow.world, 92);
+    const snowCell = snowAttempt.remote.cells[0];
+    placeAt(snow.state, snow.world, snowCell);
+    siteFor(snow.state.regions[snowAttempt.remote.id], snowCell).cover = 1;
+    snow.state.weather.storm = { id: 92, source: "natural", kind: "snow", from: snow.state.minute, until: snow.state.minute + 60, warned: true };
+    recordStormMinute(snow.state, snow.world, 92, "snow", 60);
+    expect(stormMetrics(snow.state, 92).minutesByProtection).toEqual([0, 60, 0, 0]);
+    goalDeed(snow.state, {
+      kind: "stormEnded", minute: snow.state.minute + 60, stormId: 92, stormKind: "snow", survivorAlive: true,
+      ...stormMetrics(snow.state, 92),
+    }, snow.world);
+    expect(snow.state.goals.done.remoteStorm).toBe(true);
+
+    const gale = newGame(17);
+    const galeAttempt = remoteAttempt(gale.state, gale.world, 93);
+    const exposed = galeAttempt.remote.cells.find((cell) => cellAt(gale.world, cell).terrain === "meadow")!;
+    placeAt(gale.state, gale.world, exposed);
+    siteFor(gale.state.regions[galeAttempt.remote.id], exposed).structures.leanTo = true;
+    gale.state.weather.storm = { id: 93, source: "natural", kind: "gale", from: gale.state.minute, until: gale.state.minute + 60, warned: true };
+    recordStormMinute(gale.state, gale.world, 93, "gale", 60);
+    expect(stormMetrics(gale.state, 93).minutesByProtection).toEqual([0, 60, 0, 0]);
+    goalDeed(gale.state, {
+      kind: "stormEnded", minute: gale.state.minute + 60, stormId: 93, stormKind: "gale", survivorAlive: true,
+      ...stormMetrics(gale.state, 93),
+    }, gale.world);
+    expect(gale.state.goals.done.remoteStorm).toBeUndefined();
+
+    const lee = newGame(17);
+    const leeAttempt = remoteAttempt(lee.state, lee.world, 94);
+    const spruce = leeAttempt.remote.cells.find((cell) => cellAt(lee.world, cell).terrain === "spruce")!;
+    placeAt(lee.state, lee.world, spruce);
+    siteFor(lee.state.regions[leeAttempt.remote.id], spruce).cover = 1;
+    lee.state.weather.storm = { id: 94, source: "natural", kind: "gale", from: lee.state.minute, until: lee.state.minute + 60, warned: true };
+
+    advance(lee.state, lee.world, 60);
+
+    expect(lee.state.goals.opportunity?.minutesByProtection).toEqual([0, 0, 60, 0]);
+    expect(lee.state.goals.done.remoteStorm).toBe(true);
+  });
+
+  it("records camp time globally, resolves a homeward miss, and retries without undoing earlier lessons", () => {
+    const { state, world } = newGame(17);
+    const { home } = remoteAttempt(state, world, 91);
+    const camp = state.regions[home].campCell!;
+    placeAt(state, world, camp);
+    siteFor(state.regions[home], camp).structures.leanTo = true;
+    state.weather.storm = { id: 91, source: "natural", kind: "rain", from: state.minute, until: state.minute + 60, warned: true };
+
+    advance(state, world, 60);
+
+    expect(state.goals.opportunity).toMatchObject({ status: "resolved", attempts: 1, atCampMinutes: 60 });
+    expect(state.goals.done.remoteStorm).toBeUndefined();
+    for (const id of ["remoteRefuge", "fieldFire", "fieldMeal"] as const) expect(state.goals.done[id]).toBe(true);
+    const resolvedAt = state.goals.opportunity!.resolvedAt!;
+    state.minute = resolvedAt + 1440;
+    state.weather.storm = null;
+    state.weather.stormFreeSince = resolvedAt;
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(91));
+    expect(state.goals.opportunity).toMatchObject({ status: "reserved", attempts: 2, stormId: null });
+    for (const id of ["remoteRefuge", "fieldFire", "fieldMeal"] as const) expect(state.goals.done[id]).toBe(true);
   });
 });
 

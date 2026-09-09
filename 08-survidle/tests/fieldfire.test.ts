@@ -9,7 +9,7 @@ import { firelit } from "../src/sim/player";
 import { illuminance } from "../src/sim/light";
 import { instantHtml } from "../src/ui/panels";
 import { stepCamp } from "../src/sim/camp";
-import { addItem, carried, pile, qty } from "../src/sim/inventory";
+import { addItem, carried, pile, qty, removeItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { feltTemperature, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt } from "../src/sim/position";
@@ -19,7 +19,7 @@ import type { TaskId } from "../src/sim/types";
 import { intentOption, startIntent } from "../src/sim/intent";
 import { deserialize, serialize } from "../src/sim/save";
 import { siteCamp } from "./siting-helpers";
-import { introduceGoals } from "../src/sim/goals";
+import { GOALS, introduceGoals } from "../src/sim/goals";
 
 const cal = calendar(0);
 function field() {
@@ -74,6 +74,65 @@ describe("a fire where you stand", () => {
     expect(game.state.goals.done.cook).toBeUndefined();
     expect(eat(game.state, game.world, "cookedMeat", new Rng(1))).toBeGreaterThan(0);
     expect(game.state.goals.done.cook).toBe(true);
+  });
+  it("credits the introduced field lessons only after a successful field light and productive cook", () => {
+    const game = field();
+    const { state, world } = game;
+    for (const goal of GOALS) state.goals.done[goal.id] = true;
+    delete state.goals.done.fieldFire;
+    delete state.goals.done.fieldMeal;
+    delete state.goals.done.remoteStorm;
+    state.minute = 30 * 1440;
+    introduceGoals(state, ["fieldFire"]);
+    state.goals.opportunity = {
+      goal: "fieldFire", status: "reserved", createdAt: state.minute, attempts: 1,
+      stormId: null, source: null, area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
+      announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
+      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    };
+    addItem(state.player.pack, "fireDrill", 1);
+    addItem(state.player.pack, "firewood", 2);
+    finish(game, "light");
+    expect(state.goals.done.fieldFire).toBe(true);
+
+    introduceGoals(state, ["fieldMeal"]);
+    addItem(state.player.pack, "rawMeat", 1);
+    finish(game, "cook", "rawMeat");
+    expect(state.goals.done.fieldMeal).toBe(true);
+  });
+
+  it("does not credit a failed field light or an empty cook completion", () => {
+    const game = field();
+    const { state, world } = game;
+    for (const goal of GOALS) state.goals.done[goal.id] = true;
+    delete state.goals.done.fieldFire;
+    delete state.goals.done.fieldMeal;
+    delete state.goals.done.remoteStorm;
+    state.minute = 30 * 1440;
+    introduceGoals(state, ["fieldFire", "fieldMeal"]);
+    state.goals.opportunity = {
+      goal: "fieldFire", status: "reserved", createdAt: state.minute, attempts: 1,
+      stormId: null, source: null, area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
+      announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
+      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    };
+    addItem(state.player.pack, "fireDrill", 1);
+    addItem(state.player.pack, "firewood", 2);
+    state.weather.precip = "light";
+    expect(startTask(state, world, cal, "light")).toBe(true);
+    for (let n = 0; state.task && n < 60; n++) stepTask(state, world, cal, new Rng(7), 1);
+    expect(state.player.fieldFire).toBeNull();
+    expect(state.goals.done.fieldFire).toBeUndefined();
+
+    state.goals.done.fieldFire = true;
+    state.goals.opportunity.goal = "fieldMeal";
+    state.weather.precip = "none";
+    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 3 };
+    addItem(state.player.pack, "rawMeat", 1);
+    expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
+    removeItem(state.player.pack, "rawMeat", 1);
+    for (let n = 0; state.task && n < 60; n++) stepTask(state, world, cal, new Rng(1), 1);
+    expect(state.goals.done.fieldMeal).toBeUndefined();
   });
   it.each(["axe", "stoneAxe", "flakedAxe"] as const)("takes up a nearby %s for marrow, with its weight still carried", axe => {
     const game = field();

@@ -124,7 +124,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     // survivor ended it, after its task or movement has taken effect.
     if (previousStorm) {
       const stormMinutes = Math.max(0, Math.min(state.minute, previousStorm.until) - Math.max(state.minute - dt, previousStorm.from));
-      recordStormMinute(state, world, previousStorm.id, stormMinutes);
+      recordStormMinute(state, world, previousStorm.id, previousStorm.kind, stormMinutes);
     }
   }
 
@@ -159,7 +159,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   }
   if (!nobody && previousStorm && state.weather.storm === null) {
     goalDeed(state, {
-      kind: "stormEnded", minute: state.minute, stormId: previousStorm.id, survivorAlive: !state.dead,
+      kind: "stormEnded", minute: state.minute, stormId: previousStorm.id, stormKind: previousStorm.kind, survivorAlive: !state.dead,
       ...stormMetrics(state, previousStorm.id),
     });
   }

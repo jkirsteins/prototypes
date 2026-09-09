@@ -72,6 +72,13 @@ export function migrate(state: GameState): void {
   state.goals.stepProgress ??= {};
   state.goals.noticeQueue ??= [];
   state.goals.opportunity ??= null;
+  if (state.goals.chapter3HomeRegion === undefined) {
+    const here = state.regions[state.player.region];
+    const camp = here?.campCell !== null && here?.campCell !== undefined
+      ? state.player.region
+      : Number(Object.entries(state.regions).find(([, region]) => region.campCell !== null)?.[0]);
+    state.goals.chapter3HomeRegion = state.goals.introduced.remoteRefuge && Number.isFinite(camp) ? camp : null;
+  }
   if (state.goals.opportunity) {
     state.goals.opportunity.minutesByProtection ??= [0, 0, 0, 0];
     state.goals.opportunity.atCampMinutes ??= 0;

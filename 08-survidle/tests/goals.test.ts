@@ -374,6 +374,7 @@ describe("goals are the world's, not a life's", () => {
     expect(g.queue).toEqual([]);
     expect(g.noticeQueue).toEqual([]);
     expect(g.opportunity).toBeNull();
+    expect(g.chapter3HomeRegion).toBeNull();
     expect(g.lastSeason).toBe("winter");
   });
 
@@ -414,6 +415,19 @@ describe("goals are the world's, not a life's", () => {
     for (const id of WEATHER_GOALS) expect(loaded.goals.done[id], id).toBeUndefined();
     expect(loaded.goals.queue).toEqual(["cook"]);
     expect(loaded.goals.noticeQueue).toEqual([]);
+  });
+
+  it("recovers Chapter 3 home for a save where the refuge goal was already introduced", () => {
+    const { state, world } = newGame(3);
+    const home = state.player.region;
+    state.regions[home].campCell = cellOf(state, world);
+    state.goals.introduced.remoteRefuge = true;
+    const raw = JSON.parse(serialize(state)) as { state: { goals: Record<string, unknown> } };
+    delete raw.state.goals.chapter3HomeRegion;
+
+    const loaded = deserialize(JSON.stringify(raw))!.state;
+
+    expect(loaded.goals.chapter3HomeRegion).toBe(home);
   });
 
   it("restores the origin of an old survey already inside its target region", () => {

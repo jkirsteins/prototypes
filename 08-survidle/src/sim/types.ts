@@ -733,6 +733,8 @@ export interface GoalState {
   noticeQueue: string[];
   /** The one weather teaching attempt owned by this world. */
   opportunity: GoalOpportunity | null;
+  /** Camp region Chapter 3 called home when its first lesson was introduced. */
+  chapter3HomeRegion: number | null;
   /** The season the last daily roll stood in: a turnover is this differing from now. */
   lastSeason: Season;
 }

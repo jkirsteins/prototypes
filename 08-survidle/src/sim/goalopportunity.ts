@@ -7,12 +7,12 @@ import { fearsFell } from "./person";
 import { cellOf } from "./position";
 import { atCamp, straightKm } from "./position";
 import { siteAt } from "./regionstate";
-import { protectionOf } from "./shelter";
+import { galeProtection, protectionOf } from "./shelter";
 import { survivorRoute } from "./routing";
 import type { Calendar } from "./calendar";
 import { calendar } from "./calendar";
 import type { GameState, GoalId, GoalOpportunity } from "./types";
-import { ambientTemperature, createStorm, skyReadDay, stormNow, walkableIce, warningMinutes } from "./weather";
+import { ambientTemperature, createStorm, skyReadDay, stormNow, type StormKind, walkableIce, warningMinutes } from "./weather";
 
 const WEATHER_GOALS = new Set<GoalId>(["testShelter", "readWeather", "remoteStorm"]);
 const NATURAL_DAWNS = 3;
@@ -46,7 +46,7 @@ function newOpportunity(goal: GoalId, minute: number, attempts = 1): GoalOpportu
 }
 
 /** Record lived storm time from the survivor's current place, never a later one. */
-export function recordStormMinute(state: GameState, world: World, stormId: number, minutes: number): void {
+export function recordStormMinute(state: GameState, world: World, stormId: number, stormKind: StormKind, minutes: number): void {
   if (minutes <= 0) return;
   const opportunity = state.goals.opportunity;
   if (!opportunity || opportunity.stormId !== stormId) return;
@@ -55,9 +55,12 @@ export function recordStormMinute(state: GameState, world: World, stormId: numbe
   else opportunity.awayFromCampMinutes += minutes;
   const area = opportunity.area;
   const cell = cellOf(state, world);
-  if (!area || state.player.region !== area.region || straightKm(world, area.centre, cell) > area.radiusKm) return;
+  if (!area || state.player.region !== area.region) return;
+  if (opportunity.goal !== "remoteStorm" && straightKm(world, area.centre, cell) > area.radiusKm) return;
   const site = siteAt(state.regions[state.player.region], cell);
-  const protection = protectionOf(site);
+  const protection = stormKind === "gale"
+    ? galeProtection(world, cell, site)
+    : protectionOf(site);
   opportunity.minutesByProtection[protection] += minutes;
 }
 
@@ -231,6 +234,10 @@ export function stepGoalOpportunity(state: GameState, world: World, cal: Calenda
   // Chapter 1 uses this slot as local-cover context until the shelter exists.
   // It must not reserve or synthesize weather before that outcome is earned.
   if (opportunity.goal === "makeUsefulShelter") return;
+  // Chapter 3 carries the refuge through its field-fire and field-meal lessons.
+  // Weather waits until the final lesson is active, but never waits for the
+  // survivor to stand at the refuge before evaluating travel to it.
+  if (!WEATHER_GOALS.has(opportunity.goal)) return;
   if (opportunity.stormId !== null) {
     stepClaimed(state, world, cal, opportunity);
     return;

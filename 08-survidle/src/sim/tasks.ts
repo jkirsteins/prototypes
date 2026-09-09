@@ -2090,11 +2090,14 @@ export function leftBehind(state: GameState, world: World): string {
  * whatever happened.
  */
 function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string, wildlifeSubject?: number, shelterLevel?: number): void {
-  completeTask(state, world, cal, rng, id, arg, wildlifeSubject, shelterLevel);
-  goalDeed(state, { kind: "task", id, arg });
+  const succeeded = completeTask(state, world, cal, rng, id, arg, wildlifeSubject, shelterLevel);
+  if (succeeded !== false) goalDeed(state, {
+    kind: "taskCompleted", minute: state.minute, id, arg, region: state.player.region,
+    cell: cellOf(state, world), atCamp: atCamp(state, world),
+  }, world);
 }
 
-function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string, wildlifeSubject?: number, shelterLevel?: number): void {
+function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string, wildlifeSubject?: number, shelterLevel?: number): boolean | undefined {
   const p = state.player;
   const st = regionState(state, world, p.region);
   const invs = reach(state, world);
@@ -2329,7 +2332,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const out = food === "rawMeat" ? "cookedMeat" : food === "fish" ? "cookedFish" : food === "oilyFish" ? "cookedOilyFish" : food === "roots" ? "cookedRoots" : "fat";
       produce(state, world, out, kg);
       if (kg > 0) goalDeed(state, { kind: "cooked", kg, item: out });
-      return;
+      return kg > 0;
     }
     case "crack": {
       consume(invs, [{ item: "bone", qty: 1 }]);
@@ -2475,27 +2478,27 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(siteAt(st, cellOf(state, world))), hasQuirk(state, "steadyByTheFire"));
       if (!rekindle && lr.failChance > 0 && rng.chance(lr.failChance)) {
         log(state, "The tinder will not catch.", "bad");
-        return;
+        return false;
       }
       if (!camp) {
         p.fieldFire = { cell: cellOf(state, world), fuelKg: 1 };
-        goalDeed(state, { kind: "lit" });
+        goalDeed(state, { kind: "fireLit", minute: state.minute, region: state.player.region, cell: cellOf(state, world), atCamp: false }, world);
         cue("fireCatches");
         log(state, "Smoke, then flame. The field fire is lit.", "good");
-        return;
+        return true;
       }
       st.fire.lit = true;
       st.fire.embers = 0;
       // A run of keeping survives the coals; only a fire lit from cold starts a new one.
       if (st.fire.litSince === null) st.fire.litSince = state.minute;
       goalDeed(state, { kind: "fuelled" });
-      goalDeed(state, { kind: "lit" });
+      goalDeed(state, { kind: "fireLit", minute: state.minute, region: state.player.region, cell: cellOf(state, world), atCamp: true }, world);
       cue("fireCatches");
       st.fire.fuelKg += 1;
       // The row names the method: the pit fire is outdoors whatever stands, the fire indoors is indoors.
       st.fire.indoors = id === "lightIndoors";
       log(state, "Smoke, then flame. The fire is lit.", "good");
-      return;
+      return true;
     }
     case "lightTorch": {
       const relight = p.torch.minutes > 0;
