@@ -1,4 +1,5 @@
 node_modules/
 .superpowers/
+.worktrees/
 .DS_Store
 vite.config.ts.timestamp-*.mjs
