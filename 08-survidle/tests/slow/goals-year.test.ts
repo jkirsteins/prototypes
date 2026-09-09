@@ -9,7 +9,7 @@
  * .test.ts already does for the same reference machinery.
  */
 import { describe, expect, it } from "vitest";
-import { SEASON_ORDER } from "../../src/sim/goals";
+import { GOAL_STAGES, introduceGoals, SEASON_ORDER } from "../../src/sim/goals";
 import { setSkillLevel } from "../../src/sim/horizon";
 import { beginAgain, land } from "../../src/sim/landing";
 import { medianPerson } from "../../src/sim/person";
@@ -23,6 +23,12 @@ describe("the seasonal tail over a real year", () => {
     const ref = setUpReference(17, true);
     const { state, world } = ref;
     for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
+    // This probe starts at the seasonal tail. The headless reference runner
+    // has no goal modal to introduce authored lessons, and those lessons now
+    // include deliberate field-weather activity that the order list cannot
+    // stand in for. Their own focused tests exercise those outcomes.
+    for (const stage of GOAL_STAGES) for (const id of stage) state.goals.done[id] = true;
+    introduceGoals(state, [...SEASON_ORDER]);
     for (let life = 0; life < 6; life++) {
       measure(ref, 400);
       if (SEASON_ORDER.every((id) => state.goals.done[id])) break;
