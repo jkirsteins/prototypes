@@ -281,6 +281,11 @@ entries for every selected audio slot.
 
 ## 13. Browser playtest
 
+For a playable URL seed with a naturally visible herd and ordinary map-click
+movement, use the [natural seed 19 walkthrough](../../natural-wildlife-playtest.md).
+It records the landing choices, 300 m route, observed departure, and timing
+limits without development-console setup.
+
 At one-cell zoom with sound on:
 
 1. Walk toward a visible herd and see one `!`, recoil, departure audio and one
