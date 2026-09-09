@@ -3,16 +3,22 @@
  * clock: where the sun (or moon) sits on its arc, and how that colours the
  * world. Updated every frame; the markup is static and only attributes move.
  */
-import { LATITUDE_DEG, type Calendar } from "../sim/calendar";
+import type { Calendar } from "../sim/calendar";
+import {
+  equatorialToHorizontal,
+  GALACTIC_CENTER,
+  galacticToEquatorial,
+  localSiderealDegrees,
+  projectGalacticPlane,
+  projectSouth,
+  type ProjectedGalacticPoint,
+} from "../sim/celestial";
 import type { GameState, Weather } from "../sim/types";
 import { stormNow } from "../sim/weather";
 import { clamp } from "../units";
 
 export const SKY_W = 220;
 export const SKY_H = 64;
-const SIDEREAL_DAY_MINUTES = 23 * 60 + 56 + 4 / 60;
-const CELESTIAL_REFERENCE_DOY = 172;
-const CELESTIAL_REFERENCE_HOUR = 1;
 
 /**
  * The shape one sky is drawn at.
@@ -255,50 +261,41 @@ function ridgePath(g: SkyGeom, seed: number, height: number, samples = 34): stri
 export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true): string {
   const u = uid ? `-${uid}` : "";
   const arc = `M ${g.cx - g.arcR} ${g.groundY} A ${g.arcR} ${g.arcR} 0 0 1 ${g.cx + g.arcR} ${g.groundY}`;
-  const celestialPoleY = g.groundY * (1 + LATITUDE_DEG / 90);
   const rand = (n: number, seed: number) => ((Math.sin(seed * 12.9898) * 43758.5453) % 1 + 1) % 1 * n;
-  const stars = Array.from({ length: 650 }, (_, i) => {
+  const stars = Array.from({ length: 2400 }, (_, i) => {
+    const ra = rand(360, i + 1);
+    const dec = Math.asin(rand(2, i + 31) - 1) * 180 / Math.PI;
     const bright = i % 47 === 0;
     const middle = !bright && i % 9 === 0;
-    const r = bright ? 0.40 + rand(0.30, i + 61) : middle ? 0.18 + rand(0.20, i + 61) : 0.05 + rand(0.13, i + 61);
-    const opacity = bright ? 0.65 + rand(0.30, i + 81) : middle ? 0.35 + rand(0.35, i + 81) : 0.12 + rand(0.30, i + 81);
+    const r = bright ? 0.42 + rand(0.32, i + 61) : middle ? 0.19 + rand(0.21, i + 61) : 0.08 + rand(0.15, i + 61);
+    const opacity = bright ? 0.68 + rand(0.30, i + 81) : middle ? 0.42 + rand(0.38, i + 81) : 0.24 + rand(0.38, i + 81);
     const colour = i % 29 === 0 ? "#d9e5ff" : i % 37 === 0 ? "#fff0dc" : "#fff";
-    return `<circle cx="${rand(g.w, i + 1).toFixed(1)}" cy="${rand(g.groundY, i + 31).toFixed(1)}" r="${r.toFixed(2)}" fill="${colour}" opacity="${opacity.toFixed(2)}"/>`;
+    return `<circle class="sky-field-star sky-coordinate-star" data-ra="${ra.toFixed(4)}" data-dec="${dec.toFixed(4)}" data-alpha="${opacity.toFixed(2)}" cx="-10" cy="-10" r="${r.toFixed(2)}" fill="${colour}" opacity="0"/>`;
   }).join("");
-  // A clean-edged river of light with a scatter of bright dust. The
-  // translucent strokes give the Milky Way breadth while the dust and
-  // procedural texture keep it crisp at widget scale.
-  const milkyPath = `M ${(g.w * 0.50).toFixed(1)} ${(-g.groundY * 0.08).toFixed(1)} C ${(g.w * 0.49).toFixed(1)} ${(g.groundY * 0.20).toFixed(1)}, ${(g.w * 0.60).toFixed(1)} ${(g.groundY * 0.36).toFixed(1)}, ${(g.w * 0.61).toFixed(1)} ${(g.groundY * 0.53).toFixed(1)} C ${(g.w * 0.62).toFixed(1)} ${(g.groundY * 0.70).toFixed(1)}, ${(g.w * 0.75).toFixed(1)} ${(g.groundY * 0.80).toFixed(1)}, ${(g.w * 0.795).toFixed(1)} ${(g.groundY * 0.96).toFixed(1)}`;
-  const milkyShape = `M ${g.w * 0.45} ${-g.groundY * 0.06} C ${g.w * 0.47} ${g.groundY * 0.18}, ${g.w * 0.50} ${g.groundY * 0.30}, ${g.w * 0.50} ${g.groundY * 0.43} C ${g.w * 0.50} ${g.groundY * 0.60}, ${g.w * 0.66} ${g.groundY * 0.78}, ${g.w * 0.75} ${g.groundY * 0.97} L ${g.w * 0.84} ${g.groundY * 0.97} C ${g.w * 0.77} ${g.groundY * 0.72}, ${g.w * 0.72} ${g.groundY * 0.60}, ${g.w * 0.73} ${g.groundY * 0.43} C ${g.w * 0.72} ${g.groundY * 0.28}, ${g.w * 0.57} ${g.groundY * 0.12}, ${g.w * 0.54} ${-g.groundY * 0.06} Z`;
-  const milkyDust = Array.from({ length: 650 }, (_, i) => {
-    const t = rand(1, i + 401);
-    const centre = g.w * (0.50 + 0.295 * t + Math.sin(t * Math.PI * 3) * 0.020);
-    const x = centre + (rand(1, i + 431) - 0.5) * g.w * (0.030 + Math.sin(t * Math.PI) * 0.140);
-    const y = g.groundY * (0.02 + 0.90 * t) + (rand(1, i + 461) - 0.5) * g.groundY * 0.045;
+  // Sky position and visibility are astronomical; Milky Way brightness and
+  // texture are intentionally exaggerated for readability.
+  const milkyDust = Array.from({ length: 1800 }, (_, i) => {
+    // Cygnus and Cassiopeia occupy roughly l=55..155. More of the artistic
+    // dust lives there because that is the northern Milky Way this latitude
+    // can actually see; no extra density is placed around Sagittarius.
+    const longitude = i < 1260 ? 55 + rand(100, i + 401) : rand(360, i + 401);
+    const latitude = (rand(1, i + 431) + rand(1, i + 461) - 1) * 9;
+    const equatorial = galacticToEquatorial(longitude, latitude);
     const bright = i % 23 === 0;
     const middle = !bright && i % 5 === 0;
-    const r = bright ? 0.34 + rand(g === WALL ? 0.30 : 0.20, i + 491) : middle ? 0.18 + rand(0.22, i + 491) : 0.10 + rand(0.15, i + 491);
+    const r = bright ? 0.40 + rand(g === WALL ? 0.36 : 0.26, i + 491) : middle ? 0.23 + rand(0.25, i + 491) : 0.15 + rand(0.18, i + 491);
     const colour = i % 7 === 0 ? "#dfc7ed" : i % 5 === 0 ? "#aec5f2" : "#f4f2ff";
-    const opacity = bright ? 0.65 + rand(0.30, i + 521) : middle ? 0.45 + rand(0.35, i + 521) : 0.22 + rand(0.36, i + 521);
-    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(2)}" fill="${colour}" opacity="${opacity.toFixed(2)}"/>`;
+    const opacity = bright ? 0.70 + rand(0.28, i + 521) : middle ? 0.50 + rand(0.38, i + 521) : 0.30 + rand(0.40, i + 521);
+    return `<circle class="sky-galaxy-star sky-coordinate-star" data-ra="${equatorial.raDeg.toFixed(4)}" data-dec="${equatorial.decDeg.toFixed(4)}" data-alpha="${opacity.toFixed(2)}" cx="-10" cy="-10" r="${r.toFixed(2)}" fill="${colour}" opacity="0"/>`;
   }).join("");
-  const milkyFilaments = [
-    [`M ${g.w * 0.47} ${-g.groundY * 0.04} C ${g.w * 0.53} ${g.groundY * 0.18}, ${g.w * 0.54} ${g.groundY * 0.36}, ${g.w * 0.59} ${g.groundY * 0.56} C ${g.w * 0.65} ${g.groundY * 0.69}, ${g.w * 0.70} ${g.groundY * 0.82}, ${g.w * 0.80} ${g.groundY * 0.95}`, "#d9c4e9", 1.6],
-    [`M ${g.w * 0.52} ${-g.groundY * 0.04} C ${g.w * 0.48} ${g.groundY * 0.22}, ${g.w * 0.64} ${g.groundY * 0.39}, ${g.w * 0.59} ${g.groundY * 0.58} C ${g.w * 0.58} ${g.groundY * 0.72}, ${g.w * 0.78} ${g.groundY * 0.83}, ${g.w * 0.77} ${g.groundY * 0.96}`, "#91afe4", 1.1],
-    [`M ${g.w * 0.49} ${-g.groundY * 0.02} C ${g.w * 0.59} ${g.groundY * 0.20}, ${g.w * 0.51} ${g.groundY * 0.42}, ${g.w * 0.63} ${g.groundY * 0.61} C ${g.w * 0.72} ${g.groundY * 0.74}, ${g.w * 0.69} ${g.groundY * 0.86}, ${g.w * 0.82} ${g.groundY * 0.96}`, "#eef0ff", 0.7],
-  ].map(([d, stroke, width]) => [
-    `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${Number(width) * 6}" opacity="0.010"/>`,
-    `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${Number(width) * 3}" opacity="0.016"/>`,
-    `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${Number(width) * 1.2}" opacity="0.024"/>`,
-  ].join("")).join("");
-  const constellations: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [
-    [[0.08, 0.31], [0.13, 0.27], [0.19, 0.31], [0.24, 0.26], [0.29, 0.29], [0.33, 0.24], [0.38, 0.21]],
-    [[0.12, 0.27], [0.18, 0.36], [0.24, 0.28], [0.30, 0.37], [0.36, 0.27]],
-    [[0.25, 0.25], [0.21, 0.37], [0.26, 0.44], [0.32, 0.38], [0.30, 0.52], [0.26, 0.52], [0.23, 0.61]],
-    [[0.08, 0.24], [0.14, 0.35], [0.20, 0.43], [0.27, 0.51], [0.20, 0.43], [0.24, 0.28], [0.20, 0.43], [0.13, 0.52]],
+  const constellations: ReadonlyArray<readonly [number, number, ReadonlyArray<readonly [number, number]>]> = [
+    [305, 40, [[-7, 0], [-4, -3], [0, 1], [3, -4], [7, 0], [10, -5], [14, -7]]],
+    [15, 60, [[-8, -2], [-4, 3], [0, 0], [4, 4], [8, -1]]],
+    [165, 15, [[-5, -5], [-7, 2], [-2, 7], [4, 3], [5, 11], [1, 13], [-3, 16]]],
+    [80, 5, [[-8, -6], [-4, 0], [0, 5], [6, 10], [3, -7], [0, 5], [-6, 11]]],
   ];
-  const constellationHtml = constellations.map((points, index) => {
-    const dots = points.map(([x, y]) => `<circle cx="${(x * g.w).toFixed(1)}" cy="${(y * g.groundY).toFixed(1)}" r="${g === WALL ? 1.0 : 0.65}"/>`).join("");
+  const constellationHtml = constellations.map(([baseRa, baseDec, points], index) => {
+    const dots = points.map(([ra, dec]) => `<circle class="sky-coordinate-star" data-ra="${((baseRa + ra + 360) % 360).toFixed(2)}" data-dec="${(baseDec + dec).toFixed(2)}" data-alpha="1" cx="-10" cy="-10" r="${g === WALL ? 1.0 : 0.65}" opacity="0"/>`).join("");
     return `<g id="sky-constellation-${index}" class="sky-constellation" data-constellation="${index}" fill="#edf2ff" opacity="0">${dots}</g>`;
   }).join("");
   const meteors = [
@@ -333,17 +330,24 @@ export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true): string 
     const sx = (rand(26, i + 171) - 13).toFixed(1);
     return `<g class="sky-drop" style="--x:${x}px;--y:${y}px;--sx:${sx}px;--n:${((i * 37) % 100) / 100}"><line x1="0" y1="0" x2="-3.4" y2="9"/><circle cx="0" cy="0" r="${r}"/></g>`;
   }).join("");
+  const pxPerDegree = g.groundY / 90;
   return `<svg class="sky" id="sky" viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}" preserveAspectRatio="xMidYMax slice" aria-label="sky"
  data-sky-w="${g.w}" data-sky-h="${g.h}" data-sky-ground="${g.groundY}" data-sky-arc="${g.arcR}" data-sky-cx="${g.cx}">
-<defs>${cloudField}<pattern id="sky-starfield${u}" patternUnits="userSpaceOnUse" width="${g.w}" height="${g.groundY}">${stars}</pattern><filter id="sky-milkytexture${u}" x="-40%" y="-10%" width="180%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.035 0.018" numOctaves="4" seed="43" result="grain"/><feComposite in="grain" in2="SourceAlpha" operator="in" result="clipped"/><feColorMatrix in="clipped" values="0 0 0 0 0.55 0 0 0 0 0.48 0 0 0 0 0.82 0 0 0 1 0" result="coloured"/><feBlend in="SourceGraphic" in2="coloured" mode="screen"/></filter><filter id="sky-milkyedge${u}" x="-35%" y="-20%" width="170%" height="140%"><feGaussianBlur stdDeviation="3.5"/></filter><mask id="sky-milkymask${u}" maskUnits="userSpaceOnUse" x="0" y="-10" width="${g.w}" height="${g.groundY + 20}"><path d="${milkyShape}" fill="#fff" filter="url(#sky-milkyedge${u})"/></mask><linearGradient id="sky-milkygrad${u}" gradientUnits="userSpaceOnUse" x1="${g.w * 0.43}" y1="0" x2="${g.w * 0.88}" y2="0"><stop offset="0" stop-color="#849bd7" stop-opacity="0"/><stop offset="0.34" stop-color="#a3add9" stop-opacity="0.18"/><stop offset="0.48" stop-color="#c7bee4" stop-opacity="0.58"/><stop offset="0.62" stop-color="#b1b5df" stop-opacity="0.30"/><stop offset="1" stop-color="#8299d4" stop-opacity="0"/></linearGradient><radialGradient id="sky-glowgrad${u}" class="glowgrad" gradientUnits="userSpaceOnUse" cx="${g.cx}" cy="${g.groundY}" r="${g.arcR * 1.15}">
+<defs>${cloudField}<clipPath id="sky-horizon${u}"><rect x="0" y="0" width="${g.w}" height="${g.groundY}"/></clipPath><filter id="sky-milkysoft${u}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2"/></filter><filter id="sky-milkytexture${u}" x="-30%" y="-30%" width="160%" height="160%"><feTurbulence type="fractalNoise" baseFrequency="0.018 0.09" numOctaves="5" seed="43" result="grain"/><feDisplacementMap in="SourceGraphic" in2="grain" scale="3.2" xChannelSelector="R" yChannelSelector="B"/></filter><linearGradient id="sky-milkygrad${u}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#849bd7" stop-opacity="0.10"/><stop offset="0.42" stop-color="#c8c7ed" stop-opacity="0.50"/><stop offset="0.58" stop-color="#aebde9" stop-opacity="0.38"/><stop offset="1" stop-color="#8299d4" stop-opacity="0.08"/></linearGradient><radialGradient id="sky-glowgrad${u}" class="glowgrad" gradientUnits="userSpaceOnUse" cx="${g.cx}" cy="${g.groundY}" r="${g.arcR * 1.15}">
 <stop id="sky-glow-in" offset="0" stop-color="#ff8a5c" stop-opacity="0.95"/>
 <stop id="sky-glow-mid" offset="0.4" stop-color="#ff8a5c" stop-opacity="0.4"/>
 <stop id="sky-glow-out" offset="1" stop-color="#ff8a5c" stop-opacity="0"/>
 </radialGradient><linearGradient id="skygrad${u}" x1="0" y1="0" x2="0" y2="1"><stop id="sky-top" offset="0" stop-color="#4682d2"/><stop id="sky-bottom" offset="1" stop-color="#96c3f0"/></linearGradient></defs>
 <rect width="${g.w}" height="${g.h}" fill="url(#skygrad${u})"/>
-<g id="sky-celestial" data-sidereal-angle="0">
-<g id="sky-milky-way" opacity="0"><path d="${milkyShape}" fill="url(#sky-milkygrad${u})" opacity="0.30" filter="url(#sky-milkytexture${u})" mask="url(#sky-milkymask${u})" style="mix-blend-mode:screen"/><path d="${milkyPath}" fill="none" stroke="#071027" stroke-width="${(g.w * 0.014).toFixed(1)}" opacity="0.16"/>${milkyFilaments}${milkyDust}</g>
-<rect id="sky-stars" x="${g.cx - g.w * 2}" y="${celestialPoleY - g.w * 2}" width="${g.w * 4}" height="${g.w * 4}" fill="url(#sky-starfield${u})" opacity="0"/>
+<g id="sky-celestial" data-sidereal-angle="0" data-coordinate-system="horizontal" data-galactic-center-alt="0">
+<g id="sky-milky-way" opacity="0" clip-path="url(#sky-horizon${u})">
+<path id="sky-milky-haze" d="" fill="none" stroke="url(#sky-milkygrad${u})" stroke-width="${(20 * pxPerDegree).toFixed(1)}" stroke-linecap="butt" opacity="0.24" filter="url(#sky-milkysoft${u})"/>
+<path id="sky-milky-plane" d="" fill="none" stroke="#b8c3ec" stroke-width="${(11 * pxPerDegree).toFixed(1)}" stroke-linecap="butt" opacity="0.11" filter="url(#sky-milkytexture${u})"/>
+<path id="sky-milky-north" d="" fill="none" stroke="#d5d5f2" stroke-width="${(8 * pxPerDegree).toFixed(1)}" stroke-linecap="butt" opacity="0.17" filter="url(#sky-milkytexture${u})"/>
+<path id="sky-milky-dark-lane" d="" fill="none" stroke="#060b20" stroke-width="${(2.8 * pxPerDegree).toFixed(1)}" stroke-linecap="round" stroke-dasharray="18 3 29 5" opacity="0.36"/>
+<path id="sky-milky-filament" d="" fill="none" stroke="#e6e1f6" stroke-width="${(0.7 * pxPerDegree).toFixed(1)}" stroke-linecap="round" opacity="0.10"/>
+${milkyDust}</g>
+<g id="sky-stars" opacity="0">${stars}</g>
 ${constellationHtml}
 </g>
 <g id="sky-perseids" opacity="0">${meteors}</g>
@@ -371,6 +375,40 @@ ${showPhase ? `<text id="sky-label" x="${g.w - 4}" y="${g.h - 3}" text-anchor="e
 function setAttr(root: ParentNode, id: string, name: string, value: string) {
   const el = root.querySelector<SVGElement>(`#${id}`);
   if (el && el.getAttribute(name) !== value) el.setAttribute(name, value);
+}
+
+function galacticPath(
+  segments: ProjectedGalacticPoint[][],
+  include: (point: ProjectedGalacticPoint) => boolean = () => true,
+): string {
+  const commands: string[] = [];
+  for (const segment of segments) {
+    let drawing = false;
+    for (const point of segment) {
+      if (!include(point)) {
+        drawing = false;
+        continue;
+      }
+      const { x, y } = point.projection;
+      commands.push(`${drawing ? "L" : "M"} ${x.toFixed(1)} ${y.toFixed(1)}`);
+      drawing = true;
+    }
+  }
+  return commands.join(" ");
+}
+
+function projectCoordinateStars(root: ParentNode, siderealDeg: number, g: SkyGeom): void {
+  for (const star of root.querySelectorAll<SVGCircleElement>(".sky-coordinate-star")) {
+    const horizontal = equatorialToHorizontal({
+      raDeg: Number(star.dataset.ra),
+      decDeg: Number(star.dataset.dec),
+    }, siderealDeg);
+    const point = projectSouth(horizontal, g.w, g.groundY);
+    star.setAttribute("opacity", point.visible ? (star.dataset.alpha ?? "1") : "0");
+    if (!point.visible) continue;
+    star.setAttribute("cx", point.x.toFixed(1));
+    star.setAttribute("cy", point.y.toFixed(1));
+  }
 }
 
 /** Positions sun or moon, colours the strip, and lights the map. */
@@ -406,20 +444,25 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   // dayIndex so the sky keeps moving by one sidereal minute at that seam.
   const startDoy = ((cal.dayOfYear - cal.dayIndex) % 365 + 365) % 365;
   const absoluteDay = startDoy + cal.dayIndex;
-  const siderealMinutes = (absoluteDay - CELESTIAL_REFERENCE_DOY) * 1440
-    + (cal.hour - CELESTIAL_REFERENCE_HOUR) * 60;
-  const siderealAngle = ((siderealMinutes / SIDEREAL_DAY_MINUTES * 360) % 360 + 360) % 360;
-  const celestialPoleY = g.groundY * (1 + LATITUDE_DEG / 90);
-  const theta = siderealAngle * Math.PI / 180;
-  const cos = Math.cos(theta);
-  const sin = Math.sin(theta);
-  const matrix = [
-    cos, sin, -sin, cos,
-    g.cx - cos * g.cx + sin * celestialPoleY,
-    celestialPoleY - sin * g.cx - cos * celestialPoleY,
-  ].map((value) => value.toFixed(6)).join(" ");
+  const displayedMinute = Math.floor(cal.hour * 60 + 1e-6);
+  const projectionKey = `${absoluteDay}:${displayedMinute}`;
+  const siderealAngle = localSiderealDegrees(absoluteDay, displayedMinute / 60);
   setAttr(root, "sky-celestial", "data-sidereal-angle", siderealAngle.toFixed(3));
-  setAttr(root, "sky-celestial", "transform", `matrix(${matrix})`);
+  if (d.skyProjectionKey !== projectionKey) {
+    d.skyProjectionKey = projectionKey;
+    const galacticCenter = equatorialToHorizontal(GALACTIC_CENTER, siderealAngle);
+    const plane = projectGalacticPlane(siderealAngle, g.w, g.groundY);
+    const path = galacticPath(plane);
+    setAttr(root, "sky-celestial", "data-galactic-center-alt", galacticCenter.altitudeDeg.toFixed(3));
+    setAttr(root, "sky-milky-haze", "d", path);
+    setAttr(root, "sky-milky-plane", "d", path);
+    setAttr(root, "sky-milky-dark-lane", "d", path);
+    setAttr(root, "sky-milky-filament", "d", path);
+    setAttr(root, "sky-milky-north", "d", galacticPath(plane, ({ galacticLongitudeDeg }) => (
+      galacticLongitudeDeg >= 55 && galacticLongitudeDeg <= 155
+    )));
+    projectCoordinateStars(root, siderealAngle, g);
+  }
   setAttr(root, "sky-sun", "cx", f(pos.body === "sun" ? pos.x : g.cx - g.arcR));
   setAttr(root, "sky-sun", "cy", f(pos.body === "sun" ? pos.y : g.groundY + 8));
   // A yellow disc sitting on the horizon at dusk was the one thing in the

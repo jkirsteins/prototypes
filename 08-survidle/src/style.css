@@ -305,7 +305,6 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 #clock .big { font-size: 16px; color: #fff; }
 .sky { flex: 0 0 auto; border: 1px solid var(--line); display: block; }
 .sky circle, .sky stop { transition: cx 0.3s linear, cy 0.3s linear, opacity 0.5s, stop-color 0.5s; }
-.sky #sky-celestial { transition: transform 0.8s linear; }
 .sky #sky-stars, .sky #sky-milky-way, .sky .sky-constellation, .sky #sky-perseids { transition: opacity 0.8s; }
 .sky #sky-far, .sky #sky-mid, .sky #sky-near { transition: fill 0.8s; }
 .sky-meteor {
@@ -323,7 +322,6 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   100% { opacity: 0; transform: translate(-32px, 32px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sky #sky-celestial { transition: none; }
   .sky-meteor { animation: none; opacity: 0; }
   .sky-meteor:first-child { opacity: 0.72; }
 }

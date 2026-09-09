@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -213,7 +213,7 @@ describe("sky in the page", () => {
     expect(opacity("#sky-stars")).toBe("0");
   });
 
-  it("moves the fixed stars and galaxy together at the sidereal rate", () => {
+  it("projects fixed RA/Dec stars and the real galactic plane at the sidereal rate", () => {
     const { state } = newGame(21);
     const root = document.createElement("div");
     root.innerHTML = skyHtml(WALL);
@@ -234,12 +234,39 @@ describe("sky in the page", () => {
     updateSky(state, calendar((24 - 8) * 60, 364), -3, root);
     expect(forward(yearEnd, angle())).toBeCloseTo(360 / (23 * 60 + 56 + 4 / 60), 3);
 
+    const september = calendar((20.4 - 8) * 60, 243);
+    updateSky(state, september, -3, root);
     const celestial = root.querySelector("#sky-celestial");
-    expect(celestial?.getAttribute("transform")).toMatch(/^matrix\(/);
-    const stars = root.querySelector("#sky-stars");
-    expect(stars?.tagName).toBe("rect");
-    expect(Number(stars?.getAttribute("x"))).toBeLessThan(0);
-    expect(Number(stars?.getAttribute("width"))).toBeGreaterThan(WALL.w * 2);
+    expect(celestial?.getAttribute("data-coordinate-system")).toBe("horizontal");
+    expect(Number(celestial?.getAttribute("data-galactic-center-alt"))).toBeCloseTo(-1.057, 3);
+    expect(root.querySelector("#sky-milky-plane")?.getAttribute("d")).toMatch(/^M /);
+    expect(root.querySelector("#sky-milky-way")?.getAttribute("clip-path")).toContain("sky-horizon");
+
+    const stars = [...root.querySelectorAll<SVGCircleElement>(".sky-field-star")];
+    expect(stars.length).toBeGreaterThan(800);
+    expect(stars.every((star) => star.hasAttribute("data-ra") && star.hasAttribute("data-dec"))).toBe(true);
+    const visibleBefore = new Map(stars
+      .filter((star) => star.getAttribute("opacity") !== "0")
+      .map((star) => [star, star.getAttribute("cx")]));
+    updateSky(state, calendar((21.4 - 8) * 60, 243), -3, root);
+    expect([...visibleBefore].some(([star, x]) => (
+      star.getAttribute("opacity") !== "0" && star.getAttribute("cx") !== x
+    ))).toBe(true);
+  });
+
+  it("reuses the celestial projection throughout one displayed game minute", () => {
+    const { state } = newGame(21);
+    const root = document.createElement("div");
+    root.innerHTML = skyHtml(WALL);
+    const minute = calendar((22 - 8) * 60, 172);
+    updateSky(state, minute, -3, root);
+    const star = root.querySelector<SVGCircleElement>(".sky-field-star")!;
+    const writes = vi.spyOn(star, "setAttribute");
+
+    updateSky(state, minute, -3, root);
+    expect(writes).not.toHaveBeenCalled();
+    updateSky(state, calendar((22 - 8) * 60 + 1, 172), -3, root);
+    expect(writes).toHaveBeenCalled();
   });
 
   it("draws the terrain as one opaque colourless silhouette", () => {

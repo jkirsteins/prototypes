@@ -162,7 +162,7 @@ async function main() {
   if (!CHECK) {
     // The index is written from the page's own cards, so the list and the
     // pictures cannot drift apart.
-    const notes = JSON.parse(await evalJs(`JSON.stringify([...document.querySelectorAll(".skycase")].map((f) => [f.dataset.case, f.querySelector("figcaption").textContent.split("\\n").pop().trim()]))`));
+    const notes = JSON.parse(await evalJs(`JSON.stringify([...document.querySelectorAll(".skycase")].map((f) => [f.dataset.case, f.querySelector("[data-sky-note]").textContent.trim()]))`));
     writeFileSync(`${OUT}/README.md`, [
       "# The skies the weather widget draws",
       "",

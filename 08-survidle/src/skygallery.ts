@@ -17,7 +17,7 @@ import { calendar, fmtClock } from "./sim/calendar";
 import { newGame } from "./sim/newgame";
 import type { GameState, Weather } from "./sim/types";
 import { weatherHtml } from "./ui/panels";
-import { updateSky } from "./ui/sky";
+import { bodyPosition, updateSky } from "./ui/sky";
 import { ambientTemperature } from "./sim/weather";
 
 /**
@@ -50,7 +50,9 @@ export const SKY_CASES: SkyCase[] = [
   { name: "dusk", note: "the sun going down: the pink hour", hour: { of: "sunset", plus: -0.05 }, doy: 172, weather: { clear: true, precip: "none" } },
   { name: "golden", note: "the last light before the sun is gone", hour: { of: "sunset", plus: -0.9 }, doy: 200, weather: { clear: true, precip: "none" } },
   { name: "night-clear", note: "the moon up and the stars out", hour: 1, doy: 172, weather: { clear: true, precip: "none" } },
-  { name: "galaxy-motion", note: "sidereal motion, accelerated through a September night", hour: 20.4, doy: 243, weather: { clear: true, precip: "none" }, motionMinutesPerSecond: 30 },
+  { name: "galaxy-motion", note: "real south-facing sky, accelerated through a September night", hour: 20.4, doy: 243, weather: { clear: true, precip: "none" }, motionMinutesPerSecond: 30 },
+  { name: "galaxy-midnight", note: "the same astronomical sky four hours later", hour: 0.5, doy: 243, weather: { clear: true, precip: "none" } },
+  { name: "galaxy-predawn", note: "the same astronomical sky near the end of night", hour: 4.5, doy: 243, weather: { clear: true, precip: "none" } },
   { name: "perseids", note: "a clear night near the Perseid peak", hour: 1, doy: 223, weather: { clear: true, precip: "none" } },
   { name: "night-cloudy", note: "the same night with the stars shut out", hour: 1, doy: 172, weather: { clear: false, precip: "none" } },
   { name: "rain-light", note: "rain, falling straight", hour: 14, doy: 200, weather: { clear: false, precip: "light" } },
@@ -65,6 +67,9 @@ export const SKY_CASES: SkyCase[] = [
 export function shouldAnimateMotion(search: string, reducedMotion: boolean): boolean {
   return !new URLSearchParams(search).has("still") && !reducedMotion;
 }
+
+/** Ten redraws per second look continuous at widget scale without driving the accelerated clock every frame. */
+export const MOTION_RENDER_INTERVAL_MS = 100;
 
 /**
  * The minute at which the clock reads this hour on this day of the year.
@@ -109,7 +114,7 @@ function draw(): void {
     const ambient = ambientTemperature(cal, state.weather);
     return `<figure class="skycase" data-case="${c.name}">
 <div class="panel skycase-box" id="wx-${c.name}">${weatherHtml(state, world, cal, ambient, 1, c.name)}</div>
-<figcaption><b>${c.name}</b><br>${c.note}${c.motionMinutesPerSecond ? `<br><span data-motion-clock>${fmtClock(calendar(state.minute, state.startDoy).hour)}</span>` : ""}</figcaption>
+<figcaption><b>${c.name}</b><br><span data-sky-note>${c.note}</span>${c.motionMinutesPerSecond ? `<br><span data-motion-clock>${fmtClock(calendar(state.minute, state.startDoy).hour)}</span>` : ""}</figcaption>
 </figure>`;
   }).join("");
   root.innerHTML = cards;
@@ -121,6 +126,12 @@ function draw(): void {
     if (!box) continue;
     const { state, world } = at(c);
     const cal = calendar(state.minute, state.startDoy);
+    // Day and overcast cards never reveal celestial points. Removing their
+    // hidden circles keeps this all-conditions gallery from carrying tens of
+    // thousands of inert SVG nodes; the real night widgets stay full-detail.
+    if (bodyPosition(cal).body !== "moon" || !state.weather.clear || state.weather.precip !== "none") {
+      for (const star of box.querySelectorAll(".sky-coordinate-star")) star.remove();
+    }
     updateSky(state, cal, ambientTemperature(cal, state.weather), box);
     if (c.motionMinutesPerSecond && shouldAnimateMotion(
       window.location.search,
@@ -140,7 +151,13 @@ function animateMotion(c: SkyCase, state: GameState, box: Element): void {
   const darkMinutes = (startCal.sunrise + 24 - startCal.hour - 0.2) * 60;
   const started = performance.now();
   let drawnMinute = -1;
+  let lastDrawnAt = -Infinity;
   const frame = (now: number) => {
+    if (now - lastDrawnAt < MOTION_RENDER_INTERVAL_MS) {
+      requestAnimationFrame(frame);
+      return;
+    }
+    lastDrawnAt = now;
     const elapsed = (now - started) / 1000;
     const minute = startMinute + Math.floor((elapsed * (c.motionMinutesPerSecond ?? 0)) % darkMinutes);
     if (minute !== drawnMinute) {
