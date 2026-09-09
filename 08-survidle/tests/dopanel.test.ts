@@ -160,6 +160,11 @@ describe("the purposes and the filter", () => {
     expect(filterRows(rows, "hearth").map((r) => r.label)).toEqual(["fire site"]);
   });
 
+  it("shelter, cover and weather all find the shelter search", () => {
+    const rows = [{ id: "findShelter" as TaskId, label: "Find shelter", detail: "look over this ground", why: "", group: "move" }];
+    for (const word of ["shelter", "cover", "weather"]) expect(filterRows(rows, word).map((r) => r.label), word).toEqual(["Find shelter"]);
+  });
+
   it("the rows come back best answer first: name, then the lines under it, then the keywords", () => {
     const rows = [
       { id: "deadwood" as TaskId, label: "Gather dead wood", detail: "15 kg off the forest floor", why: "", group: "gather" },
@@ -250,6 +255,15 @@ describe("the purposes and the filter", () => {
     const html = doHtml(state, world, cal, food);
     expect(html).toContain('data-opt="intent:roots:"');
     expect(html).not.toContain('data-opt="intent:deadwood:"');
+  });
+
+  it("Explore has one Shelter row in Do", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Explore" as const, purpose: "Shelter" } };
+    const html = doHtml(state, world, cal, ui);
+    expect(html).toContain('data-opt="intent:findShelter:"');
+    expect((html.match(/data-opt="intent:findShelter:/g) ?? []).length).toBe(1);
   });
 
   it("Camp is no longer one heap of twenty-six rows", () => {

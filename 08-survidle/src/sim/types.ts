@@ -132,7 +132,7 @@ export type TaskId =
   | "hunt" | "findDen" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
-  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome";
+  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome" | "findShelter";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
@@ -140,7 +140,7 @@ export const TASK_IDS: TaskId[] = [
   "hunt", "findDen", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
-  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome",
+  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome", "findShelter",
 ];
 
 export interface Task {
@@ -434,6 +434,10 @@ export interface Seep { class: SeepClass; litres: number; ice: number; dug: numb
  */
 export interface Site {
   structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean; snowShelter: boolean };
+  /** Natural protection a search found here, if any. */
+  cover: Protection;
+  /** Minutes since that cover was last found or improved. */
+  coverAge: number;
   /** Drying racks standing here, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
   racks: number;
   /** Minutes since the bough bed was laid; boughs go flat and brown after four days. */

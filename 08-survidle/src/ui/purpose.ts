@@ -25,7 +25,7 @@ export const SUBTABS: SubtabId[] = ["Gather", "Hunt", "Explore", "Camp", "Make",
 export const PURPOSES: Record<SubtabId, string[]> = {
   Gather: ["Woodcutting", "Kindling", "Tree products", "Wild food", "Stone"],
   Hunt: ["Game", "Fish", "Traps"],
-  Explore: ["Wayfinding"],
+  Explore: ["Wayfinding", "Shelter"],
   Camp: ["Fire", "Fuel", "Food", "Water", "Rest", "Tools"],
   Make: ["Fire", "Tools", "Hunting", "Clothing", "Water"],
   Build: ["Site", "Fire", "Shelter", "Water", "Food"],
@@ -70,6 +70,7 @@ const HOME: Record<string, [SubtabId, string]> = {
   // Explore
   explore: ["Explore", "Wayfinding"],
   searchHome: ["Explore", "Wayfinding"],
+  findShelter: ["Explore", "Shelter"],
 
   // Camp
   light: ["Camp", "Fire"],

@@ -215,6 +215,9 @@ const FALLS: Record<DecayingId, (name: string) => string> = {
   turfHut: (n) => `The roof of the hut at ${n} has come down.`,
 };
 
+/** A noticed hollow or overhang is re-read after this many days. */
+const FOUND_COVER_DAYS = 7;
+
 /** Lean food: fully lean meat and fish (FOODS.leanShare 1), the kind the ceiling caps outright. */
 const LEAN_FOOD_IDS = (Object.keys(FOODS) as FoodId[]).filter((f) => FOODS[f].leanShare === 1);
 
@@ -279,6 +282,13 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     // Nothing decays where nothing stands: every check below is on a structure that
     // must already be true, which cannot hold at a cell with no site raised on it.
     for (const [cell, site] of Object.entries(st.sites)) {
+      if (site.cover > 0) {
+        site.coverAge += 1440;
+        if (site.coverAge >= FOUND_COVER_DAYS * 1440) {
+          site.cover = 0;
+          site.coverAge = 0;
+        }
+      }
       if (site.structures.boughBed) {
         site.boughBedAge += 1440;
         if (site.boughBedAge >= BOUGH_BED_DAYS * 1440) {

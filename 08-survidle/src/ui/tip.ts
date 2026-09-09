@@ -22,6 +22,7 @@ import { isRead, readLine } from "../sim/knowledge";
 import { isKnown } from "../sim/mapped";
 import { campCellOf, cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { regionState } from "../sim/regionstate";
+import { protectionOf, PROTECTION_WORDS } from "../sim/shelter";
 import { check, whereIs } from "../sim/tasks";
 import type { GameState, Inventory } from "../sim/types";
 import { plain } from "../sim/voice";
@@ -57,7 +58,9 @@ export function tipKey(state: GameState, world: World, cell: number): string {
   const heap = state.piles[cell] ? weight(state.piles[cell]).toFixed(1) : "";
   const known = isKnown(state, cell) ? "k" : "";
   const trap = st.trap?.cell === cell ? "T" : "";
-  return `${cell}|${cellOf(state, world)}|${known}|${heap}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}`;
+  const site = cellAt(world, cell).region === state.player.region ? st.sites[cell] : undefined;
+  const protection = site ? `P${protectionOf(site)}` : "";
+  return `${cell}|${cellOf(state, world)}|${known}|${heap}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}|${protection}`;
 }
 
 /** The named place this cell is, if it is one. */
@@ -162,6 +165,8 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   if (cell === st.campCell && st.fire.lit) marks.push("the fire is lit");
   if (st.trap?.cell === cell) marks.push(st.trap.kg > 0 ? `a trap, ${st.trap.kg.toFixed(1)} kg in it` : "a trap, empty");
   if (marks.length) lines.push(`<div>${esc(marks.join("; "))}</div>`);
+  const site = st.sites[cell] ?? null;
+  if (site) lines.push(`<div><b>Protection:</b> ${esc(PROTECTION_WORDS[protectionOf(site)])}</div>`);
 
   // What is lying there. He died of cold beside twenty kilos of his own
   // firewood, so a heap is worth saying wherever it sits.

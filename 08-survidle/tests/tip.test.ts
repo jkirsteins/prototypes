@@ -19,6 +19,7 @@ import { newGame } from "../src/sim/newgame";
 import { seeFrom } from "../src/sim/sight";
 import { siteCamp } from "./siting-helpers";
 import { campCellOf, cellOf, placeAt } from "../src/sim/position";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { cellFromClient, cellFromPoint, levelAt, viewOrigin } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { mapInventoryHtml, tipHtml, tipKey } from "../src/ui/tip";
@@ -162,6 +163,16 @@ describe("what the tooltip says", () => {
     expect(tipHtml(state, world, cal, camp)).toMatch(/20(\.0)? kg/);
   });
 
+  it("reports known protection as a fact without adding a shelter action", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const here = cellOf(state, world);
+    siteFor(regionState(state, world, state.player.region), here).cover = 2;
+    const html = tipHtml(state, world, cal, here);
+    expect(html).toContain("Protection:</b> weatherproof");
+    expect(html).not.toContain('data-id="findShelter"');
+  });
+
   it("it omits generated camp-to-spot estimates", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
@@ -203,6 +214,22 @@ describe("the tooltip's key", () => {
     const before = tipKey(state, world, camp);
     addItem(pile(state, camp), "firewood", 5);
     expect(tipKey(state, world, camp)).not.toBe(before);
+  });
+
+  it("changes when known protection changes", () => {
+    const { state, world } = newGame(21);
+    const here = cellOf(state, world);
+    const before = tipKey(state, world, here);
+    siteFor(regionState(state, world, state.player.region), here).cover = 2;
+    expect(tipKey(state, world, here)).not.toBe(before);
+  });
+
+  it("changes when a search establishes that the ground is open", () => {
+    const { state, world } = newGame(21);
+    const here = cellOf(state, world);
+    const before = tipKey(state, world, here);
+    siteFor(regionState(state, world, state.player.region), here).cover = 0;
+    expect(tipKey(state, world, here)).not.toBe(before);
   });
 });
 
