@@ -19,6 +19,7 @@ import { regionState, siteFor } from "../src/sim/regionstate";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { protectionOf } from "../src/sim/shelter";
 import type { GoalId, GoalOpportunity } from "../src/sim/types";
+import { introduceGoals } from "../src/sim/goals";
 
 function game() {
   const g = newGame(17);
@@ -27,13 +28,15 @@ function game() {
 }
 
 const THROUGH_SHELTER: GoalId[] = [
-  "site", "drink", "firewood", "fire", "bed", "roof", "cook", "findUsefulCover", "makeUsefulShelter",
-  "testShelter", "keptNight",
+  "site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook",
+  "findUsefulCover", "makeUsefulShelter", "testShelter", "snareMeal", "huntMeal", "fishMeal",
+  "trapMeal", "foodSource", "store", "fat", "firstOrder", "water", "keptDays",
 ];
 
 function weatherLesson(state: ReturnType<typeof game>["state"], stormId: number, status: GoalOpportunity["status"] = "announced"): void {
   for (const id of THROUGH_SHELTER) state.goals.done[id] = true;
   state.minute = 7 * 1440;
+  introduceGoals(state, ["readWeather"]);
   state.goals.opportunity = {
     goal: "readWeather", status, createdAt: state.minute, attempts: 1,
     stormId, source: "natural", area: null, announcedAt: state.minute, resolvedAt: null,

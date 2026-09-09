@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
+import { introduceGoals } from "../src/sim/goals";
 import { STRUCTURES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { sheltered, workSpeed } from "../src/sim/player";
@@ -171,6 +172,7 @@ describe("finding shelter", () => {
 
   it("credits the roof deed only when the search first reaches weatherproof protection", () => {
     const fresh = newGame(17);
+    introduceGoals(fresh.state, ["roof"]);
     fresh.state.skills.naturalShelter = { xp: levelMinutes(5), mastery: {}, pool: 0 };
     const rock = cellWith(fresh, "rock");
     placeAt(fresh.state, fresh.world, rock);
@@ -211,6 +213,7 @@ describe("finding shelter", () => {
 describe("improving shelter", () => {
   it("works found pine cover to weatherproof in 30 effective minutes", () => {
     const g = newGame(17);
+    introduceGoals(g.state, ["roof"]);
     const pine = cellWith(g, "pine");
     placeAt(g.state, g.world, pine);
     const site = siteFor(regionState(g.state, g.world, g.state.player.region), pine);
@@ -346,6 +349,7 @@ describe("found cover keeping", () => {
 describe("emergency shelter", () => {
   it("raises protection while the task is still running and emits the roof deed only on crossing two", () => {
     const g = emergencyGame();
+    introduceGoals(g.state, ["roof"]);
     const cal = calendar(g.state.minute, g.state.startDoy);
     expect(startTask(g.state, g.world, cal, "emergencyShelter")).toBe(true);
     const work = (minutes: number) => stepTask(g.state, g.world, cal, new Rng(1), minutes);

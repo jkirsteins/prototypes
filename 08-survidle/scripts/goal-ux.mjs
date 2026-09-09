@@ -48,101 +48,90 @@ async function main() {
     "--window-size=1440,900",
     "about:blank",
   ]);
-  for (let attempt = 0; attempt < 60; attempt++) {
-    try { await (await fetch(`http://localhost:${PORT}/json/version`)).json(); break; } catch { await sleep(250); }
-  }
-  const { evaluate, send, ws } = await connect();
-  const click = (selector) => evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); if (!node) return false; node.click(); return true; })()`);
-  const waitFor = async (expression, message) => {
-    for (let attempt = 0; attempt < 50; attempt++) {
-      if (await evaluate(expression)) return;
-      await sleep(100);
+  try {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      try { await (await fetch(`http://localhost:${PORT}/json/version`)).json(); break; } catch { await sleep(250); }
     }
-    throw new Error(message);
-  };
-  const shot = async (name) => {
-    const response = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
-    writeFileSync(`${OUT}/${name}.png`, Buffer.from(response.result.data, "base64"));
-  };
-  const layoutOk = () => evaluate(`(() => {
-    const modal = document.querySelector('#overlay .goal-modal');
-    if (!modal) return false;
-    const rect = modal.getBoundingClientRect();
-    return document.documentElement.scrollWidth <= innerWidth + 1 && rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight;
-  })()`);
+    const { evaluate, send, ws } = await connect();
+    const click = (selector) => evaluate(`(() => { const node = document.querySelector(${JSON.stringify(selector)}); if (!node) return false; node.click(); return true; })()`);
+    const waitFor = async (expression, message) => {
+      for (let attempt = 0; attempt < 60; attempt++) {
+        if (await evaluate(expression)) return;
+        await sleep(100);
+      }
+      throw new Error(message);
+    };
+    const shot = async (name) => {
+      const response = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+      writeFileSync(`${OUT}/${name}.png`, Buffer.from(response.result.data, "base64"));
+    };
+    const layoutOk = () => evaluate(`(() => {
+      const box = document.querySelector('#overlay .box');
+      if (!box) return false;
+      const rect = box.getBoundingClientRect();
+      return document.documentElement.scrollWidth <= innerWidth + 1 && rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight;
+    })()`);
+    const overlayText = () => evaluate("document.querySelector('#overlay')?.textContent ?? ''");
 
-  await sleep(1800);
-  assert(await click('#overlay [data-act="pick-candidate"]'), "candidate control missing");
-  assert(await click('#overlay [data-act="land"]'), "land control missing");
-  await waitFor(`Boolean(document.querySelector('#overlay [data-act="welcome-close"]'))`, "welcome did not open");
-  assert(!await evaluate(`Boolean(document.querySelector('#overlay .manual'))`), "manual opened automatically");
-  await click('#overlay [data-act="welcome-close"]');
-  await waitFor(`document.querySelector('#overlay .goal-modal h1')?.textContent.includes('Choose where to live')`, "first goal did not open");
-  assert(!await evaluate(`Boolean(document.querySelector('.map-inspect'))`), "duplicate map inspection surface exists");
-  assert(await layoutOk(), "desktop first-goal layout overflows");
-  await shot("first-goal-desktop");
+    await sleep(1800);
+    assert(await click('#overlay [data-act="pick-candidate"]'), "candidate control missing");
+    assert(await click('#overlay [data-act="land"]'), "land control missing");
+    await waitFor(`Boolean(document.querySelector('#overlay [data-act="welcome-close"]'))`, "welcome did not open");
+    const welcome = await overlayText();
+    assert(welcome.includes("Starting skills"), "welcome has no Starting skills label");
+    assert(welcome.includes("Tip"), "welcome has no Tip label");
+    assert(!welcome.includes("You land knowing nothing"), "welcome retained the long introduction");
+    assert(await layoutOk(), "desktop welcome overflows");
+    await shot("welcome-desktop");
 
-  await click('#overlay [data-act="goal-close"]');
-  const keyboard = await evaluate(`(() => {
-    const grid = document.querySelector('#mapdyn .grid');
-    if (!grid) return { ok: false, reason: 'no grid' };
-    grid.focus();
-    grid.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    return { ok: document.activeElement?.getAttribute('role') === 'gridcell', active: document.activeElement?.outerHTML };
-  })()`);
-  assert(keyboard.ok, `arrow keys do not focus a map cell: ${keyboard.active ?? keyboard.reason}`);
-  await waitFor(`document.querySelector('#maptip')?.hidden === false`, "keyboard inspection did not open the map tooltip");
-  await evaluate(`(() => {
-    const s = window.survidle.state;
-    const player = document.querySelector('#mapdyn .mk-player');
-    const cell = Number(player?.dataset.mapCell);
-    s.wildlife.activeRegion = s.player.region;
-    s.wildlife.subjects.push({
-      id: 99001, species: 'deer', form: 'herd', region: s.player.region,
-      cohorts: [{ sex: 'f', bornYear: s.year - 1, count: 7 }],
-      condition: 70, reproductive: 'none', dependentUntilYear: 0,
-      name: null, nameKind: 'field', colour: 0, lastKnownDay: -1, denCell: null,
-      active: { cell, hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: 'wander', target: null, route: [] },
-    });
-    const rect = player.getBoundingClientRect();
-    document.querySelector('#mapdyn').dispatchEvent(new PointerEvent('pointermove', { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2, bubbles: true }));
-  })()`);
-  await waitFor(`document.querySelector('#maptip')?.textContent.includes('deer, 7, wander')`, "hover tooltip did not include visible animals");
-  await evaluate(`window.survidle.state.wildlife.subjects = window.survidle.state.wildlife.subjects.filter((subject) => subject.id !== 99001)`);
-  await evaluate(`(() => {
-    const s = window.survidle.state;
-    for (const id of ['site', 'drink', 'firewood', 'fire']) { s.goals.done[id] = true; s.goals.introduced[id] = true; }
-    s.goals.queue = [];
-  })()`);
-  await waitFor(`document.querySelector('#overlay .goal-modal')?.textContent.includes('cold ground')`, "night goals did not open");
-  assert(await layoutOk(), "desktop night-goal layout overflows");
-  await shot("night-goals-desktop");
+    await click('#overlay [data-act="welcome-close"]');
+    await waitFor(`document.querySelector('#overlay .goal-modal')?.textContent.includes('New goal available: Choose where to live')`, "first goal did not open");
+    assert(await evaluate(`document.querySelector('#overlay .goal-modal h1')?.textContent === 'Goals'`), "goal modal has no global heading");
+    assert(!(await overlayText()).includes("Build > Site"), "goal modal prescribes a UI path");
+    assert(await layoutOk(), "desktop first-goal layout overflows");
+    await shot("first-goal-desktop");
 
-  await click('#overlay [data-act="goal-close"]');
-  await evaluate(`(() => {
-    const s = window.survidle.state;
-    for (const id of ['site', 'drink', 'firewood', 'fire', 'bed', 'roof', 'cook', 'keptNight', 'firstOrder']) { s.goals.done[id] = true; s.goals.introduced[id] = true; }
-    s.goals.queue = [];
-  })()`);
-  await waitFor(`document.querySelector('#overlay .goal-modal')?.textContent.includes('Keep water at camp')`, "monthly goals did not open");
-  assert(await layoutOk(), "desktop monthly-goal layout overflows");
-  await shot("monthly-prompt-desktop");
+    await click('#overlay [data-act="goal-close"]');
+    await waitFor(`document.querySelector('#goals h2')?.textContent === 'Goals'`, "pinned goals heading missing");
+    assert(!await evaluate(`Boolean(document.querySelector('#goals .bar, #goals .goal-next, #goals .goal-value'))`), "pinned goal retained progress chrome");
+    await evaluate(`(() => {
+      const s = window.survidle.state;
+      s.goals.done.site = true;
+      s.goals.queue = ['site'];
+    })()`);
+    await waitFor(`document.querySelector('#overlay .goal-modal')?.textContent.includes('Goal completed: Choose where to live')`, "completion did not open");
+    const water = await overlayText();
+    assert(water.includes("New goal available: Drink water"), "water goal was not labeled as new");
+    assert(water.includes("Below 1 litre, the survivor drinks automatically from water at hand."), "water auto-drink rule missing");
+    assert(water.includes("Self-care handles it through the activity queue."), "water queue rule missing");
+    assert(await layoutOk(), "desktop water transition overflows");
+    await shot("water-transition-desktop");
 
-  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-  await click('#overlay [data-act="goal-close"]');
-  await evaluate(`(() => {
-    const s = window.survidle.state;
-    for (const key of Object.keys(s.goals.done)) delete s.goals.done[key];
-    for (const key of Object.keys(s.goals.introduced)) delete s.goals.introduced[key];
-    s.goals.queue = [];
-  })()`);
-  await waitFor(`document.querySelector('#overlay .goal-modal h1')?.textContent.includes('Choose where to live')`, "mobile first goal did not open");
-  assert(await layoutOk(), "mobile first-goal layout overflows");
-  await shot("first-goal-mobile");
+    await click('#overlay [data-act="goal-close"]');
+    await evaluate(`(() => {
+      const s = window.survidle.state;
+      for (const id of ['site', 'drink', 'firewood', 'fire', 'bed', 'roof', 'keptNight', 'forageMeal', 'cook']) s.goals.done[id] = true;
+      for (const id of ['snareMeal', 'huntMeal', 'fishMeal']) delete s.goals.introduced[id];
+      s.goals.queue = [];
+    })()`);
+    await waitFor(`document.querySelector('#overlay .goal-modal')?.textContent.includes('New goal available: Hunt, cook, and eat meat')`, "food-method goals did not open");
+    const food = await overlayText();
+    assert(food.includes("Make a bow"), "hunt equipment step missing");
+    assert(food.includes("Make arrows"), "hunt ammunition step missing");
+    assert(food.includes("Hunt an animal"), "hunt acquisition step missing");
+    assert(food.includes("Eat cooked meat"), "hunt final eating step missing");
+    assert(await layoutOk(), "desktop food-goal layout overflows");
+    await shot("food-goals-desktop");
 
-  ws.close();
-  chrome.kill();
-  console.log(`Goal UX, map keyboard inspection, and wildlife tooltip verified. Screenshots: ${OUT}`);
+    await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    assert(await layoutOk(), "mobile food-goal layout overflows");
+    await shot("food-goals-mobile");
+
+    ws.close();
+    console.log(`Goal UX verified in headless Chrome. Screenshots: ${OUT}`);
+  } finally {
+    chrome.kill();
+  }
 }
 
 main().then(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { addFirewood } from "../src/sim/actions";
+import { addFirewood, eat } from "../src/sim/actions";
 import { calendar } from "../src/sim/calendar";
 import { bodyStep, campNeed, fireStep } from "../src/sim/body";
 import { hourlyHazards } from "../src/sim/hazards";
@@ -19,6 +19,7 @@ import type { TaskId } from "../src/sim/types";
 import { intentOption, startIntent } from "../src/sim/intent";
 import { deserialize, serialize } from "../src/sim/save";
 import { siteCamp } from "./siting-helpers";
+import { introduceGoals } from "../src/sim/goals";
 
 const cal = calendar(0);
 function field() {
@@ -33,8 +34,12 @@ function finish(game: ReturnType<typeof newGame>, id: TaskId, arg?: string) {
   for (let n = 0; state.task && n < 200; n++) stepTask(state, world, cal, new Rng(1), 1);
   expect(state.task).toBeNull();
 }
-function lightField() {
+function lightField(creditFire = false) {
   const game = field();
+  if (creditFire) {
+    introduceGoals(game.state, ["fire"]);
+    game.state.goals.stepProgress.fire = { site: 1, fuel: 1, ignition: 1 };
+  }
   addItem(game.state.player.pack, "fireDrill", 1);
   addItem(game.state.player.pack, "firewood", 10);
   finish(game, "light");
@@ -43,7 +48,7 @@ function lightField() {
 
 describe("a fire where you stand", () => {
   it("lights without a camp or pit, taking up the drill and crediting the fire deed", () => {
-    const { state, world } = lightField();
+    const { state, world } = lightField(true);
     expect(state.player.fieldFire).toEqual({ cell: cellOf(state, world), fuelKg: 1 });
     expect(state.player.tools.some(t => t.id === "fireDrill" && t.durability < 100)).toBe(true);
     expect(state.goals.done.fire).toBe(true);
@@ -61,9 +66,13 @@ describe("a fire where you stand", () => {
   });
   it("cooks away from camp and credits the existing cook goal", () => {
     const game = lightField();
+    introduceGoals(game.state, ["cook"]);
     addItem(game.state.player.pack, "rawMeat", 1);
     finish(game, "cook", "rawMeat");
     expect(qty(game.state.player.pack, "cookedMeat")).toBe(1);
+    expect(game.state.goals.stepProgress.cook?.cook).toBe(1);
+    expect(game.state.goals.done.cook).toBeUndefined();
+    expect(eat(game.state, game.world, "cookedMeat", new Rng(1))).toBeGreaterThan(0);
     expect(game.state.goals.done.cook).toBe(true);
   });
   it.each(["axe", "stoneAxe", "flakedAxe"] as const)("takes up a nearby %s for marrow, with its weight still carried", axe => {

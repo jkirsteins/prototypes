@@ -69,6 +69,7 @@ export function migrate(state: GameState): void {
   const legacyGoals = state.goals.introduced === undefined;
   if (legacyGoals) migrateLegacyGoals(state);
   state.goals.introduced ??= {};
+  state.goals.stepProgress ??= {};
   state.goals.noticeQueue ??= [];
   state.goals.opportunity ??= null;
   if (state.goals.opportunity) {
@@ -388,12 +389,19 @@ export function migrate(state: GameState): void {
 function migrateLegacyGoals(state: GameState): void {
   const old = ["site", "firewood", "fire", "cook", "keptNight", "bed", "keptDays", "roof", "keptRain", "water", "snare", "store", "spring", "summer", "autumn", "winter"] as const;
   const anchor = ["site", "firewood", "fire", "cook", "keptNight", "firstOrder", "keptDays", "foodSource", "foodSource", "foodSource", "store", "store", "spring", "summer", "autumn", "winter"] as const;
+  const journey = [
+    "site", "drink", "firewood", "fire", "bed", "roof", "forageMeal", "cook", "keptNight",
+    "snareMeal", "huntMeal", "fishMeal", "trapMeal", "firstOrder", "water", "keptDays",
+    "foodSource", "store", "fat", "longOrder", "toolCare", "explore", "secondCamp",
+    "seasonalFood", "durableRoof", "winterStores", "spring", "summer", "autumn", "winter",
+  ] as const;
   const done = state.goals.done as Record<string, true | undefined>;
   let current = old.findIndex((id) => !done[id]);
   if (current < 0) current = old.length;
-  const before = current === old.length ? GOALS.length : GOALS.findIndex((goal) => goal.id === anchor[current]);
+  const before = current === old.length ? journey.length : journey.indexOf(anchor[current]);
   for (let i = 0; i < before; i++) {
-    const goal = GOALS[i];
+    const goal = GOALS.find((candidate) => candidate.id === journey[i]);
+    if (!goal) continue;
     done[goal.id] = true;
     state.goals.progress[goal.id] = Math.max(state.goals.progress[goal.id] ?? 0, goal.target);
   }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { leaveCamp } from "../src/sim/camp";
 import { EMBER_MINUTES } from "../src/sim/fire";
+import { introduceGoals } from "../src/sim/goals";
 import { newGame } from "../src/sim/newgame";
 import { fatLandmarks, personOf } from "../src/sim/person";
 import { placeAt } from "../src/sim/position";
@@ -41,6 +42,7 @@ function run(state: ReturnType<typeof newGame>["state"], world: World, minutes: 
 /** A camp with a huge fuel stock so the fire's own burn math never ends a test early; only the deliberate mutations in each test do. */
 function litCamp(startDoy?: number) {
   const { state, world } = startDoy === undefined ? newGame(3) : newGame(3, startDoy);
+  introduceGoals(state, ["keptNight", "keptDays"]);
   siteCamp(state, world);
   const st = regionState(state, world, state.player.region);
   placeAt(state, world, st.campCell!);

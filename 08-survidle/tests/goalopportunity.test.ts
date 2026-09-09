@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { stepGoalOpportunity } from "../src/sim/goalopportunity";
-import { goalDeed, type StormPlanSnapshot } from "../src/sim/goals";
+import { goalDeed, introduceGoals, type StormPlanSnapshot } from "../src/sim/goals";
 import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
@@ -18,7 +18,12 @@ import { cellAt, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 
 const THROUGH_SHELTER: GoalId[] = [
-  "site", "drink", "firewood", "fire", "bed", "roof", "cook", "findUsefulCover", "makeUsefulShelter",
+  "site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook",
+  "findUsefulCover", "makeUsefulShelter",
+];
+const THROUGH_CAMP_SYSTEMS: GoalId[] = [
+  ...THROUGH_SHELTER, "testShelter", "snareMeal", "huntMeal", "fishMeal", "trapMeal",
+  "foodSource", "store", "fat", "firstOrder", "water", "keptDays",
 ];
 
 function finish(state: GameState, ids: GoalId[]): void {
@@ -27,19 +32,22 @@ function finish(state: GameState, ids: GoalId[]): void {
 
 function activateShelterTest(state: GameState): void {
   finish(state, THROUGH_SHELTER);
+  introduceGoals(state, ["testShelter"]);
 }
 
 function activateWeatherReading(state: GameState): void {
-  finish(state, [...THROUGH_SHELTER, "testShelter", "keptNight"]);
+  finish(state, THROUGH_CAMP_SYSTEMS);
   state.minute = 7 * 1440;
+  introduceGoals(state, ["readWeather"]);
 }
 
 function activateRemoteStorm(state: GameState): void {
   finish(state, [
-    ...THROUGH_SHELTER, "testShelter", "keptNight", "readWeather", "prepareWeather", "surviveForecast",
-    "remoteRefuge", "fieldFire", "fieldMeal",
+    ...THROUGH_CAMP_SYSTEMS, "readWeather", "prepareWeather", "surviveForecast", "longOrder", "toolCare",
+    "explore", "remoteRefuge", "fieldFire", "fieldMeal",
   ]);
   state.minute = 30 * 1440;
+  introduceGoals(state, ["remoteStorm"]);
 }
 
 describe("weather teaching opportunity lifecycle", () => {
@@ -251,6 +259,7 @@ describe("Chapter 2 forecast evidence", () => {
   function chapter2Attempt(state: GameState, stormId = 40): void {
     activateWeatherReading(state);
     finish(state, ["readWeather"]);
+    introduceGoals(state, ["prepareWeather"]);
     state.goals.opportunity = {
       goal: "readWeather", status: "announced", createdAt: state.minute, attempts: 1,
       stormId, source: "natural", area: null, announcedAt: state.minute, resolvedAt: null,
@@ -343,12 +352,14 @@ describe("Chapter 2 forecast evidence", () => {
     const good = newGame(17).state;
     chapter2Attempt(good);
     finish(good, ["prepareWeather"]);
+    introduceGoals(good, ["surviveForecast"]);
     expect(goalDeed(good, ended(40, true))).toContain("surviveForecast");
 
     for (const mode of ["wrong-storm", "dead", "heir"] as const) {
       const state = newGame(17).state;
       chapter2Attempt(state);
       finish(state, ["prepareWeather"]);
+      introduceGoals(state, ["surviveForecast"]);
       if (mode === "heir") state.survivors.push({ ...structuredClone(current(state)), index: current(state).index + 1 });
       goalDeed(state, ended(mode === "wrong-storm" ? 41 : 40, mode !== "dead"));
       expect(state.goals.done.surviveForecast, mode).toBeUndefined();
