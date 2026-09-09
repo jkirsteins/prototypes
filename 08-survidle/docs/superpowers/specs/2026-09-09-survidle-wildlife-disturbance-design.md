@@ -304,8 +304,9 @@ zoom replay.
 
 ### Verified deterministic fixtures (9 September 2026)
 
-`npm run startle-seeds` searches seeds 1 through 5000, at most 16 generated
-cells and 16 approach samples per seed. It uses the production encounter's
+`npm run startle-seeds` searches seeds 1 through 5000. For each seed it fully
+generates the region, selects at most 16 eligible candidate cells, and evaluates
+up to 16 approach samples per candidate cell. It uses the production encounter's
 seeded rolls without overrides. These are controlled placements of a naturally
 generated herd on generated ground, not promises about its normal spawn cell.
 Terrain is never edited. Only the selected herd is active during a fixture.
