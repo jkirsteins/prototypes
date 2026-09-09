@@ -7,37 +7,62 @@
     <title>08 - Survidle</title>
   </head>
   <body>
+    <!-- Left is info, middle is interactive, right is the queue. The left
+         column is read-only but for the away slider, which only changes what
+         is being read beside it. -->
     <div id="app">
       <aside id="left" class="col">
+        <section id="goals" class="panel"></section>
         <section id="stats" class="panel"></section>
-        <section id="gear" class="panel"></section>
+        <section id="forecastbox" class="panel">
+          <h2>If you leave</h2>
+          <b data-away="label"></b>
+          <div id="forecast"></div>
+          <div id="away">
+            <input type="range" min="1" max="24" step="1" data-away="hours" aria-label="hours away" />
+            <button type="button" class="mini" data-act="manual-open">how to survive</button>
+            <button type="button" class="mini" data-act="settings-open">settings</button>
+          </div>
+        </section>
         <section id="skills" class="panel"></section>
       </aside>
       <main id="center" class="col">
-        <section id="goals" class="panel"></section>
-        <section id="clock" class="panel"></section>
         <section id="map" class="panel">
           <div id="mapdyn"></div>
+          <!-- Camp stores stay visible on the map; a non-empty cell under
+               the pointer joins them while it is highlighted. -->
+          <div id="mapinventory"></div>
+          <!-- One element, in the markup from the start, so it is shown and
+               hidden rather than created and destroyed under the pointer. -->
+          <div id="maptip" hidden></div>
+          <!-- The ways out, in a corner of the ground they lead off. -->
+          <div id="maptravel"></div>
           <div class="legend"></div>
         </section>
-        <section id="region" class="panel"></section>
+        <section id="task" class="panel"></section>
+        <!-- The tab container, where the HERE panel used to be. All four
+             panes exist at once and three are hidden: rendering one on demand
+             would destroy the other three and the scroll position each holds. -->
+        <section id="panes" class="panel">
+          <div id="panetabs" class="tabs"></div>
+          <div id="pane-do" class="pane">
+            <input type="search" data-do="filter" placeholder="filter actions" aria-label="Filter actions" />
+            <div id="dosubs" class="subs"></div>
+            <div class="dosplit">
+              <div id="dopurposes"></div>
+              <div id="doitems"></div>
+            </div>
+          </div>
+          <div id="pane-camp" class="pane" hidden><div id="camp"></div></div>
+          <div id="pane-pack" class="pane" hidden><div id="inventory"></div></div>
+          <div id="pane-gear" class="pane" hidden><div id="gear"></div></div>
+          <div id="pane-log" class="pane" hidden><div id="log"></div></div>
+          <div id="pane-journal" class="pane" hidden><div id="journal"></div></div>
+        </section>
       </main>
       <aside id="right" class="col">
-        <section id="task" class="panel"></section>
-        <section id="forecast" class="panel"></section>
-        <div id="away" class="panel">
-          <label>away up to <input type="range" min="1" max="24" step="1" data-away="hours" aria-label="hours away" /> <b data-away="label"></b></label>
-          <button type="button" class="mini" data-act="manual-open">how to survive</button>
-          <button type="button" class="mini" data-act="settings-open">settings</button>
-        </div>
-        <section id="log" class="panel"></section>
-        <section id="actions" class="panel">
-          <h2>Do</h2>
-          <input type="search" data-do="filter" placeholder="filter" />
-          <div id="dorows"></div>
-        </section>
-        <section id="inventory" class="panel"></section>
-        <section id="journal" class="panel"></section>
+        <section id="weather" class="panel"></section>
+        <section id="orders" class="panel"></section>
       </aside>
     </div>
     <footer id="build" class="build"></footer>
@@ -49,10 +74,18 @@
         <label><input type="checkbox" data-sound="ambience" /> ambience</label>
         <span class="dim" data-sound="note"></span>
       </div>
+      <label>Travel estimates
+        <select data-display="travel">
+          <option value="distance">distance</option>
+          <option value="time">time</option>
+          <option value="both">distance and time</option>
+        </select>
+      </label>
       <div id="beacon">
         <label><input type="checkbox" data-beacon="on" /> share anonymous play data</label>
         <span class="dim" data-beacon="note"></span>
       </div>
+      <div><button type="button" class="mini bad" data-act="reset-world">reset world data</button></div>
     </div>
     <div id="overlay" hidden></div>
     <script type="module" src="/src/main.ts"></script>

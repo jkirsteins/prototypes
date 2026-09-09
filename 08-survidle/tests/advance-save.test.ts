@@ -4,14 +4,15 @@ import { calendar } from "../src/sim/calendar";
 import { bodyRowOf, isCampRow, isBodyRow } from "../src/sim/bodyorder";
 import { rootStockFor } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
-import { fillPopulations, regionState } from "../src/sim/regionstate";
+import { campSite, fillPopulations, siteFor } from "../src/sim/regionstate";
 import { rootKgLeft } from "../src/sim/stocks";
 import { startTask } from "../src/sim/tasks";
 import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
 import { addOrder, conditionOpen, orderMet, orderSentence } from "../src/sim/orders";
 import { AWAY_HOURS_MAX } from "../src/units";
-import type { GameState } from "../src/sim/types";
+import { isWorkOrder, type GameState } from "../src/sim/types";
 import { regionAt, speciesHere } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 class MemStorage implements Storage {
   private m = new Map<string, string>();
@@ -35,6 +36,7 @@ describe("advance", () => {
 
   it("kills an idle character who runs out, and names the cause", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     advance(state, world, 1440 * 12);
     expect(state.dead).not.toBeNull();
     // Never drinks either: away from any shore or vessel, thirst can win the race.
@@ -44,6 +46,7 @@ describe("advance", () => {
 
   it("falls asleep on its own when idle and spent: the body's own row puts it down", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     state.player.energy = 9;
     advance(state, world, 5);
     expect(state.task?.id).toBe("sleep");
@@ -51,20 +54,9 @@ describe("advance", () => {
     expect(state.intent?.orderId).toBe(bodyRowOf(state, world)!.id);
   });
 
-  it("falls asleep on its own when idle and spent, with no list at all to put it down", () => {
-    const { state, world } = newGame(8);
-    // The one list the game wipes to nothing, an heir's before their first
-    // order: no body row on it, and a body at the end of itself still lies
-    // down where it stands rather than standing there until it dies.
-    regionState(state, world, state.player.region).orders.length = 0;
-    state.player.energy = 9;
-    advance(state, world, 5);
-    expect(state.task?.id).toBe("sleep");
-    expect(state.log.some((e) => e.text.includes("sleep} where {you} {are}"))).toBe(true);
-  });
-
   it("survives the first day with the starting kit", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     advance(state, world, 1440);
     expect(state.dead).toBeNull();
     expect(state.player.health).toBeGreaterThan(50);
@@ -74,6 +66,7 @@ describe("advance", () => {
 describe("save", () => {
   it("round-trips the whole state", () => {
     const { state, world } = newGame(9);
+    siteCamp(state, world);
     advance(state, world, 500);
     const file = deserialize(serialize(state, 1234));
     expect(file).not.toBeNull();
@@ -84,7 +77,8 @@ describe("save", () => {
   });
 
   it("a new game starts with the new body fields, and an old save gets them filled", () => {
-    const { state } = newGame(8);
+    const { state, world } = newGame(8);
+    siteCamp(state, world);
     expect(state.player.water).toBe(2.5);
     expect(state.player.frostbite).toEqual({ feet: 0, hands: 0 });
     expect(state.weather.iceCm).toBe(0);
@@ -92,13 +86,13 @@ describe("save", () => {
     const st = state.regions[state.player.region];
     expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0 });
     expect(st.smoke).toBe(0);
-    expect(st.structures.hearth).toBe(false);
+    expect(campSite(st)?.structures.hearth ?? false).toBe(false);
     state.player.tools.push({ id: "barkBucket", durability: 100 });
-    // A rack standing and a trap set: the rack count is filled from the
-    // structure that says one stands, and a trap's age from the day it was set.
-    st.structures.dryingRack = true;
-    st.racks = 1;
-    st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: [], age: 0 };
+    // A rack standing and a trap set, both carried whole through the round trip.
+    const site = siteFor(st, st.campCell!);
+    site.structures.dryingRack = true;
+    site.racks = 1;
+    st.trap = { cell: st.campCell!, kg: 0, oilyKg: 0, fish: [], age: 0 };
     const raw = JSON.parse(serialize(state));
     delete raw.state.player.water;
     delete raw.state.player.frostbite;
@@ -118,9 +112,7 @@ describe("save", () => {
     delete raw.state.regions[state.player.region].fire.litSince;
     delete raw.state.regions[state.player.region].fire.rainHeld;
     delete raw.state.regions[state.player.region].smoke;
-    delete raw.state.regions[state.player.region].structures.hearth;
     delete raw.state.regions[state.player.region].logsWet;
-    delete raw.state.regions[state.player.region].racks;
     delete raw.state.regions[state.player.region].trap.age;
     const back = deserialize(JSON.stringify(raw))!.state;
     expect(back.player.water).toBe(2.5);
@@ -142,14 +134,15 @@ describe("save", () => {
     expect(back.regions[state.player.region].fire.litSince).toBeNull();
     expect(back.regions[state.player.region].fire.rainHeld).toBe(0);
     expect(back.regions[state.player.region].smoke).toBe(0);
-    expect(back.regions[state.player.region].structures.hearth).toBe(false);
+    expect(campSite(back.regions[state.player.region])?.structures.hearth ?? false).toBe(false);
     expect(back.regions[state.player.region].logsWet).toBe(1440);
-    expect(back.regions[state.player.region].racks).toBe(1);
+    expect(campSite(back.regions[state.player.region])?.racks).toBe(1);
     expect(back.regions[state.player.region].trap!.age).toBe(0);
   });
 
   it("a save mid-walk from before the route remembered its walked cells loads with none", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     startTask(state, world, calendar(0), "walk", "spot:forest");
     const raw = JSON.parse(serialize(state));
     expect(raw.state.route.walked.length).toBe(1);
@@ -161,6 +154,7 @@ describe("save", () => {
 
   it("a save from before a skill existed loads with it at nothing, and walks on", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const raw = JSON.parse(serialize(state));
     // The record is there and one key is missing, which is what a skill added
     // after a run started looks like. The whole-record default cannot see it,
@@ -187,6 +181,7 @@ describe("save", () => {
     // for "grouse". SaveFile.version is still 3, so they load and their task runs on.
     for (const task of [{ id: "fish" as const, progress: 59, duration: 60, repeat: false }, { id: "hunt" as const, arg: "grouse", progress: 59, duration: 60, repeat: false }]) {
       const { state, world } = newGame(4);
+      siteCamp(state, world);
       state.task = { ...task };
       expect(() => advance(state, world, 2)).not.toThrow();
       expect(state.task).toBeNull();
@@ -196,6 +191,7 @@ describe("save", () => {
 
   it("a save from the five-animal world loads with its roster filled and its dead keys gone", () => {
     const { state, world } = newGame(5);
+    siteCamp(state, world);
     const id = state.player.region;
     const st = state.regions[id];
     (st as unknown as { pop: Record<string, number> }).pop = { hare: 10, grouse: 20, deer: 3, elk: 1, fish: 40 };
@@ -229,12 +225,13 @@ describe("save", () => {
     // The list carried neither care row, so the load migrates both on at the top.
     expect(isCampRow(orders[0])).toBe(true);
     expect(isBodyRow(orders[1])).toBe(true);
-    expect(orders[2].req.arg).toBe("any");
-    expect(orders[3].req.arg).toBe("willowGrouse");
+    expect(isWorkOrder(orders[2]) && orders[2].req.arg).toBe("any");
+    expect(isWorkOrder(orders[3]) && orders[3].req.arg).toBe("willowGrouse");
   });
 
   it("a genuine version 3 save predating ice holes and water piles loads clean", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const raw = JSON.parse(serialize(state));
     raw.version = 3;
     for (const st of Object.values(raw.state.regions) as Record<string, unknown>[]) {
@@ -254,6 +251,7 @@ describe("save", () => {
 
   it("an order from before the order ladder carries no when, held, givenDoy, dayOpened or dayBase, and reads exactly as it did", () => {
     const { state, world } = newGame(9);
+    siteCamp(state, world);
     const o = addOrder(state, world, { task: "roots", until: { kind: "campHas", qty: 5 }, deliver: "camp", where: "nearest" }, "keep");
     const id = state.player.region;
     const cal = calendar(state.minute, state.startDoy);
@@ -268,6 +266,7 @@ describe("save", () => {
     delete rawOrder.dayBase;
     const file = deserialize(JSON.stringify(raw))!;
     const back = file.state.regions[id].orders[2];
+    if (!isWorkOrder(back)) throw new Error("the migrated row is not work");
     expect(() => orderMet(file.state, world, cal, back, false)).not.toThrow();
     expect(() => conditionOpen(file.state, world, cal, back)).not.toThrow();
     expect(orderSentence(file.state, world, cal, back)).toBe(sentenceBefore);
@@ -280,6 +279,7 @@ describe("save", () => {
 
   it("catches up on time away, capped at a day, and reports what happened", () => {
     const { state, world } = newGame(9);
+    siteCamp(state, world);
     // Twenty real minutes are 1200 game minutes.
     const away = catchUp(state, world, 20 * 60);
     expect(state.minute).toBeCloseTo(1200, 6);
@@ -293,6 +293,7 @@ describe("save", () => {
 
   it("reports what a daily order did across the days away, not only today's count", () => {
     const { state, world } = newGame(9);
+    siteCamp(state, world);
     state.awayHours = AWAY_HOURS_MAX;
     const o = addOrder(state, world, { task: "sticks", until: { kind: "daily", n: 1 }, deliver: "camp", where: "nearest" }, "job");
     // Three days: the day roll opens the count twice over, so an order whose done
@@ -327,9 +328,6 @@ describe("the world save", () => {
     delete v4.state.year;
     delete v4.state.landing;
     delete v4.state.spine;
-    // structureAge is version 5's own field: a real version 4 file never had it, so the
-    // fixture must drop it too, or fillDefaults' default is never exercised.
-    for (const st of Object.values(v4.state.regions as Record<string, Record<string, unknown>>)) delete st.structureAge;
     const file = deserialize(JSON.stringify(v4))!;
     expect(file.state.year).toBe(1);
     expect(file.state.landing).toBeNull();
@@ -338,7 +336,7 @@ describe("the world save", () => {
     expect(file.state.survivors[0].name.first.length).toBeGreaterThan(0);
     expect(file.state.survivors[0].landed).toEqual({ year: 1, doy: file.state.startDoy });
     expect(file.state.spine).toEqual({ fired: {}, announced: {} });
-    for (const st of Object.values(file.state.regions)) expect(st.structureAge).toEqual({});
+    for (const st of Object.values(file.state.regions)) expect(campSite(st)?.structureAge ?? {}).toEqual({});
   });
 });
 
@@ -351,8 +349,15 @@ describe("the version 6 save", () => {
     old.version = 5;
     delete old.state.player.known;
     for (const st of Object.values(old.state.regions) as Record<string, unknown>[]) {
-      delete (st.structures as Record<string, unknown>).turfHut;
-      delete (st.structures as Record<string, unknown>).waterStore;
+      delete st.sites;
+      delete st.snares;
+      // The old flat shape, from before turfHut and waterStore joined the other structure flags.
+      st.structures = { firePit: false, leanTo: false, cabin: false, dryingRack: false, snares: 0, boughBed: false, hearth: false, snowShelter: false };
+      st.racks = 0;
+      st.boughBedAge = 0;
+      st.meltDays = 0;
+      st.structureAge = {};
+      st.build = {};
       delete st.trap;
     }
     old.state.ledger = [{ day: 1, yield: { fish: 0, snare: 0, hunt: 0, berries: 0, kit: 0 }, eaten: 0, burn: { base: 0, activity: 0, walk: 0, cold: 0, sick: 0 }, sleepMin: 0, workMin: 0 }];
@@ -360,8 +365,8 @@ describe("the version 6 save", () => {
     expect(file).not.toBeNull();
     expect(file.state.player.known).toEqual({});
     for (const st of Object.values(file.state.regions)) {
-      expect(st.structures.turfHut).toBe(false);
-      expect(st.structures.waterStore).toBe(false);
+      expect(campSite(st)?.structures.turfHut ?? false).toBe(false);
+      expect(campSite(st)?.structures.waterStore ?? false).toBe(false);
       expect(st.trap).toBeNull();
     }
     expect(file.state.ledger[0].yield.trap).toBe(0);
@@ -370,10 +375,11 @@ describe("the version 6 save", () => {
   it("a save carrying a region's roots as one number loads with every cell at full, and one from before the seasonal stocks gets its nests", () => {
     // A region's kilos say nothing about which cells they were dug from, so the number is dropped
     // and the ground reads full: what one survivor took out of nine hectares is inside the season's
-    // regrowth anyway. The nests have no such ground to fall back on, so fillDefaults marks them
+    // regrowth anyway. The nests have no such ground to fall back on, so migrate marks them
     // unset with -1 and fillPopulations - which walks the same regions with the world in hand -
     // seeds them; without it every region read "the nests are empty" on a game that did nothing wrong.
     const { state, world } = newGame(17, 160);
+    siteCamp(state, world);
     const id = state.player.region;
     const raw = JSON.parse(serialize(state)) as { version: number; state: GameState };
     raw.version = 6;

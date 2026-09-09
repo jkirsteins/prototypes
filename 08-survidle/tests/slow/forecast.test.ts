@@ -20,7 +20,7 @@ function stocked() {
   const g = newGame(17);
   kitOut(g.state, g.world);
   for (const w of REFERENCE_ORDERS) addOrder(g.state, g.world, w.req, w.kind);
-  addItem(pile(g.state, regionState(g.state, g.world, g.state.player.region).campCell), "driedMeat", 5);
+  addItem(pile(g.state, regionState(g.state, g.world, g.state.player.region).campCell!), "driedMeat", 5);
   return g;
 }
 
@@ -28,8 +28,10 @@ describe("a forecast row", () => {
   it("forecast maps every horizon, and the cause words are the ones the panel prints", () => {
     const { state, world } = stocked();
     state.awayHours = 1;
-    const rows = forecast(state, world, 1).filter((r) => r.id === "away" || r.id === "tonight");
-    expect(rows.map((r) => r.id)).toEqual(["away", "tonight"]);
+    // Two horizons: the one the slider names and shows, and the month the
+    // life record keeps whether anybody is looking at it or not.
+    const rows = forecast(state, world, 1);
+    expect(rows.map((r) => r.id)).toEqual(["away", "month"]);
     expect(CAUSE_WORD.starved).toBe("starved");
     expect(CAUSE_WORD.froze).toBe("cold");
     expect(CAUSE_WORD.gaveUp).toBe("gave up");
@@ -37,11 +39,11 @@ describe("a forecast row", () => {
 
   it("runs the runner: the horizon's stocked stage holds a week only because its orders are worked, as the harness reads it", () => {
     const { state, world } = setUpStage(17, HORIZON_STAGES[4]);
-    const rowWithOrders = forecastRow(state, world, { id: "week", minutes: 7 * 1440 }, 3);
+    const rowWithOrders = forecastRow(state, world, { id: "away", minutes: 7 * 1440 }, 3);
     expect(rowWithOrders.died).toBe(0);
     const { state: stateNoOrders, world: worldNoOrders } = setUpStage(17, HORIZON_STAGES[4]);
     regionState(stateNoOrders, worldNoOrders, stateNoOrders.player.region).orders = [];
-    const rowNoOrders = forecastRow(stateNoOrders, worldNoOrders, { id: "week", minutes: 7 * 1440 }, 3);
+    const rowNoOrders = forecastRow(stateNoOrders, worldNoOrders, { id: "away", minutes: 7 * 1440 }, 3);
     expect(rowNoOrders.died > rowWithOrders.died || rowNoOrders.died > 0).toBe(true);
   }, 120000);
 });

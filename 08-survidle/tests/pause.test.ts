@@ -8,6 +8,7 @@ import { deserialize, serialize } from "../src/sim/save";
 import { check, pausedList, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { taskHtml } from "../src/ui/panels";
 import { resetPanels, setPanel } from "../src/ui/render";
+import { siteCamp } from "./siting-helpers";
 
 type G = ReturnType<typeof newGame>;
 function run(g: G, minutes: number) {
@@ -19,6 +20,7 @@ const cal = calendar(0);
 describe("tasks set aside", () => {
   it("a half-felled tree waits in its cell and is finished from the half", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     startTask(state, world, cal, "chop");
@@ -38,6 +40,7 @@ describe("tasks set aside", () => {
 
   it("starting something else sets the current task aside instead of losing it", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     startTask(state, world, cal, "chop");
@@ -49,6 +52,7 @@ describe("tasks set aside", () => {
 
   it("located work belongs to its cell; carried work travels", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     addItem(state.player.pack, "bark", 3);
@@ -72,6 +76,7 @@ describe("tasks set aside", () => {
 
   it("rest and sleep keep nothing", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     startTask(state, world, cal, "rest");
     run(g, 30);
@@ -81,6 +86,7 @@ describe("tasks set aside", () => {
 
   it("survives a save", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     startTask(state, world, cal, "chop");
@@ -97,8 +103,9 @@ describe("set aside on screen", () => {
     resetPanels();
   });
 
-  it("lists what is set aside with a resume button when it can be resumed here", () => {
+  it("does not turn set-aside work into a second visible queue", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     startTask(state, world, cal, "chop");
@@ -106,14 +113,12 @@ describe("set aside on screen", () => {
     stopTask(state, world);
     setPanel("task", taskHtml(state, world, cal));
     const el = document.querySelector("#task")!;
-    expect(el.textContent).toContain("Set aside");
-    expect(el.textContent).toContain("Fell a tree");
-    expect(el.textContent).toContain("50%");
-    expect(el.querySelector('[data-act="task"][data-id="chop"]')).not.toBeNull();
+    expect(el.textContent).not.toContain("Set aside");
+    expect(el.querySelector('[data-act="task"][data-id="chop"]')).toBeNull();
     placeAtSpot(state, world, state.player.region, "camp");
     setPanel("task", taskHtml(state, world, cal));
     expect(document.querySelector('#task [data-act="task"][data-id="chop"]')).toBeNull();
-    expect(document.querySelector("#task")!.textContent).toContain("at the forest");
-    expect(document.querySelector("#task")!.innerHTML).toContain('data-act="finish"');
+    expect(document.querySelector("#task")!.textContent).not.toContain("at the forest");
+    expect(document.querySelector("#task")!.innerHTML).not.toContain('data-act="finish"');
   });
 });

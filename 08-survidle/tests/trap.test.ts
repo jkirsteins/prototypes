@@ -15,6 +15,7 @@ import { deserialize, serialize } from "../src/sim/save";
 import { check, startTask } from "../src/sim/tasks";
 import { ICE_SHORE_CM } from "../src/sim/water";
 import { regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
 type G = ReturnType<typeof newGame>;
@@ -38,6 +39,7 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
  */
 function readyToSet(startDoy?: number) {
   const g = newGame(4, startDoy);
+  siteCamp(g.state, g.world);
   placeAtSpot(g.state, g.world, g.state.player.region, "shore");
   const cell = cellOf(g.state, g.world);
   const obs = readShore(g.state, g.world, cell);
@@ -70,6 +72,7 @@ describe("the basket trap", () => {
 
   it("refuses an unread shore, an empty water, ice, and no basket, in that order of reasons", () => {
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     placeAtSpot(g.state, g.world, g.state.player.region, "shore");
     expect(check(g.state, g.world, cal, "setTrap")).toMatchObject({ ok: false, why: "read the water first" });
     const cell = cellOf(g.state, g.world);
@@ -185,22 +188,24 @@ describe("the basket trap", () => {
 
   it("a set-trap order pockets the basket from the camp pile before it leaves, and sets the trap at the read shore", () => {
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     placeAtSpot(g.state, g.world, g.state.player.region, "shore");
     const cell = cellOf(g.state, g.world);
     const obs = readShore(g.state, g.world, cell);
     const st = regionState(g.state, g.world, g.state.player.region);
     for (const s of obs.fish) st.pop[s] = 50;
     placeAtSpot(g.state, g.world, g.state.player.region, "camp");
-    addItem(pile(g.state, st.campCell), "basketTrap", 1);
+    addItem(pile(g.state, st.campCell!), "basketTrap", 1);
     addOrder(g.state, g.world, { task: "setTrap", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     expect(until(g, () => qty(g.state.player.pack, "basketTrap") === 1, 5)).toBe(true);
-    expect(qty(pile(g.state, st.campCell), "basketTrap")).toBe(0);
+    expect(qty(pile(g.state, st.campCell!), "basketTrap")).toBe(0);
     expect(until(g, () => st.trap !== null, 200)).toBe(true);
     expect(st.trap).toMatchObject({ cell });
   });
 
   it("an intent to set the trap started away from camp with a basket already in the pack sets it", () => {
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     placeAtSpot(g.state, g.world, g.state.player.region, "shore");
     const cell = cellOf(g.state, g.world);
     const obs = readShore(g.state, g.world, cell);

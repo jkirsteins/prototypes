@@ -4,7 +4,7 @@ import { findRoute, passable } from "../world/route";
 import { calendar, type Calendar } from "./calendar";
 import { popOf } from "./animals";
 import { regionDensity } from "./animals";
-import { regionState } from "./regionstate";
+import { regionState, siteAt } from "./regionstate";
 import { skillLevel } from "./skills";
 import type { AgentSpecies, GameState, WildlifeMode, WildlifeState, WildlifeSubject } from "./types";
 import { cellOf } from "./position";
@@ -34,6 +34,14 @@ export function emptyWildlife(): WildlifeState {
 
 export function wildlifeMembers(subject: WildlifeSubject): number {
   return subject.cohorts.reduce((n, c) => n + c.count, 0);
+}
+
+/** A camp cell and whether its food pile is enclosed against large scavengers. */
+function campStore(state: GameState, subjectRegion: number): { cell: number; protected: boolean } | null {
+  const st = state.regions[subjectRegion];
+  if (!st || st.campCell === null) return null;
+  const structures = siteAt(st, st.campCell)?.structures;
+  return { cell: st.campCell, protected: Boolean(structures?.cabin || structures?.turfHut) };
 }
 
 function suitableCells(world: World, region: number, species: AgentSpecies): number[] {
@@ -140,7 +148,8 @@ function stealCampFood(state: GameState, subject: WildlifeSubject): boolean {
   const active = subject.active;
   if (!active || (subject.species !== "bear" && subject.species !== "wolverine") || active.hunger < 60) return false;
   const st = state.regions[subject.region];
-  if (!st || active.cell !== st.campCell || (subject.species === "wolverine" && st.fire.lit)) return false;
+  const camp = campStore(state, subject.region);
+  if (!st || !camp || active.cell !== camp.cell || (subject.species === "wolverine" && st.fire.lit)) return false;
   if (st.rack.kg > 0) {
     const taken = Math.min(1, st.rack.kg);
     st.rack.kg -= taken;
@@ -150,8 +159,8 @@ function stealCampFood(state: GameState, subject: WildlifeSubject): boolean {
     log(state, `A ${SPECIES_DEFS[subject.species].name} takes ${taken.toFixed(1)} kg of meat from the drying rack.`, "bad");
     return true;
   }
-  if (st.structures.cabin || st.structures.turfHut) return false;
-  const store = pile(state, st.campCell);
+  if (camp.protected) return false;
+  const store = pile(state, camp.cell);
   for (const item of ["rawMeat", "cookedMeat", "driedMeat", "rawFat", "fat"] as const) {
     const taken = removeItem(store, item, Math.min(1, qty(store, item)));
     if (taken <= 0) continue;
@@ -247,12 +256,13 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
     }
   }
   if (active.alarm < 50 && active.thirst < 60 && (subject.species === "bear" || subject.species === "wolverine") && active.hunger >= 60 && st) {
-    const store = pile(state, st.campCell);
-    const pileExposed = !st.structures.cabin && !st.structures.turfHut && ["rawMeat", "cookedMeat", "driedMeat", "rawFat", "fat"].some((item) => qty(store, item as Parameters<typeof qty>[1]) > 0);
+    const camp = campStore(state, subject.region);
+    const store = camp ? pile(state, camp.cell) : undefined;
+    const pileExposed = Boolean(camp && !camp.protected && ["rawMeat", "cookedMeat", "driedMeat", "rawFat", "fat"].some((item) => store && qty(store, item as Parameters<typeof qty>[1]) > 0));
     const exposed = st.rack.kg > 0 || pileExposed;
-    if (exposed && (subject.species === "bear" || !st.fire.lit)) {
+    if (camp && exposed && (subject.species === "bear" || !st.fire.lit)) {
       active.intent = "camp";
-      active.target = st.campCell;
+      active.target = camp.cell;
     }
   }
   if (active.alarm < 50 && active.thirst < 60 && subject.form === "herd" && active.hunger >= 60) {
@@ -281,7 +291,7 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
     .filter((idx) => cellAt(world, idx).region === subject.region && passable(cellAt(world, idx).terrain));
   if (subject.species === "wolf") {
     const lit = [] as number[];
-    if (st?.fire.lit) lit.push(st.campCell);
+    if (st?.fire.lit && st.campCell !== null) lit.push(st.campCell);
     if (state.player.region === subject.region && state.player.torch.lit) lit.push(cellOf(state, world));
     if (lit.length) {
       const lightDistance = (cell: number) => Math.min(...lit.map((center) => Math.abs((cell % world.w) - (center % world.w)) + Math.abs(Math.floor(cell / world.w) - Math.floor(center / world.w))));
@@ -334,7 +344,7 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
       }
       if (wildlifeMembers(prey) === 0) removeSubject(state, prey);
     }
-    const atFire = Boolean(st?.fire.lit && cellDistance(world, active.cell, st.campCell) <= 2);
+    const atFire = Boolean(st?.fire.lit && st.campCell !== null && cellDistance(world, active.cell, st.campCell) <= 2);
     const atTorch = state.player.region === subject.region && state.player.torch.lit && cellDistance(world, active.cell, cellOf(state, world)) <= 2;
     if (active.cell === cellOf(state, world) && cal.isNight && !sheltered(state, world) && !atFire && !atTorch) {
       cue("wolves");
@@ -452,10 +462,11 @@ export function dailyWildlife(state: GameState, world: World, cal: Calendar, rng
   if (mode === "aggregate") {
     for (const [key, st] of Object.entries(state.regions)) {
       const region = Number(key);
+      const camp = campStore(state, region);
       for (const species of ["bear", "wolverine"] as const) {
         const rackExposed = st.rack.kg > 0;
-        const store = state.piles[st.campCell];
-        const item = !st.structures.cabin && !st.structures.turfHut
+        const store = camp ? state.piles[camp.cell] : undefined;
+        const item = camp && !camp.protected
           ? (["rawMeat", "cookedMeat", "driedMeat", "rawFat", "fat"] as const).find((id) => store && qty(store, id) > 0)
           : undefined;
         const pileExposed = item !== undefined;

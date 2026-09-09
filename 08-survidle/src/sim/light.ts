@@ -124,7 +124,7 @@ export function visitedCamps(state: GameState): { id: number; st: RegionState; c
   const out: { id: number; st: RegionState; cell: number }[] = [];
   for (const [idText, st] of Object.entries(state.regions)) {
     const id = Number(idText);
-    if (discovery(state, id) !== VISITED) continue;
+    if (discovery(state, id) !== VISITED || st.campCell === null) continue;
     out.push({ id, st, cell: st.campCell });
   }
   return out;

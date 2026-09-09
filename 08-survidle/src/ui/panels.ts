@@ -1,20 +1,20 @@
 import { edible, hungerLine, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
+import { COLD_UNDER, SLEEP_AT, SOAKED_WETNESS, workResumeAt } from "../sim/body";
 import { isCareRow } from "../sim/bodyorder";
+import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
-import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
+import { needsMending, rackCapacity } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, hasEmbers, smoky } from "../sim/fire";
-import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
+import { herePile, listItems, pileAt, qty, weight } from "../sim/inventory";
 import { body, fatLandmarks } from "../sim/person";
-import { intentSentence, WAITING_STEP } from "../sim/intent";
-import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
-import { fishLie, readCells } from "../sim/knowledge";
+import { groundOf } from "../sim/intent";
+import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_KG, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { knownShare } from "../sim/mapped";
-import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
-import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
+import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
 import { MANUAL_LINKS, MANUAL_SECTIONS } from "../sim/manual";
@@ -22,29 +22,30 @@ import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
 import { liveFaceHtml, livePortraitState } from "./portrait";
 import { fmtName } from "../sim/names";
-import { sleepiness, SLEEPY_AT } from "../sim/sleep";
+import { sleepiness, SLEEPY_AT, SPENT_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
-import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation } from "../sim/player";
-import { illuminance, lightWord } from "../sim/light";
+import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation, walkManner } from "../sim/player";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
 import { current, worldDate } from "../sim/record";
-import { regionState } from "../sim/regionstate";
+import { campSite, regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
 import { CARRY_SHARE, keyName, level, levelMinutes, masteryMilestone, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
-  availableTasks, check, fallChance, pausedList, type TaskOption, whereIs,
+  availableTasks, check, fallChance, type TaskOption, whereIs,
 } from "../sim/tasks";
-import type { GameState, Garment, ItemId, LogEntry, Person, SkillId } from "../sim/types";
+import { isWorkIntent, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
-import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
+import { fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { regionAt, speciesHere, type World } from "../world/gen";
-import { hurryKind, PULSE_MIN } from "./hurry";
+import { routeKm } from "../world/route";
+import { hurryKind, type HurryState } from "./hurry";
 import { esc, type UiState } from "./render";
 import { plain, voice } from "../sim/voice";
-import { waterLine, waterList } from "./water";
-import { skyHtml } from "./sky";
+import { skyHtml, WALL } from "./sky";
+import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
+import { activeEquipmentHtml } from "./equipment";
 
 /**
  * A mark on a bar: either a fixed share, which belongs in the markup since
@@ -52,13 +53,28 @@ import { skyHtml } from "./sky";
  * updateBars onto this element rather than into the panel's diffed markup
  * (tests/churn.test.ts).
  */
-function bar(id: string, cls: string, label: string, mark?: number | { name: string; title: string }): string {
-  const m = mark === undefined
-    ? ""
-    : typeof mark === "number"
-      ? `<div class="mark" style="left:${(mark * 100).toFixed(1)}%" title="dies here"></div>`
-      : `<div class="mark" data-mark="${mark.name}" title="${esc(mark.title)}"></div>`;
-  return `<div class="bar ${cls}"><div class="fill" id="bar-${id}"></div>${m}<span class="lbl"><span>${label}</span><b id="val-${id}"></b></span></div>`;
+/**
+ * One bar, and the lines on it the body acts at.
+ *
+ * A mark is a place something changes - eats here, sits down here, dies here
+ * - drawn where a number alone would leave the player to infer it from
+ * watching the survivor. It says what it demarcates and nothing else: the
+ * bar itself is named beside its own figure and wants no explaining, and a
+ * tooltip on the whole bar would swallow the marks' own.
+ *
+ * A fixed share is written into the markup; a moving one is named and
+ * bars.ts writes its position each frame, since a share that changed in the
+ * markup would redraw the panel sixty times a second (tests/churn.test.ts).
+ */
+interface BarMark { at: number | string; title: string }
+
+function bar(id: string, cls: string, label: string, marks: BarMark[] = []): string {
+  const m = marks
+    .map((k) => (typeof k.at === "number"
+      ? `<div class="mark" style="left:${(k.at * 100).toFixed(1)}%" title="${esc(k.title)}"></div>`
+      : `<div class="mark" data-mark="${k.at}" title="${esc(k.title)}"></div>`))
+    .join("");
+  return `<div class="bar readout ${cls}"><div class="fill" id="bar-${id}" data-bar="${id}"></div>${m}<span class="lbl"><span>${label}</span><b id="val-${id}" data-val="${id}"></b></span></div>`;
 }
 
 /**
@@ -70,13 +86,13 @@ function bar(id: string, cls: string, label: string, mark?: number | { name: str
  * element, touching nothing else. tests/churn.test.ts holds the line.
  */
 function durBar(v: number, of: string): string {
-  return `<div class="bar dur${v < 25 ? " low" : ""}"><div class="fill" data-fill="${esc(of)}"></div></div>`;
+  return `<div class="bar compact dur${v < 25 ? " low" : ""}"><div class="fill" data-fill="${esc(of)}"></div></div>`;
 }
 
 function wetBar(g: Garment): string {
   const w = garmentWet(g);
-  const label = w > 80 ? "soaked" : w > 50 ? "wet" : "";
-  return `<div class="bar dur wet"><div class="fill" data-fill="${esc(`garmentWet:${g.id}`)}"></div>${label ? `<span class="lbl"><span>${label}</span></span>` : ""}</div>`;
+  const label = w > 80 ? "soaked" : w > 50 ? "wet" : w > 0 ? "damp" : "dry";
+  return `<small class="meter-caption">wetness: ${label}</small><div class="bar compact dur wet"><div class="fill" data-fill="${esc(`garmentWet:${g.id}`)}"></div></div>`;
 }
 
 /**
@@ -96,7 +112,7 @@ export function masteryLine(state: GameState, m: { level: number; skill: SkillId
   const next = masteryMilestone(state, m.skill, m.key);
   if (!next) return crumb;
   const label = `${plain(next.text)} at ${next.at}`;
-  return `${crumb}<div class="bar mastery" title="${esc(label)}"><div class="fill" data-fill="${esc(`masteryTo:${m.skill}|${m.key}`)}"></div><span class="lbl"><span>${esc(label)}</span></span></div>`;
+  return `${crumb}<small class="mastery-next">${esc(label)}</small><div class="bar mastery" title="${esc(label)}"><div class="fill" data-fill="${esc(`masteryTo:${m.skill}|${m.key}`)}"></div></div>`;
 }
 
 /** What the pool is giving right now, in words. */
@@ -114,6 +130,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   const p = state.player;
   const felt = feltTemperature(state, world, ambient);
   const marks = fatLandmarks(current(state).person);
+  const resumeAt = workResumeAt(state);
   const tags: string[] = [];
   tags.push(`<span class="tag">feels like ${Math.round(felt)} C</span>`);
   if (p.sick > 0) tags.push(`<span class="tag bad">sick, ${fmtDuration(p.sick)} to go</span>`);
@@ -136,12 +153,16 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   const portrait = livePortraitState(state, world, cal, ambient);
   return `<h2>${liveFaceHtml(current(state).person, 24, portrait)}${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
-${bar("kcal", "kcal", "Food", { name: "hunger", title: "eats here" })}
-${bar("fat", "fat", "Fat", marks.floor / marks.upper)}
-${bar("water", "water", "Water")}
-${bar("warmth", "warmth", "Warmth")}
-${bar("energy", "energy", "Energy")}
-${bar("wet", "wet", "Wet")}
+${bar("kcal", "kcal", "Food", [{ at: "hunger", title: "eats below here" }])}
+${bar("fat", "fat", "Fat", [{ at: marks.floor / marks.upper, title: "dies here" }, { at: marks.lower / marks.upper, title: "thin below here" }, { at: marks.upper / marks.upper, title: "well fed above here" }])}
+${bar("water", "water", "Water", [{ at: THIRSTY_L / WATER_FULL, title: "thirsty below here" }])}
+${bar("warmth", "warmth", "Warmth", [{ at: COLD_UNDER / 100, title: "goes to the fire below here" }, { at: 0.2, title: "hypothermia below here" }])}
+${bar("energy", "energy", "Energy", [
+  { at: SPENT_AT / 100, title: "stops work below here" },
+  { at: SLEEP_AT / 100, title: "collapses below here" },
+  ...(resumeAt === null ? [] : [{ at: resumeAt / 100, title: "work resumes here after collapse" }]),
+])}
+${bar("wet", "wet", "Wet", [{ at: SOAKED_WETNESS / 100, title: "soaked above here" }])}
 <div class="statuses">${tags.join("")}</div>
 <div style="margin-top:8px">
   ${ui.confirmAbandon
@@ -150,7 +171,11 @@ ${bar("wet", "wet", "Wet")}
 </div>`;
 }
 
-export function gearHtml(state: GameState, felt: number): string {
+export function gearHtml(state: GameState, felt: number): string;
+export function gearHtml(state: GameState, world: World, cal: Calendar, felt: number): string;
+export function gearHtml(state: GameState, worldOrFelt: World | number, cal?: Calendar, feltArg?: number): string {
+  const world = typeof worldOrFelt === "number" ? null : worldOrFelt;
+  const felt = typeof worldOrFelt === "number" ? worldOrFelt : (feltArg ?? 0);
   const p = state.player;
   const cf = coldFeet(state, felt);
   const ch = coldHands(state, felt);
@@ -165,7 +190,8 @@ export function gearHtml(state: GameState, felt: number): string {
   const tools = p.tools.length
     ? p.tools.map((t) => `<div>${TOOLS[t.id].name} <small>${Math.round(t.durability)}%</small>${durBar(t.durability, `tool:${t.id}`)}</div>`).join("")
     : "<div class=\"dim\">no tools</div>";
-  return `<h2>Worn <span class="r">+${insulation(state).toFixed(1)} C</span></h2>${clothes}<h2 style="margin-top:10px">Tools</h2>${tools}`;
+  const active = world && cal ? activeEquipmentHtml(state, world, cal) : "";
+  return `${active ? `<h2>Active equipment</h2>${active}` : ""}<h2${active ? ' style="margin-top:10px"' : ""}>Worn <span class="r">+${insulation(state).toFixed(1)} C</span></h2>${clothes}<h2 style="margin-top:10px">Tools</h2>${tools}`;
 }
 
 export function skillsHtml(state: GameState): string {
@@ -190,35 +216,51 @@ export function skillsHtml(state: GameState): string {
         ? ` carried from ${esc(fmtName(state.survivors[state.survivors.length - 2].name))}`
         : "";
     return `<div class="skill"><div class="line"><b>${SKILL_NAMES[id]}</b> <span class="lvl">${l}</span><span class="r">${toNext}${carriedNote}</span></div>
-<div class="bar dur"><div class="fill" data-fill="skill:${id}"></div></div>
-<div class="bar pool"><div class="fill" data-fill="pool:${id}"></div><i style="left:10%"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:95%"></i><span class="lbl"><span>pool ${Math.round(pool * 100)}%</span></span></div>
+<div class="bar compact dur"><div class="fill" data-fill="skill:${id}"></div></div>
+<small class="meter-caption">pool ${Math.round(pool * 100)}%</small><div class="bar compact pool"><div class="fill" data-fill="pool:${id}"></div><i style="left:10%"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:95%"></i></div>
 ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : ""}<div class="rungs"><small>${rungs}</small></div></div>`;
   });
   return `<h2>Skills</h2>${rows.join("")}`;
 }
 
-export function clockHtml(state: GameState, world: World, cal: Calendar, ambient: number, rate = 1): string {
-  // What a person would call the light where they stand, which after dark is
-  // the difference between a night's work and a night's groping about. The
-  // lux behind it is never shown.
-  const sun = lightWord(illuminance(state, world, cal, cellOf(state, world)));
-  const snow = state.weather.snowCm >= 1 ? `<span>snow ${Math.round(state.weather.snowCm)} cm</span>` : "";
-  const ice = state.weather.iceCm >= 1 ? `<span>ice ${Math.round(state.weather.iceCm)} cm</span>` : "";
+/**
+ * The weather, and the day, as one widget built the way a phone's is.
+ *
+ * The sky is its whole background - the same drawing the map is lit from,
+ * stretched behind the numbers - with the day and the hour over it, the
+ * day's ends in the corner, the temperature large enough to read without
+ * looking for it, and then the pairs a reader scans rather than reads.
+ *
+ * The clock used to be a panel of its own above the map. What it said fits
+ * here in three lines, and the row it was taking is now map, which is what
+ * a player is actually looking at.
+ */
+export function weatherHtml(state: GameState, world: World, cal: Calendar, ambient: number, rate = 1, uid = ""): string {
+  const snow = state.weather.snowCm >= 1 ? `snow ${Math.round(state.weather.snowCm)} cm` : "";
+  const ice = state.weather.iceCm >= 1 ? `ice ${Math.round(state.weather.iceCm)} cm` : "";
+  const ground = [snow, ice].filter(Boolean).join(", ");
   const storm = state.weather.storm && stormNow(state.weather, state.minute)
-    ? `<span class="bad">storm, ${fmtDuration(state.weather.storm.until - state.minute)} left</span>` : "";
-  const dry = groundDry(state.weather, cal) ? `<span class="bad">tinder dry</span>` : "";
-  return `<div class="clockrow"><div class="line">
-<span class="big">Day ${cal.day}</span>
-<span>${fmtDate(cal)}, ${cal.season}</span>
-<span class="big">${fmtClock(cal.hour)}</span>
-<span>${sun}, light ${fmtClock(cal.sunrise)} to ${fmtClock(cal.sunset)}</span>
-<span class="${ambient < -10 ? "bad" : ""}">${Math.round(ambient)} C, ${weatherLabel(state.weather, ambient)}</span>
-${snow}
-${ice}
-${storm}
-${dry}
-<span class="${rate > 1 ? "hurrying" : "dim"}">1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</span>
-</div>${skyHtml()}</div>`;
+    ? `<div class="wx-warn">storm, ${fmtDuration(state.weather.storm.until - state.minute)} left</div>` : "";
+  const dry = groundDry(state.weather, cal) ? `<div class="wx-warn">tinder dry</div>` : "";
+  const felt = Math.round(feltTemperature(state, world, ambient));
+  return `<div class="wx">
+<div class="wx-bg">${skyHtml(WALL, uid, false)}</div>
+<div class="wx-head">
+  <div class="wx-day">
+    <div class="wx-clock">Day ${cal.day} <span class="hour">${fmtClock(cal.hour)}</span></div>
+    <div class="wx-date">${fmtDate(cal)}, ${cal.season}</div>
+  </div>
+  <div class="wx-sun"><div>&uarr; ${fmtClock(cal.sunrise)}</div><div>&darr; ${fmtClock(cal.sunset)}</div></div>
+</div>
+<div class="wx-temp ${ambient < -10 ? "bad" : ""}">${Math.round(ambient)}<span class="deg">C</span></div>
+<div class="wx-word">${weatherLabel(state.weather, ambient)}</div>
+<div class="wx-rows">
+  <div class="wx-k">Feels like</div><div class="wx-v ${felt < 0 ? "bad" : ""}">${felt} C</div>
+  ${ground ? `<div class="wx-k">Ground</div><div class="wx-v">${ground}</div>` : ""}
+</div>
+${storm}${dry}
+<div class="wx-where"><svg class="speed-history" viewBox="0 0 100 22" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="speed-fade-${uid || "live"}"><stop offset="0" stop-opacity="0"/><stop offset="1" stop-opacity="1"/></linearGradient></defs><path data-speed-path fill="url(#speed-fade-${uid || "live"})"></path></svg><span>${esc(regionAt(world, state.player.region).name)}</span><span class="wx-rate ${rate > 1 ? "hurrying" : ""}" data-speed-rate>1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</span></div>
+</div>`;
 }
 
 /**
@@ -233,6 +275,117 @@ function thinIceButton(state: GameState, world: World, cal: Calendar, id: "walk"
   if (!thin.ok || (plain.ok && thin.duration >= plain.duration)) return "";
   const pct = Math.round(fallChance(state.weather.iceCm) * 100);
   return ` <button class="mini" data-act="task" data-id="${id}" data-arg="${arg}:thin" title="${pct}% chance of falling through, per cell crossed">across the ice (${Math.round(state.weather.iceCm)} cm, thin)</button>`;
+}
+
+
+
+
+/**
+ * What the camp is doing while you are looking somewhere else.
+ *
+ * The fire and whether it has anything left to burn, what stands here,
+ * what is lying here, and what each producer is limited by - the reason a
+ * camp that makes its own food still runs out.
+ *
+ * This is the one thing the region panel held that a map tooltip could not
+ * take. Lighting the fire produced an animation; losing it produced
+ * silence, and he found out by noticing. An idle game must be loudest when
+ * a thing the player built stops, so this sits in the info column and is
+ * never behind a pointer or a tab.
+ */
+/**
+ * Everywhere you can go, in a corner of the map: the named places in this
+ * region, then known ways out of it. Unmapped regions are survey targets in
+ * Do > Explore, where they can be compared without crowding the map.
+ *
+ * Both used to live at the foot of the region panel, and the ways out only
+ * after picking a neighbour on the map first - so a player who never
+ * worked out that regions were clickable never learned there was anywhere
+ * else to go. They sit on the ground they lead off now.
+ *
+ * The places are here rather than left to the map's own marks because
+ * those draw at the rungs below the default: a player who never zooms in
+ * would otherwise have no way to learn the forest is three hundred metres
+ * off. The tooltip answers "what is that cell"; this answers "where are
+ * the places", which is a different question and the one he was asking.
+ */
+export function placesHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
+  const r = regionAt(world, state.player.region);
+  const camp = campCellOf(state, world);
+  const here = cellOf(state, world);
+  const rows = r.spots
+    .map((s) => {
+      // A region has no camp until somebody makes one, and the generated
+      // "camp" spot is ground rather than a camp: no row for it until there
+      // is one to walk to.
+      if (s.id === "camp" && camp === null) return "";
+      const cell = s.id === "camp" ? camp! : s.cell;
+      // A generated spot sitting on the live camp's own cell would draw a
+      // second row for the same ground. The camp row, listed first, stands
+      // for it.
+      if (s.id !== "camp" && cell === camp) return "";
+      const name = esc(SPOT_WORDS[s.id]);
+      if (cell === here) return `<div class="way" data-place="${s.id}"><b>${name}</b> <small class="dim">you are here</small></div>`;
+      const at = ` data-at="${cell}"`;
+      const walk = check(state, world, cal, "walk", `spot:${s.id}`);
+      const km = kmBetween(state, world, here, cell, walkableIce(state.weather));
+      if (!walk.ok) return `<div class="way" data-place="${s.id}"${at}><span class="dim">${name}: ${esc(plain(walk.why))}</span></div>`;
+      // The whole row is the button, and what it costs is in its own label:
+      // a name in a button beside a sentence saying "from here" spent two
+      // thirds of the row on words that never change.
+      const cost = km === null ? esc(fmtDuration(walk.duration)) : esc(formatTravel(km, walk.duration, display));
+      return `<div class="way" data-place="${s.id}"${at}><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk)}</div>`;
+    })
+    .join("");
+  // The ways out, under the places and in the same corner - but only those
+  // that can be taken. Every neighbour listed with its own refusal was five
+  // lines telling the player five times that the list held nothing for them.
+  const out = regionAt(world, state.player.region).neighbours
+    .filter((n) => knownShare(state, world, n.id) >= 1)
+    .map((n) => wayIntoHtml(state, world, cal, n.id, true, display))
+    .join("");
+  return `<div class="waylabel">places</div>${rows}${out ? `<div class="waylabel">ways out</div>${out}` : ""}`;
+}
+
+/**
+ * The way into one region: go there when its ground is known. The fallback
+ * explore branch is retained for catalogue rendering, not the map corner.
+ *
+ * This is the whole of what leaving looks like, for one neighbour. The map
+ * is where it is offered - point at a region and it says how to get in -
+ * because a list of names in a corner is a second place to learn about
+ * ground the map is already drawing.
+ */
+export function wayIntoHtml(state: GameState, world: World, cal: Calendar, region: number, offersOnly = false, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
+  const name = esc(regionAt(world, region).name);
+  // Where the region lies, so hovering the row can point at it on the map.
+  const at = ` data-at="${regionAt(world, region).campCell}"`;
+  if (knownShare(state, world, region) >= 1) {
+    const go = check(state, world, cal, "travel", `region:${region}`);
+    const ice = thinIceButton(state, world, cal, "travel", `region:${region}`, go);
+    if (!go.ok && offersOnly) return "";
+    const km = kmBetween(state, world, cellOf(state, world), regionAt(world, region).campCell, walkableIce(state.weather));
+    const estimate = km === null ? fmtDuration(go.duration) : formatTravel(km, go.duration, display);
+    return go.ok
+      ? `<div class="way" data-way="${region}"${at}><button class="mini go" data-act="task" data-id="travel" data-arg="region:${region}">Go to ${name} <small>${esc(estimate)}</small></button>${ice}</div>`
+      : `<div class="way" data-way="${region}"${at}><span class="dim">${name}: ${esc(plain(go.why))}</span>${ice}</div>`;
+  }
+  const ex = check(state, world, cal, "explore", `region:${region}`);
+  if (!ex.ok && offersOnly) return "";
+  return ex.ok
+    ? `<div class="way" data-way="${region}"${at}><button class="mini go" data-act="task" data-id="explore" data-arg="region:${region}">Explore ${name}</button></div>`
+    : `<div class="way" data-way="${region}"${at}><span class="dim">${name}: ${esc(plain(ex.why))}</span></div>`;
+}
+
+/**
+ * Every way out of this region, for the tests that ask whether a thing can
+ * be reached at all. The board offers these one at a time, on the map.
+ */
+export function travelHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
+  return regionAt(world, state.player.region).neighbours
+    .filter((n) => knownShare(state, world, n.id) >= 1)
+    .map((n) => wayIntoHtml(state, world, cal, n.id, false, display))
+    .join("");
 }
 
 /** "mallard gone until April" for a species that cannot be met at all now, otherwise the density in words. */
@@ -263,192 +416,67 @@ export function rosterHtml(state: GameState, world: World, id: number, cal: Cale
       return list.length ? `<div>${label}: ${list.join(", ")}</div>` : "";
     })
     .join("");
-  return lines + readHtml(state, world, id);
+  return lines;
 }
 
-/**
- * The shores of this region the survivor has read, with what lies where.
- * A reading is about the water rather than the cell, so shores that read
- * the same are one line: a coast-born survivor takes in every shore of a
- * ground at a glance, and a region has dozens of them. Empty when none is
- * read; nearest first, as readCells orders them.
- */
-export function readHtml(state: GameState, world: World, id: number): string {
-  const said = new Set<string>();
-  const out: string[] = [];
-  for (const c of readCells(state, world, id)) {
-    const fish = state.player.known[c].fish;
-    if (fish.length === 0) continue;
-    const line = fish.map(fishLie).join(", ");
-    if (said.has(line)) continue;
-    said.add(line);
-    out.push(`<div>Shore read: ${line}</div>`);
-  }
-  return out.join("");
-}
-
-export function regionHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
-  const p = state.player;
-  const id = ui.selected ?? p.region;
+export function campHtml(state: GameState, world: World, cal: Calendar): string {
+  const id = state.player.region;
   const r = regionAt(world, id);
   const st = regionState(state, world, id);
-  const here = id === p.region;
-  const nb = regionAt(world, p.region).neighbours.find((n) => n.id === id);
-  const f = r.frac;
-  const pct = (v: number) => `${Math.round(v * 100)}%`;
-  const terrain = [
-    `forest ${pct(r.forest)} <small>(spruce ${pct(f.spruce)}, pine ${pct(f.pine)}, birch ${pct(f.birch)})</small>`,
-    `bog ${pct(f.bog)}`, `meadow ${pct(f.meadow)}`, `rock ${pct(r.rock)}`, `water ${pct(f.water)}`,
-  ].join(", ");
-  const myCell = cellOf(state, world);
-  const spots = r.spots
-    .map((s) => {
-      const pileKg = state.piles[s.cell] ? weight(state.piles[s.cell]) : 0;
-      const lying = pileKg > 0 ? `${fmtKg(pileKg)} lying there` : "";
-      if (!here) {
-        const km = kmBetween(state, world, campCellOf(state, world, id), s.cell);
-        const dist = s.id === "camp" ? "" : km === null ? "no way there" : `${fmtKm(km)} from camp`;
-        return `<div>${SPOT_WORDS[s.id]} <small>${[dist, lying].filter(Boolean).join(", ")}</small></div>`;
-      }
-      // The "camp" spot's cell is generated once and never moves; the live camp is campCellOf
-      // (walkTarget's own "spot:camp" case resolves the same way, so the button below agrees).
-      const cell = s.id === "camp" ? campCellOf(state, world, id) : s.cell;
-      // A generated spot sited on the live camp's own cell would draw a second row for
-      // the same cell (two "you are here" once you stand on it); the camp row above,
-      // listed first, already stands for it.
-      if (s.id !== "camp" && cell === campCellOf(state, world, id)) return "";
-      if (cell === myCell) return `<div><b>@</b> ${SPOT_WORDS[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
-      // Distance and time from where the player stands, along the route.
-      const walk = check(state, world, cal, "walk", `spot:${s.id}`);
-      const km = kmBetween(state, world, myCell, cell, walkableIce(state.weather));
-      // No known corridor to camp: the search for one is the only move left, and it promises no time.
-      const home = s.id === "camp" && !walk.ok && walk.why === "{you} {know} no way there" ? check(state, world, cal, "searchHome") : null;
-      const btn = walk.ok
-        ? ` <button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
-        : home
-          ? ` <small>${esc(plain(walk.why))}</small> <button class="mini" data-act="task" data-id="searchHome">search for a way home <small>(${esc(home.detail)})</small></button>`
-          : ` <small>${esc(plain(walk.why))}</small>`;
-      const thin = thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk);
-      return `<div>${SPOT_WORDS[s.id]} <small>${[km === null ? "no way there" : `${fmtKm(km)} from here`, lying].filter(Boolean).join(", ")}</small>${btn}${thin}</div>`;
-    })
-    .join("");
-  // Things lying about this region away from the named spots.
-  const spotCells = new Set(r.spots.map((s) => s.cell));
-  const loose = pilesIn(state, world, id)
-    .filter((x) => !spotCells.has(x.cell) && x.cell !== myCell)
-    .map((x) => {
-      const walk = here ? check(state, world, cal, "walk", `cell:${x.cell}`) : null;
-      const btn = walk?.ok ? ` <button class="mini" data-act="task" data-id="walk" data-arg="cell:${x.cell}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>` : "";
-      return `<div>${fmtKg(weight(x.inv))} lying at ${esc(whereIs(state, world, x.cell))}${btn}</div>`;
-    })
-    .join("");
+  const site = campSite(st);
   const built: string[] = [];
-  if (st.structures.firePit) built.push(STRUCTURES.firePit.name);
-  if (st.structures.leanTo) built.push(needsMending(st, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
-  if (st.structures.cabin) built.push("log cabin");
-  if (st.structures.turfHut) built.push(needsMending(st, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
-  if (st.structures.dryingRack) built.push(needsMending(st, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
-  if (st.structures.boughBed) built.push("bough bed");
-  if (st.structures.waterStore) built.push("water trough");
-  if (st.structures.snowShelter) built.push("snow shelter");
-  if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
+  if (site?.structures.firePit) built.push(STRUCTURES.firePit.name);
+  if (site?.structures.leanTo) built.push(needsMending(site, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
+  if (site?.structures.cabin) built.push("log cabin");
+  if (site?.structures.turfHut) built.push(needsMending(site, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
+  if (site?.structures.dryingRack) built.push(needsMending(site, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
+  if (site?.structures.boughBed) built.push("bough bed");
+  if (site?.structures.waterStore) built.push("water trough");
+  if (site?.structures.snowShelter) built.push("snow shelter");
+  if (st.snares) built.push(`${st.snares} snare${st.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
   if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
-  const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
+  const unfinished = site ? (Object.keys(site.build) as (keyof typeof site.build)[]).filter((k) => (site.build[k] ?? 0) > 0).map((k) => `${k} in progress`) : [];
   // A third word between burning and cold: coals are live but not fed, the
-  // routine state after every tended night rather than an exception. The
-  // fuel bar below (shown only "here") already ticks off how long they last;
-  // duplicating that count into this line would put a per-minute value into
-  // markup the region panel's churn budget does not allow.
+  // routine state after every tended night rather than an exception. How
+  // long they last is the fuel bar's job, and the figure moves with every
+  // minute the fire burns, so the bar names what it draws and bars.ts writes
+  // the width; saying it in the markup would break the churn budget.
   const fireWord = st.fire.lit
     ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>`
     : hasEmbers(st.fire)
       ? '<span class="ember">coals</span>'
       : '<span class="dim">cold</span>';
-  const fire = st.structures.firePit ? `<div>fire: ${fireWord}</div>${here ? bar("fire", "fire", "Fuel") : ""}` : "";
-  const rack = st.structures.dryingRack
-    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(st)} kg max)</small></div>`
+  const fire = site?.structures.firePit ? `<div>fire: ${fireWord}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}` : "";
+  const rack = site?.structures.dryingRack
+    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
-  const campPile = pile(state, st.campCell);
-  const cap = campWaterCapacity(campPile, st);
+  const campPile = pileAt(state, st.campCell);
+  const cap = campWaterCapacity(campPile, site);
   const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
     ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
     : "";
-  // What each producer standing here is limited by: the reason a camp that
-  // makes its own food still runs out.
+  const lying = weight(campPile);
+  const heap = lying > 0 ? `<div class="dim">${fmtKg(lying)} lying here</div>` : "";
   const limits = CAPABILITIES.filter((c) => c.producer && standingHere(state, st, world, c))
     .map((c) => `<div><small>${esc(c.id)}: ${esc(c.limits)}</small></div>`)
     .join("");
-  let travel = "";
-  if (!here) {
-    // Ground not yet known cannot be walked to - offer the way it opens instead.
-    // A region already wholly known offers only Go.
-    if (knownShare(state, world, id) >= 1) {
-      const go = check(state, world, cal, "travel", `region:${id}`);
-      travel = go.ok
-        ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="region:${id}">Go to ${esc(r.name)} <small>${esc(go.detail)}, ${fmtDuration(go.duration)} (${fmtReal(go.duration)})${nb ? "" : "; not a neighbour, a long way round"}</small></button>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`
-        : `<div style="margin-top:6px"><span class="dim">${esc(plain(go.why))}</span>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`;
-    } else {
-      const ex = check(state, world, cal, "explore", `region:${id}`);
-      travel = ex.ok
-        ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="explore" data-arg="region:${id}">Explore ${esc(r.name)} <small>${esc(ex.detail)}</small></button></div>`
-        : `<div style="margin-top:6px"><span class="dim">${esc(plain(ex.why))}</span></div>`;
-    }
-  }
-  // What this cell offers as a camp, shown only when it is not the camp already; a move
-  // blocked at the old camp (a structure, a banked fire, a loose pile) says why beside it.
-  const move = here && myCell !== campCellOf(state, world, id) ? canMoveCamp(state, world) : null;
-  const asCamp = move
-    ? `<dt>as a camp</dt><dd>${esc(siteLine(siteReport(state, world, myCell)))}${move.ok ? "" : ` (${esc(plain(move.why))})`}</dd>`
-    : "";
-  return `<h2>${here ? "Here" : "Region"} <span class="r">${r.area.toFixed(1)} km2</span></h2>
-<div><b class="accent">${esc(r.name)}</b>${here ? ` <small>you are ${esc(describeWhere(state, world))}</small>` : ""}${ui.selected !== null ? ` <button class="mini" data-act="select" data-r="${p.region}">back to here</button>` : ""}</div>
-<dl class="kv">
-<dt>land</dt><dd>${terrain}</dd>
-<dt>trees</dt><dd>${Math.floor(st.wood)} worth felling</dd>
-<dt>animals</dt><dd>${rosterHtml(state, world, id, cal)}</dd>
-<dt>places</dt><dd class="spots">${spots}${loose}</dd>
-${here ? `<dt>water</dt><dd>${esc(waterLine(state, world, cal))}<br><small>${esc(waterList(state, world, cal))}</small></dd>` : ""}
-${asCamp}
-<dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}${water}${limits}</dd>
-</dl>${travel}`;
+
+  const stands = built.length || unfinished.length
+    ? `<div>${[...built, ...unfinished].join(", ")}</div>`
+    : `<div class="dim">nothing built</div>`;
+  // What lives here is a region's reading, not a cell's, so the map's hover
+  // has no place for it and the camp box does: the survivor knows what is
+  // about without walking anywhere to look.
+  const about = `<div class="roster">${rosterHtml(state, world, id, cal)}</div>`;
+  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${stands}${rack}${water}${heap}${limits}${about}`;
 }
 
-const TASK_BAR = `<div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>`;
-/** The pulse draining, on the live row of an order hurried by clicking; written by id each frame. */
-const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry"></div></div>`;
 
-/**
- * The one sentence that answers "is this a queue or a stack": both, and
- * which one a row landed by is the difference between the two ends of the
- * list. It sits at the head of the list because that is where a player
- * looks after clicking something and not finding it where they expected.
- */
-const LANDING_RULE = `<div class="rule"><small>A click goes to the top. A standing order goes to the bottom.</small></div>`;
-
-/** The ranked list: each row its sentence, counters, state and buttons; the live row carries the task bar. */
+const TASK_BAR = `<div class="bar readout task"><div class="fill" data-bar="task"></div><span class="lbl"><span data-val="task"></span><span data-pct="task"></span></span></div>`;
+/** The ranked list: each row its sentence, counters, state and buttons; progress lives only in the central activity strip. */
 export function ordersHtml(state: GameState, world: World, cal: Calendar): string {
   const orders = ordersHere(state, world);
   const it = state.intent;
-  // An idle wait is waiting on the list, not on its own hour of rest: it says so
-  // plainly and shows no bar, since the hour running out changes nothing. A wait
-  // that is doing something - the fire, the body's own rest - names it and keeps
-  // the bar, which is that work's own.
-  const idle = it?.task === "wait" && it.step === WAITING_STEP;
-  // Where the wait actually is, rather than a fixed "at camp": the wait's body
-  // tier walks - home, to the water, to the snares - so the fixed string spent
-  // those minutes claiming to be at camp while its own step said it was walking
-  // there. The cell is read, so the two halves of the sentence cannot disagree.
-  const waitWhere = it?.task === "wait" && cellOf(state, world) !== regionState(state, world, state.player.region).campCell
-    ? `Waiting, ${describeWhere(state, world)}`
-    : "Waiting at camp";
-  // Only the scheduler's own wait, the one belonging to no row, is drawn
-  // loose above the list. The wait a care row starts is that row's
-  // minute, and drawing it here as well would put the survivor's own doings
-  // in two places at once, neither of them the rank the player set them at.
-  const loose = it?.task === "wait" && it.orderId === null;
-  const waiting = loose
-    ? `<div class="step">${esc(waitWhere)}${idle ? "" : `: ${esc(plain(it!.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
-    : "";
   // One judgement for the whole list: waitingLine reads it per row, and running
   // it per row would judge a ten-row list ten times a frame.
   const judged = judgeOrders(state, world, cal);
@@ -456,113 +484,272 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
   // is stopped is the one moment it owes the player a banner: the row, why it
   // cannot run, and the one click that lets the rest of the list go on.
   const held = judged.blockedBy
-    ? `<div class="held bad">The list is held up by <b>${esc(orderSentence(state, world, cal, judged.blockedBy))}</b>${judged.blockedBy.skipped ? ` - ${esc(judged.blockedBy.skipped)}` : ""}. Unpin it - its "doing this first" button - to let the rest of the list run.</div>`
+    ? `<div class="held bad">Queue stopped at <b>${esc(orderSentence(state, world, cal, judged.blockedBy))}</b>${judged.blockedBy.skipped ? ` - ${esc(judged.blockedBy.skipped)}` : ""}</div>`
     : "";
+  const blockedAt = judged.blockedBy ? orders.indexOf(judged.blockedBy) : -1;
   const rows = orders.map((o, i) => {
+    const care = isCareRow(o);
+    const blocked = blockedAt >= 0 && i >= blockedAt;
     const live = it?.orderId === o.id;
-    // A counted or standing order goes ahead a pulse at a time when its head is clicked; a once order is hurried unasked.
-    const clicks = live && hurryKind(state) === "click";
-    const counts = o.done > 0 ? ` <small>${esc(`${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}`)}</small>` : "";
+    const counts = !care && o.done > 0 ? ` <small>${esc(`${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}`)}</small>` : "";
+    // Once or standing, on the row. The two are not the same promise - a
+    // once order is done and gone, a standing one is kept - and the list
+    // treats them differently enough that which is which has to be visible:
+    // a once order works through the night and cuts into work in hand, a
+    // standing one waits for the light and for the chunk to end.
+    const once = !care && o.req.until.kind === "once";
+    const kind = care ? "" : `<span class="kind">${once ? "once" : "standing"}</span>`;
+    const blockedTag = blocked ? `<span class="kind blocked">blocked</span>` : "";
     // waitingLine is the plain reading and writes nothing; the scheduler's own read
     // is what moves a restart band's mark, so drawing a row never advances the list.
+    // Task progress and the concrete step live in the central strip. The
+    // queue row already names its purpose, so repeating either here would
+    // create two competing places to read the same activity.
     const second = live
-      ? `<div class="step">${esc(plain(it!.step))}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
-      : `<div class="step">${esc(waitingLine(state, world, cal, o, judged))}</div>`;
+      ? ""
+      : blocked && o !== judged.blockedBy
+        ? ""
+        : ((line) => line ? `<div class="step">${esc(cap(plain(line)))}</div>` : "")(waitingLine(state, world, cal, o, judged));
     // A care row ranks like any other row and draws the same up and down,
     // since where it sits against the work is the whole of what the player
     // says to it. It draws no x: it cannot be struck off, and a button that
-    // does nothing when clicked is worse than none.
-    const move = `<button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button>`;
-    // A row that can be passed over and a row that stops the list are two
-    // behaviours of the same row, so the button says which one is switched on
-    // and what the switched-on one costs. A pin on a care row would mean
-    // nothing: the list never goes past those rows, so they have none.
-    const pin = `<button class="mini${o.pinned ? " on" : ""}" data-act="order-pin" data-id="${o.id}" title="${o.pinned ? "Nothing under this runs until it is done" : "Hold the list here until this is done"}">${o.pinned ? "doing this first - holds the list" : "do this first"}</button>`;
-    const btns = isCareRow(o)
+    // does nothing when clicked is worse than none - which is why the top
+    // row draws no up and the bottom row no down, rather than drawing one
+    // greyed out.
+    const up = i > 0 ? `<button class="mini" data-act="order-up" data-id="${o.id}">up</button>` : "";
+    const down = i < orders.length - 1 ? `<button class="mini" data-act="order-down" data-id="${o.id}">down</button>` : "";
+    const move = `${up} ${down}`;
+    // The pin is not "run this sooner" - moving the row up is that. It is
+    // "do not fall through": hold the whole list here rather than quietly
+    // running the row below. So it belongs only on a row that cannot run,
+    // which is the only row a fall-through can happen at, and on one already
+    // pinned, which would otherwise have no way back off. A pin on a care
+    // row would mean nothing: the list never goes past those rows.
+    // A switch showing the state it is in, not the click it takes. It is
+    // drawn only where it decides anything: on a row that cannot run, which
+    // is the only place a fall-through happens, and on one already blocking,
+    // which would otherwise have no way back off.
+    //
+    // Not blocking is the red one. A row that cannot run while the list
+    // walks past it is the state worth flagging - the player asked for that
+    // work and it is not happening - and blocking is the settled answer to
+    // it, so that one sits quiet.
+    const pin = `<button class="mini pin ${o.pinned ? "blocking" : "skipping"}" data-act="order-pin" data-id="${o.id}" title="When this row cannot run, ${o.pinned ? "stop the queue here" : "skip it"}">on block: ${o.pinned ? "stop" : "skip"}</button>`;
+    const btns = care
       ? `<span class="ctl">${move}</span>`
       : `<span class="ctl">${move} ${pin} <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
-    const head = clicks
-      ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`
-      : `<div class="head">`;
-    // Words and not only the title: a touch device has no hover to show one, and
-    // a mouse never rests on a row long enough to find it.
-    const hint = clicks ? `<small class="hint">click to hurry</small>` : "";
-    return `<div class="order${isCareRow(o) ? " care" : ""}${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${hint}${btns}</div>${second}</div>`;
+    return `<div class="order${care ? " care" : ""}${once ? " once" : ""}${live ? " live" : ""}"><div class="head"><span class="ti"><b>${esc(orderSentence(state, world, cal, o))}</b><span class="meta">${kind}${blockedTag}</span>${counts}</span>${btns}</div>${second}</div>`;
   }).join("");
-  return `${waiting}${held}${LANDING_RULE}${rows}`;
+  return `${held}${rows}`;
 }
 
-export function taskHtml(state: GameState, world: World, cal: Calendar): string {
+/**
+ * What the survivor is doing, right now, under the map.
+ *
+ * A strip and not a panel: one line saying idle, or the work in hand with
+ * its bar. It had a heading, a row of buttons and a sentence telling the
+ * player to pick something below, and all of that read as a queue with
+ * something already in it on a survivor who had not been given an order in
+ * their life. The bar is here rather than on the live order row because
+ * one running job wants one bar.
+ */
+/**
+ * What is happening, in two parts: what it is for, and what is being done
+ * about it this minute.
+ *
+ * One reading, used by every surface that draws the doing rather than a
+ * per-surface guess at it. The title is whatever owns the work - the order's
+ * own sentence, "Self-care" for a body row, or the job itself when the
+ * player started it by hand with no row behind it. The step is the minute:
+ * sleeping, walking to the forest, felling a tree.
+ *
+ * Each surface takes what it needs and no more. The strip under the map has
+ * no other context, so it draws both; a row in the queue has already said
+ * its own title in its own heading, so it draws the step alone.
+ */
+export interface Activity { title: string; step: string; progress: boolean }
+
+const CARE_ROUTE_PURPOSE = {
+  sleep: "to sleep", storm: "for shelter", cold: "for warmth", hungry: "for food",
+  thirsty: "for water", spent: "to rest", home: "to camp", fire: "for the fire", snares: "for the snares",
+} as const;
+
+function walkingStep(state: GameState, world: World, cal: Calendar, suffix = ""): string {
+  if (!state.route) return "walking";
+  const manner = walkManner(state, world, cal);
+  return `${manner} ${routeKm(state.route.path).toFixed(1)} km${suffix}`;
+}
+
+function activityStep(state: GameState, world: World, cal: Calendar): string {
+  const it = state.intent;
+  if (!it) return "";
+  if (it.mode === "care") {
+    if (state.task?.id === "walk" && state.route) {
+      return walkingStep(state, world, cal, ` ${CARE_ROUTE_PURPOSE[it.need]}`);
+    }
+    if (state.task?.id === "sleep") return it.step.includes("dozing") ? "dozing" : "sleeping";
+    if (state.task?.id === "rest") {
+      if (it.need === "cold") return "warming up";
+      if (it.need === "storm") return "waiting out storm";
+      if (it.need === "thirsty") return "waiting for water";
+      if (it.need === "home") return "at camp";
+      return "resting";
+    }
+    return plain(it.step)
+      .replace("clearing the fire site", "preparing fire")
+      .replace("lighting the fire indoors", "lighting fire")
+      .replace("lighting the fire", "lighting fire")
+      .replace("splitting a log for the fire", "splitting firewood");
+  }
+  if (state.task?.id === "walk" && state.route) {
+    const atCamp = it.campCell !== null && state.route.target === it.campCell;
+    const ground = groundOf(it.task, it.arg);
+    const destination = atCamp ? "camp" : ground ? SPOT_WORDS[ground].replace(/^the /, "") : "";
+    return walkingStep(state, world, cal, destination ? ` to ${destination}` : "");
+  }
+  if (state.task?.id === it.task) return "";
+  return plain(it.step)
+    .replace("loading up", "loading")
+    .replace("unloading at camp", "unloading")
+    .replace("laying out materials at camp", "laying out materials");
+}
+
+export function activity(state: GameState, world: World, cal: Calendar): Activity | null {
+  const it = state.intent;
+  if (it) {
+    return {
+      title: isWorkIntent(it) ? plain(check(state, world, cal, it.task, it.arg, it.cell).label) : it.care === "camp" ? "Camp maintenance" : "Self-care",
+      step: activityStep(state, world, cal),
+      progress: !!state.task && state.task.duration > 0,
+    };
+  }
   const t = state.task;
+  if (!t) return null;
+  // A raw task with no intent behind it: started by hand, so it is its own
+  // title and there is no step under it to name.
+  const opts = availableTasks(state, world, cal);
+  const title = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
+  if (t.id === "explore") {
+    const step = t.surveyPhase === "read" ? "reading the water" : state.route ? walkingStep(state, world, cal) : "surveying";
+    return { title, step, progress: t.duration > 0 };
+  }
+  if ((t.id === "walk" || t.id === "travel") && state.route) {
+    const named = state.route.label.startsWith("a spot ") ? "" : ` to ${state.route.label.replace(/^the /, "")}`;
+    return { title: t.id === "travel" ? "Travel" : "Walk", step: walkingStep(state, world, cal, named), progress: t.duration > 0 };
+  }
+  return { title, step: "", progress: t.duration > 0 };
+}
+
+/** A line that stands on its own starts with a capital, whoever wrote it. */
+export function cap(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+export function taskHtml(state: GameState, world: World, cal: Calendar, hurryState?: HurryState): string {
   const it = state.intent;
   const orders = ordersHere(state, world);
-  const work = orders.some((o) => !isCareRow(o));
-  const aside = pausedList(state, world, cal);
-  const asideHtml = aside.length
-    ? `<div class="aside"><small>Set aside</small>${aside
-        .map(({ task, option, here: isHere }) => {
-          const pct = Math.round(task.fraction * 100);
-          const note = !isHere || !option.ok ? ` <small>${esc(plain(option.why))}</small>` : "";
-          const resume = option.ok
-            ? ` <button class="mini" data-act="task" data-id="${task.id}" data-arg="${esc(task.arg ?? "")}">resume</button>`
-            : "";
-          // Located work names its cell; carried work (light, repair, sharpen, craft) carries none,
-          // so main.ts resolves it through "nearest" instead - camp for camp-bound work, here for craft.
-          const cellAttr = task.cell >= 0 ? ` data-cell="${task.cell}"` : "";
-          const finish = ` <button class="mini" data-act="finish" data-id="${task.id}" data-arg="${esc(task.arg ?? "")}"${cellAttr} title="Go there if need be and finish it">finish</button>`;
-          return `<div class="paused">${esc(option.label)} <b>${pct}%</b>${note}${resume}${finish}</div>`;
-        })
-        .join("")}</div>`
-    : "";
-  // A scheduled intent is drawn as its row; a manual one, or a raw task, as a head of its own.
-  const scheduled = it !== null && (it.task === "wait" || orders.some((o) => o.id === it.orderId));
-  let head = "";
-  if (it && !scheduled) {
-    head = `<div class="head"><b>${esc(intentSentence(state, world, cal, it))}</b><button class="mini" data-act="stop" title="Stop; the share done is kept">stop</button></div>
-<div class="step">${esc(plain(it.step))}</div>${t ? TASK_BAR : ""}`;
-  } else if (!it && t) {
-    const opts = availableTasks(state, world, cal);
-    let label = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
-    // Started as "anything": the species is what it turned out to be, so the head says both.
-    if (t.any) label = `${label} (whatever was about)`;
-    if ((t.id === "walk" || t.id === "travel") && state.route) label = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
-    head = `<div class="head"><b>${esc(label)}${t.repeat ? " <span class=\"r\">on repeat</span>" : ""}</b><button class="mini" data-act="stop" title="Set it aside; the share done is kept">stop</button></div>${TASK_BAR}`;
-  } else if (!it && !work) {
-    head = `<div class="dim">Nothing. Pick something below.</div>`;
-  }
-  // The heading names what the panel is a list of, and a list holding only
-  // the care rows is not a list of orders: nobody has given one. Counting
-  // the rows cannot tell the two apart, since both care rows are on every
-  // list from the moment a region exists.
-  return `<h2>${work ? "Orders" : "Doing"}</h2>${head}${ordersHtml(state, world, cal)}${asideHtml}`;
+  // A row's own work is stopped from its row; work started by hand is
+  // stopped here, since there is no row to stop it from.
+  const scheduled = it !== null && orders.some((o) => o.id === it.orderId);
+  const stop = scheduled || (!it && !state.task) ? "" : `<button class="mini" data-act="stop" title="Stop; the share done is kept">stop</button>`;
+
+  // One row, and one place for each fact: the row says what is happening,
+  // the bar beside it says how far along and how long is left. A label over
+  // a step line over a bar that repeated the step said the same thing three
+  // times and spent three rows doing it.
+  //
+  // Both halves here, since the strip has nothing else around it to say what
+  // the work is for: "Self-care: sleeping" rather than a bare "sleeping" the
+  // player has to place for themselves.
+  const now = activity(state, world, cal);
+  const what = now
+    ? `<b>${esc(cap(now.title))}</b>${now.step ? `<span class="sub">${esc(now.step)}</span>` : ""}`
+    : `<span class="dim">${esc(idleLine(state, cal))}</span>`;
+  const speedKind = hurryState ? hurryKind(state) : "none";
+  const speeding = !!hurryState?.pulse;
+  const speed = speedKind === "click" ? `<button class="mini speed-up${speeding ? " on" : ""}" data-act="hurry"${speeding ? " disabled" : ""}>speed up</button>` : "";
+  return `<div class="now"><span class="what">${what}</span>${now?.progress ? TASK_BAR : ""}${speed}${stop}</div>`;
 }
 
-const HORIZON_LABEL: Record<HorizonId, (state: GameState) => string> = {
-  away: (s) => `until you are back (${s.awayHours} h)`,
-  tonight: () => "tonight",
-  week: () => "a week",
-  month: () => "a month",
-};
+/**
+ * What a survivor with nothing in hand is doing, which is never nothing.
+ *
+ * The row is the same height idle or working, so the page does not jump
+ * as a job ends, and it says something rather than "Idle": a body standing
+ * in a wood at noon is looking at something. It turns over with the hour
+ * rather than the minute - a line that changed every frame would be
+ * movement where the eye expects none, and would redraw the strip sixty
+ * times for every time it had something new to say.
+ */
+export function idleLine(state: GameState, cal: Calendar): string {
+  const lines = cal.isNight ? IDLE_NIGHT : IDLE_DAY;
+  return lines[Math.floor(state.minute / 60) % lines.length];
+}
 
-/** "N of 10 die: cause, day D", the tonight row counting nights; "none of 10 die" when nothing died. */
+const IDLE_DAY = [
+  "Counting birds in the sky...",
+  "Looking for funny shaped clouds...",
+  "Watching the light move...",
+  "Listening to the wood...",
+  "Turning a stone over with a boot...",
+  "Picking at a splinter...",
+  "Whistling something half remembered...",
+  "Working out which way is north again...",
+  "Scratching a mark into the bark...",
+  "Waiting for something to happen...",
+];
+
+const IDLE_NIGHT = [
+  "Looking at the stars...",
+  "Listening to the dark...",
+  "Turning over, and over again...",
+  "Naming the shapes in the trees...",
+  "Thinking about the morning...",
+  "Counting the hours till light...",
+];
+
+/**
+ * The queue, in its own column.
+ *
+ * It keeps that column whether or not there is anything in it. An idle
+ * game is its queue - it is what runs while the player is away - and a
+ * column that appeared only once an order existed would teach nobody that
+ * orders are a thing, which is half of why a tester said he did not trust
+ * it.
+ */
+export function queueHtml(state: GameState, world: World, cal: Calendar): string {
+  // The count is of orders given. Both care rows are on every list from the
+  // moment a region exists, so counting the rows would tell a player who has
+  // given nothing that five things are standing.
+  const given = ordersHere(state, world).filter((o) => !isCareRow(o)).length;
+  const count = given ? ` <span class="r">${given}</span>` : "";
+  return `<h2>Activity queue${count}</h2>${ordersHtml(state, world, cal)}`;
+}
+
+/** One compact risk line. */
 export function forecastRowText(row: ForecastRow): string {
-  if (row.died === 0) return `none of ${row.runs} die`;
-  const unit = row.id === "tonight" ? "night" : "day";
-  return `${row.died} of ${row.runs} die: ${CAUSE_WORD[row.cause!]}, ${unit} ${row.day}`;
+  if (row.died === 0) return `Risk 0/${row.runs}`;
+  return `Risk ${row.died}/${row.runs}: ${CAUSE_WORD[row.cause!]}, day ${row.day}`;
 }
 
-/** The Ahead panel: one line per horizon, the ones not yet landed for the latest request dimmed with "...". A dead survivor has nothing ahead: the stale rows from before death would otherwise linger. */
+/**
+ * What happens if you leave, over the stretch the slider names.
+ *
+ * He read "away up to 24 hours" as how long the survivor works, so the
+ * panel says leaving rather than being away, and says what the hours buy:
+ * eight of them are twenty game days, which is the number the death in
+ * the answer is counted in.
+ *
+ * A dead survivor has nothing ahead; the stale row from before the death
+ * would otherwise sit there being wrong.
+ */
 export function forecastHtml(view: ForecastView | null, state: GameState): string {
-  if (state.dead) return `<h2>Ahead</h2><div class="row"><span class="dim">nothing ahead</span></div>`;
-  const ids: HorizonId[] = ["away", "tonight", "week", "month"];
-  const rows = ids.map((id) => {
-    const r = view?.rows[id];
-    const label = HORIZON_LABEL[id](state);
-    if (!r) return `<div class="row"><span class="dim">${label}</span><span class="dim">...</span></div>`;
-    if (r.stale) return `<div class="row"><span class="dim">${label}</span><span class="dim">${esc(forecastRowText(r))} ...</span></div>`;
-    return `<div class="row"><span>${label}</span><span>${esc(forecastRowText(r))}</span></div>`;
-  });
-  return `<h2>Ahead</h2>${rows.join("")}`;
+  if (state.dead) return `<div class="row dim">Nothing ahead</div>`;
+  const r = view?.rows.away;
+  if (!r) return `<div class="row dim">Risk ...</div>`;
+  const text = esc(forecastRowText(r));
+  if (r.stale) return `<div class="row dim">${text} ...</div>`;
+  return `<div class="row">${text}</div>`;
 }
 
 /** The eat / add firewood buttons, shown whenever they apply, wherever the player stands. */
@@ -596,7 +783,11 @@ export function instantHtml(state: GameState, world: World): string {
   const fill = atSource && p.tools.some((t) => (TOOLS[t.id].litres ?? 0) > (t.litres ?? 0))
     ? `<button class="mini" data-act="fill">fill vessels</button>`
     : "";
-  return `<div style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${drink}${fill}</div>`;
+  // Named, so morphChildren finds this box again wherever it has moved to
+  // rather than matching it by position. A row of buttons whose contents
+  // come and go with what is in the pack is the last thing that should be
+  // matched by where it happened to sit last frame.
+  return `<div data-box="instant" style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${drink}${fill}</div>`;
 }
 
 /** Water and ice live only in piles (spec 2.1); a take button would move litres into the pack, where they are inert. */
@@ -607,7 +798,8 @@ function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): 
     .map(({ item, qty: q }) => {
       const one = KG_ITEMS.has(item) ? Math.min(q, 1) : 1;
       const oneLabel = KG_ITEMS.has(item) ? "1 kg" : "1";
-      return `<span class="n">${itemLabel(item, q)}</span><span class="ctl"><button class="mini" data-act="${act}" data-item="${item}" data-n="${one}">${act} ${oneLabel}</button> <button class="mini" data-act="${act}" data-item="${item}" data-n="all">all</button></span>`;
+      const kg = KG_ITEMS.has(item) ? q : q * ITEM_KG[item];
+      return `<span class="n">${itemLabel(item, q)} <small class="dim">${fmtKg(kg)}</small></span><span class="ctl"><button class="mini" data-act="${act}" data-item="${item}" data-n="${one}">${act} ${oneLabel}</button> <button class="mini" data-act="${act}" data-item="${item}" data-n="all">all</button></span>`;
     })
     .join("")}</div>`;
 }
@@ -619,23 +811,48 @@ function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): 
  * belongs with the take buttons that act on the same heap, not in a list
  * organised by what work produces.
  */
-function haulHtml(state: GameState, world: World, cal: Calendar): string {
+function haulHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay): string {
+  const camp = campCellOf(state, world);
+  if (camp !== null && camp === cellOf(state, world)) return "";
   const o = check(state, world, cal, "haul");
   if (!o.ok) return o.why ? `<div style="margin-top:4px"><span class="dim">${esc(plain(o.why))}</span></div>` : "";
-  return `<div style="margin-top:4px"><button class="mini" data-act="task" data-id="haul">haul it all to camp <small>${esc(plain(o.detail))}, ${fmtDuration(o.duration)}</small></button></div>`;
+  const km = camp === null ? null : kmBetween(state, world, cellOf(state, world), camp, walkableIce(state.weather));
+  const estimate = km === null ? fmtDuration(o.duration) : formatTravel(km * 2, o.duration, display);
+  return `<div style="margin-top:4px"><button class="mini" data-act="task" data-id="haul">haul it all to camp <small>${esc(plain(o.detail))}; ${esc(estimate)}</small></button></div>`;
 }
 
-export function inventoryHtml(state: GameState, world: World, cal: Calendar): string {
+/**
+ * Everything within reach, in two halves that must not be mistaken for
+ * each other: what the survivor carries, and what is lying on the ground
+ * under them.
+ *
+ * They were two headings in one flow, and a reader scanning for a thing
+ * could not tell which half they had found it in - which matters, because
+ * the carried half has a weight limit that kills and the ground half has
+ * none. Each is its own bordered box, says whose it is, and carries only
+ * the buttons that half can offer: drop from the pack, take from the
+ * ground.
+ */
+export function inventoryHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
   const p = state.player;
   const kg = weight(p.pack);
   const d = body(state);
   const over = kg > d.packHardKg ? "bad" : kg > d.packComfortableKg ? "accent" : "";
+  const carried = listItems(p.pack);
   const here = herePile(state, world);
-  return `<h2>Pack <span class="r ${over}">${fmtKg(kg)} of ${d.packComfortableKg} kg comfortable, ${d.packHardKg} kg max</span></h2>
-${invRows(listItems(p.pack), "drop")}
-${listItems(p.pack).length ? `<div style="margin-top:4px"><button class="mini" data-act="drop-all">drop everything here</button></div>` : ""}
-<h2 style="margin-top:10px">On the ground here, ${esc(describeWhere(state, world))} <span class="r">${fmtKg(weight(here))}</span></h2>
-${invRows(listItems(here), "take")}${haulHtml(state, world, cal)}`;
+  const ground = listItems(here);
+  const dropAll = carried.length ? `<div class="invact"><button class="mini" data-act="drop-all">drop everything here</button></div>` : "";
+  // Eating, drinking and feeding the fire stand over what they are done
+  // with. Under the map they read as a queue with something already in it,
+  // on a survivor who had never been given an order.
+  return `${instantHtml(state, world)}<div class="invsec carry" data-inv="carry">
+<h2>Carried <span class="r ${over}">${fmtKg(kg)} of ${d.packComfortableKg} kg comfortable, ${d.packHardKg} kg max</span></h2>
+${invRows(carried, "drop")}${dropAll}
+</div>${ground.length ? `
+<div class="invsec ground" data-inv="ground">
+<h2>On the ground, ${esc(describeWhere(state, world))} <span class="r">${fmtKg(weight(here))}</span></h2>
+${invRows(ground, "take")}${haulHtml(state, world, cal, display)}
+</div>` : ""}`;
 }
 
 export function fmtLogTime(e: LogEntry): string {
@@ -693,9 +910,10 @@ export function landingHtml(state: GameState, world: World): string {
 <h1>${esc(fmtWorldDate(l.date))}</h1>
 <p>${gap}A boat puts in at ${esc(regionAt(world, l.region).name)} with three aboard. Choose one; the other two sail on.</p>
 <div class="cards">${cards}</div>
+<p class="dim">Whoever you choose lands with an axe, the wool on their back and a kilo of dried meat.</p>
 <p><label>Name <input data-name maxlength="40" value="${esc(fmtName(l.name))}" /></label></p>
 <button class="act" data-act="land">Land</button>
-<button class="mini" data-act="next-boat" title="A week later, and the world runs on without you">next boat (${esc(fmtWorldDate(next))})</button>
+<button class="mini" data-act="next-boat" title="A week later, and the world runs on without you">wait for the next boat and three new people (${esc(fmtWorldDate(next))})</button>
 <button class="mini" data-act="manual-open">How to survive</button>
 </div>`;
 }
@@ -764,7 +982,7 @@ export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean
 <p>${h ? `${h} h ` : ""}${m} min of the clock; ${fmtDuration(gameMin)} in the north${capped ? " (a day is as much as the world runs on without you)" : ""}.</p>
 <p>${person ? faceSvg(person, 32) : ""} ${esc(sinceLine)}</p>
 ${moved}${orders}
-${entries.length ? `<div class="entries">${entries.slice(-40).map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(voice(e.text, e.away ? name : null))}</div>`).join("")}</div>` : "<p class=\"dim\">Nothing worth telling.</p>"}
+${entries.length ? `<div class="entries">${entries.slice(-40).reverse().map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(voice(e.text, e.away ? name : null))}</div>`).join("")}</div>` : "<p class=\"dim\">Nothing worth telling.</p>"}
 <button class="act" data-act="dismiss">Continue</button>
 </div>`;
 }

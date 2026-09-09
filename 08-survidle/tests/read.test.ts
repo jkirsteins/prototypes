@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { isRead, readCells, readLine, readShore, shoreFish } from "../src/sim/knowledge";
+import { tipHtml } from "../src/ui/tip";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
@@ -11,13 +12,14 @@ import { ICE_SHORE_CM } from "../src/sim/water";
 import { regionAt } from "../src/world/gen";
 import { cellOf, watersideCell } from "../src/sim/position";
 import { regionDensity } from "../src/sim/animals";
-import { readHtml } from "../src/ui/panels";
+import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
 
 /** Seed 4's start region has a lake; the player is put on its shore spot. */
 function atShore() {
   const g = newGame(4);
+  siteCamp(g.state, g.world);
   placeAtSpot(g.state, g.world, g.state.player.region, "shore");
   return { ...g, cell: cellOf(g.state, g.world), r: regionAt(g.world, g.state.player.region) };
 }
@@ -63,26 +65,33 @@ describe("reading water", () => {
     expect(READ_ODDS).toBe(1.5);
   });
 
-  it("lists the region's read shores with fish first and nearest first, and the card shows them", () => {
+  it("a shore says what it holds once it has been read, and nothing before", () => {
     const { state, world, cell } = atShore();
+    const cal = calendar(state.minute, state.startDoy);
     expect(readCells(state, world, state.player.region)).toEqual([]);
-    expect(readHtml(state, world, state.player.region)).toBe("");
+    // The region panel's list of read shores went with the panel. The reading
+    // is per shore, so it is on the shore: the map's tooltip says it when you
+    // point at the water it is about - and only once it has actually been
+    // read, since readLine will happily describe water nobody has looked at.
+    expect(isRead(state, cell)).toBe(false);
+    expect(tipHtml(state, world, cal, cell)).not.toContain("{read} the water");
     readShore(state, world, cell);
     expect(readCells(state, world, state.player.region)).toEqual([cell]);
-    expect(readHtml(state, world, state.player.region)).toContain("Shore read:");
+    expect(readLine(state, world, cal, cell)).not.toBe("");
   });
 
-  it("shores that read the same are one line, however many of them a coast-born survivor took in at a glance", () => {
+  it("shores holding the same fish read the same, however many of them there are", () => {
     const { state, world, r } = atShore();
+    const cal = calendar(state.minute, state.startDoy);
     const shores = r.cells.filter((c) => watersideCell(world, c) && shoreFish(world, r, c).length > 0);
     expect(shores.length).toBeGreaterThan(3);
     for (const c of shores) readShore(state, world, c);
-    const html = readHtml(state, world, state.player.region);
-    const lines = html.split("</div>").filter(Boolean);
-    // One line per reading, not per shore: the same fish in the same water said once.
-    const readings = new Set(shores.map((c) => state.player.known[c].fish.join(",")).filter((f) => f.length > 0));
-    expect(lines.length).toBe(readings.size);
-    expect(lines.length).toBeLessThan(shores.length);
+    // A reading is about the water rather than the cell, so two shores over
+    // the same water say the same thing. There are fewer readings than there
+    // are shores, which is what a coast-born survivor takes in at a glance.
+    const readings = new Set(shores.map((c) => readLine(state, world, cal, c)).filter(Boolean));
+    expect(readings.size).toBeGreaterThan(0);
+    expect(readings.size).toBeLessThan(shores.length);
   });
 
   it("dies with the person: a new person starts with nothing read", () => {

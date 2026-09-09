@@ -54,7 +54,7 @@ describe("the quirks", () => {
     coast.state.weather.clear = true;
     expect(check(coast.state, w, cal, "walk", `cell:${fell}`).why).not.toBe(FELL_FEAR_LINE);
     // The route itself treats the fell as water with no ice when the fear is on.
-    const here = coast.state.regions[coast.state.player.region].campCell;
+    const here = coast.state.regions[coast.state.player.region].campCell!;
     expect(findRoute(w, here, fell, "none", true)).toBeNull();
   });
 

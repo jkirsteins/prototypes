@@ -8,6 +8,7 @@ import { cellAt, regionAt } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { FIRE_LOW_KG } from "../src/sim/items";
 import type { Species } from "../src/sim/species";
+import { siteCamp } from "./siting-helpers";
 
 const base: Surroundings = { forest: 0, birch: 0, open: 0, bog: 0, lake: 0, sea: 0, footing: "grass", frozen: false, fire: "none", indoors: false, rain: "none", storm: false };
 /** Minutes for a clock hour on run day d. */
@@ -20,6 +21,7 @@ const JAN = 276;
 describe("surroundings", () => {
   it("reads the footing from the ground, snow and ice", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const r = regionAt(world, state.player.region);
     const on = (t: string) => r.cells.find((c) => cellAt(world, c).terrain === t);
     const forest = on("spruce") ?? on("pine");
@@ -51,6 +53,7 @@ describe("surroundings", () => {
 
   it("knows the fire, the roof and the rain", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
     const st = regionState(state, world, state.player.region);
     expect(surroundings(state, world, 10).fire).toBe("none");
@@ -130,6 +133,7 @@ describe("open calls", () => {
 
   it("a loon calls on its lake at a June dusk, not in January, and an owl only where owls are", () => {
     const { state, world } = newGame(5);
+    siteCamp(state, world);
     const id = regionWith(state, world, "loon");
     placeAt(state, world, regionAt(world, id).campCell);
     const st = regionState(state, world, id);
@@ -143,6 +147,7 @@ describe("open calls", () => {
 
   it("wolves howl to the moon", () => {
     const { state, world } = newGame(5);
+    siteCamp(state, world);
     const id = regionWith(state, world, "wolf");
     placeAt(state, world, regionAt(world, id).campCell);
     regionState(state, world, id).pop.wolf = regionAt(world, id).capacity.wolf;

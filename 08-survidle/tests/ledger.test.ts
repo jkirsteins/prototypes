@@ -15,6 +15,7 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { beginTask } from "../src/sim/tasks";
 import { cellAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 describe("the day number", () => {
   it("is 1 at the start, 2 from midnight of the first night", () => {
@@ -130,6 +131,7 @@ function forestCell(g: ReturnType<typeof newGame>): number {
 describe("burn in buckets", () => {
   it("an hour asleep in the warm is base and nothing else", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.task = { id: "sleep", progress: 0, duration: 60, repeat: false };
     // A fresh survivor lands at exactly the typical reserve, so the first
     // minute's base burn reads exactly BASE_KCAL_PER_HOUR/60 - but the
@@ -153,6 +155,7 @@ describe("burn in buckets", () => {
 
   it("an hour of heavy work at minus thirty is base, the rate above base, and the cold share of both", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     const k0 = state.player.kcal;
     // Sixty one-minute steps, the way advance() actually calls stepPlayer
@@ -193,6 +196,7 @@ describe("burn in buckets", () => {
     // the expected bucket is accumulated minute by minute at the live
     // massFactor, the same reserve stepPlayer reads each step.
     const g = newGame(17, undefined, medianPerson("m"));
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     state.player.fat = fatLandmarks(medianPerson("m")).typical;
     placeAt(state, world, forestCell(g));
@@ -216,6 +220,7 @@ describe("burn in buckets", () => {
 
   it("sickness adds its own bucket on top of the cold one", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.player.sick = 600;
     state.task = null;
     // Sixty one-minute steps, for the same reason as the heavy-work case
@@ -247,6 +252,7 @@ describe("burn in buckets", () => {
 
   it("over two hours of the real loop the buckets sum to what the fat reserve lost, net of what was eaten", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const fat0 = state.player.fat;
     advance(state, world, 120);
     const d = today(state);
@@ -260,11 +266,12 @@ describe("burn in buckets", () => {
 
   it("an idle hour is neither sleep nor work", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.task = null;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(today(state).sleepMin).toBe(0);
     expect(today(state).workMin).toBe(0);
-    state.task = { id: "wait", progress: 0, duration: 60, repeat: false };
+    state.task = { id: "rest", progress: 0, duration: 60, repeat: false };
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(today(state).workMin).toBe(0);
   });
@@ -273,6 +280,7 @@ describe("burn in buckets", () => {
 describe("yield and intake", () => {
   it("the arrival kit is a kilo of dried meat, credited on day 1; the kitted camp adds five more", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     expect(state.ledger[0].yield.kit).toBe(FOODS.driedMeat.kcalPerKg);
     kitOut(state, world);
     expect(state.ledger[0].yield.kit).toBe(6 * FOODS.driedMeat.kcalPerKg);
@@ -280,6 +288,7 @@ describe("yield and intake", () => {
 
   it("eating credits the kcal the stomach and the fat received", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     addItem(state.player.pack, "driedMeat", 1);
     eat(state, world, "driedMeat", new Rng(1));
     expect(today(state).eaten).toBeCloseTo(0.15 * FOODS.driedMeat.kcalPerKg, 6);
@@ -287,6 +296,7 @@ describe("yield and intake", () => {
 
   it("a berry pick credits the kilos picked at the berry's kcal", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     // 120 days on from 1 April is the end of July, in season.
     state.minute = 120 * 1440;
     const cal = calendar(state.minute);
@@ -301,8 +311,9 @@ describe("yield and intake", () => {
 
   it("a day whose lean intake hit the ceiling with lean food at camp and nothing else eaten is a lean-wall day", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    addItem(pile(state, st.campCell), "cookedMeat", 10);
+    addItem(pile(state, st.campCell!), "cookedMeat", 10);
     state.player.kcal = 100;
     const rng = new Rng(1);
     let n = 0;

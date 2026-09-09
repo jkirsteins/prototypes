@@ -13,13 +13,13 @@ import { log } from "./log";
 import { addOrder, type Landing, orderSentence } from "./orders";
 import { RUNG_LEVEL, RUNG_WORD, type Rung, SKILL_NAMES, skillLevel, skillOf } from "./skills";
 import { plain } from "./voice";
-import type { GameState, IntentRequest, Order, OrderKind, SkillId, TaskId } from "./types";
+import type { GameState, IntentRequest, OrderKind, SkillId, TaskId, WorkOrder } from "./types";
 
 /** Tasks that train no skill but can still be ordered take the skill of the work they serve. */
 const GATE_SKILL: Partial<Record<TaskId, SkillId>> = { haul: "woodcraft", melt: "building", thaw: "building" };
 
 /** Never orders: the runner's own steps, and the moves the Do panel starts directly. */
-export const NOT_ORDERS: TaskId[] = ["walk", "travel", "wait", "rest", "sleep", "night", "makeCamp", "explore", "searchHome"];
+export const NOT_ORDERS: TaskId[] = ["walk", "travel", "rest", "sleep", "night", "makeCamp", "explore", "searchHome"];
 
 /** The skill whose level gates orders for this task, or null for a task that is never an order. */
 export function gateSkill(task: TaskId, arg?: string): SkillId | null {
@@ -41,13 +41,13 @@ export function structureKeep(req: IntentRequest, kind: OrderKind): boolean {
  * (structureKeep) is the other exemption: the bed standing or the snares
  * set is what it watches, not a stock.
  */
-export function normalizeOrder(req: IntentRequest, kind: OrderKind): { req: IntentRequest; kind: OrderKind } {
+export function normalizeOrder(req: IntentRequest, kind: OrderKind): { req: IntentRequest; kind: WorkOrder["kind"] } {
   const lightKeep = kind === "keep" && (req.task === "light" || req.task === "lightIndoors");
   if ((kind === "keep" || req.until.kind === "campHas") && !yieldItem(req.task, req.arg) && !lightKeep && !structureKeep(req, kind)) {
     return { req: { ...req, until: { kind: "once" } }, kind: "job" };
   }
   if (kind === "grind") return { req: { ...req, until: { kind: "forever" } }, kind: "grind" };
-  return { req, kind };
+  return { req, kind: kind as WorkOrder["kind"] };
 }
 
 /** The rungs an order asks for: its kind, and past the keep, each condition it carries. */
@@ -103,7 +103,7 @@ function stripUnearned(state: GameState, req: IntentRequest): IntentRequest {
 }
 
 /** The door the Do panel and the player script use: the gate, then addOrder. */
-export function giveOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: Landing): Order {
+export function giveOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: Landing): WorkOrder {
   const gate = orderGate(state, req, kind);
   if (!gate.ok) throw new Error(gate.why);
   return addOrder(state, world, req, kind, rank);
@@ -118,7 +118,7 @@ export function giveOrder(state: GameState, world: World, req: IntentRequest, ki
  * its minutes kept. A second click displaces the first, because that is
  * what clicking a thing means.
  */
-export function orderByHand(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, kind: OrderKind): Order {
+export function orderByHand(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, kind: OrderKind): WorkOrder {
   if (normalizeOrder(req, kind).req.until.kind !== "once") return giveOrder(state, world, req, kind);
   const o = giveOrder(state, world, req, kind, "top");
   // A click that starts nothing says so. startIntent refuses when the check at
@@ -143,7 +143,7 @@ export const GRIND_STAND_IN = 5;
  * at 3 and a once job below. The player script and the stage set-ups use
  * it; the Do panel shows the gate instead and lets the player choose.
  */
-export function withinLadder(state: GameState, req: IntentRequest, kind: OrderKind): { req: IntentRequest; kind: OrderKind } {
+export function withinLadder(state: GameState, req: IntentRequest, kind: WorkOrder["kind"]): { req: IntentRequest; kind: WorkOrder["kind"] } {
   const n = normalizeOrder(req, kind);
   // Strip what the skill has not earned before the kind stand-in, so a stripped
   // daily (now a times count) goes through the counted-job path below like any

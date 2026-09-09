@@ -8,7 +8,7 @@ import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { advance } from "../src/sim/advance";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { mapRegion } from "../src/sim/mapped";
-import { regionState } from "../src/sim/regionstate";
+import { siteCamp } from "./siting-helpers";
 import { cellAt, neighbours } from "../src/world/gen";
 import { startTask } from "../src/sim/tasks";
 import { calendar } from "../src/sim/calendar";
@@ -38,7 +38,7 @@ describe("the gate skill", () => {
   });
 
   it("the runner's own steps and the moves are not orders", () => {
-    expect(NOT_ORDERS).toEqual(["walk", "travel", "wait", "rest", "sleep", "night", "makeCamp", "explore", "searchHome"]);
+    expect(NOT_ORDERS).toEqual(["walk", "travel", "rest", "sleep", "night", "makeCamp", "explore", "searchHome"]);
   });
 });
 
@@ -122,7 +122,7 @@ describe("giving an order", () => {
     const o = giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep", 0);
     expect(o.kind).toBe("keep");
     // Rank 0 is the top of the real work, behind the two care rows.
-    expect(ordersHere(state, world).map((x) => x.req.task)).toEqual(["wait", "wait", "split", "sticks"]);
+    expect(ordersHere(state, world).map((x) => x.kind === "body" || x.kind === "camp" ? x.kind : x.req.task)).toEqual(["camp", "body", "split", "sticks"]);
   });
 });
 
@@ -168,13 +168,13 @@ describe("where a row lands", () => {
     moveOrder(state, world, camp.id, 1);
     moveOrder(state, world, body.id, 1);
     giveOrder(state, world, req("stone", { kind: "once" }), "job", 0);
-    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["stone", "sticks", "wait", "wait"]);
+    expect(ordersHere(state, world).map((o) => o.kind === "body" || o.kind === "camp" ? o.kind : o.req.task)).toEqual(["stone", "sticks", "body", "camp"]);
   });
 
   it("a haul given by hand is a row like any other: it runs, delivers, and drops off when the ground is bare", () => {
     const { state, world } = newGame(3);
     mapRegion(state, world, state.player.region);
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = siteCamp(state, world);
     const spot = neighbours(world, camp).find((n) => cellAt(world, n).terrain !== "water")!;
     placeAt(state, world, spot);
     addItem(state.player.pack, "driedMeat", 2);
@@ -190,7 +190,7 @@ describe("where a row lands", () => {
   it("a haul displaced mid-carry is not done: the row stands until the load is at camp", () => {
     const { state, world } = newGame(3);
     mapRegion(state, world, state.player.region);
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = siteCamp(state, world);
     const spot = neighbours(world, camp).find((n) => cellAt(world, n).terrain !== "water")!;
     placeAt(state, world, spot);
     addItem(state.player.pack, "driedMeat", 2);

@@ -98,7 +98,11 @@ describe("roots and rhizomes", () => {
     st.rootCells[at] = full * (ROOT_POOR_SHARE / 2);
     const o = check(state, world, cal, "roots");
     expect(o.ok).toBe(true);
-    expect(o.detail).toContain("dug over here, the next patch is better");
+    // The line leads with what roots are for. He did not know they were
+    // food, though the old wording said so in its last two words at the end
+    // of a three-clause chain.
+    expect(o.detail.startsWith("food once cooked")).toBe(true);
+    expect(o.detail).toContain("Dug over here, the next patch is better");
     expect(o.detail).toContain(`${ROOT_KG_PER_HOUR / 2} kg an hour`);
     startTask(state, world, cal, "roots");
     for (let m = 0; m < 60 && state.task; m++) stepTask(state, world, cal, new Rng(m), 1);

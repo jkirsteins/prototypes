@@ -17,6 +17,7 @@ import { workSpeed } from "../src/sim/player";
 import { regionDensity } from "../src/sim/animals";
 import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "../src/sim/species";
 import { regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 describe("skill curves", () => {
   it("skill level is hours squared: 1 at 0, 2 at 2 h, 10 at 162 h, capped at 50", () => {
@@ -93,6 +94,7 @@ const cal = calendar(0);
 describe("training", () => {
   it("an hour of felling is an hour of Woodcraft, of that tree kind, and of the pool", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     const key = masteryKey(state, world, "chop")!;
@@ -106,6 +108,7 @@ describe("training", () => {
 
   it("walking trains nothing", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     startTask(state, world, cal, "walk", "spot:forest");
     run(g, 5);
@@ -114,6 +117,7 @@ describe("training", () => {
 
   it("a felling set aside keeps the minutes it earned", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     startTask(state, world, cal, "chop");
@@ -124,6 +128,7 @@ describe("training", () => {
 
   it("logs the level-up as the hours cross", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     state.skills.woodcraft.xp = 119;
     placeAtSpot(state, world, state.player.region, "forest");
@@ -136,6 +141,7 @@ describe("training", () => {
   it("the pool stops at capacity", () => {
     // Seed 4: the only starting region among the test seeds with a lake, so it has fish.
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     state.skills.fishing.pool = poolCapacity("fishing") - 1;
     placeAtSpot(state, world, state.player.region, "shore");
@@ -158,6 +164,7 @@ describe("effects", () => {
 
   it("Hunting 11 has 10% better odds; Fishing reads its own skill", () => {
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const d = regionDensity(state, world, state.player.region, "hare", cal);
     const base = huntOdds(state, world, cal, d, "hare");
@@ -172,6 +179,7 @@ describe("effects", () => {
 
   it("Crafting 11 wears the needle 10% less", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     state.player.tools.push({ id: "needle", durability: 100 });
     addItem(state.player.pack, "hide", 2);
@@ -277,6 +285,7 @@ describe("backfire under level", () => {
 
   it("a bow at Crafting 1 comes out one time in 16; a failure spoils half the materials", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     expect(craftSuccess(state, "bow")).toBeCloseTo(1 / 16, 9);
     state.player.tools.push({ id: "knife", durability: 100 });
@@ -302,6 +311,7 @@ describe("backfire under level", () => {
 describe("mastery extras", () => {
   it("spruce felling at mastery 20 gives a fifth stick; at 50 the axe keeps its edge on spruce", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     const key = masteryKey(state, world, "chop")!;
@@ -357,6 +367,7 @@ describe("mastery extras", () => {
 
   it("crossing 20 logs the extra", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     const key = masteryKey(state, world, "chop")!;
@@ -431,6 +442,7 @@ describe("pool yield perks", () => {
     // which leaves no room for rock. Seed 4's world has one two lattice cells over,
     // at region 2405 - reached directly, the way tests place the player anywhere.
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, 2405, "outcrop");
     state.skills.foraging.pool = poolCapacity("foraging");
@@ -441,6 +453,7 @@ describe("pool yield perks", () => {
 
   it("fish at a full pool and mastery 1 catch half again their weight", () => {
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const f = aFish(g);
     placeAtSpot(state, world, state.player.region, "shore");
@@ -456,6 +469,7 @@ describe("pool yield perks", () => {
 
   it("Foraging and Fishing trade the wear perk for yield: full pool means normal wear, not zero", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     state.skills.fishing.pool = poolCapacity("fishing");
@@ -503,7 +517,9 @@ describe("the rungs", () => {
 
   it("TASK_IDS lists every task once", () => {
     expect(new Set(TASK_IDS).size).toBe(TASK_IDS.length);
-    for (const id of ["chop", "haul", "fill", "wait", "sleep", "night", "melt", "thaw"]) expect(TASK_IDS).toContain(id);
-    expect(TASK_IDS.length).toBe(46);
+    for (const id of ["chop", "haul", "fill", "sleep", "night", "melt", "thaw"]) expect(TASK_IDS).toContain(id);
+    expect(TASK_IDS).not.toContain("wait");
+    expect(TASK_IDS).toContain("findDen");
+    expect(TASK_IDS.length).toBe(45);
   });
 });

@@ -31,7 +31,7 @@ export interface DayLedger {
   leanAtCamp: boolean;
   burn: BurnBuckets;
   sleepMin: number;
-  /** Minutes awake on a task other than rest, wait or camping for the night. */
+  /** Minutes awake on a task other than rest or camping for the night. */
   workMin: number;
 }
 

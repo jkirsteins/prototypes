@@ -10,10 +10,10 @@ import { ordersHere, orderSentence } from "./orders";
 import { firstRecord } from "./newgame";
 import { sexOfName } from "./names";
 import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
-import { regionState } from "./regionstate";
+import { newSite, regionState } from "./regionstate";
 import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
-import type { GameState, Intent, Inventory, LogEntry, TaskId, Until } from "./types";
+import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
 import { emptyWildlife } from "./wildlife-agents";
 
 export const SAVE_KEY = "survidle.save";
@@ -34,7 +34,7 @@ export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
     if (!(file?.version >= 3 && file?.version <= 8) || !file.state || typeof file.savedAt !== "number") return null;
-    fillDefaults(file.state);
+    migrate(file.state);
     return file as unknown as SaveFile;
   } catch {
     return null;
@@ -46,7 +46,7 @@ export function deserialize(text: string): SaveFile | null {
  * run in progress survives a new structure the same way it survives a new
  * region: by not having it yet.
  */
-function fillDefaults(state: GameState): void {
+export function migrate(state: GameState): void {
   state.startDoy ??= START_DOY;
   state.awayHours ??= AWAY_HOURS_DEFAULT;
   state.skills ??= newSkills();
@@ -92,10 +92,6 @@ function fillDefaults(state: GameState): void {
   state.stats.kills ??= {};
   state.stats.killsKcal ??= 0;
   for (const st of Object.values(state.regions)) {
-    st.structureAge ??= {};
-    st.racks ??= st.structures.dryingRack ? 1 : 0;
-    st.structures.turfHut ??= false;
-    st.structures.waterStore ??= false;
     st.trap ??= null;
     if (st.trap) st.trap.age ??= 0;
     if (st.trap) st.trap.oilyKg ??= 0;
@@ -124,13 +120,24 @@ function fillDefaults(state: GameState): void {
     d.nonLeanKcal ??= 0;
     d.leanAtCamp ??= false;
   }
+  // Old saves represented idleness as a synthetic wait intent and task.
+  // Idleness now has no record at all, so discard both halves on load.
+  if ((state.intent as unknown as { task?: string } | null)?.task === "wait") state.intent = null;
+  if ((state.task as unknown as { id?: string } | null)?.id === "wait") state.task = null;
   if (state.intent) {
     state.intent.orderId ??= null;
-    state.intent.windDown ??= false;
+    if (isWorkIntent(state.intent) && state.intent.orderRegion === undefined) {
+      state.intent.orderRegion = Number(Object.entries(state.regions)
+        .find(([, st]) => st.orders.some((order) => order.id === state.intent?.orderId))?.[0] ?? state.player.region);
+    }
     // Whose the intent is was read off what it was asked to do; a save from
     // before that reads the same way.
-    const it = state.intent as Partial<Intent> & { task: TaskId; until: Until };
-    it.mode ??= intentMode(it.task, it.until);
+    const it = state.intent as Partial<Intent> & { task?: TaskId; until?: Until };
+    if (it.mode !== "care" && it.task && it.until) {
+      it.mode ??= intentMode(it.task, it.until);
+      const work = state.intent;
+      if (isWorkIntent(work)) work.windDown ??= false;
+    }
   }
   // Hauling was a stored plan once; an intent restarts from anywhere, so a saved plan is simply forgotten.
   delete (state as unknown as Record<string, unknown>).plan;
@@ -144,9 +151,9 @@ function fillDefaults(state: GameState): void {
     if (t.id === "craft" && t.arg === "axe") t.arg = "stoneAxe";
   };
   renameArg(state.task);
-  if (state.intent && state.intent.task === "fish" && !state.intent.arg) state.intent.arg = "any";
-  if (state.intent && state.intent.task === "hunt" && state.intent.arg === "grouse") state.intent.arg = "willowGrouse";
-  if (state.intent && state.intent.task === "craft" && state.intent.arg === "axe") state.intent.arg = "stoneAxe";
+  if (isWorkIntent(state.intent) && state.intent.task === "fish" && !state.intent.arg) state.intent.arg = "any";
+  if (isWorkIntent(state.intent) && state.intent.task === "hunt" && state.intent.arg === "grouse") state.intent.arg = "willowGrouse";
+  if (isWorkIntent(state.intent) && state.intent.task === "craft" && state.intent.arg === "axe") state.intent.arg = "stoneAxe";
   const crafting = state.skills.crafting.mastery;
   if (crafting["craft:axe"] !== undefined) {
     crafting["craft:stoneAxe"] = (crafting["craft:stoneAxe"] ?? 0) + crafting["craft:axe"];
@@ -156,6 +163,10 @@ function fillDefaults(state: GameState): void {
   // for located work, "id:arg" for carried work, cell -1). Renaming .arg without moving the
   // entry to the recomputed key would strand it under the old key, unresumable and undeletable.
   for (const [key, p] of Object.entries(state.paused)) {
+    if ((p as unknown as { id?: string }).id === "wait") {
+      delete state.paused[key];
+      continue;
+    }
     renameArg(p);
     const newKey = p.cell === -1 ? `${p.id}:${p.arg ?? ""}` : `${p.id}:${p.arg ?? ""}@${p.cell}`;
     if (newKey !== key) {
@@ -166,6 +177,10 @@ function fillDefaults(state: GameState): void {
   // An order's click carries the same task/arg shape under different field names.
   for (const st of Object.values(state.regions)) {
     for (const o of st.orders ?? []) {
+      if (isCareRow(o)) {
+        delete (o as unknown as { req?: unknown }).req;
+        continue;
+      }
       if (o.req.task === "fish" && !o.req.arg) o.req.arg = "any";
       if (o.req.task === "hunt" && o.req.arg === "grouse") o.req.arg = "willowGrouse";
       if (o.req.task === "craft" && o.req.arg === "axe") o.req.arg = "stoneAxe";
@@ -231,11 +246,41 @@ function fillDefaults(state: GameState): void {
     state.route.walked ??= [];
   }
   for (const st of Object.values(state.regions)) {
-    st.structures.boughBed ??= false;
-    st.structures.hearth ??= false;
-    st.structures.snowShelter ??= false;
-    st.boughBedAge ??= 0;
-    st.meltDays ??= 0;
+    // A save from before sites kept one camp's worth of structures flat on the region.
+    const flat = st as unknown as { structures?: Record<string, number | boolean>; racks?: number; boughBedAge?: number; meltDays?: number; structureAge?: Partial<Record<DecayingId, number>>; build?: Partial<Record<StructureId, number>> };
+    if (flat.structures) {
+      const site = newSite();
+      const old = flat.structures;
+      site.structures.firePit = Boolean(old.firePit);
+      site.structures.leanTo = Boolean(old.leanTo);
+      site.structures.cabin = Boolean(old.cabin);
+      site.structures.dryingRack = Boolean(old.dryingRack);
+      site.structures.boughBed = Boolean(old.boughBed);
+      site.structures.hearth = Boolean(old.hearth);
+      site.structures.turfHut = Boolean(old.turfHut);
+      site.structures.waterStore = Boolean(old.waterStore);
+      site.structures.snowShelter = Boolean(old.snowShelter);
+      // A save from before racks were counted has only the flag: one rack stood if dryingRack did.
+      site.racks = flat.racks ?? (old.dryingRack ? 1 : 0);
+      site.boughBedAge = flat.boughBedAge ?? 0;
+      site.meltDays = flat.meltDays ?? 0;
+      site.structureAge = flat.structureAge ?? {};
+      site.build = flat.build ?? {};
+      st.snares = Number(old.snares ?? 0);
+      st.sites = {};
+      // A region touched but never lived in gets no site, the same as one raised today.
+      const lived = Object.values(site.structures).some(Boolean) || Object.keys(site.build).length > 0;
+      // A save from before a camp could be missing always has one: only a fresh region starts with none.
+      if (lived && st.campCell !== null) st.sites[st.campCell] = site;
+      delete flat.structures;
+      delete flat.racks;
+      delete flat.boughBedAge;
+      delete flat.meltDays;
+      delete flat.structureAge;
+      delete flat.build;
+    }
+    st.sites ??= {};
+    st.snares ??= 0;
     st.fire.wetKg ??= 0;
     st.fire.indoors ??= false;
     st.fire.unattended ??= 0;
@@ -246,11 +291,58 @@ function fillDefaults(state: GameState): void {
     st.logsWet ??= 1440;
     st.orders ??= [];
     st.nextOrderId ??= 1;
+    // Only a direct map click owns a Walk row, and that row always owns the
+    // top of the list. Older builds inserted route legs beside their parent.
+    const removedWalkIds = new Set(st.orders
+      .filter((o, i) => i > 0 && !isCareRow(o) && o.req.task === "walk")
+      .map((o) => o.id));
+    st.orders = st.orders.filter((o, i) => i === 0 || isCareRow(o) || o.req.task !== "walk");
+    if (st === state.regions[state.player.region] && removedWalkIds.size) {
+      if (state.intent?.orderId !== null && state.intent?.orderId !== undefined && removedWalkIds.has(state.intent.orderId)) {
+        state.intent = null;
+        if (state.task?.id === "walk") {
+          state.task = null;
+          state.route = null;
+        }
+      }
+      // The old generated Walk was classified as hand work and could replace
+      // itself with an ownerless collapse sleep. Let Self-care decide again.
+      if (!state.intent && state.task?.id === "sleep" && state.player.sleeping?.collapsed) {
+        state.task = null;
+        state.player.sleeping = null;
+      }
+    }
     st.iceHole ??= null;
     // A save from before a care row existed has none: it is unshifted on,
     // above the work, which is the rank the always-pre-empting tier already
     // held over the list it could not be seen on.
     ensureCareRows(st);
+  }
+  // A raw map walk used to have no order. Preserve that explicit destination
+  // as the one visible Walk at the top. A route owned by work or care remains
+  // a step of that owner and needs no migration.
+  if (state.task?.id === "walk" && state.route) {
+    const st = state.regions[state.player.region];
+    if (st) {
+      const old = state.intent;
+      if (old && (!isWorkIntent(old) || old.task !== "walk")) return;
+      const alreadyVisible = isWorkIntent(old) && old.task === "walk" && old.orderId !== null
+        && st.orders.some((o) => o.id === old.orderId && !isCareRow(o) && o.req.task === "walk");
+      if (alreadyVisible) return;
+      const target = state.route.target;
+      const walk: WorkOrder = {
+        id: st.nextOrderId++, kind: "job",
+        req: { task: "walk", arg: `cell:${target}`, until: { kind: "once" }, deliver: "leave", where: { cell: target } },
+        done: 0, minutes: 0, skipped: "",
+        givenDoy: calendar(state.minute, state.startDoy).dayOfYear,
+      };
+      st.orders.unshift(walk);
+      state.intent = {
+        mode: "hand", task: "walk", arg: `cell:${target}`, cell: target, campCell: st.campCell,
+        until: { kind: "once" }, deliver: "leave", done: 0,
+        step: `walking to ${state.route.label}`, orderId: walk.id, windDown: false,
+      };
+    }
   }
 }
 

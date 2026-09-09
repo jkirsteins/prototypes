@@ -10,6 +10,7 @@ import { addOrder, ordersHere } from "../src/sim/orders";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { RESTED_AT, SPENT_AT } from "../src/sim/sleep";
+import { siteCamp } from "./siting-helpers";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
@@ -24,8 +25,9 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
 /** Seed 39: meadow camp, forest 0.6 km away. The body is at camp, a hair past the spent line and with a round trip's worth of energy over the collapse, which is the one thing that would end a once. */
 function spentAtCamp() {
   const g = newGame(39);
+  siteCamp(g.state, g.world);
   const { state, world } = g;
-  const camp = regionState(state, world, state.player.region).campCell;
+  const camp = regionState(state, world, state.player.region).campCell!;
   placeAt(state, world, camp);
   addItem(state.player.pack, "driedMeat", 2);
   state.player.energy = SPENT_AT - 1;
@@ -57,10 +59,12 @@ describe("work chosen by hand is the player's", () => {
     // A deadwood round trip costs more energy than the ten points between the
     // spent line and the collapse, so a body that starts one past the spent
     // line gives out on the way. Nothing turned it for camp: it worked until
-    // it dropped, and it sleeps in the forest with the wood still on its back.
+    // its row became blocked, then the ranked self-care row took the next minute.
     expect(state.intent).toBeNull();
     expect(cellOf(state, world)).not.toBe(camp);
-    expect(state.task?.id).toBe("sleep");
+    advance(state, world, 1);
+    expect(state.intent?.mode).toBe("care");
+    expect(until(g, () => state.task?.id === "sleep", 300)).toBe(true);
     expect(state.player.sleeping?.collapsed).toBe(true);
   });
 
@@ -69,9 +73,9 @@ describe("work chosen by hand is the player's", () => {
     addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     addOrder(state, world, { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     advance(state, world, 1);
-    // Not the first once: the runner is its own between orders, and the body is spent.
-    expect(state.intent?.task).toBe("wait");
-    expect(state.intent?.mode === "runner" && state.player.bodyNeed).toBe("spent");
+    // Not the first once: the body takes over between orders because it is spent.
+    expect(state.intent?.mode).toBe("care");
+    expect(state.player.bodyNeed).toBe("spent");
     expect(until(g, () => state.intent?.task === "sticks", 1500)).toBe(true);
     expect(state.player.energy).toBeGreaterThanOrEqual(RESTED_AT);
     expect(until(g, () => state.intent?.task === "deadwood", 1500)).toBe(true);
@@ -97,7 +101,7 @@ describe("work chosen by hand is the player's", () => {
     const { state, world } = spentAtCamp();
     addOrder(state, world, { task: "deadwood", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     advance(state, world, 1);
-    expect(state.intent?.mode).toBe("runner");
+    expect(state.intent?.mode).toBe("care");
     expect(state.player.bodyNeed).toBe("spent");
   });
 

@@ -8,6 +8,7 @@ import { check, startTask, stepTask } from "../src/sim/tasks";
 import { iceMode, seasonalMean, stepWeather } from "../src/sim/weather";
 import { cellAt, regionAt } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
+import { siteCamp } from "./siting-helpers";
 
 /** A water cell in the player's region and a land cell beside it. */
 function shoreAndWater(g: ReturnType<typeof newGame>) {
@@ -68,6 +69,7 @@ describe("ice", () => {
     const drowned: boolean[] = [];
     for (let seed = 1; seed <= 12; seed++) {
       const g = newGame(42);
+      siteCamp(g.state, g.world);
       const { state, world } = g;
       state.weather.iceCm = 5;
       const { water, land } = shoreAndWater(g);
@@ -96,6 +98,7 @@ describe("ice", () => {
 
   it("safe ice crossed, then melted, leaves no way back", () => {
     const g = newGame(42);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     state.weather.iceCm = 16;
     const { water, land } = shoreAndWater(g);

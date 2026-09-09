@@ -6,9 +6,10 @@ import { setSkillLevel } from "../src/sim/horizon";
 import { NOT_ORDERS } from "../src/sim/ladder";
 import { beginAgain, land } from "../src/sim/landing";
 import { knownShare } from "../src/sim/mapped";
+import { isRead } from "../src/sim/knowledge";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
-import { placeAt } from "../src/sim/position";
+import { placeAt, watersideCell } from "../src/sim/position";
 import { current } from "../src/sim/record";
 import {
   levelMinutes, masteryKey, MASTERY_KEYS, opensOrders, RUNG_LINE, RUNG_ORDER, skillLevel, skillOf, train,
@@ -19,6 +20,7 @@ import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
 import { cellAt, neighbours, regionAt, type World } from "../src/world/gen";
 import { passable } from "../src/world/route";
+import { siteCamp } from "./siting-helpers";
 
 type G = ReturnType<typeof newGame>;
 
@@ -58,6 +60,7 @@ function roughFooting(world: World, region: number): { cell: number; next: numbe
 describe("wayfinding", () => {
   it("practises by exploring and not by walking", () => {
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
 
     startTask(state, world, calendar(state.minute), "walk", "spot:forest");
@@ -77,11 +80,30 @@ describe("wayfinding", () => {
     expect(MASTERY_KEYS.wayfinding).toEqual(["explore", "searchHome"]);
   });
 
+  it("runs Read water as real Fishing work inside one survey row", () => {
+    const { state, world } = newGame(4);
+    const region = state.player.region;
+    const shore = regionAt(world, region).cells.find((cell) => watersideCell(world, cell));
+    expect(shore).toBeDefined();
+    placeAt(state, world, shore!);
+    state.task = {
+      id: "explore", arg: `region:${region}`, progress: 0, duration: 60, repeat: false,
+      visited: [shore!], surveyPhase: "read", surveyedWater: [], surveyWater: shore!, surveyShore: shore!, surveyProgress: 0,
+    };
+    const beforeWayfinding = state.skills.wayfinding.xp;
+    stepTask(state, world, calendar(state.minute), new Rng(1), 60);
+    expect(isRead(state, shore!)).toBe(true);
+    expect(state.skills.fishing.xp).toBeGreaterThan(0);
+    expect(state.skills.fishing.mastery.read).toBeGreaterThan(0);
+    expect(state.skills.wayfinding.xp).toBe(beforeWayfinding);
+  });
+
   it("opens no orders, and logs no rung it does not have", () => {
     expect(opensOrders("wayfinding")).toBe(false);
     expect(opensOrders("woodcraft")).toBe(true);
 
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const region = partlyKnownNeighbour(g);
     expect(startTask(state, world, calendar(state.minute), "explore", `region:${region}`)).toBe(true);
@@ -91,10 +113,34 @@ describe("wayfinding", () => {
     expect(texts).toContain("Wayfinding 20.");
     for (const k of RUNG_ORDER) expect(texts).not.toContain(RUNG_LINE[k]("Wayfinding"));
 
-    // No order button appears for exploring either: the runner's own move, never a standing order.
+    // Survey is visible, but it has no order expansion: it is manual one-time work.
     expect(NOT_ORDERS).toContain("explore");
     const ui = newUiState();
-    expect(doHtml(state, world, calendar(state.minute), ui)).not.toContain('data-id="explore"');
+    ui.panes = { pane: "do", subtab: "Explore", purpose: "Wayfinding" };
+    const html = doHtml(state, world, calendar(state.minute), ui);
+    expect(html).toContain('data-id="explore"');
+    expect(html).not.toContain('data-act="row-more" data-id="explore"');
+  });
+
+  it("keeps the current survey visible and neighbouring regions behind one chooser", () => {
+    const g = newGame(4);
+    const { state, world } = g;
+    const region = partlyKnownNeighbour(g);
+    const name = regionAt(world, region).name;
+    const ui = newUiState();
+    ui.panes = { pane: "do", subtab: "Explore", purpose: "Wayfinding" };
+
+    const closed = doHtml(state, world, calendar(state.minute), ui);
+    expect(closed).toContain("Explore this region");
+    expect(closed).toContain('data-specific="regions"');
+    expect(closed).toContain("choose region...");
+    expect(closed).not.toContain(`Explore ${name}`);
+
+    ui.specific.regions = true;
+    const open = doHtml(state, world, calendar(state.minute), ui);
+    expect(open).toContain(`data-id="explore" data-arg="region:${region}"`);
+    expect(open).toContain(`Explore ${name}`);
+    expect(open).toContain("hide region choices");
   });
 
   it("carrying a wayfinding level to an heir logs no rung either", () => {
@@ -110,6 +156,7 @@ describe("wayfinding", () => {
 
   it("reads farther with practice, capped at the sharp-eyed 1.5x by level 20", () => {
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const cal = calendar(state.minute);
     const cell = openFooting(world, state.player.region);
@@ -141,6 +188,7 @@ describe("wayfinding", () => {
 
   it("hurts a novice on bad ground and rarely a master", () => {
     const g = newGame(19);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const region = partlyKnownNeighbour(g);
     const { cell, next } = roughFooting(world, region);

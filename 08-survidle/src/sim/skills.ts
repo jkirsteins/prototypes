@@ -10,7 +10,7 @@ import { body, hasQuirk } from "./person";
 import { starvation } from "./player";
 import { hereTerrain } from "./position";
 import { extrasClass, fatSeason, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
-import type { GameState, ItemId, LifeRecord, RecipeId, Rung, SkillId, SkillState, StructureId, TaskId } from "./types";
+import type { GameState, ItemId, LifeRecord, RecipeId, Rung, SkillId, SkillState, StructureId, Task, TaskId } from "./types";
 import { log } from "./log";
 
 export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building", "wayfinding"];
@@ -449,6 +449,11 @@ export function oddsFactor(state: GameState, species: Species): number {
 export function train(state: GameState, world: World, dt: number): void {
   const t = state.task;
   if (!t) return;
+  trainTask(state, world, t, dt);
+}
+
+/** Trains one explicit task, including a real sub-action owned by another task. */
+export function trainTask(state: GameState, world: World, t: Pick<Task, "id" | "arg">, dt: number): void {
   const skill = skillOf(t.id, t.arg);
   if (!skill) return;
   const key = masteryKey(state, world, t.id, t.arg);

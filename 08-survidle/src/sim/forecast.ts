@@ -14,13 +14,13 @@ import { derive } from "../rng";
 import { GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import type { World } from "../world/gen";
 import { advance } from "./advance";
-import { dayNumber, minutesUntilDawn } from "./calendar";
+import { dayNumber } from "./calendar";
 import type { DeathCause, GameState } from "./types";
 
 /** Runs per horizon: enough to say "7 of 10", few enough for a month row in a few seconds. */
 export const FORECAST_RUNS = 10;
 
-export type HorizonId = "away" | "tonight" | "week" | "month";
+export type HorizonId = "away" | "month";
 export interface Horizon { id: HorizonId; minutes: number }
 
 export interface ForecastRow {
@@ -39,12 +39,22 @@ export const CAUSE_WORD: Record<DeathCause, string> = {
 };
 const CAUSES = Object.keys(CAUSE_WORD) as DeathCause[];
 
-/** The four horizons in order: the away dial, the next dawn, a week, a month. */
+/**
+ * One horizon: the stretch the slider names.
+ *
+ * A real second is a game minute, so the dial's 1 to 24 hours spans two
+ * and a half to sixty game days - further than the month row it stands in
+ * for, and both fixed horizons that used to sit beside it, tonight and a
+ * week, fall inside it. Four rows answering questions the player did not
+ * ask is three too many; the one they did ask is "what happens if I leave
+ * for this long".
+ */
 export function horizons(state: GameState): Horizon[] {
   return [
     { id: "away", minutes: state.awayHours * 3600 * GAME_MINUTES_PER_REAL_SECOND },
-    { id: "tonight", minutes: minutesUntilDawn(state.minute, state.startDoy) },
-    { id: "week", minutes: 7 * 1440 },
+    // Not shown. The life record keeps a month number per survivor, and a
+    // number that moved with wherever the player had left a slider would be
+    // no record at all, so the month is still run and still written down.
     { id: "month", minutes: 30 * 1440 },
   ];
 }

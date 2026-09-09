@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
+import { autoEat } from "../src/sim/actions";
+import { advance } from "../src/sim/advance";
 import { hourlyEvents } from "../src/sim/events";
+import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { regionAt } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { placeAt } from "../src/sim/position";
+import { siteCamp } from "./siting-helpers";
 
 /** Midnight in June, unsheltered, no fire: the wolf roll's conditions. */
 const NIGHT = calendar(1440 * 70 + 16 * 60);   // 00:00 on day 71
@@ -65,5 +69,47 @@ describe("wolves", () => {
     regionState(state, world, wolfy).pop.wolf = regionAt(world, wolfy).capacity.wolf! * 0.1;
     const thin = nights(state, world, 2000, 3);
     expect(thin).toBeLessThan(full / 3);
+  });
+});
+
+
+describe("the body says what it ate", () => {
+  it("one line for the sitting, naming what went and how much", () => {
+    const { state, world } = newGame(21);
+    // The eating itself was legible on screen the whole time he could not
+    // tell whether his survivor was eating: state was shown and the event
+    // was not. Then it ate his whole meat stock while he slept, silently.
+    state.player.kcal = 0;
+    addItem(state.player.pack, "driedMeat", 3);
+    autoEat(state, world, new Rng(1));
+    const said = state.log.filter((e) => e.text.includes("{eat}"));
+    // One line for the sitting, not one per mouthful: what a meal cost is
+    // the thing worth knowing, not how many portions it took.
+    expect(said).toHaveLength(1);
+    expect(said[0].text).toContain("kg");
+    expect(said[0].text).toContain("dried meat");
+  });
+
+  it("claims no meal when there was nothing to eat", () => {
+    const { state, world } = newGame(21);
+    state.player.kcal = 0;
+    state.player.pack.items = {};
+    autoEat(state, world, new Rng(1));
+    // No meal line. A body with nothing left says so in its own words,
+    // which is a different thing and worth saying.
+    expect(state.log.some((e) => e.text.includes("{eat}"))).toBe(false);
+  });
+
+  it("a fire falling to coals says so, since losing what you built must be louder than silence", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 0.01;
+    advance(state, world, 30);
+    // A fire that eats its wood banks rather than dies, so the line that
+    // matters is the one saying the flames are gone - not that the fire is.
+    expect(state.log.some((e) => /down to coals/i.test(e.text))).toBe(true);
   });
 });

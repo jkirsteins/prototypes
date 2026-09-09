@@ -19,34 +19,42 @@ import type { FoodId } from "./sim/items";
 import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
 import { openManualOnFirstLanding } from "./sim/manual";
+import { isKnown } from "./sim/mapped";
+import { frontierRoute } from "./sim/routing";
 import { newWorld } from "./sim/newgame";
 import { moveOrderByHand, pinOrderByHand, removeOrderByHand } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
-import { cellOf } from "./sim/position";
+import { campCellOf, cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
-import { startTask, stopTask } from "./sim/tasks";
+import { putOutTorch, startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
+import { insertWalkAtTop } from "./sim/walkorders";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
-import { updateBars, updateFills, updateHurryBar } from "./ui/bars";
+import { updateBars, updateFills } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
-import { doHtml, KW_PREFIX, loadFolds, saveFold } from "./ui/dopanel";
+import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
 import { goalDoneHtml, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
-import { LEVELS, legendHtml, mapHtml, mapKey, mountMapInspection } from "./ui/map";
+import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
+import type { SubtabId } from "./ui/purpose";
+import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, mountMapInspection, viewOrigin } from "./ui/map";
+import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
-  awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
-  manualHtml, regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
+  awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
+  manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
-import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type WhenField } from "./ui/render";
-import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
+import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
+import { advanceHurry, hurryClick, hurryKind, newHurry } from "./ui/hurry";
 import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
+import { newSpeedHistory, updateSpeedHistory } from "./ui/speed-history";
+import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
 import { recognitionHtml } from "./ui/wildlife-panel";
 import { generateWorld, regionAt, type World } from "./world/gen";
 
@@ -87,6 +95,14 @@ let wasDead = false;
 let state!: GameState;
 let world!: World;
 const ui = newUiState();
+ui.travelDisplay = loadTravelDisplay(localStorage);
+const SPECIFIC_KEY = "survidle.specific";
+try {
+  const saved = JSON.parse(localStorage.getItem(SPECIFIC_KEY) ?? "{}") as Partial<UiState["specific"]>;
+  ui.specific = { trees: saved.trees === true, fish: saved.fish === true, regions: saved.regions === true };
+} catch {
+  // A malformed UI preference is only a closed chooser.
+}
 let awayInfo: { seconds: number; capped: boolean } | null = null;
 const audio = createAudioEngine(SLOTS);
 const sounds = createScheduler(audio);
@@ -111,9 +127,10 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   ui.selected = null;
   ui.away = null;
   ui.hurry = newHurry();
+  ui.speedHistory = newSpeedHistory();
   ui.confirmAbandon = false;
+  ui.panes = loadPanes(localStorage);
   ui.confirmCamp = false;
-  ui.folds = loadFolds(localStorage);
   resetPanels();
   resetForecastAt();
   saveGame(state);
@@ -121,7 +138,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
 }
 
 function boot() {
-  ui.folds = loadFolds(localStorage);
+  ui.panes = loadPanes(localStorage);
   const saved = forcedSeed || startDoy !== undefined ? null : loadGame();
   if (saved) {
     state = saved.state;
@@ -145,14 +162,7 @@ function boot() {
   }
 }
 
-/** Scrolls the map's horizontal box so the survivor's glyph sits centred, after a rebuild moves it. */
-function scrollMapToSurvivor() {
-  const wrap = document.querySelector<HTMLElement>("#mapdyn .scroll-x");
-  const you = wrap?.querySelector<HTMLElement>("[data-you]");
-  if (!wrap || !you) return;
-  wrap.scrollLeft = you.offsetLeft + you.offsetWidth / 2 - wrap.clientWidth / 2;
-}
-
+let lastTipKey = "";
 let lastMapKey = "";
 function render() {
   // Arriving where you were looking ends the looking.
@@ -160,31 +170,57 @@ function render() {
   const cal = calendar(state.minute, state.startDoy);
   const ambient = ambientTemperature(cal, state.weather);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
-  setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
+  setPanel("camp", campHtml(state, world, cal));
+  setPanel("maptravel", placesHtml(state, world, cal, ui.travelDisplay));
+  setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
+  setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("goals", goalsHtml(state, cal));
-  setPanel("clock", clockHtml(state, world, cal, ambient, ui.hurry.rate));
+  setPanel("weather", weatherHtml(state, world, cal, ambient, ui.hurry.rate));
   const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
     lastMapKey = key;
-    if (setPanel("mapdyn", mapHtml(world, state, ui, cal))) scrollMapToSurvivor();
+    setPanel("mapdyn", mapHtml(world, state, ui, cal));
   }
-  setPanel("region", regionHtml(state, world, cal, ui));
-  setPanel("task", taskHtml(state, world, cal));
+  setPanel("task", taskHtml(state, world, cal, ui.hurry));
+  setPanel("orders", queueHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
-  setPanel("dorows", doHtml(state, world, cal, ui, ui.folds));
-  setPanel("inventory", inventoryHtml(state, world, cal));
+  setPanel("panetabs", paneTabsHtml(ui.panes));
+  setPanel("dosubs", ui.filter.trim() ? "" : subtabsHtml(ui.panes));
+  // Shown and hidden, never rendered on demand: a pane built when it is
+  // asked for is a pane whose scroll position starts again every time.
+  for (const id of PANE_IDS) {
+    const el = document.getElementById(`pane-${id}`);
+    if (el) el.hidden = id !== ui.panes.pane;
+  }
+  // The tooltip is shown and hidden, never created and destroyed: a box
+  // rebuilt under the pointer flickers, and one detached under it never
+  // gets the leave that would have closed it. Its text is guarded by its
+  // own key so a pointer crossing one cell redraws it once.
+  const tip = document.getElementById("maptip")!;
+  tip.hidden = ui.hover === null;
+  if (ui.hover !== null) {
+    const tk = tipKey(state, world, ui.hover);
+    if (tk !== lastTipKey) {
+      lastTipKey = tk;
+      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay));
+    }
+  }
+  setPanel("dopurposes", doPurposesHtml(state, world, ui));
+  setPanel("doitems", doHtml(state, world, cal, ui));
+  setPanel("inventory", inventoryHtml(state, world, cal, ui.travelDisplay));
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world);
   updateFills(state);
   updateGoalBars(state, cal);
-  updateHurryBar(ui.hurry);
   updateSky(state, cal, ambient);
 
   // The settings panel is static markup with its own listeners (the slider must
   // not be redrawn mid-drag), so it is shown and hidden rather than rewritten.
   document.getElementById("settings")!.hidden = !ui.settings;
+  const travelSelect = document.querySelector<HTMLSelectElement>("[data-display=travel]");
+  if (travelSelect && travelSelect.value !== ui.travelDisplay) travelSelect.value = ui.travelDisplay;
 
   const overlay = document.getElementById("overlay")!;
   if (ui.manual) {
@@ -235,7 +271,7 @@ function frame(now: number) {
       awayInfo = { seconds: Math.min(dtSec, awaySeconds(state)), capped: dtSec > awaySeconds(state) };
     } else {
       // The hurry: extra minutes for work chosen by hand, on top of the frame's own. The speed test aid does not scale it.
-      const extra = hurryFrame(ui.hurry, hurryKind(state), state.intent?.orderId ?? null, dtSec);
+      const extra = advanceHurry(ui.hurry, state, world, dtSec);
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra, { wildlife: "detailed" });
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
@@ -262,6 +298,7 @@ function frame(now: number) {
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
   render();
+  updateSpeedHistory(document, ui.speedHistory, now, GAME_MINUTES_PER_REAL_SECOND * ui.hurry.rate);
   portraitMotion.frame(document, now, document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
   const cal = calendar(state.minute, state.startDoy);
   sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
@@ -307,7 +344,16 @@ function onClick(ev: Event) {
   switch (act) {
     case "task": {
       const id = target.dataset.id as TaskId;
-      if (id === "haul") {
+      if (id === "walk") {
+        const arg = target.dataset.arg ?? "";
+        const cell = arg.startsWith("cell:")
+          ? Number(arg.slice(5))
+          : regionAt(world, state.player.region).spots.find((spot) => `spot:${spot.id}` === arg)?.cell;
+        if (cell !== undefined && Number.isFinite(cell)) {
+          const walk = insertWalkAtTop(state, world, cell);
+          startIntent(state, world, cal, rng, walk.req, walk.id);
+        }
+      } else if (id === "haul") {
         // Carrying a pile home is work like any other, so it goes on the list
         // as the row the click makes it: without one, the body could take the
         // minute from it and nothing would bring it back.
@@ -324,6 +370,29 @@ function onClick(ev: Event) {
     case "stop":
       stopTask(state, world);
       break;
+    case "torch-out":
+      putOutTorch(state);
+      break;
+    case "pane":
+      ui.panes = { ...ui.panes, pane: target.dataset.pane as PaneId };
+      savePanes(localStorage, ui.panes);
+      break;
+    case "subtab":
+      ui.panes = toSubtab(ui.panes, target.dataset.subtab as SubtabId);
+      savePanes(localStorage, ui.panes);
+      break;
+    case "purpose":
+      ui.panes = { ...ui.panes, purpose: target.dataset.purpose as string };
+      savePanes(localStorage, ui.panes);
+      break;
+    case "specific": {
+      const kind = target.dataset.specific as keyof UiState["specific"];
+      if (kind === "trees" || kind === "fish" || kind === "regions") {
+        ui.specific[kind] = !ui.specific[kind];
+        localStorage.setItem(SPECIFIC_KEY, JSON.stringify(ui.specific));
+      }
+      break;
+    }
     case "zoom":
       zoomBy(target.dataset.dir === "in" ? -1 : 1);
       break;
@@ -411,6 +480,14 @@ function onClick(ev: Event) {
     case "settings-close":
       ui.settings = false;
       break;
+    case "reset-world":
+      if (!window.confirm("Reset all world data? This cannot be undone.")) break;
+      clearSave();
+      fresh();
+      ui.settings = false;
+      lastReal = performance.now();
+      render();
+      return;
     case "manual-open":
       ui.manual = true;
       break;
@@ -458,9 +535,10 @@ function onClick(ev: Event) {
     case "intent":
     case "camp-yes": {
       const id = target.dataset.id as TaskId;
-      // Binding a camp asks first: the row swaps to its question, and only the
-      // yes acts. Every other row acts on the click, as it always has.
-      if (id === "makeCamp" && act === "intent") {
+      // Moving a camp asks first: the row swaps to its question, and only the
+      // yes acts. A first siting moves nothing and leaves nothing, so it acts on
+      // the click, as every other row does.
+      if (id === "makeCamp" && act === "intent" && campCellOf(state, world) !== null) {
         ui.confirmCamp = true;
         break;
       }
@@ -509,19 +587,6 @@ function onClick(ev: Event) {
     case "row-deliver":
       ui.choice.deliver = ui.choice.deliver === "camp" ? "leave" : "camp";
       break;
-    case "fold": {
-      const group = target.dataset.group ?? "";
-      const open = !(ui.folds[group] ?? true);
-      ui.folds[group] = open;
-      saveFold(localStorage, group, open);
-      break;
-    }
-    case "more": {
-      const group = target.dataset.group ?? "";
-      if (ui.moreOpen.includes(group)) ui.moreOpen = ui.moreOpen.filter((g) => g !== group);
-      else ui.moreOpen.push(group);
-      break;
-    }
     case "hurry":
       hurryClick(ui.hurry, hurryKind(state), state.intent?.orderId ?? null);
       break;
@@ -588,7 +653,7 @@ document.addEventListener("keydown", () => audio.unlock(), { capture: true });
 // The build's own name, written once: it cannot change while the page is open.
 setPanel("build", buildHtml());
 mountControl(document.getElementById("sound")!, audio);
-awayDial = mountAwayDial(document.getElementById("away")!, () => state.awayHours, (h) => { state.awayHours = h; requestForecast(); });
+awayDial = mountAwayDial(document.getElementById("forecastbox")!, () => state.awayHours, (h) => { state.awayHours = h; requestForecast(); });
 mountBeaconPanel(document.getElementById("beacon")!, beacon, beaconConfigured, () => state, (on) => {
   if (on && beaconConfigured && !sinkMade) {
     sink = makeSink();
@@ -643,6 +708,16 @@ document.addEventListener("input", (ev) => {
 });
 document.addEventListener("change", (ev) => {
   const el = ev.target as HTMLInputElement;
+  if (el.matches("[data-display=travel]")) {
+    const value = el.value;
+    if (value === "distance" || value === "time" || value === "both") {
+      ui.travelDisplay = value;
+      saveTravelDisplay(value, localStorage);
+      lastTipKey = "";
+      render();
+    }
+    return;
+  }
   if (el.matches("[data-act=row-where]")) {
     ui.choice.where = el.value as RowChoice["where"];
     render();
@@ -667,6 +742,96 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pagehide", () => saveGame(state));
 // The terrain letters never change, so the legend is set once rather than rebuilt with the map.
 document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
+
+// The map's tooltip. pointermove covers mouse, pen and a touch drag with one
+// listener; a tap fires it too, which is what gives a touch device the
+// tooltip at all. The cell is read from the pointer's position rather than
+// from any glyph, so nothing on the board has to carry state that could go
+// stale under it.
+{
+  const board = document.getElementById("mapdyn")!;
+  let pointerType = "mouse";
+  let touchCell: number | null = null;
+  let targetGlyph: HTMLElement | null = null;
+  const clearTarget = () => {
+    targetGlyph?.classList.remove("target");
+    targetGlyph = null;
+  };
+  const showTarget = (cell: number) => {
+    clearTarget();
+    const l = levelAt(ui.zoom);
+    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+    const x = cell % world.w;
+    const y = Math.floor(cell / world.w);
+    const gx = Math.floor((x - x0) / l.cells);
+    const gy = Math.floor((y - y0) / l.cells);
+    if (gx < 0 || gy < 0 || gx >= l.w || gy >= l.h) return;
+    const glyph = document.querySelector<HTMLElement>("#mapdyn .grid")?.children.item(gy * l.w + gx);
+    if (!(glyph instanceof HTMLElement) || !glyph.classList.contains("c")) return;
+    glyph.classList.add("target");
+    targetGlyph = glyph;
+  };
+  const cellUnder = (ev: { clientX: number; clientY: number }): number | null => {
+    const grid = board.querySelector<HTMLElement>(".grid");
+    return grid ? cellFromClient(world, state, ui, ev.clientX, ev.clientY, grid.getBoundingClientRect()) : null;
+  };
+  board.addEventListener("pointermove", (ev) => {
+    ui.hover = cellUnder(ev);
+  });
+  board.addEventListener("pointerdown", (ev) => {
+    pointerType = ev.pointerType;
+  });
+  board.addEventListener("click", (ev) => {
+    // Touch keeps its first tap for inspecting the cell. A mouse click on
+    // known ground in this region is an explicit destination in its own
+    // right, whether or not generation happened to name that cell a place.
+    const cell = cellUnder(ev);
+    if (cell === null || cell === cellOf(state, world)) return;
+    if (pointerType === "touch" && touchCell !== cell) {
+      touchCell = cell;
+      ui.hover = cell;
+      render();
+      return;
+    }
+    const cal = calendar(state.minute, state.startDoy);
+    const frontier = !isKnown(state, cell)
+      ? frontierRoute(state, world, cellOf(state, world), cell, "none")
+      : null;
+    if (!isKnown(state, cell) && !frontier) return;
+    ev.stopPropagation();
+    const rng = new Rng(state.rng);
+    const walk = insertWalkAtTop(state, world, cell);
+    startIntent(state, world, cal, rng, walk.req, walk.id);
+    state.rng = rng.s;
+    saveGame(state);
+    render();
+  });
+  board.addEventListener("pointerleave", (ev) => {
+    if (ev.pointerType !== "touch") ui.hover = null;
+  });
+
+  // A row that names somewhere to go points at it while the pointer is on
+  // it: the map marks the cell and the box reads it out, which is the whole
+  // of "where would this take me" without a click or a guess.
+  const map = document.getElementById("map")!;
+  map.addEventListener("pointerover", (ev) => {
+    const row = (ev.target as HTMLElement | null)?.closest?.("[data-at]") as HTMLElement | null;
+    if (!row) return;
+    const cell = Number(row.dataset.at);
+    if (Number.isFinite(cell)) {
+      ui.hover = cell;
+      showTarget(cell);
+    }
+  });
+  map.addEventListener("pointerout", (ev) => {
+    const from = (ev.target as HTMLElement | null)?.closest?.("[data-at]");
+    const to = (ev.relatedTarget as HTMLElement | null)?.closest?.("[data-at]");
+    if (from && !to && ev.pointerType !== "touch") {
+      ui.hover = null;
+      clearTarget();
+    }
+  });
+}
 mountMapInspection(document.getElementById("mapdyn")!);
 render();
 portraitMotion.frame(document, performance.now(), document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);

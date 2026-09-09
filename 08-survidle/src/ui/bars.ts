@@ -12,14 +12,21 @@ import { WATER_FULL } from "../sim/water";
 import { ambientTemperature } from "../sim/weather";
 import { fmtDuration, fmtReal } from "../units";
 import type { World } from "../world/gen";
-import { type HurryState, pulseLeft } from "./hurry";
 
+/**
+ * The named bar, wherever it is drawn.
+ *
+ * By name and not by id: the same reading can stand on two surfaces at once
+ * - the work's own bar sits in the strip under the map and on its row in the
+ * queue - and two elements sharing one id left this writing to whichever it
+ * happened to find first.
+ */
 function setBar(id: string, frac: number, text?: string, root: ParentNode = document): void {
-  const fill = root.querySelector<HTMLElement>(`#bar-${id}`);
-  if (fill) fill.style.width = `${Math.max(0, Math.min(100, frac * 100)).toFixed(1)}%`;
-  if (text !== undefined) {
-    const val = root.querySelector<HTMLElement>(`#val-${id}`);
-    if (val && val.textContent !== text) val.textContent = text;
+  const width = `${Math.max(0, Math.min(100, frac * 100)).toFixed(1)}%`;
+  for (const fill of root.querySelectorAll<HTMLElement>(`[data-bar="${id}"]`)) fill.style.width = width;
+  if (text === undefined) return;
+  for (const val of root.querySelectorAll<HTMLElement>(`[data-val="${id}"]`)) {
+    if (val.textContent !== text) val.textContent = text;
   }
 }
 
@@ -45,7 +52,7 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   setBar("kcal", p.kcal / KCAL_FULL, `${Math.round(p.kcal)} kcal`, root);
   // Under the meal line the bar reads as harm: the meal was due and did not
   // happen, and the fat bar under it is what is paying for the difference.
-  const kcalBar = root.querySelector<HTMLElement>("#bar-kcal")?.parentElement;
+  const kcalBar = root.querySelector<HTMLElement>('[data-bar="kcal"]')?.parentElement;
   const line = hungerLine(state);
   kcalBar?.classList.toggle("low", p.kcal < line);
   // The mark itself moves with the same line - a lean reserve eats sooner,
@@ -64,7 +71,10 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   const fatUpper = fatLandmarks(personOf(state)).upper;
   setBar("fat", p.fat / fatUpper, `${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg`, root);
   setBar("warmth", p.warmth / 100, `${Math.round(p.warmth)}`, root);
-  setBar("energy", p.energy / 100, `${Math.round(p.energy)}`, root);
+  // Never round upward across a decision line. In particular, a collapsed
+  // body at 99.9 is still recovering, so the bar must not claim 100 while
+  // the queue truthfully refuses work.
+  setBar("energy", p.energy / 100, `${Math.floor(p.energy + 1e-9)}`, root);
   setBar("wet", p.wetness / 100, `${Math.round(p.wetness)}`, root);
   setBar("water", p.water / WATER_FULL, `${p.water.toFixed(1)} l`, root);
 
@@ -87,15 +97,16 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   if (t) {
     const frac = Math.min(1, t.progress / t.duration);
     const left = Math.max(0, t.duration - t.progress);
+    // The time in the step, and nothing else. The bar used to name the step
+    // as well, because "12 min left" beside nothing was read as the whole
+    // order's - but the row it sits in names the step now, an inch to its
+    // left, so saying it twice only made the row too long to read.
     setBar("task", frac, `${fmtDuration(left)} left (${fmtReal(left)})`, root);
-    const pct = root.querySelector<HTMLElement>("#task-pct");
-    if (pct) pct.textContent = `${Math.floor(frac * 100)}%`;
+    const share = `${Math.floor(frac * 100)}%`;
+    for (const pct of root.querySelectorAll<HTMLElement>('[data-pct="task"]')) {
+      if (pct.textContent !== share) pct.textContent = share;
+    }
   }
-}
-
-/** Every frame: the pulse's bar on the live row, so the list's markup does not churn while it drains. */
-export function updateHurryBar(h: HurryState, root: ParentNode = document): void {
-  setBar("hurry", pulseLeft(h), undefined, root);
 }
 
 /**

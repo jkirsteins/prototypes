@@ -129,7 +129,7 @@ export type TaskId =
   | "hunt" | "findDen" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
-  | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome";
+  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
@@ -137,7 +137,7 @@ export const TASK_IDS: TaskId[] = [
   "hunt", "findDen", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
-  "travel", "walk", "haul", "night", "wait", "rest", "sleep", "makeCamp", "explore", "searchHome",
+  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome",
 ];
 
 export interface Task {
@@ -159,6 +159,14 @@ export interface Task {
   visited?: number[];
   /** The cell a searchHome sweep is trying to reach: fixed at the start, since the sweep's own region drifts as it crosses one to sight another. */
   home?: number;
+  /** The real sub-action currently owned by a region survey. */
+  surveyPhase?: "walk" | "read";
+  /** Connected water systems this survey has completed or found temporarily unreadable. */
+  surveyedWater?: number[];
+  /** Canonical water-system cell and representative shore for the active read. */
+  surveyWater?: number;
+  surveyShore?: number;
+  surveyProgress?: number;
 }
 
 /**
@@ -256,12 +264,9 @@ export type OrderKind = "keep" | "grind" | "job" | "body" | "camp";
 /** What an order may say: its kind, and past the keep, the conditions and the pace it may carry. Neither care kind is ever given, so neither is a rung to earn. */
 export type Rung = Exclude<OrderKind, "body" | "camp"> | "condition" | "pace";
 
-export interface Order {
+interface OrderBase {
   /** Stable within the run; the live intent names its order by it. */
   id: number;
-  kind: OrderKind;
-  /** The click, as the row's chosen kind made it. Cells are resolved afresh at every start. */
-  req: IntentRequest;
   /** Completions of the work and minutes spent in it, for the list and the away report. */
   done: number;
   minutes: number;
@@ -282,6 +287,22 @@ export interface Order {
   dayBase?: number;
   /** The player has said this row holds the list until it is met. */
   pinned?: boolean;
+}
+
+export interface WorkOrder extends OrderBase {
+  kind: Exclude<OrderKind, "body" | "camp">;
+  /** The click, as the row's chosen kind made it. Cells are resolved afresh at every start. */
+  req: IntentRequest;
+}
+
+export type CareOrder =
+  | (OrderBase & { kind: "body" })
+  | (OrderBase & { kind: "camp" });
+
+export type Order = WorkOrder | CareOrder;
+
+export function isWorkOrder(o: Order): o is WorkOrder {
+  return o.kind !== "body" && o.kind !== "camp";
 }
 
 /**
@@ -318,21 +339,26 @@ export type CareNeed = BodyNeed | CampNeed;
  * and starts one ordinary task at a time; nothing else is planned ahead.
  */
 interface IntentBase {
+  /** What the activity strip says this intent is doing now. */
+  step: string;
+  /** The order this intent serves, or null for work started by hand. */
+  orderId: number | null;
+}
+
+interface WorkIntentBase extends IntentBase {
+  /** Region whose queue owns orderId. Stable while a cross-region route changes player.region. */
+  orderRegion?: number;
   /** The work underneath, in the terms startTask speaks. */
   task: TaskId;
   arg?: string;
   /** The cell the work is done in, resolved once when the intent starts. */
   cell: number;
-  /** The home camp: where "bring it to camp" delivers. Fixed at start. */
-  campCell: number;
+  /** The home camp: where "bring it to camp" delivers. Fixed at start, and null when the region has no camp. */
+  campCell: number | null;
   until: Until;
   deliver: "leave" | "camp";
   /** Completions of the work so far. */
   done: number;
-  /** What the runner is doing right now, for the Doing panel. */
-  step: string;
-  /** The order this intent serves, or null for one started by hand. */
-  orderId: number | null;
   /** The scheduler has chosen another order: deliver what is owed, then end. */
   windDown: boolean;
 }
@@ -347,13 +373,13 @@ interface IntentBase {
  * care rows, and not this tag: the tag says whose the work is, and the
  * collapse floor in `runIntent` reads it.
  */
-export interface HandIntent extends IntentBase {
+export interface HandIntent extends WorkIntentBase {
   mode: "hand";
 }
 
 /**
- * The runner's own: a standing or counted order, the wait at camp, and the
- * night out (whose whole content is the body's sleep). A care row outranks
+ * The runner's own: a standing or counted order, and the night out (whose
+ * whole content is the body's sleep). A care row outranks
  * it wherever the player has left that row above the work - the body's
  * sleep, storm, cold, thirst, hunger, spent and home, the camp's fire and
  * snares.
@@ -361,28 +387,51 @@ export interface HandIntent extends IntentBase {
  * player rather than here: this intent comes and goes with every order the
  * scheduler swaps in, and a need's stickiness has to outlast that.
  */
-export interface RunnerIntent extends IntentBase {
+export interface RunnerIntent extends WorkIntentBase {
   mode: "runner";
   /** Warmth when the current rest step began, so its gain can be judged when it completes. Unset outside a rest step. */
   restFromWarmth?: number;
 }
 
-export type Intent = HandIntent | RunnerIntent;
+/** A concrete need being served by one of the two permanent care rows. */
+export interface CareIntent extends IntentBase {
+  mode: "care";
+  /** Care is a need, never a disguised work task. */
+  task?: never;
+  care: "body" | "camp";
+  need: CareNeed;
+  orderId: number;
+  /** Work-only fields are absent, but named so readers of an Intent can inspect them safely. */
+  cell?: undefined;
+  campCell?: undefined;
+  until?: undefined;
+  deliver?: undefined;
+  done?: undefined;
+  windDown?: undefined;
+  /** Warmth when a rest step began, so its gain can be judged on completion. */
+  restFromWarmth?: number;
+}
+
+export type WorkIntent = HandIntent | RunnerIntent;
+export type Intent = WorkIntent | CareIntent;
+
+export function isWorkIntent(it: Intent | null | undefined): it is WorkIntent {
+  return !!it && it.mode !== "care";
+}
 
 /** Where a seep's water comes from: saturated peat, or damp ground. */
 export type SeepClass = "bog" | "damp";
 /** A seep dug on a cell: its ground, the liquid and frozen litres in it (at most the pool between them), and the minute it was last dug. */
 export interface Seep { class: SeepClass; litres: number; ice: number; dug: number }
 
-export interface RegionState {
-  /** Standing trees worth felling. */
-  wood: number;
-  /** Animals by species, only for species with capacity here. */
-  pop: Partial<Record<Species, number>>;
-  /** The cell the camp, fire and shelter stand on. */
-  campCell: number;
-  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean; snowShelter: boolean };
-  /** Drying racks standing at the camp, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
+/**
+ * What stands on one cell. A site comes into being when something is built
+ * there and outlives the camp moving away, so a lean-to left behind still
+ * keeps the rain off whoever sleeps under it.
+ */
+export interface Site {
+  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean; snowShelter: boolean };
+  /** Drying racks standing here, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
   racks: number;
   /** Minutes since the bough bed was laid; boughs go flat and brown after four days. */
   boughBedAge: number;
@@ -392,6 +441,19 @@ export interface RegionState {
   structureAge: Partial<Record<DecayingId, number>>;
   /** Build progress in minutes, per structure, kept between visits. */
   build: Partial<Record<StructureId, number>>;
+}
+
+export interface RegionState {
+  /** Standing trees worth felling. */
+  wood: number;
+  /** Animals by species, only for species with capacity here. */
+  pop: Partial<Record<Species, number>>;
+  /** The cell that is home: where the fire burns, the rack dries and the runner walks back to. Null until somebody makes camp here. */
+  campCell: number | null;
+  /** What stands on each built cell of this region, keyed by cell. */
+  sites: Record<number, Site>;
+  /** Snares set on this region's heath. They stand away from any camp, so they are the region's, not a site's. */
+  snares: number;
   fire: {
     lit: boolean; fuelKg: number; wetKg: number; indoors: boolean; unattended: number;
     /** Minutes of ember life left once the flame is gone. Embers are not lit. */
@@ -445,7 +507,7 @@ export interface Player {
    * sleep need first fires and cleared only when the model ends the sleep, so
    * a night broken to feed the fire or by an order changing under the sleeper
    * is resumed rather than abandoned. `collapsed` marks a sleep begun on the
-   * fatigue line, which holds until fatigue is back at RESTED_AT.
+   * fatigue line, which holds until fatigue is full again.
    */
   sleeping: { collapsed: boolean } | null;
   /** The body need being served, or null. Sticky: a need's exit line is not its entry line. */
@@ -458,7 +520,7 @@ export interface Player {
   injured: number;
   clothing: Garment[];
   tools: Tool[];
-  /** A torch in hand: lit, and the minutes of burn left. */
+  /** A torch in hand: lit or put out, and the minutes of burn left. Zero means none equipped. */
   torch: { lit: boolean; minutes: number };
   pack: Inventory;
   /** Litres of water in the body, 0..3. */
@@ -601,7 +663,7 @@ export interface SkillState {
 }
 
 export type GoalId =
-  | "firewood" | "fire" | "cook" | "keptNight" | "bed" | "keptDays" | "roof" | "keptRain"
+  | "site" | "firewood" | "fire" | "cook" | "keptNight" | "bed" | "keptDays" | "roof" | "keptRain"
   | "water" | "snare" | "store" | "spring" | "summer" | "autumn" | "winter";
 
 export interface GoalState {

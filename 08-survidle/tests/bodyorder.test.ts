@@ -11,6 +11,7 @@ import { bodyRowOf, campRowOf, isBodyRow, isCampRow, judgeBodyRow, judgeCampRow,
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
+import { siteCamp } from "./siting-helpers";
 import { Rng } from "../src/rng";
 import { hurryKind } from "../src/ui/hurry";
 import { deserialize, serialize } from "../src/sim/save";
@@ -18,6 +19,16 @@ import { deserialize, serialize } from "../src/sim/save";
 const cal = calendar(0);
 
 describe("the body row", () => {
+  it("does not bypass queue priority with a hidden idle sleep", () => {
+    const { state, world } = newGame(3);
+    state.player.energy = 5;
+    const blocked = addOrder(state, world, { task: "split", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job", "top");
+    blocked.pinned = true;
+    advance(state, world, 1);
+    expect(state.task).toBeNull();
+    expect(state.intent).toBeNull();
+  });
+
   it("a new region's list is the two care rows and nothing else, the camp above the body", () => {
     const { state, world } = newGame(3);
     const list = ordersHere(state, world);
@@ -100,14 +111,15 @@ describe("the body row", () => {
   it("a dry read never feeds the fire: judging a storm at camp leaves the woodpile and the fire's own fuel untouched", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
     st.fire.lit = true;
     st.fire.fuelKg = 1;
-    addItem(pile(state, st.campCell), "firewood", 5);
+    addItem(pile(state, st.campCell!), "firewood", 5);
     state.weather.storm = { from: state.minute, until: state.minute + 200, warned: true };
     for (let i = 0; i < 20; i++) judgeBodyRow(state, world, cal, new Rng(1));
     expect(st.fire.fuelKg).toBe(1);
-    expect(qty(pile(state, st.campCell), "firewood")).toBe(5);
+    expect(qty(pile(state, st.campCell!), "firewood")).toBe(5);
   });
 
   it("a dry read never lays the body down: the sleep latch is the serving read's to move", () => {
@@ -141,24 +153,26 @@ describe("the body row", () => {
   it("a dry read of the camp row never feeds the fire: judging a fire at the low mark leaves the woodpile and the fire's own fuel untouched", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
     st.fire.lit = true;
     st.fire.fuelKg = FIRE_LOW_KG;
-    addItem(pile(state, st.campCell), "firewood", 5);
+    addItem(pile(state, st.campCell!), "firewood", 5);
     expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("ready");
     for (let i = 0; i < 20; i++) judgeCampRow(state, world, cal, new Rng(1));
     expect(st.fire.fuelKg).toBe(FIRE_LOW_KG);
-    expect(qty(pile(state, st.campCell), "firewood")).toBe(5);
+    expect(qty(pile(state, st.campCell!), "firewood")).toBe(5);
   });
 
   it("the camp row reads met with nothing to keep, and goes back to met once the wood is on", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
     expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("met");
     st.fire.lit = true;
     st.fire.fuelKg = FIRE_LOW_KG;
-    addItem(pile(state, st.campCell), "firewood", 5);
+    addItem(pile(state, st.campCell!), "firewood", 5);
     expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("ready");
     // The wet read is what actually puts the wood on, and the row has
     // nothing left to ask for after it.
@@ -198,6 +212,22 @@ describe("the body row takes its turn by rank", () => {
     state.player.energy = SPENT_AT - 1;
     advance(state, world, 5);
     expect(state.intent?.orderId).toBe(grind.id);
+  });
+
+  it("absolute exhaustion releases runner work regardless of rank", () => {
+    const { state, world } = newGame(3);
+    const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    ordersHere(state, world).reverse();
+    state.player.energy = SLEEP_AT + 1;
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(grind.id);
+
+    state.player.energy = SLEEP_AT;
+    advance(state, world, 1);
+
+    expect(state.player.sleeping).toEqual({ collapsed: true });
+    expect(state.intent?.orderId).not.toBe(grind.id);
+    expect(state.task?.id).not.toBe("sticks");
   });
 
   it("under the work, the body's memory is still kept current: a want that ends is seen to end, and the hurry is not left answering for it", () => {
@@ -285,25 +315,22 @@ describe("work with no row behind it", () => {
     expect(state.log.some((e) => e.text === `${said}: set aside, {you} {are} thirsty.`)).toBe(true);
   });
 
-  it("says nothing about the wait at camp, which is not work anybody asked for", () => {
+  it("leaves the survivor idle until the body has a concrete need", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
-    // A keep camp already meets: the list has a row on it and nothing to do
-    // about it, which is what puts the survivor on the scheduler's own wait.
-    addItem(pile(state, st.campCell), "firewood", 60);
+    // A keep already meets, so the scheduler has no work to start.
+    addItem(pile(state, st.campCell!), "firewood", 60);
     addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
-    let waiting = false;
-    for (let m = 0; m < 200 && !waiting; m++) {
-      advance(state, world, 1);
-      waiting = state.intent?.task === "wait" && state.intent.orderId === null;
-    }
-    expect(waiting).toBe(true);
-    // The body takes that minute off the wait: sleep at camp is a step of its
-    // own, so the row claims the intent rather than resting on under it.
+    advance(state, world, 10);
+    expect(state.intent).toBeNull();
+    expect(state.task).toBeNull();
+    // A real sleep need creates a care intent and a sleep task.
     state.player.sleepDebt = 1000;
     advance(state, world, 2);
     expect(state.task?.id).toBe("sleep");
+    expect(state.intent?.mode).toBe("care");
     expect(state.intent?.orderId).toBe(bodyRowOf(state, world)!.id);
     expect(state.log.some((e) => e.text.includes("set aside,"))).toBe(false);
   });

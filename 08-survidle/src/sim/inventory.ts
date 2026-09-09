@@ -48,6 +48,7 @@ export function weight(inv: Inventory): number {
 /** Weight of everything the player carries: pack, tools and worn clothing. */
 export function carried(p: Player): number {
   let kg = weight(p.pack);
+  if (p.torch.minutes > 0) kg += ITEM_KG.torch;
   for (const t of p.tools) kg += TOOLS[t.id].kg + (t.litres ?? 0);
   for (const g of p.clothing) kg += CLOTHING[g.id].kg;
   return kg;
@@ -115,6 +116,16 @@ export function pile(state: GameState, cell: number): Inventory {
   return inv;
 }
 
+/**
+ * What lies on a cell, read without raising a pile there - and nothing at all
+ * for a cell that is null, which is how a region with no camp reads its camp
+ * pile. The inventory handed back is a fresh empty one when there is no pile,
+ * so nothing may be added through this call; use pile() to put something down.
+ */
+export function pileAt(state: GameState, cell: number | null): Inventory {
+  return (cell === null ? undefined : state.piles[cell]) ?? emptyInventory();
+}
+
 /** The pile under the player's feet. */
 export function herePile(state: GameState, world: World): Inventory {
   return pile(state, cellOf(state, world));
@@ -159,6 +170,24 @@ export function resolveNeed(invs: Inventory[], need: Need): ItemId | null {
 
 export function canConsume(invs: Inventory[], needs: Need[]): boolean {
   return needs.every((n) => resolveNeed(invs, n) !== null);
+}
+
+/**
+ * The needs these inventories cannot meet, and how much each is short by.
+ *
+ * A row that said "missing materials" beside a recipe list reading "2
+ * stone, 4 sticks" was read as "missing 2 stone" by a tester holding four
+ * of them: the list is what the thing costs, and nothing said what was
+ * actually wanting. This says it.
+ */
+export function shortOf(invs: Inventory[], needs: Need[]): { item: ItemId; qty: number }[] {
+  const out: { item: ItemId; qty: number }[] = [];
+  for (const n of needs) {
+    if (resolveNeed(invs, n) !== null) continue;
+    const have = totalQty(invs, n.item) + (n.alt ? totalQty(invs, n.alt) : 0);
+    out.push({ item: n.item, qty: Math.max(0, n.qty - have) });
+  }
+  return out;
 }
 
 /** Takes the needs out of the inventories, pack first. Caller checks canConsume. */

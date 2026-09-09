@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
+import { siteCamp } from "./siting-helpers";
 import type { GameState, TaskId } from "../src/sim/types";
 import { liveFaceHtml, livePortraitState } from "../src/ui/portrait";
 
@@ -49,6 +50,7 @@ describe("the live portrait state", () => {
 
   it("lights only at a lit camp or with a lit torch", () => {
     const { state, world } = newGame(29);
+    siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const camp = regionState(state, world, state.player.region);
     camp.fire.lit = true;

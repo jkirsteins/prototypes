@@ -18,6 +18,12 @@ import { addItem, pile, qty } from "../src/sim/inventory";
 import { beginTask, check } from "../src/sim/tasks";
 import { placeAt } from "../src/sim/position";
 import { dailyAnimals } from "../src/sim/animals";
+import { siteCamp } from "./siting-helpers";
+
+function campCell(st: { campCell: number | null }): number {
+  if (st.campCell === null) throw new Error("test needs a camp");
+  return st.campCell;
+}
 
 describe("large animal agents", () => {
   it("keeps every modeled species' social and life-history rules in the catalogue", () => {
@@ -131,11 +137,12 @@ describe("large animal agents", () => {
 
   it.each(["campfire", "torch"] as const)("makes wolves steer around a lit %s without despawning", (light) => {
     const { state, world } = newGame(79);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     st.pop.wolf = Math.max(4, st.pop.wolf ?? 0);
     activateWildlife(state, world, new Rng(1));
     const wolf = state.wildlife.subjects.find((s) => s.species === "wolf")!;
-    const center = light === "campfire" ? st.campCell : cellOf(state, world);
+    const center = light === "campfire" ? campCell(st) : cellOf(state, world);
     const distance = (cell: number) => Math.abs((cell % world.w) - (center % world.w)) + Math.abs(Math.floor(cell / world.w) - Math.floor(center / world.w));
     const source = regionAt(world, state.player.region).cells.find((cell) => passable(cellAt(world, cell).terrain) && distance(cell) === 3 && neighbours(world, cell).some((n) => passable(cellAt(world, n).terrain) && cellAt(world, n).region === state.player.region && distance(n) === 2));
     expect(source).toBeDefined();
@@ -212,6 +219,7 @@ describe("large animal agents", () => {
   it("will not attack from the survivor's cell through fire or a carried torch", () => {
     for (const light of ["fire", "torch"] as const) {
       const { state, world } = newGame(79);
+      siteCamp(state, world);
       const st = regionState(state, world, state.player.region);
       st.pop.wolf = 4;
       activateWildlife(state, world, new Rng(1));
@@ -302,29 +310,32 @@ describe("large animal agents", () => {
 
   it("lets a hungry solitary predator take exposed camp meat unless fire deters it", () => {
     const { state, world } = newGame(79);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     st.pop.bear = 1;
     activateWildlife(state, world, new Rng(1));
     const bear = state.wildlife.subjects.find((s) => s.species === "bear")!;
-    bear.active!.cell = st.campCell;
+    const camp = campCell(st);
+    bear.active!.cell = camp;
     bear.active!.hunger = 100;
-    addItem(pile(state, st.campCell), "rawMeat", 3);
+    addItem(pile(state, camp), "rawMeat", 3);
     state.minute = 10;
 
     stepWildlife(state, world, calendar(state.minute, state.startDoy), new Rng(3), 10, "detailed");
-    expect(qty(pile(state, st.campCell), "rawMeat")).toBeLessThan(3);
+    expect(qty(pile(state, camp), "rawMeat")).toBeLessThan(3);
     expect(state.log.some((e) => e.text.includes("brown bear") && e.text.includes("meat"))).toBe(true);
   });
 
   it("does not turn fire into an absolute bear-proof bubble", () => {
     const { state, world } = newGame(79);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     st.pop.bear = 1;
     st.fire.lit = true;
     st.rack.kg = 3;
     activateWildlife(state, world, new Rng(1));
     const bear = state.wildlife.subjects.find((s) => s.species === "bear")!;
-    bear.active!.cell = st.campCell;
+    bear.active!.cell = campCell(st);
     bear.active!.hunger = 100;
     state.minute = 10;
 
@@ -347,8 +358,9 @@ describe("large animal agents", () => {
 
   it("does not draw aggregate theft randomness for an empty camp", () => {
     const { state, world } = newGame(79);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    delete state.piles[st.campCell];
+    delete state.piles[campCell(st)];
     st.rack.kg = 0;
     const before = new Rng(9123);
     const actual = new Rng(9123);

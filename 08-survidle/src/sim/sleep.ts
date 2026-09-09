@@ -65,6 +65,18 @@ export const SPENT_AT = 30;
 export const RESTED_AT = 55;
 
 /**
+ * A collapse is not an ordinary evening rest. It holds until the reserve is
+ * full, so queued work cannot repeatedly wake the survivor at the evening
+ * line, spend the same small reserve, and put them straight back to sleep.
+ */
+export const COLLAPSE_RECOVERED_AT = 100;
+
+/** The single hold condition for a collapse, shared by need and work gates. */
+export function collapseRecoveryPending(energy: number, sleeping: { collapsed: boolean } | null): boolean {
+  return sleeping?.collapsed === true && energy < COLLAPSE_RECOVERED_AT;
+}
+
+/**
  * Sleepiness at which the body reads as visibly sleepy: ten points under the
  * onset line, so a player gets the yawn before the body lies down and has a
  * chance to do something about the evening.

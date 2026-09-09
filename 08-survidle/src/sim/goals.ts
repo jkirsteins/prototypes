@@ -56,6 +56,7 @@ const FIREWOOD_KG = 10;
 export const KEPT_DAYS = 3;
 
 export const GOALS: GoalDef[] = [
+  { id: "site", title: "Choose where to live", target: 1, credit: task("makeCamp") },
   { id: "firewood", title: `Gather ${FIREWOOD_KG} kg of firewood`, target: FIREWOOD_KG, unit: "kg", credit: firewoodKg },
   { id: "fire", title: "Light a fire", target: 1, credit: (d) => (d.kind === "lit" ? 1 : 0) },
   { id: "cook", title: "Cook something over it", target: 1, credit: task("cook") },

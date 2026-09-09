@@ -1,36 +1,26 @@
 import { itemLabel } from "../sim/actions";
-import { type Calendar, monthName, monthStartDoy } from "../sim/calendar";
+import { calendar, type Calendar, monthName, monthStartDoy } from "../sim/calendar";
 import { capabilityFor } from "../sim/capabilities";
 import { groundOf, intentOption, yieldItem } from "../sim/intent";
 import { DECAYING, ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
-import { levelMinutes, RUNG_LEVEL, skillLevel } from "../sim/skills";
+import { RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand } from "../sim/species";
 import { plain } from "../sim/voice";
-import { type TaskOption, withProgression } from "../sim/tasks";
+import { check, leftBehind, type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
-import { fmtDuration, fmtKm, fmtReal } from "../units";
+import { fmtDuration, fmtReal } from "../units";
 import { regionState } from "../sim/regionstate";
+import { walkableIce } from "../sim/weather";
 import { regionAt, type RegionDef, type World } from "../world/gen";
-import { instantHtml, masteryLine } from "./panels";
+import { masteryLine } from "./panels";
+import { purposesHtml } from "./panes";
+import { PURPOSES, purposeOf, subtabOf } from "./purpose";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
+import { formatTravel } from "./travel";
 
-/** The Do panel's fold state, under one local storage key: which groups are shut. Absent means open. */
-export const FOLD_KEY = "survidle.ui";
-
-export function loadFolds(storage: Storage): Record<string, boolean> {
-  try {
-    const parsed: unknown = JSON.parse(storage.getItem(FOLD_KEY) ?? "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
-}
-
-export function saveFold(storage: Storage, group: string, open: boolean): void {
-  storage.setItem(FOLD_KEY, JSON.stringify({ ...loadFolds(storage), [group]: open }));
-}
+const TREE_TERRAINS = ["spruce", "pine", "birch"] as const;
 
 /**
  * The concepts a row serves, and the words it answers to that it never says
@@ -198,22 +188,6 @@ export function rankRows<T extends FilterableRow>(rows: T[], text: string): { di
   return { direct: found.filter((r) => matchTier(r, words) < 2), related: found.filter((r) => matchTier(r, words) === 2) };
 }
 
-/**
- * Rows that cannot start now and whose skill sits more than a level under
- * the row's recommended rung: tucked behind "more" so the panel opens on
- * what a fresh survivor can actually reach for. A row with no
- * recommendation, or one within a level of it, is never far, whatever `ok`
- * says. `withProgression` already carries the gap on `recommended.short`.
- */
-export function splitFar(rows: TaskOption[], _state: GameState): { near: TaskOption[]; far: TaskOption[] } {
-  const near: TaskOption[] = [];
-  const far: TaskOption[] = [];
-  for (const o of rows) {
-    (!o.ok && (o.recommended?.short ?? 0) > 1 ? far : near).push(o);
-  }
-  return { near, far };
-}
-
 /** Startable rows first; everything else keeps its order behind them. */
 export function makeFirst<T extends { ok: boolean }>(rows: T[]): T[] {
   return [...rows.filter((r) => r.ok), ...rows.filter((r) => !r.ok)];
@@ -226,7 +200,11 @@ export function makeFirst<T extends { ok: boolean }>(rows: T[]): T[] {
  */
 export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId; arg?: string }[] }[] {
   return [
-    { label: "Gather", items: [{ id: "chop" }, { id: "deadwood" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }, { id: "eggs" }, { id: "innerBark" }, { id: "roots" }, { id: "tapSap" }, { id: "seaweed" }] },
+    { label: "Gather", items: [
+      { id: "chop" },
+      ...TREE_TERRAINS.filter((terrain) => r.frac[terrain] > 0).map((terrain) => ({ id: "chop" as TaskId, arg: terrain })),
+      { id: "deadwood" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }, { id: "eggs" }, { id: "innerBark" }, { id: "roots" }, { id: "tapSap" }, { id: "seaweed" },
+    ] },
     { label: "Hunt", items: [
       { id: "hunt" as TaskId, arg: "any" },
       ...huntedLand().filter((s) => r.capacity[s]).map((s) => ({ id: "hunt" as TaskId, arg: s })),
@@ -234,6 +212,11 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
       { id: "fish" as TaskId, arg: "any" },
       ...fishSpecies().filter((s) => r.capacity[s]).map((s) => ({ id: "fish" as TaskId, arg: s })),
       { id: "read" as TaskId }, { id: "setTrap" as TaskId }, { id: "emptyTrap" as TaskId },
+    ] },
+    { label: "Explore", items: [
+      { id: "explore" as TaskId, arg: `region:${r.id}` },
+      ...r.neighbours.map((n) => ({ id: "explore" as TaskId, arg: `region:${n.id}` })),
+      { id: "searchHome" as TaskId },
     ] },
     { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "splitWedges" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "cook", arg: "oilyFish" }, { id: "cook", arg: "rawFat" }, { id: "cook", arg: "roots" }, { id: "crack" }, { id: "grindBark" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill", arg: "shore" }, { id: "fill", arg: "hole" }, { id: "fill", arg: "seep" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "hone" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
     { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
@@ -257,24 +240,20 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
  */
 function kindLabel(id: TaskId, arg: string | undefined, until: RowChoice["until"], n: number): string {
   const item = yieldItem(id, arg);
-  if (until === "times") return `${n} times`;
-  if (until === "daily") return `${n} a day`;
-  if (until === "campHas") return item ? `until camp has ${itemLabel(item, n)}` : "once";
-  if (until === "keep") return item ? `keep camp at ${itemLabel(item, n)}` : id === "light" || id === "lightIndoors" ? "keep it lit" : "once";
+  if (until === "times") return `${n}x`;
+  if (until === "daily") return `${n}/day`;
+  if (until === "campHas") return item ? `camp: ${itemLabel(item, n)}` : "once";
+  if (until === "keep") return item ? `keep: ${itemLabel(item, n)}` : id === "light" || id === "lightIndoors" ? "keep lit" : "once";
   if (until === "forever") return "forever";
   return "once";
 }
 
 /**
- * The small print under a kind or a condition the row's skill has not
- * earned: the rung the gate stopped at, in the gate's own words, and about
- * how long to it.
+ * A single reason for every skill-gated control. The ladder's internal rung
+ * names and training estimates do not belong in an action picker.
  */
-function kindNeeds(state: GameState, gate: Gate): string {
-  if (gate.ok) return "";
-  const xp = state.skills[gate.skill].xp;
-  const hours = Math.max(1, Math.round((levelMinutes(gate.at) - xp) / 60));
-  return `${plain(gate.why)}, about ${hours} h`;
+function kindNeeds(gate: Gate): string {
+  return gate.ok ? "" : "insufficient skill";
 }
 
 /**
@@ -320,7 +299,7 @@ function whenHtml(o: TaskOption, arg: string, ui: UiState, state: GameState): st
   const keep = yieldItem(o.id, arg || undefined) !== null;
   const parts: string[] = [];
   if (level < RUNG_LEVEL.condition) {
-    parts.push(`<small>${esc(kindNeeds(state, rungGate(state, o.id, arg, "condition")))}</small>`);
+    parts.push(`<small>${esc(kindNeeds(rungGate(state, o.id, arg, "condition")))}</small>`);
   } else {
     parts.push(`<span>from <select data-row-season-from>${monthOptions(w.season?.from)}</select> to <select data-row-season-to>${monthOptions(w.season?.to)}</select></span>`);
     const items = (Object.keys(ITEM_NAMES) as ItemId[]).map((i) => `<option value="${i}"${w.stock?.item === i ? " selected" : ""}>${esc(ITEM_NAMES[i])}</option>`).join("");
@@ -336,7 +315,7 @@ function whenHtml(o: TaskOption, arg: string, ui: UiState, state: GameState): st
     const spendBox = w.by === undefined ? "" : ` <label><input type="checkbox" data-row-spend${w.spend ? " checked" : ""}> spent by the season's close</label>`;
     parts.push(level >= RUNG_LEVEL.pace
       ? `<span>due by <select data-row-by>${monthOptions(w.by)}</select>${spendBox}</span>`
-      : `<small>${esc(kindNeeds(state, rungGate(state, o.id, arg, "pace")))}</small>`);
+      : `<small>${esc(kindNeeds(rungGate(state, o.id, arg, "pace")))}</small>`);
   }
   return `<div class="when">${parts.join("")}</div>`;
 }
@@ -350,17 +329,17 @@ function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState,
   const r = regionAt(world, state.player.region);
   const here = cellOf(state, world);
   const opts = r.spots.filter((s) => s.id !== "camp").map((s) => {
-    const km = kmBetween(state, world, here, s.cell);
-    const label = `${SPOT_WORDS[s.id]}${km === null ? "" : ` ${fmtKm(km)}`}`;
+    const km = kmBetween(state, world, here, s.cell, walkableIce(state.weather));
+    const walk = check(state, world, calendar(state.minute, state.startDoy), "walk", `cell:${s.cell}`);
+    const label = `${SPOT_WORDS[s.id]}${km === null || !walk.ok ? "" : ` ${formatTravel(km, walk.duration, ui.travelDisplay)}`}`;
     return `<option value="${s.id}"${ui.choice.where === s.id ? " selected" : ""}>${esc(label)}</option>`;
   }).join("");
   return `<select data-act="row-where" data-id="${o.id}" data-arg="${esc(arg)}"><option value="nearest"${ui.choice.where === "nearest" ? " selected" : ""}>nearest</option>${opts}</select>`;
 }
 
 /**
- * The open row's expansion: the six kinds as buttons (greyed with the rung
- * and about how many hours to it when the row's skill has not earned
- * them), the count, the deliver toggle, for a gather or a hunt the
+ * The open row's expansion: the six kinds as compact buttons, the count,
+ * the deliver toggle, for a gather or a hunt the
  * where select, and under them the conditions the row's rungs have opened.
  * "once" leads them so a plain click's deliver and where can
  * be chosen deliberately too, through the same row-kind path every other
@@ -372,17 +351,16 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
     const { req, kind } = rowRequest({ ...ui.choice, until: k }, o.id, arg);
     const gate = orderGate(state, req, kind);
     const label = esc(kindLabel(o.id, arg, k, ui.choice.n));
-    const needs = gate.ok ? "" : `<small>${esc(kindNeeds(state, gate))}</small>`;
-    return `<span class="kind"><button data-act="row-kind" data-id="${o.id}" data-arg="${esc(arg)}" data-until="${k}" class="mini${gate.ok ? "" : " off"}" title="${label}">${label}</button>${needs}</span>`;
+    const title = gate.ok ? label : "insufficient skill";
+    return `<span class="kind"><button data-act="row-kind" data-id="${o.id}" data-arg="${esc(arg)}" data-until="${k}" class="mini${gate.ok ? "" : " off"}" title="${title}">${label}</button></span>`;
   };
-  // A once order is the player's own: it goes to the top of the list and starts
-  // on the click. Every other kind is handed to the runner, which serves it in
-  // its own time and around the body's needs.
-  const buttons = `${button(kinds[0])}<small class="handoff">starts now; the rest are the runner's</small>${kinds.slice(1).map(button).join("")}`;
+  const buttons = kinds.map(button).join("");
   const n = `<input type="number" min="1" data-row-n value="${ui.choice.n}">`;
   const deliver = `<button class="mini" data-act="row-deliver" data-id="${o.id}" data-arg="${esc(arg)}">${ui.choice.deliver === "camp" ? "bring to camp" : "leave where it is"}</button>`;
   const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";
-  return `<div class="expand">${buttons}${n}${deliver}${where}</div>${whenHtml(o, arg, ui, state)}`;
+  // What the face no longer says, said here in full.
+  const detail = o.detail ? `<div class="detail"><small>${esc(plain(o.detail))}</small></div>` : "";
+  return `${detail}<div class="expand">${buttons}${n}${deliver}${where}</div>${whenHtml(o, arg, ui, state)}`;
 }
 
 /**
@@ -400,7 +378,7 @@ function conceptsHtml(id: string | undefined, arg: string | undefined): string {
 }
 
 /**
- * A NOT_ORDERS task (rest, sleep, night, wait, a runner step) is a move the
+ * A NOT_ORDERS task (rest, sleep, night, or a runner step) is a move the
  * Do panel starts directly, not something the ladder gates: rowRequest
  * always collapses its choice to a once job, so a kind button on such a row
  * would read "forever" and give a one-off rest. No more, no expansion.
@@ -417,7 +395,7 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   const gives = cap?.producer ? `<small class="gives">${esc(cap.gives)}</small>` : "";
   const canOpen = !NOT_ORDERS.includes(o.id);
   const open = canOpen && ui.open !== null && ui.open.id === o.id && ui.open.arg === arg;
-  const more = canOpen ? `<button class="mini" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}">${open ? "less" : "more"}</button>` : "";
+  const more = canOpen ? `<button class="mini row-more${open ? " on" : ""}" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}" aria-expanded="${open}">more</button>` : "";
   const expand = open ? rowExpandHtml(o, arg, ui, state, world) : "";
   const openCls = open ? " open" : "";
   if (!o.ok) {
@@ -434,20 +412,32 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   // makes afterwards. It was done by accident, immediately after learning that
   // siting is worth 5 km of walking, and the survivor ended up with a camp in
   // each of two regions and no way to tell which was which. So the click asks,
-  // and the question says what camp this region already holds.
-  if (o.id === "makeCamp" && ui.confirmCamp) {
+  // and the question says what camp this region already holds and what moving
+  // it leaves behind, since neither is undone by the click.
+  if (o.id === "makeCamp" && ui.confirmCamp && regionState(state, world, state.player.region).campCell !== null) {
     const st = regionState(state, world, state.player.region);
     // Where the camp being moved actually is. Not whereIs, which answers "camp"
     // for the camp cell and turns the whole sentence into a tautology.
-    const km = kmBetween(state, world, cellOf(state, world), st.campCell);
-    const held = km === null
+    const km = kmBetween(state, world, cellOf(state, world), st.campCell!, walkableIce(state.weather));
+    const walk = check(state, world, calendar(state.minute, state.startDoy), "walk", `cell:${st.campCell!}`);
+    const held = km === null || !walk.ok
       ? `${esc(regionAt(world, state.player.region).name)}'s camp is somewhere {you} cannot reach from here`
-      : `${esc(regionAt(world, state.player.region).name)}'s camp stands ${esc(fmtKm(km))} from here`;
-    return `<div class="opt${openCls}" data-opt="intent:makeCamp:"><div class="confirm"><b>Move camp here?</b> <small>${held}. One camp to a region: this moves it rather than adding a second.</small><div><button class="mini danger" data-act="camp-yes" data-id="makeCamp" data-arg="">yes, camp here</button> <button class="mini" data-act="camp-no">no</button></div></div></div>`;
+      : `${esc(regionAt(world, state.player.region).name)}'s camp stands ${esc(formatTravel(km, walk.duration, ui.travelDisplay))} from here`;
+    const left = leftBehind(state, world);
+    const small = left ? `${held}. ${esc(left)}` : `${held}.`;
+    return `<div class="opt${openCls}" data-opt="intent:makeCamp:"><div class="confirm"><b>Move camp here?</b> <small>${small}</small><div><button class="mini danger" data-act="camp-yes" data-id="makeCamp" data-arg="">yes, camp here</button> <button class="mini" data-act="camp-no">no</button></div></div></div>`;
   }
-  const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
-  const line = [time, o.detail ? plain(o.detail) : ""].filter(Boolean).join("; ");
-  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}${gives}</button>${tags}${more}${expand}</div>`;
+  // A row you can do says its name and how long. Its detail is a sentence a
+  // reader has to parse mid-scan, and the scan is what this panel is for, so
+  // it moves under `more` rather than going away: still there for whoever
+  // wants it, out of the way of whoever is looking for something else.
+  const line = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
+  const initial = o.initialWalk;
+  const walk = initial
+    ? `<small class="initial-walk">will walk to ${initial.nearest ? "nearest " : ""}${esc(initial.destination)} - ${esc(formatTravel(initial.km, initial.minutes, ui.travelDisplay))}</small>`
+    : "";
+  const possibilities = o.id === "makeCamp" && o.detail ? `<small>${esc(o.detail)}</small>` : "";
+  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${walk}${possibilities}${bar}${gives}</button>${tags}${more}${expand}</div>`;
 }
 
 /** A group's rows, built at the open row's own chosen spot, so its duration and ok reflect that spot. */
@@ -456,39 +446,35 @@ function groupRows(g: { label: string; items: { id: TaskId; arg?: string }[] }, 
     const argKey = arg ?? "";
     const open = ui.open !== null && ui.open.id === id && ui.open.arg === argKey;
     const where = open ? ui.choice.where : "nearest";
-    return withProgression(state, world, intentOption(state, world, cal, id, arg, where));
-  });
+    const option = withProgression(state, world, intentOption(state, world, cal, id, arg, where));
+    if (id !== "explore" || !arg?.startsWith("region:")) return option;
+    const region = Number(arg.slice("region:".length));
+    const label = region === state.player.region ? "Explore this region" : `Explore ${regionAt(world, region).name}`;
+    return { ...option, label };
+  }).filter((o) => (o.id !== "explore" && o.id !== "searchHome") || o.ok);
 }
 
 /**
- * One Do group: a folding heading, then its rows - Make's startable rows
- * first - with the far ones (cannot start, skill more than a level under
- * the rung) tucked behind a "more (N)" line until ui.moreOpen names the
- * group. Groups are what the panel shows when the filter box is empty;
- * `searchHtml` takes over the moment it is not.
+ * The box the rows sit in, whether they came from a purpose or from the
+ * filter.
+ *
+ * Both views use it and both give it the same name, because a row that
+ * changed depth between them would be destroyed and rebuilt on every
+ * keystroke: morphChildren finds a named node again among its siblings,
+ * and a row whose parent is a different node has no siblings to be found
+ * among. The heading is the only thing that differs.
  */
-function groupHtml(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState, folds: Record<string, boolean>): string {
-  const options = groupRows(g, state, world, cal, ui);
-  if (!options.length) return "";
-  const open = folds[g.label] !== false;
-  const heading = `<button class="fold" data-act="fold" data-group="${esc(g.label)}">${open ? "-" : "+"} ${esc(g.label)}</button>`;
-  if (!open) return `<div class="grp">${heading}</div>`;
-  const ordered = g.label === "Make" ? makeFirst(options) : options;
-  const { near, far } = splitFar(ordered, state);
-  const nearHtml = near.map((o) => intentRowHtml(o, ui, state, world)).join("");
-  const moreOpen = ui.moreOpen.includes(g.label);
-  const farHtml = !far.length ? "" : moreOpen
-    ? `${far.map((o) => intentRowHtml(o, ui, state, world)).join("")}<button class="mini" data-act="more" data-group="${esc(g.label)}">less</button>`
-    : `<button class="mini" data-act="more" data-group="${esc(g.label)}">more (${far.length})</button>`;
-  return `<div class="grp">${heading}${nearHtml}${farHtml}</div>`;
+function rowsBox(key: string, heading: string, rows: string): string {
+  const head = heading ? `<div class="fold">${heading}</div>` : "";
+  return `<div class="grp" data-rows="${key}">${head}${rows}</div>`;
 }
 
 /**
- * What a filter shows instead of the groups: one ranked list, the rows that
- * say the words above the rows that merely answer to them. The groups and
- * their folds are gone for as long as the box has text in it - a search that
- * left its answer shut inside a folded group, or three headings down from the
- * word that was typed, is the search that sent the reader looking by hand.
+ * What a filter shows instead of the pane: one ranked list across every
+ * subtab, the rows that say the words above the rows that merely answer to
+ * them. The purposes stand aside for as long as the box has text in it - a
+ * search that left its answer shut inside a purpose the reader was not
+ * looking at is the search that sent them looking by hand.
  */
 function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
   const rows = intentGroups(regionAt(world, state.player.region)).flatMap((g) => groupRows(g, state, world, cal, ui));
@@ -497,21 +483,91 @@ function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState):
   // prefix is how a tag asks, and no part of it is for a reader.
   const concept = conceptAsked(ui.filter);
   const typed = esc(concept ?? ui.filter.trim());
-  if (!direct.length && !related.length) return `<div class="grp"><div class="fold">nothing answers to "${typed}"</div></div>`;
-  const section = (heading: string, list: TaskOption[]) =>
-    !list.length ? "" : `<div class="grp"><div class="fold">${heading}</div>${list.map((o) => intentRowHtml(o, ui, state, world)).join("")}</div>`;
+  if (!direct.length && !related.length) return rowsBox("main", `nothing answers to "${typed}"`, "");
+  const body = (list: TaskOption[]) => list.map((o) => intentRowHtml(o, ui, state, world)).join("");
   // "also" only means something under rows that said the word themselves. A
   // search every row answers only through its keywords - "firepit", which no
   // label spells that way - is a list of answers, not a list of afterthoughts.
-  if (!direct.length) return section(typed, related);
-  return `${section(typed, direct)}${section(`also answers to "${typed}"`, related)}`;
+  if (!direct.length) return rowsBox("main", typed, body(related));
+  return `${rowsBox("main", typed, body(direct))}${rowsBox("also", `also answers to "${typed}"`, body(related))}`;
 }
 
-export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState, folds: Record<string, boolean> = {}): string {
-  const groups = ui.filter.trim()
+/**
+ * The rows of the showing subtab and purpose, startable ones first.
+ *
+ * Generic tree and fish actions lead their panes. Their specific variants
+ * stay behind a small chooser so the common case is short without making
+ * those choices undiscoverable. What a player cannot do yet still shows,
+ * and says why.
+ */
+function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
+  const currentRegion = `region:${state.player.region}`;
+  const wanted = intentGroups(regionAt(world, state.player.region))
+    .flatMap((g) => g.items)
+    .filter((i) => subtabOf(i.id, i.arg) === ui.panes.subtab && purposeOf(i.id, i.arg) === ui.panes.purpose)
+    .filter((i) => i.id !== "chop" || !i.arg || ui.specific.trees)
+    .filter((i) => i.id !== "fish" || i.arg === "any" || ui.specific.fish)
+    .filter((i) => i.id !== "explore" || i.arg === currentRegion || ui.specific.regions);
+  return makeFirst(groupRows({ label: ui.panes.subtab, items: wanted }, state, world, cal, ui));
+}
+
+/** How many rows each purpose of the showing subtab holds, for the counts the left pane carries. */
+export function purposeCounts(state: GameState, world: World, ui: UiState): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const q of PURPOSES[ui.panes.subtab]) counts[q] = 0;
+  for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
+    if (subtabOf(i.id, i.arg) !== ui.panes.subtab) continue;
+    if (i.id === "chop" && i.arg && !ui.specific.trees) continue;
+    if (i.id === "fish" && i.arg !== "any" && !ui.specific.fish) continue;
+    if (i.id === "explore" && i.arg !== `region:${state.player.region}` && !ui.specific.regions) continue;
+    if ((i.id === "explore" || i.id === "searchHome") && !check(state, world, calendar(state.minute, state.startDoy), i.id, i.arg).ok) continue;
+    const q = purposeOf(i.id, i.arg);
+    if (q !== null && q in counts) counts[q]++;
+  }
+  return counts;
+}
+
+/**
+ * The left pane of the Do split: the purposes this subtab offers, and how
+ * many rows each holds. Search is a separate, global mode, so its results
+ * use the whole width instead of leaving unrelated browse controls visible.
+ */
+export function doPurposesHtml(state: GameState, world: World, ui: UiState): string {
+  if (ui.filter.trim()) return "";
+  return purposesHtml(ui.panes, purposeCounts(state, world, ui));
+}
+
+function specificChooser(kind: keyof UiState["specific"], open: boolean): string {
+  const one = kind === "trees" ? "tree" : kind === "regions" ? "region" : "fish";
+  const label = open ? `hide ${one} choices` : `choose ${one}...`;
+  return `<button class="mini specific" data-act="specific" data-specific="${kind}" aria-expanded="${open}">${label}</button>`;
+}
+
+function paneRowsHtml(rows: TaskOption[], ui: UiState, state: GameState, world: World): string {
+  const currentRegion = `region:${state.player.region}`;
+  const cal = calendar(state.minute, state.startDoy);
+  const hasRegionChoices = regionAt(world, state.player.region).neighbours
+    .some((n) => check(state, world, cal, "explore", `region:${n.id}`).ok);
+  const chooser = hasRegionChoices ? specificChooser("regions", ui.specific.regions) : "";
+  const currentIndex = rows.findIndex((o) => o.id === "explore" && o.arg === currentRegion);
+  const rendered = rows.map((o) => {
+    const row = intentRowHtml(o, ui, state, world);
+    if (o.id === "chop" && !o.arg) return `${row}${specificChooser("trees", ui.specific.trees)}`;
+    if (o.id === "fish" && o.arg === "any") return `${row}${specificChooser("fish", ui.specific.fish)}`;
+    return row;
+  });
+  if (!chooser) return rendered.join("");
+  if (currentIndex < 0) return `${chooser}${rendered.join("")}`;
+  rendered[currentIndex] += chooser;
+  return rendered.join("");
+}
+
+/** The item pane: the rows of one purpose, or what the filter found across all of them. */
+export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
+  const body = ui.filter.trim()
     ? searchHtml(state, world, cal, ui)
-    : intentGroups(regionAt(world, state.player.region))
-      .map((g) => groupHtml(g, state, world, cal, ui, folds))
-      .join("");
-  return `${instantHtml(state, world)}<div class="rows">${groups}</div>`;
+    : ((rows) => (rows.length ? rowsBox("main", "", paneRowsHtml(rows, ui, state, world)) : rowsBox("main", "nothing here yet", "")))(
+        paneRows(state, world, cal, ui),
+      );
+  return body;
 }

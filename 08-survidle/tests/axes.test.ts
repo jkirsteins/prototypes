@@ -8,6 +8,7 @@ import { placeAtSpot } from "../src/sim/position";
 import { check, fallThrough } from "../src/sim/tasks";
 import { Rng } from "../src/rng";
 import { current } from "../src/sim/record";
+import { siteCamp } from "./siting-helpers";
 
 describe("three axes", () => {
   it("prefers iron over the celt over the flaked axe in hand", () => {
@@ -37,6 +38,7 @@ describe("three axes", () => {
 
   it("fells twice as slow at edge 0 and half again as slow with a flaked axe", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     const cal = calendar(state.minute, state.startDoy);
     const sharp = check(state, world, cal, "chop").duration;
@@ -58,8 +60,9 @@ describe("three axes", () => {
 
   it("sees an axe of any kind in the camp pile", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     state.player.tools = [];
-    const camp = pile(state, state.regions[state.player.region].campCell);
+    const camp = pile(state, state.regions[state.player.region].campCell!);
     expect(axeNear(state.player, [camp])).toBe(false);
     camp.items.flakedAxe = 1;
     expect(axeNear(state.player, [camp])).toBe(true);
@@ -72,6 +75,7 @@ describe("three axes", () => {
 describe("stone axe recipes", () => {
   it("flakes an axe in ninety minutes at no tier and grinds a celt in twenty hours at Crafting 5 with the whetstone", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     addItem(state.player.pack, "stone", 3);
     addItem(state.player.pack, "stick", 2);
     addItem(state.player.pack, "cordage", 4);
@@ -102,7 +106,8 @@ describe("the axe through the ice", () => {
   it("is lost one time in two on a survived fall, and the record says so", () => {
     // Rng(1) draws 0.627 then 0.003: the fall is survived (0.6 and over) and the axe goes (under 0.5).
     const { state, world } = newGame(17);
-    const land = state.regions[state.player.region].campCell;
+    siteCamp(state, world);
+    const land = state.regions[state.player.region].campCell!;
     fallThrough(state, world, new Rng(1), land);
     expect(state.dead).toBeNull();
     expect(axeInHand(state.player)).toBeUndefined();
@@ -113,7 +118,8 @@ describe("the axe through the ice", () => {
   it("stays in hand the other time", () => {
     // Rng(5) draws 0.690 then 0.773: survived, and the axe holds.
     const { state, world } = newGame(17);
-    const land = state.regions[state.player.region].campCell;
+    siteCamp(state, world);
+    const land = state.regions[state.player.region].campCell!;
     fallThrough(state, world, new Rng(5), land);
     expect(state.dead).toBeNull();
     expect(axeInHand(state.player)!.id).toBe("axe");

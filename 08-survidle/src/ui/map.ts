@@ -7,21 +7,21 @@
  * the world moves under them.
  */
 import type { Calendar } from "../sim/calendar";
-import { fuelTotal, hasEmbers } from "../sim/fire";
+import { fuelTotal, hasEmbers, roofed } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
 import { knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
-import { discovery, VISITED } from "../sim/regionstate";
-import type { GameState, Terrain } from "../sim/types";
+import { discovery, siteAt, VISITED } from "../sim/regionstate";
+import type { AgentSpecies, GameState, RegionState, Terrain, WildlifeSubject } from "../sim/types";
 import { ambientTemperature, DEEP_SNOW_CM, iceMode } from "../sim/weather";
 import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
+import { WORLD_H, WORLD_W } from "../world/terrain";
 import { esc, type UiState } from "./render";
 import { elevationAt, groundGlyph, offshoreAt, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
 import { lighting } from "./sky";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
-import type { AgentSpecies, WildlifeSubject } from "../sim/types";
 
 export const GLYPH: Record<Terrain, string> = {
   water: "~", fell: "^", rock: "n", bog: "\"", spruce: "A", pine: "T", birch: "Y", meadow: ".",
@@ -110,6 +110,9 @@ export interface ZoomLevel {
 
 /** The board every level from the cell outwards is drawn on: 72 by 36 small glyphs. */
 const BOARD = { w: 72, h: 36, px: 11, line: 14, font: 12 };
+/** The farthest rung: the world at one glyph per block, in the world's own shape. */
+const FAR_CELLS = Math.ceil(WORLD_H / BOARD.h);
+const FAR = { cells: FAR_CELLS, w: Math.ceil(WORLD_W / FAR_CELLS), h: BOARD.h, px: BOARD.px, line: BOARD.line, font: BOARD.font };
 
 /**
  * The ladder, closest first. Past one cell per glyph there is nothing finer
@@ -124,7 +127,12 @@ export const LEVELS: ZoomLevel[] = [
   { cells: 1, ...BOARD },
   { cells: 3, ...BOARD },
   { cells: 9, ...BOARD },
-  { cells: Math.max(Math.ceil(1800 / BOARD.w), Math.ceil(1300 / BOARD.h)), ...BOARD },
+  // The whole world, and no more than the world. Its cells-per-glyph is set
+  // by the taller side, and the board is then only as wide as the world
+  // needs - a fixed 72 columns at that scale drew the world in the middle of
+  // a wide band of void, which reads as a border round the map rather than
+  // as the edge of the land.
+  FAR,
 ];
 
 /** Where a fresh screen opens: one cell per glyph on the whole board, as it always did. */
@@ -133,6 +141,43 @@ export const DEFAULT_ZOOM = 2;
 /** The level at this rung, clamped, so a stale zoom index can never draw nothing. */
 export function levelAt(zoom: number): ZoomLevel {
   return LEVELS[Math.max(0, Math.min(LEVELS.length - 1, zoom))];
+}
+
+/**
+ * The cell under a point inside the map grid, or null when the point is
+ * off it. `x` and `y` are offsets within the grid itself.
+ *
+ * Read from where the pointer is rather than from a glyph's own enter and
+ * leave: a glyph replaced under the pointer fires an enter, and a glyph
+ * detached under it never fires a leave, so hover state kept per element
+ * gets stuck holding a cell that is no longer there. Nothing is stored on
+ * a glyph here, so nothing can go stale - and the board draws thousands of
+ * them, which is a lot of attributes to write for a fact the pointer
+ * already knows.
+ */
+export function cellFromPoint(world: World, state: GameState, ui: UiState, x: number, y: number): number | null {
+  const l = levelAt(ui.zoom);
+  const col = Math.floor(x / l.px);
+  const row = Math.floor(y / l.line);
+  if (col < 0 || row < 0 || col >= l.w || row >= l.h) return null;
+  const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+  const cx = x0 + col * l.cells;
+  const cy = y0 + row * l.cells;
+  // The view can hang over the world's edge, and void is not a cell.
+  if (cx < 0 || cy < 0 || cx >= world.w || cy >= world.h) return null;
+  return cellIdx(world, cx, cy);
+}
+
+/** Converts a screen position through the grid's real, possibly centered, origin. */
+export function cellFromClient(
+  world: World,
+  state: GameState,
+  ui: UiState,
+  clientX: number,
+  clientY: number,
+  grid: Pick<DOMRect, "left" | "top">,
+): number | null {
+  return cellFromPoint(world, state, ui, clientX - grid.left, clientY - grid.top);
 }
 
 /** Cells per glyph at each zoom level. */
@@ -301,9 +346,23 @@ function walkSvg(world: World, state: GameState, here: number, x0: number, y0: n
   return `<svg class="walk" viewBox="0 0 ${view.w} ${view.h}" preserveAspectRatio="none"><polyline class="walk-behind" points="${behind}"/><polyline class="walk-ahead" points="${ahead}"/></svg>`;
 }
 
+/**
+ * Every cell in a region worth a mark: the camp itself, even bare, plus
+ * every site a camp has since moved away from and left standing.
+ */
+function markedCells(st: RegionState): number[] {
+  const cells = new Set<number>(Object.keys(st.sites).map(Number));
+  if (st.campCell !== null) cells.add(st.campCell);
+  return [...cells].sort((a, b) => a - b);
+}
+
 /** Everything the map's markup depends on, so it is rebuilt only when one of them changes. */
 export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar): string {
-  const marks = Object.entries(state.regions).map(([id, r]) => `${id}${r.structures.cabin || r.structures.leanTo || r.structures.turfHut ? "H" : ""}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : hasEmbers(r.fire) ? "e" : ""}${r.trap ? "T" : ""}`).join(",");
+  const marks = Object.entries(state.regions).map(([id, r]) => {
+    const cells = markedCells(r);
+    const roofs = cells.map((c) => (roofed(siteAt(r, c)) ? "H" : "-")).join("");
+    return `${id}@${cells.join(".")}:${roofs}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : hasEmbers(r.fire) ? "e" : ""}${r.trap ? "T" : ""}`;
+  }).join(",");
   const route = state.route ? `${state.route.target}:${state.route.path.length}` : "";
   const piles = Object.keys(state.piles).join(",");
   const dens = Object.keys(state.wildlife.knownDens).join(",");
@@ -374,21 +433,21 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (!features.includes(feature)) features.push(feature);
     featuresAt.set(glyph, features);
   };
-  for (const { st, cell } of visitedCamps(state)) {
-    let m: (typeof MARKS)[keyof typeof MARKS];
-    if (st.fire.lit) m = MARKS.fire;
-    else if (hasEmbers(st.fire)) m = MARKS.coals;
-    else if (st.structures.cabin || st.structures.leanTo || st.structures.turfHut) m = MARKS.shelter;
-    else m = MARKS.camp;
-    const g = toGlyph(cell);
-    if (g >= 0) {
-      markerAt.set(g, m);
-      addFeature(g, "camp");
-      if (st.structures.cabin) addFeature(g, "cabin shelter");
-      else if (st.structures.turfHut) addFeature(g, "turf-hut shelter");
-      else if (st.structures.leanTo) addFeature(g, "lean-to shelter");
-      if (st.fire.lit) addFeature(g, "lit campfire");
-      else if (hasEmbers(st.fire)) addFeature(g, "banked coals");
+  for (const [idText, st] of Object.entries(state.regions)) {
+    if (discovery(state, Number(idText)) !== VISITED) continue;
+    for (const cell of markedCells(st)) {
+      const isCamp = cell === st.campCell;
+      let m: (typeof MARKS)[keyof typeof MARKS];
+      // Only the camp itself can carry the region's one fire; a site the camp has
+      // moved away from is read by its roof alone.
+      if (isCamp && st.fire.lit) m = MARKS.fire;
+      else if (isCamp && hasEmbers(st.fire)) m = MARKS.coals;
+      else m = roofed(siteAt(st, cell)) ? MARKS.shelter : MARKS.camp;
+      const g = toGlyph(cell);
+      if (g >= 0) {
+        markerAt.set(g, m);
+        addFeature(g, m.label);
+      }
     }
   }
   for (const r of Object.values(state.regions)) {
@@ -545,7 +604,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
   const falling = light.precip === "rain" ? " rain" : light.precip === "snow" ? " snowing" : "";
   const lit = `--bright:${light.brightness.toFixed(3)};--sat:${light.saturation.toFixed(3)};--tint:${light.tint};--tint-a:${light.alpha.toFixed(3)}`;
-  parts.push(`<div class="scroll-x"><div class="grid season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}${falling}" role="grid" tabindex="0" aria-label="Map. Use arrow keys to inspect cells." style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px;${lit}">`);
+  parts.push(`<div class="scroll-x${cal.isNight ? " night" : ""}${falling}" style="--px:${l.px}px;--line:${l.line}px;${lit}"><div class="grid season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}" role="grid" tabindex="0" aria-label="Map. Use arrow keys to inspect cells." style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px">`);
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
@@ -554,15 +613,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const named = reg >= 0 && discovery(state, reg) > 0;
     const cls = ["c"];
     let glyph = " ";
-    let title = "";
     let style = "";
     let animalId: number | null = null;
     if (reg < 0) {
       cls.push("void");
     } else if (seen === 0) {
       cls.push("fog");
-      // Only regions already built get named; building one here would fill its chunks for a tooltip.
-      title = named ? (world.regions.get(reg)?.name ?? "ground heard of, not seen") : "unknown ground";
       // The outline still shows through: where the country you are in ends and
       // what adjoins it, on ground nobody has walked. The class says which of
       // the three the edge belongs to and the stylesheet picks its colour, so a
@@ -609,11 +665,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         cls.push(iceMode(state.weather) === "safe" ? "ice-safe" : "ice-thin");
       }
       if (snow && t === "meadow") glyph = "*";
-      title = world.regions.get(reg)?.name ?? (seen === 2 ? "known country" : "known once");
-      if (pileGlyphs.has(i) && seen === 2) {
-        cls.push("pl");
-        title += ", something lies here";
-      }
+      if (pileGlyphs.has(i) && seen === 2) cls.push("pl");
       const ring = rings.get(i);
       if (ring !== undefined) {
         cls.push(`lit-${ring}`);
@@ -628,7 +680,6 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       // change of task replace the glyph's node instead of retitling it.
       if (m.cls === "mk-player") cls.push(`mood-${moodOf(state)}`);
       glyph = m.glyph;
-      title = `${m.label}, ${title}`;
     } else {
       const animal = animalAt.get(i);
       if (animal) {
@@ -636,22 +687,28 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         const recognized = state.wildlife.recognized[animal.id];
         cls.push("mk", "mk-animal", recognized ? `wildlife-${animal.colour}` : "wildlife-unknown");
         glyph = ANIMAL_GLYPH[animal.species];
-        const count = wildlifeMembers(animal);
-        const identity = recognized && animal.name ? animal.name : (animal.species === "wolf" ? "wolf pack" : animal.species);
-        title = `${identity}${count > 1 ? `, ${count}` : ""}, ${animal.active?.intent ?? "moving"}, ${title}`;
       }
     }
+    // Named regions stay selectable so their ground can be inspected even when it
+    // has not been walked. Survey targets themselves live in Do > Explore.
+    //
+    // The index rides with it, and has to. keyOf names an element by its
+    // data attributes, so every cell of one region would otherwise carry the
+    // same name - and morphChildren, which registers one node per name and
+    // moves it to where the name is next wanted, would haul a glyph across
+    // the board on every redraw and shift everything after it. That is the
+    // flicker on the @ and the camp's x: they are the cells whose names
+    // differ enough to be found and moved.
+    const act = named ? ` data-act="select" data-i="${i}" data-r="${reg}"` : "";
     const terrain = reg < 0 ? "beyond the mapped world" : seen === 0 ? "unknown ground" : `${TERRAIN_NAME[terrains[i]]}${z > 1 ? `, ${z * 300} m block` : ""}`;
     const place = reg >= 0 && named ? world.regions.get(reg)?.name : undefined;
     const info = [terrain, place, ...featuresAt.get(i) ?? []].filter(Boolean).join("; ");
-    // Selecting is what puts the Explore button on the panel, so a named region stays
-    // clickable on the map whether or not its ground itself has been walked.
-    const act = named ? ` data-act="select" data-r="${reg}"` : "";
-    // The scroll wrapper centres on this glyph after every rebuild.
-    const you = m?.cls === "mk-player" ? ` data-you="1"` : "";
     const wildlife = animalId === null ? "" : ` data-wildlife-id="${animalId}"`;
-    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${act}${you}${wildlife}${style} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
+    // No title attribute: the board's own box says all of this, at once and
+    // in the page's own voice, where the browser's tooltip said it after a
+    // delay and stood over whatever it was next to.
+    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${act}${wildlife}${style}>${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
-  parts.push(`<i class="shade"></i>${walkSvg(world, state, playerCell, x0, y0, z, l)}<output class="map-inspect" aria-live="polite">Map: point at a glyph, or focus the map and use arrow keys.</output></div></div>${tools}`);
+  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}</div><i class="shade"></i><output class="map-inspect" aria-live="polite">Map: point at a glyph, or focus the map and use arrow keys.</output></div>${tools}`);
   return parts.join("");
 }

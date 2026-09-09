@@ -13,7 +13,7 @@ import { creditEaten } from "./ledger";
 import { atCamp } from "./position";
 import { body, fatLandmarks } from "./person";
 import { current } from "./record";
-import { regionState } from "./regionstate";
+import { campSite, regionState } from "./regionstate";
 import { log, warn } from "./log";
 import type { GameState, ItemId } from "./types";
 
@@ -34,17 +34,18 @@ export function edible(state: GameState, food: FoodId): boolean {
 }
 
 /** Eats one portion of a food from pack or the pile here. Returns false if none. */
-export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boolean {
+/** Eats one portion. Returns the kilos taken, or nought when nothing was. */
+export function eat(state: GameState, world: World, food: FoodId, rng: Rng): number {
   const p = state.player;
   const def = FOODS[food];
-  if (!edible(state, food)) return false;
+  if (!edible(state, food)) return 0;
   const invs = [p.pack, herePile(state, world)];
   const have = totalQty(invs, food);
-  if (have <= 1e-9) return false;
+  if (have <= 1e-9) return 0;
   const wasFull = gutEatenToday(p, state.minute, food) > (GUT[food]?.fullCreditKg ?? Number.POSITIVE_INFINITY) + 1e-9;
   const taken = creditGut(p, state.minute, food, Math.min(def.portionKg, have));
   const kg = taken.kg;
-  if (kg <= 1e-9) return false;
+  if (kg <= 1e-9) return 0;
   let gain = kg * def.kcalPerKg * taken.credit;
   if (GUT[food]) {
     if (!wasFull && gutEatenToday(p, state.minute, food) > GUT[food]!.fullCreditKg + 1e-9) log(state, "{Your} stomach is turning.", "bad");
@@ -73,7 +74,9 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     p.sick = 48 * 60;
     log(state, "The raw meat turns {your} stomach. A fever follows.", "bad");
   }
-  return true;
+  // The kilos taken, so a caller can say what a meal cost. Nought means
+  // nothing was eaten, which is what every early return says.
+  return kg;
 }
 
 /**
@@ -192,10 +195,12 @@ export function autoEat(state: GameState, world: World, rng: Rng): void {
   while (p.kcal < target && guard++ < 200) {
     let ate = false;
     for (const food of AUTO_EAT_ORDER) {
-      const had = totalQty([p.pack, herePile(state, world)], food);
-      if (eat(state, world, food, rng)) {
-        const took = had - totalQty([p.pack, herePile(state, world)], food);
-        eaten.set(food, (eaten.get(food) ?? 0) + took);
+      // eat reports the kilos it took, so the meal is measured where it
+      // happens rather than by weighing the pack before and after - which
+      // reads wrong the moment a portion comes out of two inventories.
+      const kg = eat(state, world, food, rng);
+      if (kg > 0) {
+        eaten.set(food, (eaten.get(food) ?? 0) + kg);
         ate = true;
         break;
       }
@@ -231,9 +236,10 @@ export function addFirewood(state: GameState, world: World, kg: number): number 
 export function loadRack(state: GameState, world: World): number {
   const p = state.player;
   const st = regionState(state, world, p.region);
-  if (!atCamp(state, world) || !st.structures.dryingRack) return 0;
+  const site = campSite(st);
+  if (!atCamp(state, world) || !site?.structures.dryingRack) return 0;
   const invs = [p.pack, herePile(state, world)];
-  const room = rackCapacity(st) - st.rack.kg;
+  const room = rackCapacity(site) - st.rack.kg;
   const kg = Math.min(room, totalQty(invs, "rawMeat"));
   if (kg <= 1e-9) return 0;
   let left = kg;

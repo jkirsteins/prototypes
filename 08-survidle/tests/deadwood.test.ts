@@ -5,10 +5,12 @@ import { addItem, freshTool, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import { beginTask, check, DEADWOOD_KG, DEADWOOD_TREE_SHARE } from "../src/sim/tasks";
+import { siteCamp } from "./siting-helpers";
 
 describe("dead wood", () => {
   it("gathers 10 kg of firewood in an hour with no tool and draws the stock an eighth", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     state.player.tools = [];
     placeAtSpot(state, world, state.player.region, "forest");
     const st = state.regions[state.player.region];
@@ -25,6 +27,7 @@ describe("dead wood", () => {
 
   it("comes out wet in rain and refuses a picked-clean forest", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     state.weather.precip = "light";
     const cal = calendar(state.minute, state.startDoy);
@@ -39,6 +42,7 @@ describe("dead wood", () => {
 describe("wedges", () => {
   it("are two from two sticks with a knife in twenty minutes", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     addItem(state.player.pack, "stick", 2);
     state.player.tools.push(freshTool("knife"));
     const cal = calendar(state.minute, state.startDoy);
@@ -50,8 +54,9 @@ describe("wedges", () => {
 
   it("split a log in 45 minutes into 20 kg and need two of them", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     state.player.tools = [];
-    const camp = pile(state, state.regions[state.player.region].campCell);
+    const camp = pile(state, state.regions[state.player.region].campCell!);
     addItem(camp, "log", 1);
     addItem(camp, "wedge", 1);
     const cal = calendar(state.minute, state.startDoy);

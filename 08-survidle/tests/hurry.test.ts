@@ -8,8 +8,8 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { startTask } from "../src/sim/tasks";
-import { hurryClick, hurryFrame, hurryKind, newHurry, PEAK, PULSE_MIN, PULSE_S, pulseLeft, RAMP_S } from "../src/ui/hurry";
-import { taskHtml } from "../src/ui/panels";
+import { advanceHurry, hurryClick, hurryFrame, hurryKind, newHurry, PEAK, PULSE_MIN, PULSE_S, pulseLeft } from "../src/ui/hurry";
+import { queueHtml } from "../src/ui/panels";
 
 const cal = calendar(0);
 
@@ -18,31 +18,61 @@ function frames(h: ReturnType<typeof newHurry>, kind: "auto" | "click" | "none",
   return lengths.reduce((sum, d) => sum + hurryFrame(h, kind, live, d), 0);
 }
 
-describe("the auto ramp", () => {
-  it("carries the same minutes over the ramp however the frames fall, and the full rate after it", () => {
-    const whole = (PEAK - 1) * RAMP_S / 2;
-    const one = frames(newHurry(), "auto", null, [RAMP_S]);
-    const fine = frames(newHurry(), "auto", null, new Array(20).fill(RAMP_S / 20));
-    const mixed = frames(newHurry(), "auto", null, [0.1, 0.25, 1, RAMP_S - 1.35]);
-    expect(one).toBeCloseTo(whole, 9);
-    expect(fine).toBeCloseTo(whole, 9);
-    expect(mixed).toBeCloseTo(whole, 9);
-    const h = newHurry();
-    frames(h, "auto", null, [RAMP_S]);
-    expect(h.rate).toBeCloseTo(PEAK, 9);
-    expect(hurryFrame(h, "auto", null, 0.5)).toBeCloseTo((PEAK - 1) * 0.5, 9);
+describe("the automatic pulse", () => {
+  const atProgress = hurryFrame as unknown as (
+    h: ReturnType<typeof newHurry>, kind: "auto", live: number, seconds: number, progress: number, hasNext?: boolean,
+  ) => number;
+
+  it("ramps steeply into the first once action", () => {
+    const start = newHurry();
+    atProgress(start, "auto", 1, 0.1, 0);
+    expect(start.rate).toBe(1);
+
+    atProgress(start, "auto", 1, 0.1, 0.075);
+    expect(start.rate).toBeCloseTo(1 + (PEAK - 1) / 2, 9);
+    atProgress(start, "auto", 1, 0.1, 0.15);
+    expect(start.rate).toBeCloseTo(PEAK, 9);
   });
 
-  it("reads 1 the frame after the kind breaks, and starts the climb over", () => {
+  it("holds speed between adjacent once actions and eases out only on the last", () => {
     const h = newHurry();
-    frames(h, "auto", null, [RAMP_S]);
-    expect(hurryFrame(h, "none", null, 0.1)).toBe(0);
+    atProgress(h, "auto", 1, 0.1, 0.95, true);
+    expect(h.rate).toBe(PEAK);
+    atProgress(h, "auto", 2, 0.1, 0.05, false);
+    expect(h.rate).toBe(PEAK);
+    atProgress(h, "auto", 2, 0.1, 0.925, false);
+    expect(h.rate).toBeCloseTo(1 + (PEAK - 1) / 2, 9);
+    atProgress(h, "auto", 2, 0.1, 1, false);
     expect(h.rate).toBe(1);
-    expect(h.held).toBe(0);
-    const again = hurryFrame(h, "auto", null, 0.1);
-    expect(again).toBeLessThan((PEAK - 1) * 0.1 * 0.05);
-    expect(h.rate).toBeGreaterThan(1);
-    expect(h.rate).toBeLessThan(1.2);
+  });
+
+  it("derives an uninterrupted once-action run from the queue", () => {
+    const { state, world } = newGame(3);
+    addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    advance(state, world, 1);
+    if (!state.task) throw new Error("the first once action did not start");
+    state.task.progress = state.task.duration * 0.95;
+    const h = newHurry();
+
+    advanceHurry(h, state, world, 0.1);
+
+    expect(h.rate).toBe(PEAK);
+  });
+
+  it("eases out when the physically next once action is blocked", () => {
+    const { state, world } = newGame(3);
+    addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    addOrder(state, world, { task: "cook", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, "grind");
+    advance(state, world, 1);
+    if (!state.task) throw new Error("the first once action did not start");
+    state.task.progress = state.task.duration * 0.95;
+    const h = newHurry();
+
+    advanceHurry(h, state, world, 0.1);
+
+    expect(h.rate).toBeLessThan(PEAK);
   });
 
   it("with nothing to hurry a frame carries nothing and leaves the state alone", () => {
@@ -53,6 +83,15 @@ describe("the auto ramp", () => {
 });
 
 describe("the pulse", () => {
+  it("keeps a manual speed-up running for ten old pulse lengths and eases in gently", () => {
+    const h = newHurry();
+    expect(hurryClick(h, "click", 3)).toBe(true);
+    hurryFrame(h, "click", 3, 2 / 3);
+    expect(pulseLeft(h)).toBeCloseTo(0.9, 9);
+    expect(h.rate).toBeGreaterThan(1);
+    expect(h.rate).toBeLessThan(1.5);
+  });
+
   it("starts on a click, refuses a second while it runs, and sums to its minutes however the frames fall", () => {
     const h = newHurry();
     expect(hurryClick(h, "click", 3)).toBe(true);
@@ -69,15 +108,15 @@ describe("the pulse", () => {
     expect(fine).toBeCloseTo(PULSE_MIN, 9);
   });
 
-  it("clicking as fast as the pulse allows averages the auto rate", () => {
-    expect(PULSE_MIN / PULSE_S).toBeCloseTo(PEAK - 1, 9);
+  it("the smooth pulse averages half its peak boost", () => {
+    expect(PULSE_MIN / PULSE_S).toBeCloseTo((PEAK - 1) / 2, 9);
   });
 
   it("peaks in the middle and reads 1 at the ends", () => {
     const h = newHurry();
     hurryClick(h, "click", 3);
     hurryFrame(h, "click", 3, PULSE_S / 2);
-    expect(h.rate).toBeCloseTo(1 + (2 * PULSE_MIN) / PULSE_S, 9);
+    expect(h.rate).toBeCloseTo(PEAK, 9);
   });
 
   it("is dropped, minutes forfeited, when its order stops being the one served", () => {
@@ -129,7 +168,7 @@ describe("what is hurried", () => {
     addItem(herePile(g4.state, g4.world), "firewood", 50);
     addOrder(g4.state, g4.world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
     advance(g4.state, g4.world, 1);
-    expect(g4.state.intent?.task).toBe("wait");
+    expect(g4.state.intent).toBeNull();
     expect(hurryKind(g4.state)).toBe("none");
   });
 
@@ -150,12 +189,21 @@ describe("what is hurried", () => {
     expect(hurryKind(state)).toBe("none");
   });
 
-  it("says on the row that clicking hurries it, where a tooltip cannot be read", () => {
+  it("finite care can be hurried with an explicit click", () => {
+    const { state } = newGame(3);
+    state.intent = { mode: "care", care: "body", need: "sleep", orderId: 7, step: "sleeping" };
+    state.task = { id: "sleep", progress: 0, duration: 60, repeat: false };
+    expect(hurryKind(state)).toBe("click");
+    expect(hurryClick(newHurry(), hurryKind(state), state.intent.orderId)).toBe(true);
+  });
+
+  it("keeps the hurry control out of the queue row", () => {
     const { state, world } = newGame(3);
     addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, "grind");
     advance(state, world, 1);
     expect(hurryKind(state)).toBe("click");
-    expect(taskHtml(state, world, calendar(state.minute, state.startDoy))).toContain("click to hurry");
+    expect(queueHtml(state, world, calendar(state.minute, state.startDoy))).not.toContain('data-act="hurry"');
+    expect(queueHtml(state, world, calendar(state.minute, state.startDoy))).not.toContain("click to hurry");
   });
 
   it("says nothing about hurrying an order that is hurried unasked", () => {
@@ -163,6 +211,6 @@ describe("what is hurried", () => {
     addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 1);
     expect(hurryKind(state)).toBe("auto");
-    expect(taskHtml(state, world, calendar(state.minute, state.startDoy))).not.toContain("click to hurry");
+    expect(queueHtml(state, world, calendar(state.minute, state.startDoy))).not.toContain("click to hurry");
   });
 });

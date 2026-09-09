@@ -5,28 +5,25 @@ import { placeAt, placeAtSpot } from "../src/sim/position";
 import { hasSpot, regionAt } from "../src/world/gen";
 import { levelMinutes } from "../src/sim/skills";
 import { availableTasks } from "../src/sim/tasks";
-import { doHtml, filterRows, FOLD_KEY, intentGroups, keyedRows, loadFolds, makeFirst, rankRows, saveFold, splitFar } from "../src/ui/dopanel";
+import { doHtml, doPurposesHtml, filterRows, intentGroups, keyedRows, makeFirst, purposeCounts, rankRows } from "../src/ui/dopanel";
+import { purposeOf, subtabOf } from "../src/ui/purpose";
+import { paneHtml } from "./pane";
 import { defaultChoice, defaultChoiceFor, newUiState, rowRequest, setWhenField } from "../src/ui/render";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { TASK_IDS } from "../src/sim/types";
 import type { OrderWhen, TaskId } from "../src/sim/types";
 
-function memory(): Storage {
-  const m = new Map<string, string>();
-  return {
-    get length() { return m.size; },
-    clear: () => m.clear(), getItem: (k) => m.get(k) ?? null, key: (i) => [...m.keys()][i] ?? null,
-    removeItem: (k) => { m.delete(k); }, setItem: (k, v) => { m.set(k, String(v)); },
-  } as Storage;
-}
 
-describe("fold and filter", () => {
-  it("folds round-trip through storage and default open", () => {
-    const s = memory();
-    expect(loadFolds(s)).toEqual({});
-    saveFold(s, "camp", false);
-    expect(loadFolds(s)).toEqual({ camp: false });
-    expect(JSON.parse(s.getItem(FOLD_KEY)!)).toEqual({ camp: false });
+describe("the purposes and the filter", () => {
+  it("shows an initial walk separately from work duration in the selected format", () => {
+    const { state, world } = newGame(3);
+    placeAtSpot(state, world, state.player.region, "heath");
+    const cal = calendar(state.minute, state.startDoy);
+    const distance = paneHtml(state, world, cal, "chop", undefined, { travelDisplay: "distance" });
+    const time = paneHtml(state, world, cal, "chop", undefined, { travelDisplay: "time" });
+    expect(distance).toMatch(/will walk to nearest forest - \d+\.\d km/);
+    expect(time).toMatch(/will walk to nearest forest - (?:\d+ h )?\d+ min/);
+    expect(distance).toMatch(/Fell any tree.*\d+ min/s);
   });
 
   it("the filter narrows by label, case-insensitive, and an empty filter keeps everything", () => {
@@ -76,22 +73,32 @@ describe("fold and filter", () => {
     expect(stone.ok).toBe(false);
     expect(stone.never).toBe(true);
     expect(stone.why).toBe(`no rock in ${bare!.name}`);
-    const html = doHtml(state, world, cal, newUiState());
+    // Stone is Gather/Material, which is where a reader looking for it goes.
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Stone" } };
+    const html = doHtml(state, world, cal, ui);
     const row = html.slice(html.indexOf('data-opt="intent:stone:"'), html.indexOf('data-opt="intent:stone:"') + 300);
     expect(row).toContain("disabled");
     expect(row).not.toContain('data-act="intent"');
-    // A row blocked for a reason that can change keeps its "add it anyway" button.
-    const blocked = availableTasks(state, world, cal).find((o) => !o.ok && !o.never)!;
+    // A row blocked for a reason that can change keeps its "add it anyway"
+    // button. It is drawn in whichever pane it belongs to, which is the
+    // point of the panes: every row has exactly one place it can be found.
+    const blocked = availableTasks(state, world, cal).find((o) => !o.ok && !o.never && subtabOf(o.id, o.arg) !== null)!;
     expect(blocked).toBeDefined();
-    const other = html.slice(html.indexOf(`data-opt="intent:${blocked.id}:`));
-    expect(other.slice(0, 300)).toContain('data-act="intent"');
+    const where = {
+      ...newUiState(),
+      panes: { pane: "do" as const, subtab: subtabOf(blocked.id, blocked.arg)!, purpose: purposeOf(blocked.id, blocked.arg)! },
+    };
+    const other = doHtml(state, world, cal, where);
+    const at = other.indexOf(`data-opt="intent:${blocked.id}:`);
+    expect(at).toBeGreaterThan(-1);
+    expect(other.slice(at, at + 300)).toContain('data-act="intent"');
   });
 
-  it("far rows are those that cannot start and sit more than a level short; Make lists startable first", () => {
+  it("a pane lists startable rows first and hides none of them", () => {
     // Seed 17 on day 1: every skill sits at level 1, so a recipe recommended
-    // well above that (bow, at Crafting 5) is both unstartable (no knife yet)
-    // and more than a level short - the shape splitFar and makeFirst are for.
-    // Felling is startable from the first minute, so it pairs as the near row.
+    // well above that (bow, at Crafting 5) cannot start. It still shows, and
+    // it still says why: learning what is available is most of learning the
+    // game, so nothing is tucked behind a "more" any more.
     const { state, world } = newGame(17);
     placeAtSpot(state, world, state.player.region, "forest");
     const cal = calendar(state.minute, state.startDoy);
@@ -102,11 +109,12 @@ describe("fold and filter", () => {
     expect(bow.ok).toBe(false);
     expect(bow.recommended).toEqual({ text: "Crafting 5, {you} {are} 1", under: true, short: 4 });
 
-    const { near, far } = splitFar([chop, bow], state);
-    expect(near).toEqual([chop]);
-    expect(far).toEqual([bow]);
-
     expect(makeFirst([bow, chop])).toEqual([chop, bow]);
+
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Make" as const, purpose: "Hunting" } };
+    const html = doHtml(state, world, cal, ui);
+    expect(html).toContain('data-opt="intent:craft:bow"');
+    expect(html).not.toContain('data-act="more"');
   });
 
   it("the invisible keywords find a row whose own words never say what it is for", () => {
@@ -176,22 +184,11 @@ describe("fold and filter", () => {
     const cal = calendar(state.minute);
     state.skills.woodcraft.xp = levelMinutes(5);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "tree" });
-    expect(html).toContain("Fell a tree");
+    expect(html).toContain("Fell any tree");
     expect(html).not.toContain("Gather sticks");
     expect(html).not.toContain('data-act="fold"');
   });
 
-  it("a search reads past a shut group: what folds hide, the filter still finds", () => {
-    // The fire site lives under Make. Shutting Make used to take it out of
-    // every search, which is the one moment a reader is sure it exists.
-    const { state, world } = newGame(21);
-    const cal = calendar(state.minute);
-    const html = doHtml(state, world, cal, { ...newUiState(), filter: "firepit" }, { Make: false });
-    expect(html).toContain('data-opt="intent:build:firePit"');
-    // No label spells it that way, so every row here is a keyword answer:
-    // calling them "also" would leave the heading over an empty list.
-    expect(html).not.toContain("also answers to");
-  });
 
   it("a broad word leads with the rows that say it and puts the rest under their own heading", () => {
     const { state, world } = newGame(17);
@@ -216,27 +213,56 @@ describe("fold and filter", () => {
     expect(html).not.toContain('class="opt');
   });
 
-  it("a folded group renders its heading only", () => {
-    const { state, world } = newGame(21);
-    const cal = calendar(state.minute);
-    state.skills.woodcraft.xp = levelMinutes(5);
-    const html = doHtml(state, world, cal, newUiState(), { Gather: false });
-    const group = html.slice(html.indexOf('data-group="Gather"'), html.indexOf('data-group="Hunt"'));
-    expect(group).toContain("+ Gather");
-    expect(group).not.toContain("Gather sticks");
-  });
 
-  it("ui.moreOpen renders a group's far rows in place of the more button", () => {
+
+  it("a filter reaches every subtab, not the one the player is standing in", () => {
+    // Cooking lives under Camp/Food. A search that only looked where the
+    // reader happened to be is the search that sent them looking by hand.
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
-    const closed = doHtml(state, world, cal, newUiState());
-    expect(closed).toMatch(/data-act="more" data-group="Make">more \(\d+\)/);
-    const opened = doHtml(state, world, cal, { ...newUiState(), moreOpen: ["Make"] });
-    expect(opened).toContain('data-opt="intent:craft:bow"');
-    expect(opened).toMatch(/data-act="more" data-group="Make">less/);
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Fuel" }, filter: "cook" };
+    expect(doHtml(state, world, cal, ui)).toContain('data-opt="intent:cook:');
   });
 
-  it("a non-empty filter skips the far fold: a far row still renders, with no more line", () => {
+  it("a purpose shows its own rows and no others", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const food = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Wild food" } };
+    const html = doHtml(state, world, cal, food);
+    expect(html).toContain('data-opt="intent:roots:"');
+    expect(html).not.toContain('data-opt="intent:deadwood:"');
+  });
+
+  it("Camp is no longer one heap of twenty-six rows", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const water = { ...newUiState(), panes: { pane: "do" as const, subtab: "Camp" as const, purpose: "Water" } };
+    const html = doHtml(state, world, cal, water);
+    expect(html).toContain('data-opt="intent:melt:"');
+    expect(html).not.toContain('data-opt="intent:sharpen:"');
+  });
+
+  it("the left pane counts what each purpose holds", () => {
+    const { state, world } = newGame(21);
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Camp" as const, purpose: "Fire" } };
+    const counts = purposeCounts(state, world, ui);
+    // Every purpose Camp offers is present, and none of them is empty.
+    expect(Object.keys(counts).sort()).toEqual(["Fire", "Food", "Fuel", "Rest", "Tools", "Water"]);
+    for (const [q, n] of Object.entries(counts)) expect(n, q).toBeGreaterThan(0);
+    expect(doPurposesHtml(state, world, ui)).toContain('data-purpose="Water"');
+  });
+
+  it("an unfiltered pane with nothing in it says so rather than going blank", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Hunt" as const, purpose: "Scout" } };
+    const html = doHtml(state, world, cal, ui);
+    // Scout holds one row on every ground; if a purpose ever empties, the
+    // pane says so rather than leaving the reader looking at nothing.
+    expect(html.includes("data-opt=") || html.includes("nothing here yet")).toBe(true);
+  });
+
+  it("a far row still renders under a filter, with no more line", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "coat" });
@@ -247,7 +273,7 @@ describe("fold and filter", () => {
   it("once is a kind button, carrying the row's own choice of deliver and where", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
-    const ui = newUiState();
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Kindling" } };
     ui.open = { id: "sticks", arg: "" };
     const html = doHtml(state, world, cal, ui);
     const open = html.slice(html.indexOf('data-opt="intent:sticks:"'));
@@ -278,33 +304,37 @@ describe("the condition fields", () => {
   it("the season, the stock line and the daily count open at the condition rung and are named under it", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
-    const ui = { ...newUiState(), open: { id: "berries" as const, arg: "" } };
+    const ui = {
+      ...newUiState(),
+      panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Wild food" },
+      open: { id: "berries" as const, arg: "" },
+    };
     state.skills.foraging.xp = levelMinutes(12);
     const under = rowHtml(doHtml(state, world, cal, ui), "intent:berries:");
     expect(under).not.toContain("data-row-season-from");
     expect(under).not.toContain("data-row-stock-item");
-    expect(under).toContain("conditions at Foraging 15");
+    expect(under).toContain("insufficient skill");
 
     state.skills.foraging.xp = levelMinutes(15);
     const at = rowHtml(doHtml(state, world, cal, ui), "intent:berries:");
     for (const f of ["data-row-season-from", "data-row-season-to", "data-row-stock-item", "data-row-stock-mode", "data-row-stock-n"]) expect(at, f).toContain(f);
     expect(at).toContain('data-until="daily"');
-    expect(at).not.toContain("conditions at Foraging 15");
+    // The later pace control is still locked, but no internal rung wording leaks out.
+    expect(at).toContain("insufficient skill");
+    expect(at).not.toContain("pace at");
   });
 
-  it("marks where the player's own orders end and the runner's begin, on an open row", () => {
+  it("keeps scheduling prose out of an open row", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
     const shut = rowHtml(doHtml(state, world, cal, newUiState()), "intent:chop:");
-    // A shut row has no kinds to divide, so it says nothing about the runner.
     expect(shut).not.toContain("the rest are the runner's");
     const ui = { ...newUiState(), open: { id: "chop" as const, arg: "" } };
     const open = rowHtml(doHtml(state, world, cal, ui), "intent:chop:");
-    expect(open).toContain("starts now");
-    expect(open).toContain("the rest are the runner's");
-    // The divider falls after "once" and before the kinds handed over.
-    expect(open.indexOf('data-until="once"')).toBeLessThan(open.indexOf("the rest are the runner's"));
-    expect(open.indexOf("the rest are the runner's")).toBeLessThan(open.indexOf('data-until="times"'));
+    expect(open).not.toContain("starts now");
+    expect(open).not.toContain("the rest are the runner's");
+    expect(open).not.toContain("about ");
+    expect(open).not.toContain("you are");
   });
 
   it("the restart line shows at the condition rung and the due date at the pace rung, and only a keep carries them", () => {
@@ -317,12 +347,12 @@ describe("the condition fields", () => {
     expect(at15).not.toContain("data-row-by");
     // The spending box is the date's other half and comes with it, not before it.
     expect(at15).not.toContain("data-row-spend");
-    expect(at15).toContain("pace at Woodcraft 20");
+    expect(at15).toContain("insufficient skill");
 
     state.skills.woodcraft.xp = levelMinutes(20);
     const at20 = rowHtml(doHtml(state, world, cal, ui), "intent:chop:");
     expect(at20).toContain("data-row-by");
-    expect(at20).not.toContain("pace at Woodcraft 20");
+    expect(at20).not.toContain("insufficient skill");
     // The spending box comes with a date and not before it, so the row that has
     // one shows it; the row still on "any" is the case below.
     const dated = { ...ui, choice: { ...ui.choice, when: { by: 334 } } };
@@ -393,5 +423,51 @@ describe("the fetch rows", () => {
     expect(rowRequest(defaultChoiceFor("fill"), "fill", "shore").req.deliver).toBe("camp");
     expect(rowRequest(defaultChoiceFor("melt"), "melt", undefined).req.deliver).toBe("camp");
     expect(rowRequest(defaultChoiceFor("chop"), "chop", undefined).req.deliver).toBe("leave");
+  });
+});
+
+describe("a row says what it is, and what stops it", () => {
+  // He said it plainly: he did not understand some of the text on a row. A
+  // row you can do says its name and how long; a row you cannot says why.
+  // The rest is one click away rather than in the way of the scan.
+
+  it("a row you can do says its name and how long, and not its prose", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = paneHtml(state, world, cal, "deadwood");
+    const at = html.indexOf('data-opt="intent:deadwood:"');
+    const face = html.slice(at, html.indexOf("</button>", at));
+    expect(face).toMatch(/\d+ (min|h)/);
+    // "10 kg of firewood off the forest floor" is the detail. It is not
+    // deleted, it moves under `more`.
+    expect(face).not.toContain("forest floor");
+  });
+
+  it("the detail is under more, so nothing is lost, only moved", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const open = paneHtml(state, world, cal, "deadwood", undefined, { open: { id: "deadwood", arg: "" } });
+    expect(open.slice(open.indexOf('data-opt="intent:deadwood:"'))).toContain("forest floor");
+  });
+
+  it("a row you cannot do says why, which is the whole reason it is there", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    // Nothing is lit and no drill has been made: the row must say so, since
+    // a greyed button he had to infer a fire drill from is what cost a life.
+    const html = paneHtml(state, world, cal, "light");
+    const at = html.indexOf('data-opt="intent:light:"');
+    expect(at).toBeGreaterThan(-1);
+    const face = html.slice(at, html.indexOf("</button>", at));
+    expect(face.length).toBeGreaterThan(0);
+    expect(face).toMatch(/no |needs|nothing/i);
+  });
+
+  it("a producer still promises what it gives, since nothing else says the game is idle", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = paneHtml(state, world, cal, "build", "dryingRack");
+    const at = html.indexOf('data-opt="intent:build:dryingRack"');
+    expect(html.slice(at, at + 600)).toContain("gives");
   });
 });

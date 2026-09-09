@@ -1,14 +1,23 @@
 import { monthStartDoy } from "../sim/calendar";
 import { NOT_ORDERS } from "../sim/ladder";
 import { type HurryState, newHurry } from "./hurry";
+import { newSpeedHistory, type SpeedHistory } from "./speed-history";
 import { DEFAULT_ZOOM } from "./map";
+import { defaultPanes, type Panes } from "./panes";
+import { DEFAULT_TRAVEL_DISPLAY, type TravelDisplay } from "./travel";
 import type { AwaySummary } from "../sim/save";
 import type { GoalId, IntentRequest, ItemId, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
 
 /** What the screen remembers that the game does not. */
 export interface UiState {
+  /** How every route estimate is shown in this browser. */
+  travelDisplay: TravelDisplay;
+  /** Which pane is showing, and where in the Do pane the player was; remembered across a reload. */
+  panes: Panes;
   /** Region clicked on the map, or null for the one you stand in. */
   selected: number | null;
+  /** The map cell under the pointer, or null when the pointer is off the board. Derived from where the pointer is, never from a glyph's own enter and leave. */
+  hover: number | null;
   /** What happened while the tab was closed, until dismissed. */
   away: AwaySummary | null;
   confirmAbandon: boolean;
@@ -43,12 +52,12 @@ export interface UiState {
   choice: RowChoice;
   /** The Do panel's filter box: narrows rows to those whose label contains it, case-insensitive. */
   filter: string;
-  /** Do groups whose far rows ("more (N)") have been opened this render lifetime. */
-  moreOpen: string[];
-  /** The Do panel's fold state, held here and written through on toggle so a frame never has to re-read storage. */
-  folds: Record<string, boolean>;
+  /** Specific tree, fish, and neighbouring-region rows are tucked behind their named chooser. */
+  specific: { trees: boolean; fish: boolean; regions: boolean };
   /** The hurry: how fast the work chosen by hand is running right now. Never saved. */
   hurry: HurryState;
+  /** Last minute of real-time speed, for the weather footer. Never saved. */
+  speedHistory: SpeedHistory;
 }
 
 /** A Do row's order settings: what "more" opens, and what a kind button there gives. */
@@ -126,10 +135,10 @@ export function defaultChoiceFor(id: TaskId): RowChoice {
 
 export function newUiState(): UiState {
   return {
-    selected: null, away: null, confirmAbandon: false, confirmCamp: false,
+    panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, selected: null, hover: null, away: null, confirmAbandon: false, confirmCamp: false,
     cemetery: false, manual: false, teach: null, goalsDone: null, recognition: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
-    open: null, choice: defaultChoice(), filter: "", moreOpen: [], folds: {},
-    hurry: newHurry(),
+    open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false, regions: false },
+    hurry: newHurry(), speedHistory: newSpeedHistory(),
   };
 }
 

@@ -26,22 +26,127 @@ describe("the map's own surface", () => {
     expect(grid).toContain("-webkit-user-select: none");
   });
 
-  it("keeps fog, void and dim tellable apart, since all three read as dark ground", () => {
-    // Fog carries a grain the void does not, and dim is a drawn glyph at
-    // reduced opacity rather than a colour: three states, three readings.
-    expect(css).toContain(".grid .c.fog::before");
-    expect(rule(".grid .c.void")).toContain("background");
+  it("draws space beyond the world like unexplored ground instead of a black bar", () => {
+    expect(css).toContain(".grid .c.fog, .grid .c.void");
+    expect(css).toContain(".grid .c.fog::before, .grid .c.void::before");
     expect(rule(".grid .c.dim")).toContain("opacity");
+    expect(css).toContain(".scroll-x > .shade");
+    expect(css).toContain(".scroll-x::after");
   });
 });
 
 describe("the layout", () => {
-  it("the right column is a check-in: task, forecast, log, then actions, inventory, journal", () => {
-    const html = readFileSync("index.html", "utf8");
-    const right = html.slice(html.indexOf('id="right"'));
-    const order = ["task", "forecast", "log", "actions", "inventory", "journal"].map((id) => right.indexOf(`id="${id}"`));
-    expect(order.every((i) => i >= 0)).toBe(true);
-    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  const page = () => readFileSync("index.html", "utf8");
+
+  it("gives the speed history the whole weather footer without a dead strip below it", () => {
+    expect(rule(".wx")).toContain("display: flex");
+    expect(rule(".wx")).toContain("flex-direction: column");
+    expect(rule(".wx-where")).toContain("margin: auto -12px 0");
+    expect(rule(".wx-where")).toContain("min-height");
+  });
+
+  it("keeps weather fixed while only the activity queue scrolls", () => {
+    expect(rule("#right")).toContain("overflow: hidden");
+    expect(rule("#weather")).toContain("flex: none");
+    expect(rule("#orders")).toContain("overflow-y: auto");
+    expect(rule("#orders")).toContain("min-height: 0");
+  });
+
+  /**
+   * One rule decides where anything goes. A tester spent a session unable
+   * to tell what his survivor was doing while the thing he acted through
+   * was the sixth panel down a scrolling column, so the columns now mean
+   * something: you read the left, you act in the middle, and the right is
+   * what runs while you are not looking.
+   */
+  it("left is info, middle is interactive, right is the queue", () => {
+    const html = page();
+    const left = html.slice(html.indexOf('id="left"'), html.indexOf('id="center"'));
+    const mid = html.slice(html.indexOf('id="center"'), html.indexOf('id="right"'));
+    const right = html.slice(html.indexOf('id="right"'), html.indexOf('id="build"'));
+
+    for (const id of ["goals", "stats", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
+    // The clock is gone: the day and the hour are three lines in the weather
+    // widget, and the row it took is map now.
+    for (const id of ["map", "task", "panes"]) expect(mid).toContain(`id="${id}"`);
+    expect(mid).not.toContain('id="clock"');
+    expect(right).toContain('id="orders"');
+    // The weather sits above the queue, by the author's direction.
+    expect(right).toContain('id="weather"');
+
+    // The queue column holds the queue. Everything that used to be stacked
+    // under it is a pane in the middle now.
+    for (const id of ["log", "inventory", "journal", "actions", "forecast"]) {
+      expect(right).not.toContain(`id="${id}"`);
+    }
+  });
+
+  it("the away slider is the one control in the info column, beside what it changes", () => {
+    const html = page();
+    const left = html.slice(html.indexOf('id="left"'), html.indexOf('id="center"'));
+    expect(left).toContain('data-away="hours"');
+    const stats = left.indexOf('id="stats"');
+    const forecast = left.indexOf('id="forecast"');
+    const away = left.indexOf('data-away="hours"');
+    expect(stats).toBeLessThan(forecast);
+    expect(forecast).toBeLessThan(away);
+    const box = html.slice(html.indexOf('id="forecastbox"'), html.indexOf('id="skills"'));
+    expect(box).toContain('id="forecast"');
+    expect(box).toContain('id="away"');
+    expect(rule("#forecast .row")).toContain("white-space: nowrap");
+  });
+
+  it("all six panes exist at once, five of them hidden", () => {
+    const html = page();
+    for (const id of ["pane-do", "pane-camp", "pane-log", "pane-pack", "pane-gear", "pane-journal"]) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    // Rendering a pane on demand would destroy the other three and the
+    // scroll position each holds, which is the complaint this answers.
+    expect((html.match(/id="pane-[a-z]+"[^>]*hidden/g) ?? []).length).toBe(5);
+  });
+
+  it("the Do pane's only scroll container is the item pane", () => {
+    const html = page();
+    for (const id of ["panetabs", "dosubs", "dopurposes", "doitems"]) expect(html).toContain(`id="${id}"`);
+    // Scroll offset is a DOM property and is not in the markup, so it
+    // survives only where the element does. One scroller, one place to lose.
+    const decl = rule("#doitems");
+    expect(decl).toContain("overflow-y: auto");
+    expect(rule("#dopurposes")).not.toContain("overflow-y: auto");
+  });
+
+  it("the tooltip is in the markup, hidden, so it is never created or destroyed", () => {
+    const html = page();
+    const tip = html.indexOf('id="maptip"');
+    expect(tip).toBeGreaterThan(0);
+    expect(html.slice(tip, html.indexOf(">", tip))).toContain("hidden");
+    // Inside the map, so its position is measured against the board.
+    expect(tip).toBeGreaterThan(html.indexOf('id="map"'));
+    expect(tip).toBeLessThan(html.indexOf('id="task"'));
+  });
+
+  it("keeps the camp inventory on the map and aligns every corner overlay to its content", () => {
+    const html = page();
+    const inventory = html.indexOf('id="mapinventory"');
+    expect(inventory).toBeGreaterThan(html.indexOf('id="map"'));
+    expect(inventory).toBeLessThan(html.indexOf('id="task"'));
+
+    expect(rule("#map")).toContain("--map-overlay-inset: 8px");
+    expect(rule("#mapinventory")).toMatch(/top:\s*var\(--map-overlay-inset\)/);
+    expect(rule("#mapinventory")).toMatch(/left:\s*var\(--map-overlay-inset\)/);
+    expect(rule("#mapinventory:empty")).toContain("display: none");
+    expect(rule("#maptravel")).toMatch(/top:\s*var\(--map-overlay-inset\)/);
+    expect(rule("#maptravel")).toMatch(/right:\s*var\(--map-overlay-inset\)/);
+    expect(rule("#maptip")).toMatch(/left:\s*var\(--map-overlay-inset\)/);
+  });
+
+  it("centres the map on a fog surface without scrolling or panning", () => {
+    const viewport = rule(".scroll-x");
+    expect(viewport).toContain("overflow: hidden");
+    expect(viewport).toContain("place-items: center");
+    expect(viewport).toContain("background");
+    expect(viewport).not.toContain("overflow: auto");
   });
 
   it("the sound and the beacon live in a settings panel that is hidden until it is asked for", () => {
@@ -62,6 +167,19 @@ describe("the layout", () => {
     const columns = html.slice(html.indexOf('id="app"'), settings);
     expect(columns).not.toContain('id="sound"');
     expect(columns).not.toContain('id="beacon"');
+  });
+
+  it("settings offers one browser-wide travel estimate format", () => {
+    const html = page();
+    const settings = html.slice(html.indexOf('id="settings"'), html.indexOf('id="overlay"'));
+    expect((settings.match(/data-display="travel"/g) ?? []).length).toBe(1);
+    for (const value of ["distance", "time", "both"]) expect(settings).toContain(`value="${value}"`);
+  });
+
+  it("settings can discard the saved world without presenting preferences as world data", () => {
+    const settings = page().slice(page().indexOf('id="settings"'), page().indexOf('id="overlay"'));
+    expect(settings).toContain('data-act="reset-world"');
+    expect(settings).toContain("reset world data");
   });
 
   it("the page ends in a footer naming the build, filled from the version the bundle was built with", () => {

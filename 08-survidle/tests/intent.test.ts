@@ -9,15 +9,16 @@ import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import { candidateWeight, check, huntGroundValue, stepTask, stopTask } from "../src/sim/tasks";
+import { candidateWeight, check, huntGroundValue, stepTask, stopTask , isShortAtCamp } from "../src/sim/tasks";
 import { setSkillLevel } from "../src/sim/horizon";
 import { SKILL_IDS } from "../src/sim/skills";
 import { takeStep } from "../src/sim/steps";
 import { ICE_SHORE_CM } from "../src/sim/water";
 import type { Intent, TaskId } from "../src/sim/types";
 import { cellAt, cellIdx, regionAt, spotOf, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
 
@@ -50,6 +51,7 @@ describe("the intent record", () => {
 
   it("camping for the night is an option with the bed in its detail", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const o = check(state, world, cal, "night");
     expect(o.label).toBe("Camp for the night");
     expect(o.ok).toBe(true);
@@ -58,6 +60,7 @@ describe("the intent record", () => {
 
   it("night forces its own shape regardless of what was asked: once, and leave it - never a promise to bring anything to camp", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     expect(startIntent(state, world, cal, new Rng(1), { task: "night", until: { kind: "forever" }, deliver: "camp", where: "nearest" })).toBe(true);
     expect(state.intent?.until).toEqual({ kind: "once" });
     expect(state.intent?.deliver).toBe("leave");
@@ -82,19 +85,46 @@ function req(task: TaskId, extra: Partial<IntentRequest> = {}): IntentRequest {
 }
 
 describe("where the work is done", () => {
-  it("nearest ground is the region's spot unless you already stand on it", () => {
+  it("nearest ground is the nearest usable cell, including the one underfoot", () => {
     const { state, world } = newGame(3);
-    const r = regionAt(world, state.player.region);
+    siteCamp(state, world);
     // The starting region's camp happens to sit on forest ground for this seed; stand somewhere that is neither forest nor heath first.
     placeAtSpot(state, world, state.player.region, "heath");
-    expect(resolveCell(state, world, cal, "chop", undefined, "nearest").cell).toBe(spotOf(r, "forest")!.cell);
+    expect(cellAt(world, resolveCell(state, world, cal, "chop", undefined, "nearest").cell).terrain).toMatch(/spruce|pine|birch/);
     placeAtSpot(state, world, state.player.region, "forest");
     expect(resolveCell(state, world, cal, "chop", undefined, "nearest").cell).toBe(cellOf(state, world));
-    expect(resolveCell(state, world, cal, "berries", undefined, "nearest").cell).toBe(spotOf(r, "heath")!.cell);
+    expect(["fell", "meadow"]).toContain(cellAt(world, resolveCell(state, world, cal, "berries", undefined, "nearest").cell).terrain);
+  });
+
+  it("previews the first walk separately from felling time", () => {
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    placeAtSpot(state, world, state.player.region, "heath");
+    const o = intentOption(state, world, cal, "chop", "spruce", "nearest");
+    expect(o.duration).toBeGreaterThan(0);
+    expect(o.initialWalk).toMatchObject({ destination: "spruce forest", nearest: true });
+    expect(o.initialWalk!.km).toBeGreaterThan(0);
+    expect(o.initialWalk!.minutes).toBeGreaterThan(0);
+  });
+
+  it("has no initial walk on usable ground", () => {
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    placeAtSpot(state, world, state.player.region, "forest");
+    expect(intentOption(state, world, cal, "chop", undefined, "nearest").initialWalk).toBeUndefined();
+  });
+
+  it("marks a selected place as explicit", () => {
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    placeAtSpot(state, world, state.player.region, "heath");
+    const o = intentOption(state, world, cal, "chop", undefined, "forest");
+    expect(o.initialWalk).toMatchObject({ destination: "the forest", nearest: false });
   });
 
   it("a spot that does not suit the work falls back to one that does, and says so", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const r = regionAt(world, state.player.region);
     // Off forest ground, same reason as above, so the fallback is really tested.
     placeAtSpot(state, world, state.player.region, "heath");
@@ -108,7 +138,8 @@ describe("where the work is done", () => {
 
   it("camp-bound work resolves to camp; crafting stays where the materials are", () => {
     const { state, world } = newGame(3);
-    const camp = regionState(state, world, state.player.region).campCell;
+    siteCamp(state, world);
+    const camp = regionState(state, world, state.player.region).campCell!;
     placeAtSpot(state, world, state.player.region, "forest");
     expect(resolveCell(state, world, cal, "split", undefined, "nearest").cell).toBe(camp);
     expect(resolveCell(state, world, cal, "craft", "cordage", "nearest").cell).toBe(camp);
@@ -121,6 +152,7 @@ describe("where the work is done", () => {
     // heaviest ground left; seed 3's camp cell now also weighs in (tied with
     // shore), which the fixture needs not to happen.
     const g = newGame(1);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const r = regionAt(world, state.player.region);
     state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
@@ -151,11 +183,12 @@ describe("where the work is done", () => {
   // and starved at the lean ceiling. Ground is ranked by the meat a day's
   // hunting on it would bring home, and the value reads the hunter's own odds,
   // so a beginner is not sent after game they cannot take.
-  it("a hunter at level walks to the forest where the deer are; a beginner stays where the small game is", () => {
+  it("a hunt for anything uses the nearest usable ground at every skill level", () => {
     // The same fixture as the test above, which pins the beginner's half: on a
     // heath full of hare, a level-1 hunter stays put, because the roe deer in
     // the forest are over their head and do not count toward that ground.
     const g = newGame(1);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const r = regionAt(world, state.player.region);
     state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
@@ -164,19 +197,16 @@ describe("where the work is done", () => {
     const heath = spotOf(r, "heath")!.cell;
     placeAt(state, world, heath);
     expect(resolveCell(state, world, cal, "hunt", "any", "nearest").cell).toBe(heath);
-    // At level the big game counts, and a load of it an hour beats a hare: the
-    // hunt leaves the heath for the best ground in the region, whichever that
-    // is - this region's outcrop holds reindeer as well as its forest holding
-    // roe deer.
+    // Skill changes the available quarry, not the meaning of nearest.
     for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
-    expect(huntGroundValue(state, world, cal, forest)).toBeGreaterThan(huntGroundValue(state, world, cal, heath));
     const chosen = resolveCell(state, world, cal, "hunt", "any", "nearest").cell;
-    expect(chosen).not.toBe(heath);
-    expect(huntGroundValue(state, world, cal, chosen)).toBeGreaterThanOrEqual(huntGroundValue(state, world, cal, forest));
+    expect(chosen).toBe(heath);
+    expect(huntGroundValue(state, world, cal, forest)).toBeGreaterThan(0);
   });
 
   it("the button is judged at the resolved cell, so ground is never the reason", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const o = intentOption(state, world, cal, "chop", undefined, "nearest");
     expect(o.ok).toBe(true);
     state.player.tools = [];
@@ -187,6 +217,7 @@ describe("where the work is done", () => {
 describe("the work tier", () => {
   it("walks to the forest, fells once, and is done", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     // The starting camp itself sits on forest ground for this seed; stand off it so a walk is really needed.
     placeAtSpot(state, world, state.player.region, "heath");
@@ -197,11 +228,12 @@ describe("the work tier", () => {
     expect(state.intent?.step).toBe("felling a tree at the forest");
     expect(until(g, () => state.intent === null)).toBe(true);
     expect(state.stats.trees).toBe(1);
-    expect(state.log.some((e) => e.text === "Fell a tree: done.")).toBe(true);
+    expect(state.log.some((e) => e.text === "Fell any tree: done.")).toBe(true);
   });
 
   it("refuses to start what cannot start, and ends with the button's words when the work runs out", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     state.player.tools = [];
     expect(startIntent(state, world, cal, rng(), req("chop"))).toBe(false);
@@ -211,11 +243,12 @@ describe("the work tier", () => {
     startIntent(state, world, cal, rng(), req("chop", { until: { kind: "forever" } }));
     expect(until(g, () => state.intent === null)).toBe(true);
     expect(state.stats.trees).toBe(1);
-    expect(state.log.some((e) => e.text === "Fell a tree: nothing left worth felling. {You} {stop}.")).toBe(true);
+    expect(state.log.some((e) => e.text === "Fell any tree: nothing left worth felling. {You} {stop}.")).toBe(true);
   });
 
   it("N times counts completions of the work only", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     startIntent(state, world, cal, rng(), req("sticks", { until: { kind: "times", n: 3 } }));
     expect(until(g, () => state.intent === null)).toBe(true);
@@ -225,8 +258,9 @@ describe("the work tier", () => {
 
   it("brings a full load to camp and goes back for more, and hauls the rest when it is over", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = regionState(state, world, state.player.region).campCell!;
     startIntent(state, world, cal, rng(), req("chop", { until: { kind: "times", n: 2 }, deliver: "camp", where: "forest" }));
     expect(until(g, () => state.intent === null, 6000)).toBe(true);
     expect(qty(pile(state, camp), "log")).toBe(8);
@@ -236,8 +270,9 @@ describe("the work tier", () => {
 
   it("until camp has N counts the camp pile alone", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = regionState(state, world, state.player.region).campCell!;
     // deliver defaults to "leave" here, but "until camp has N" forces it to "camp": the promise cannot be kept otherwise.
     startIntent(state, world, cal, rng(), req("chop", { until: { kind: "campHas", qty: 5 }, where: "forest" }));
     expect(state.intent?.until).toEqual({ kind: "campHas", item: "log", qty: 5 });
@@ -249,9 +284,10 @@ describe("the work tier", () => {
 
   it("a gather stops once the shortfall is in the pack, not once it is already home", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     mapRegion(state, world, state.player.region);
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = regionState(state, world, state.player.region).campCell!;
     startIntent(state, world, cal, rng(), req("stone", { until: { kind: "campHas", qty: 8 } }));
     expect(until(g, () => state.intent === null, 8000)).toBe(true);
     const total = qty(pile(state, camp), "stone");
@@ -264,14 +300,16 @@ describe("the work tier", () => {
 
   it("work with no countable yield turns until camp has N into once", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     startIntent(state, world, cal, rng(), req("rest", { until: { kind: "campHas", qty: 5 } }));
     expect(state.intent?.until).toEqual({ kind: "once" });
   });
 
   it("reads as a sentence", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     startIntent(state, world, cal, rng(), req("chop", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }));
-    expect(intentSentence(state, world, cal, state.intent!)).toBe("Fell a tree, until camp has 40 logs, bringing it to camp");
+    expect(intentSentence(state, world, cal, state.intent!)).toBe("Fell any tree, until camp has 40 logs, bringing it to camp");
     startIntent(state, world, cal, rng(), req("sticks", { until: { kind: "times", n: 5 } }));
     expect(intentSentence(state, world, cal, state.intent!)).toBe("Gather sticks, 0 of 5 done");
     startIntent(state, world, cal, rng(), req("bark", { until: { kind: "forever" } }));
@@ -280,7 +318,8 @@ describe("the work tier", () => {
 
   it("a live light keep never claims to bring the fire to camp", () => {
     const { state, world } = newGame(3);
-    const camp = regionState(state, world, state.player.region).campCell;
+    siteCamp(state, world);
+    const camp = regionState(state, world, state.player.region).campCell!;
     // Built by hand rather than through startIntent: lighting needs a fire site in
     // place, and this test is only about the sentence a light intent reads as.
     const light: Intent = {
@@ -293,9 +332,10 @@ describe("the work tier", () => {
 
   it("a build fetches what is missing from this region's piles, one load at a time, then builds", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const region = state.player.region;
-    const camp = regionState(state, world, region).campCell;
+    const camp = regionState(state, world, region).campCell!;
     const r = regionAt(world, region);
     const forest = spotOf(r, "forest")!.cell;
     addItem(pile(state, camp), "stick", 8);
@@ -303,18 +343,26 @@ describe("the work tier", () => {
     addItem(pile(state, forest), "log", 4);
     addItem(state.player.pack, "driedMeat", 3);
     // The button agrees with startIntent: fetching counts as a way to start, so it is not greyed out.
-    expect(intentOption(state, world, cal, "build", "leanTo", "nearest").ok).toBe(true);
+    const option = intentOption(state, world, cal, "build", "leanTo", "nearest");
+    expect(option.ok).toBe(true);
+    expect(option.initialWalk?.cell).toBe(forest);
     expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(true);
-    expect(state.intent?.step).toContain("for materials");
+    expect(state.intent?.step).toContain("walking to the forest");
     expect(until(g, () => state.intent === null, 8000)).toBe(true);
-    expect(regionState(state, world, region).structures.leanTo).toBe(true);
+    expect(campSite(regionState(state, world, region))!.structures.leanTo).toBe(true);
     expect(qty(pile(state, forest), "log")).toBe(0);
     expect(state.log.some((e) => e.text === "lean-to: done.")).toBe(true);
   });
 
   it("a build with materials nowhere in the region does not start; the button already says why", () => {
     const { state, world } = newGame(3);
-    expect(intentOption(state, world, cal, "build", "leanTo", "nearest").why).toBe("missing materials at camp");
+    siteCamp(state, world);
+    // The refusal names what is wanting rather than saying "missing
+    // materials" beside a list of what the whole thing costs.
+    const why = intentOption(state, world, cal, "build", "leanTo", "nearest").why;
+    expect(why).toMatch(/^short /);
+    expect(why).toMatch(/ at camp$/);
+    expect(isShortAtCamp(why)).toBe(true);
     expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(false);
     expect(state.intent).toBeNull();
   });
@@ -323,8 +371,9 @@ describe("the work tier", () => {
     // Seed 0's starting region has a water cell (impassable, so kmBetween from camp is null)
     // that still carries the region's tag; seed 3's region (used above) has no water at all.
     const { state, world } = newGame(0);
+    siteCamp(state, world);
     const region = state.player.region;
-    const camp = regionState(state, world, region).campCell;
+    const camp = regionState(state, world, region).campCell!;
     const cx = camp % world.w;
     const cy = Math.floor(camp / world.w);
     let stranded: number | null = null;
@@ -350,9 +399,10 @@ describe("the work tier", () => {
 
   it("does not spin forever when nothing missing fits in the pack: it ends with the real reason", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const region = state.player.region;
-    const camp = regionState(state, world, region).campCell;
+    const camp = regionState(state, world, region).campCell!;
     const r = regionAt(world, region);
     const forest = spotOf(r, "forest")!.cell;
     // Sticks and cordage are already at camp; only the logs are missing, and they sit at the forest.
@@ -363,15 +413,17 @@ describe("the work tier", () => {
     addItem(state.player.pack, "stone", 34 / ITEM_KG.stone);
     expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(true);
     expect(until(g, () => state.intent === null, 500)).toBe(true);
-    expect(state.log.some((e) => e.text === "lean-to: missing materials at camp. {You} {stop}.")).toBe(true);
+    expect(state.log.some((e) => /^lean-to: short .* at camp\. \{You\} \{stop\}\.$/.test(e.text))).toBe(true);
   });
 
   it("a build already finished is never offered a fetch, whatever sits elsewhere in the region", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const region = state.player.region;
     const r = regionAt(world, region);
     const forest = spotOf(r, "forest")!.cell;
-    regionState(state, world, region).structures.leanTo = true;
+    const irst = regionState(state, world, region);
+    siteFor(irst, irst.campCell!).structures.leanTo = true;
     addItem(pile(state, forest), "log", 4);
     const o = intentOption(state, world, cal, "build", "leanTo", "nearest");
     expect(o.ok).toBe(false);
@@ -381,6 +433,7 @@ describe("the work tier", () => {
 
   it("a cabin with no fire site is never offered a fetch either, even with plenty of logs nearby", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const region = state.player.region;
     const r = regionAt(world, region);
     const forest = spotOf(r, "forest")!.cell;
@@ -392,8 +445,9 @@ describe("the work tier", () => {
 
   it("the fetch detail names what the nearest pile actually holds, not just the first thing missing", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const region = state.player.region;
-    const camp = regionState(state, world, region).campCell;
+    const camp = regionState(state, world, region).campCell!;
     const r = regionAt(world, region);
     const forest = spotOf(r, "forest")!.cell;
     const heath = spotOf(r, "heath")!.cell;
@@ -414,7 +468,8 @@ describe("a camp-bound delivery already at camp", () => {
   it("drops what landed in the pack instead of walking back out with it", () => {
     // Seed 17: bog camp, forest 0.6 km away, so the chop's own cell is not the camp cell.
     const { state, world } = newGame(17);
-    const camp = regionState(state, world, state.player.region).campCell;
+    siteCamp(state, world);
+    const camp = regionState(state, world, state.player.region).campCell!;
     startIntent(state, world, cal, rng(), req("chop", { until: { kind: "forever" }, deliver: "camp" }));
     // The exact scenario the rule must handle: standing at camp already, a log on the
     // back, and nothing at the work cell to explain a delivery leg starting there.
@@ -428,8 +483,9 @@ describe("a camp-bound delivery already at camp", () => {
 
   it("split at camp lands its firewood on the camp pile, so campHas can see it and end the intent", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = regionState(state, world, state.player.region).campCell!;
     addItem(pile(state, camp), "log", 3);
     expect(startIntent(state, world, cal, rng(), req("split", { until: { kind: "campHas", qty: 5 } }))).toBe(true);
     expect(until(g, () => state.intent === null, 1500)).toBe(true);
@@ -442,7 +498,8 @@ describe("a camp-bound delivery already at camp", () => {
 describe("a rest's gain, not just its completion, decides whether cold is spent", () => {
   it("a rest that gains at least a point of warmth is not marked spent, even if the need still reads cold when it ends", () => {
     const { state, world } = newGame(3);
-    const camp = regionState(state, world, state.player.region).campCell;
+    siteCamp(state, world);
+    const camp = regionState(state, world, state.player.region).campCell!;
     state.intent = {
       mode: "runner", task: "chop", cell: camp, campCell: camp,
       until: { kind: "forever" }, deliver: "leave", done: 0, step: "", orderId: null, windDown: false,
@@ -463,6 +520,7 @@ describe("a rest's gain, not just its completion, decides whether cold is spent"
 describe("the haul intent", () => {
   it("loads, walks to camp, drops, walks back, until the pile is bare", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const region = state.player.region;
     placeAtSpot(state, world, region, "forest");
@@ -474,7 +532,7 @@ describe("the haul intent", () => {
     expect(state.task?.id).toBe("walk");
     expect(qty(state.player.pack, "log")).toBe(1);
     expect(until(g, () => state.intent === null, 6000)).toBe(true);
-    const camp = pile(state, regionState(state, world, region).campCell);
+    const camp = pile(state, regionState(state, world, region).campCell!);
     expect(qty(camp, "log")).toBe(3);
     expect(qty(camp, "stick")).toBe(10);
     expect(isEmpty(pile(state, forestCell))).toBe(true);
@@ -483,6 +541,7 @@ describe("the haul intent", () => {
 
   it("stopping mid-haul keeps the load on your back and you on the way", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     const forestCell = cellOf(state, world);
@@ -498,11 +557,13 @@ describe("the haul intent", () => {
 
   it("an empty pile is nothing to haul", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     expect(startIntent(state, world, cal, rng(), req("haul"))).toBe(false);
   });
 
   it("refuses to start at camp even with something to haul", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     addItem(herePile(state, world), "log", 1);
     expect(startIntent(state, world, cal, rng(), req("haul"))).toBe(false);
   });
@@ -511,6 +572,7 @@ describe("the haul intent", () => {
 describe("saves", () => {
   it("a live intent survives a save and goes on while you are away", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     startIntent(state, world, cal, rng(), req("sticks", { until: { kind: "forever" } }));
     go(g, 5);
@@ -526,16 +588,17 @@ describe("saves", () => {
 describe("a spare tool at camp", () => {
   it("felling judged from camp with the only axe in the camp pile is able to run, and starting it takes the axe up", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
-    addItem(pile(state, st.campCell), "axe", 1);
+    addItem(pile(state, st.campCell!), "axe", 1);
     expect(hasTool(state.player, "axe")).toBe(false);
     expect(intentOption(state, world, cal, "chop", undefined, "nearest").ok).toBe(true);
     const req: IntentRequest = { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" };
     expect(startIntent(state, world, cal, new Rng(1), req)).toBe(true);
     expect(hasTool(state.player, "axe")).toBe(true);
-    expect(qty(pile(state, st.campCell), "axe")).toBe(0);
+    expect(qty(pile(state, st.campCell!), "axe")).toBe(0);
   });
 
   it("a hole fill judged from camp reads only the axe the fill can carry, while the ice-hole task takes the camp one up", () => {
@@ -544,6 +607,7 @@ describe("a spare tool at camp", () => {
     // the pack and the work cell alone. An iceHole order is provisioned like
     // any other task, so the same axe is in reach from camp and taken up.
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     // Camp off the water, so the hole is judged at a cell the survivor is not
     // standing on: every seed's landing camp is itself waterside, where the
@@ -567,15 +631,17 @@ describe("a spare tool at camp", () => {
 
   it("judged from the forest with the axe at camp it is not: the tool is only in reach from camp, where setting out takes it up", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
-    addItem(pile(state, st.campCell), "axe", 1);
+    addItem(pile(state, st.campCell!), "axe", 1);
     placeAtSpot(state, world, state.player.region, "forest");
     expect(check(state, world, cal, "chop").why).toBe("needs an axe");
   });
 
   it("a birch tap judged from camp with the only knife in the camp pile is able to run, and starting it takes the knife up", () => {
     const { state, world } = newGame(17, SAP_FROM_DOY);
+    siteCamp(state, world);
     const birch = findBirchCell(world);
     const st = regionState(state, world, cellAt(world, birch).region);
     st.campCell = birch;
@@ -598,22 +664,23 @@ describe("a spare tool at camp", () => {
     // fire for fourteen hours a day "unloading at camp" and starved on day 42 with an elk down
     // and 5,645 kcal a day gathered.
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
     addItem(state.player.pack, "arrow", 10);
     expect(startIntent(state, world, cal, new Rng(1), { task: "hunt", arg: "any", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, 1)).toBe(true);
     // The work is away from camp and something of the last kill is still lying there, so the
     // delivery branch is the one the runner is in, standing at camp with nothing but its kit.
-    const away = regionAt(world, state.player.region).spots.find((sp) => sp.cell !== st.campCell)!.cell;
+    const away = regionAt(world, state.player.region).spots.find((sp) => sp.cell !== st.campCell!)!.cell;
     state.intent!.cell = away;
     addItem(pile(state, away), "sinew", 2);
     state.task = null;
-    for (let m = 0; m < 120 && state.intent && cellOf(state, world) === st.campCell; m++) advance(state, world, 1);
+    for (let m = 0; m < 120 && state.intent && cellOf(state, world) === st.campCell!; m++) advance(state, world, 1);
     // Either it set out for the rest or the intent gave way to another order: what it must not
     // do is stand at camp calling the same empty unload a step.
-    expect(cellOf(state, world) !== st.campCell || state.intent === null || state.intent.step !== "unloading at camp").toBe(true);
+    expect(cellOf(state, world) !== st.campCell! || state.intent === null || state.intent.step !== "unloading at camp").toBe(true);
     expect(qty(state.player.pack, "arrow")).toBe(10);
   });
 

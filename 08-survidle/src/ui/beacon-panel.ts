@@ -13,8 +13,16 @@ export function mountBeaconPanel(root: HTMLElement, beacon: Beacon, configured: 
   const note = root.querySelector<HTMLElement>("[data-beacon=note]")!;
   const rec = beacon.record();
   box.checked = rec.on;
-  note.innerHTML = `id <input data-beacon="name" maxlength="32" size="18" spellcheck="false" />${rec.tester ? `, tester: ${rec.cohort}` : ""}${configured ? "" : " (not configured)"}`;
-  const name = note.querySelector<HTMLInputElement>("[data-beacon=name]")!;
+  // Built as nodes rather than as markup: setPanel is the one place that
+  // writes innerHTML, so that the morph it does is the only way anything on
+  // screen is ever replaced.
+  const name = document.createElement("input");
+  name.dataset.beacon = "name";
+  name.maxLength = 32;
+  name.size = 18;
+  name.spellcheck = false;
+  const tail = `${rec.tester ? `, tester: ${rec.cohort}` : ""}${configured ? "" : " (not configured)"}`;
+  note.replaceChildren("id ", name, tail);
   const showName = () => { name.value = beacon.record().name ?? rec.id; };
   showName();
   name.addEventListener("change", () => {

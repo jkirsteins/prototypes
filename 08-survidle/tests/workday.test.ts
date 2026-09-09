@@ -10,7 +10,7 @@ import { addOrder, judgeOrders, moveOrder, ordersHere } from "../src/sim/orders"
 import { taskDrain } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { alertness, RESTED_AT, sleepiness, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { beginTask, setAside, startTask } from "../src/sim/tasks";
@@ -19,10 +19,12 @@ import type { World } from "../src/world/gen";
 import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/sim/water";
 import { stormComing, stormNow } from "../src/sim/weather";
 import { regionAt, spotOf } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 /** A kitted camp on seed 17 with one endless felling grind, the survivor fresh at 08:00. */
 function felling() {
   const g = newGame(17);
+  siteCamp(g.state, g.world);
   kitOut(g.state, g.world);
   g.state.player.energy = 100;
   addOrder(g.state, g.world, { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
@@ -166,6 +168,7 @@ describe("the working day", () => {
 
   it("a chop started by hand has no intent, so no body need takes it off the tree", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     kitOut(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     state.player.energy = 100;
@@ -245,10 +248,10 @@ describe("the working day", () => {
     const { state, world } = felling();
     const st = regionState(state, world, state.player.region);
     st.fire.lit = false;
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
-    addItem(pile(state, st.campCell), "firewood", 5);
-    placeAt(state, world, st.campCell);
+    addItem(pile(state, st.campCell!), "firewood", 5);
+    placeAt(state, world, st.campCell!);
     state.player.energy = 100;
     state.player.water = WATER_FULL;
     state.player.sleepDebt = debtFor(SLEEP_ONSET + 5, calendar(state.minute, state.startDoy).hour);
@@ -328,7 +331,7 @@ describe("checking the snares", () => {
     for (let m = 0; m < 600 && state.task?.id !== "chop"; m++) advance(state, world, 1);
     expect(state.task?.id).toBe("chop");
     for (const t of state.player.tools) t.litres = 0;
-    addItem(pile(state, st.campCell), "water", 3);
+    addItem(pile(state, st.campCell!), "water", 3);
     state.player.water = 0.2;
     state.player.energy = 100;
     st.snareCatch = { count: 1, age: 0 };

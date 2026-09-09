@@ -5,8 +5,9 @@ import { type Cue, cue, setCueSink } from "../src/sim/cues";
 import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { fallThrough, startTask, stepTask } from "../src/sim/tasks";
+import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
 
@@ -29,6 +30,7 @@ describe("cues", () => {
     const got: Cue[] = [];
     setCueSink((c) => got.push(c));
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     expect(startTask(state, world, cal, "chop")).toBe(true);
     const rng = new Rng(1);
@@ -37,7 +39,7 @@ describe("cues", () => {
 
     placeAtSpot(state, world, state.player.region, "camp");
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100, litres: 0, frozen: false });
     addItem(state.player.pack, "firewood", 5);
     expect(startTask(state, world, cal, "light")).toBe(true);
@@ -47,7 +49,7 @@ describe("cues", () => {
     // A fall that is survived (rng seeded so the 60% drowning roll misses): find a seed whose first roll is above 0.6.
     let seed = 1;
     while (new Rng(seed).next() < 0.6) seed++;
-    fallThrough(state, world, new Rng(seed), st.campCell);
+    fallThrough(state, world, new Rng(seed), st.campCell!);
     expect(got.filter((c) => c === "fallThrough")).toHaveLength(1);
   });
 });

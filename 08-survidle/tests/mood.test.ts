@@ -4,11 +4,14 @@ import { newGame } from "../src/sim/newgame";
 import { mapHtml, mapKey } from "../src/ui/map";
 import { MOOD_BY_TASK, MOODS, moodOf } from "../src/ui/mood";
 import { statsHtml } from "../src/ui/panels";
+import { updateBars } from "../src/ui/bars";
 import { newUiState } from "../src/ui/render";
 import { ambientTemperature } from "../src/sim/weather";
+import { COLLAPSE_RECOVERED_AT } from "../src/sim/sleep";
 import { regionState } from "../src/sim/regionstate";
 import type { GameState, TaskId } from "../src/sim/types";
 import { css } from "./css";
+import { siteCamp } from "./siting-helpers";
 
 /** A task on the player, with only the fields the mood reads filled in. */
 function doing(state: GameState, id: TaskId): void {
@@ -35,7 +38,7 @@ describe("the mood a task reads as", () => {
     expect(moodOf(state)).toBe("work");
     doing(state, "makeCamp");
     expect(moodOf(state)).toBe("work");
-    doing(state, "wait");
+    doing(state, "rest");
     expect(moodOf(state)).toBe("rest");
     doing(state, "sleep");
     expect(moodOf(state)).toBe("sleep");
@@ -65,6 +68,7 @@ describe("the mood on the screen", () => {
 
   it("puts live condition and firelight classes on the header portrait", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const ui = newUiState();
     const cal = calendar(state.minute, state.startDoy);
     doing(state, "chop");
@@ -109,5 +113,31 @@ describe("the mood on the screen", () => {
     expect(css).toContain(".portrait.is-hot");
     expect(css).toContain(".portrait.is-cold");
     expect(reduced).toContain(".portrait.is-firelit::before");
+  });
+
+  it("shows the active collapse recovery line on the Energy bar", () => {
+    const { state, world } = newGame(17);
+    state.player.energy = 55;
+    state.player.sleeping = { collapsed: true };
+    const cal = calendar(state.minute, state.startDoy);
+    const html = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
+    expect(html).toContain(`left:${COLLAPSE_RECOVERED_AT.toFixed(1)}%`);
+    expect(html).toContain("work resumes here after collapse");
+  });
+
+  it("does not round Energy up across its active recovery line", () => {
+    const { state, world } = newGame(17);
+    state.player.energy = COLLAPSE_RECOVERED_AT - 0.1;
+    state.player.sleeping = { collapsed: true };
+    const cal = calendar(state.minute, state.startDoy);
+    document.body.innerHTML = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
+    updateBars(state, world);
+    expect(document.querySelector('[data-val="energy"]')?.textContent).toBe("99");
+  });
+
+  it("never animates a map cell with a positional transform", () => {
+    const mapRules = css.match(/\.grid \.c[^}]*}/g)?.join("\n") ?? "";
+    expect(mapRules).not.toMatch(/transform\s*:/);
+    expect(mapRules).not.toContain("mood-step");
   });
 });

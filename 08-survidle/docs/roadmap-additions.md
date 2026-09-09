@@ -64,3 +64,101 @@ player already has the tool a competent one would use here - the open
 question is only whether the reference runner (and so the gates it drives)
 should carry a seep want, given digging one is itself an hour-plus action
 that assumes the walker can afford to stop, not a sip taken in passing.
+
+## `pile()` and `siteFor` on read paths
+
+**Raised** 2026-09-08, during the camp siting work.
+
+`pile(state, cell)` creates an empty inventory when the cell has none, so any
+code that only wants to *read* what lies somewhere writes to the state as a
+side effect. The map draws a mark for every key in `state.piles` without
+asking whether it holds anything, so a read can put a pile on the map at a
+cell where nothing lies. `tidyPiles` sweeps the empties on the next tick, so
+it flickers rather than persists, which is why nobody has chased it.
+
+Camp siting hit this twice. Once as its own bug - the sentence naming what a
+moved camp leaves behind called `pile()` from a render path, so opening the
+confirm dialog and answering no marked a pile that was not there - fixed by
+reading `state.piles[cell]` directly, and `pileAt(state, cell)` now exists as
+the read-safe accessor. Once as something inherited: `checkRaw` calls
+`pile(state, at)` for every camp-bound task row, so the Do panel does it on
+every render, and `body.ts` and `ui/water.ts` keep a few more.
+
+The follow-up is to finish what `pileAt` started: move every read path onto
+it and leave `pile()` for the places that genuinely mean to create. Worth
+doing as one pass rather than per-site, and worth a lint rule afterwards, the
+same way the decision router is lint-banned from the engine mutators.
+
+## A shelter away from camp
+
+**Raised** 2026-09-08, ruled out of the camp siting work on purpose.
+
+Camp siting settled that a camp is a place you keep - one per region, holding
+the pile, the fire, the rack - and a shelter is a roof on a cell. That leaves
+an obvious third thing unbuilt: a rough shelter thrown up where you stand,
+warming whoever sleeps on that cell, holding nothing, falling apart in days.
+
+It was left out because the measurements do not yet justify it. A region is
+about 4.2 km across and every spot in one is 4 to 28 minutes from its camp,
+so inside your own ground you would always just walk home. A neighbouring
+region's camp is 47 to 104 minutes, which is the case a bivouac is for - but
+nothing yet makes a survivor stay there overnight. The runner never leaves
+the region, orders belong to the region, and populations are not depletable,
+so no pressure pushes anyone out.
+
+So the bivouac wants its reason first: a seasonal draw worth an overnight in
+neighbouring ground - elk in autumn, a run of fish in one region at one time
+of year. Build the reason, and the shelter earns itself. Build the shelter
+first and it is decoration.
+
+## Ruins that outlast the fall
+
+**Raised** 2026-09-08, during the camp siting work.
+
+A camp can now be left behind, and what stands there keeps sheltering whoever
+walks back into it until it falls on its own clock. What it cannot do is
+leave a mark afterwards. The author's call at the time was that an abandoned
+camp decays on the clock it already has and then is simply gone.
+
+The richer version is a shell that stops sheltering but stays on the map as
+somewhere a survivor once lived - visible to heirs, part of the journal. It
+wants the same three decisions as the burn scars above, and for the same
+reason: what lasts, how long in terms that mean something, and whether it
+survives a life. Worth deciding both at once, since an heir finding one
+ancestor's hearth is a good moment and finding ninety years of them is not.
+
+## Small things the camp siting work left
+
+**Raised** 2026-09-08. None of these are load-bearing; they are recorded so
+they are not rediscovered from scratch.
+
+- `body.ts` prints the unreachable-camp line ("No way to camp from here")
+  when the truth is there is no camp at all. A second wording keyed on a null
+  camp would say what actually happened.
+- `searchHome` given a region argument routes to that region's generated cell
+  and answers "{you} {know} the way home" about ground that is nobody's home.
+  Only the reference harness passes that argument today, so no player reaches
+  it. `walkTarget` keeps the generated cell deliberately, as a landmark to
+  aim at for travel; it is `searchHome` inheriting it that reads wrong.
+- `camp.ts` has a `useOptionalChain` lint warning on `needsMending`. Left
+  alone because the obvious fix widens the return type.
+
+## The reference player ranges too far on known ground
+
+**Raised** 2026-09-08, measured during the camp siting work.
+
+The landing region is now mapped on arrival, so the player can read the
+ground before choosing where to live. In this game knowledge gates movement
+on purpose, so a mapped region is also a walkable one, and the reference
+player answers that by ranging to farther spots from day one - working past
+dark, collapsing, and freezing.
+
+A 30-seed sweep says this is redistribution rather than decline: 7 seeds
+froze early before, 5 after, only 2 of them the same. The gates hold. But
+seed 1 is a real and specific regression, off-gate: it reached day 29 before
+this work and dies on day 4 after, warmth 3, with no firewood at camp.
+
+The reading is that the world got more permissive and the runner's policy did
+not adapt - nothing teaches it that far ground is expensive when the day is
+short. That is a reference-player question rather than a world-model one, and
+seed 1 is the case to trace it on.

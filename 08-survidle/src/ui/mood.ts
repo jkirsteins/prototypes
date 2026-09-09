@@ -17,8 +17,8 @@ const MOOD: Record<TaskId, Mood> = {
   // Ground covered: between regions, out to a spot, home under a load, and the
   // exploring sweep, which is walking whatever else it is for.
   travel: "walk", walk: "walk", haul: "walk", explore: "walk", searchHome: "walk",
-  // Off the feet. `wait` sleeps by the clock, so it reads as rest and not as work.
-  sleep: "sleep", night: "sleep", rest: "rest", wait: "rest",
+  // Off the feet.
+  sleep: "sleep", night: "sleep", rest: "rest",
   // Everything else is work of some kind, and one slow pulse serves all of it.
   chop: "work", sticks: "work", bark: "work", stone: "work", berries: "work",
   split: "work", deadwood: "work", splitWedges: "work", hunt: "work", findDen: "work", fish: "work",

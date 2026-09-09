@@ -225,7 +225,7 @@ Sleep 22:20 to 06:30, 8.2 hours; then nearly four hours of chores by
 firelight until the light at 10:19. Debt is time awake, so a hard day
 does not move it; what a hard day moves is fatigue, and a body that has
 worked itself under the collapse line sleeps at once, holds that sleep
-until fatigue is back to `RESTED_AT`, and then sits up by the fire with
+until fatigue is full again, and then sits up by the fire with
 its debt half paid. Worked for a body collapsing at 16:00 after
 fourteen hours of felling: asleep 16:00 to about 20:30, up by the fire
 until the small hours, asleep again from about 02:45 to 07:30, 9.3
@@ -251,7 +251,7 @@ snares, spent, home. What each reads changes:
 - **sleep**: `sleepiness >= SLEEP_ONSET`, or `energy <= SLEEP_AT` (20,
   the collapse, unchanged), or a sleep under way that has not yet
   reached its end: sleepiness at or under `WAKE_AT` and, for a sleep
-  that began as a collapse, fatigue back at `RESTED_AT`. A sleep is
+  that began as a collapse, fatigue full again. A sleep is
   sticky by the model, not by the night. The night under way is the
   player's, `Player.sleeping`, set when the need first fires and cleared
   only when the model ends it, so a sleep broken to feed the fire or by

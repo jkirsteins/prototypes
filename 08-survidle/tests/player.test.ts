@@ -3,11 +3,13 @@ import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import { causeFrom, coldBurnFactor, feltTemperature, KCAL_PER_HOUR_FOR_TEST, LOAD_KCAL_PER_HOUR, NIGHT_WALK_FACTOR, baseWalkSpeed, stepPlayer, walkSpeed } from "../src/sim/player";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
+import { siteCamp } from "./siting-helpers";
 
 describe("player physiology", () => {
   it("regenerates when fed, warm and idle", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.player.health = 50;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(state.player.health).toBeCloseTo(51, 1);
@@ -15,6 +17,7 @@ describe("player physiology", () => {
 
   it("burns about 100 kcal per idle hour and more when chopping", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     const k0 = state.player.kcal;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     // A fresh survivor lands at exactly the typical reserve, so the base
@@ -29,6 +32,7 @@ describe("player physiology", () => {
 
   it("starves at 2 health per hour with kcal and fat both empty", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.player.kcal = 0;
     state.player.fat = 0;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
@@ -37,6 +41,7 @@ describe("player physiology", () => {
 
   it("loses warmth in the cold and health once hypothermic", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     // Starting wool gives about +9 C; at -25 C the body is far below comfort.
     expect(feltTemperature(state, world, -25)).toBeLessThan(-10);
     for (let m = 0; m < 220; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), -25, 1);
@@ -49,11 +54,13 @@ describe("player physiology", () => {
 
   it("a fire and a cabin at camp make the difference", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     const bare = feltTemperature(state, world, -20);
-    regionState(state, world, state.player.region).fire.lit = true;
-    regionState(state, world, state.player.region).structures.cabin = true;
+    const pst = regionState(state, world, state.player.region);
+    pst.fire.lit = true;
+    siteFor(pst, pst.campCell!).structures.cabin = true;
     // A cabin's own fire needs a hearth to warm anyone; without one only the roof counts.
-    regionState(state, world, state.player.region).structures.hearth = true;
+    siteFor(pst, pst.campCell!).structures.hearth = true;
     expect(feltTemperature(state, world, -20)).toBeCloseTo(bare + 30, 5);
     // Out at the forest the fire and roof do not reach you.
     placeAtSpot(state, world, state.player.region, "forest");
@@ -62,6 +69,7 @@ describe("player physiology", () => {
 
   it("gets wet in rain and dries by the fire", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.weather.precip = "heavy";
     for (let m = 0; m < 30; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     // The coat and trousers start dry, so they keep most of the rain off the skin at first.
