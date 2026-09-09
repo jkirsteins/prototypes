@@ -181,6 +181,18 @@ export function cellFromClient(
   return cellFromPoint(world, state, ui, clientX - grid.left, clientY - grid.top);
 }
 
+/** The scroll viewport clips a centered grid on small panels and short windows. */
+export function mapViewportBounds(
+  grid: Pick<DOMRect, "left" | "top" | "right" | "bottom">,
+  viewport: Pick<DOMRect, "left" | "top" | "right" | "bottom">,
+): UiState["mapViewport"] {
+  const left = Math.max(grid.left, viewport.left) - grid.left;
+  const top = Math.max(grid.top, viewport.top) - grid.top;
+  const right = Math.min(grid.right, viewport.right) - grid.left;
+  const bottom = Math.min(grid.bottom, viewport.bottom) - grid.top;
+  return right > left && bottom > top ? { left, top, right, bottom } : null;
+}
+
 /** Cells per glyph at each zoom level. */
 export const ZOOMS = LEVELS.map((l) => l.cells);
 /** Priority when a block's ground is tied: what the eye should see first. */
@@ -375,7 +387,8 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
     .filter((subject) => subject.active && (subject.active.cell % world.w) >= x0 && (subject.active.cell % world.w) < x0 + level.w && Math.floor(subject.active.cell / world.w) >= y0 && Math.floor(subject.active.cell / world.w) < y0 + level.h)
     .map((s) => `${s.id}:${s.active?.cell}:${wildlifeMembers(s)}:${state.wildlife.recognized[s.id] ? s.name ?? "" : ""}:${s.active?.intent}`).join(",") : "";
   const startles = activeWildlifeStartles(ui, nowMs).map((cue) => cue.key).join(",");
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${animals}|${startles}`;
+  const viewport = startles && ui.mapViewport ? Object.values(ui.mapViewport).join(",") : "";
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${animals}|${startles}|${viewport}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs = performance.now()): string {
@@ -390,15 +403,22 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const startles = activeWildlifeStartles(ui, nowMs);
   const startleAt = new Map<number, string[]>();
+  const edgeStartles: string[] = [];
   const recoilAt = new Map<number, number>();
+  const viewport = ui.mapViewport ?? { left: 0, top: 0, right: l.w * l.px, bottom: l.h * l.line };
+  // Keep the whole exclamation mark and its pop/rise inside the clipped area.
+  const insetX = Math.min(24, (viewport.right - viewport.left) / 2);
+  const insetY = Math.min(24, (viewport.bottom - viewport.top) / 2);
   for (const cue of startles) {
     const { event, startedAtMs, key } = cue;
     const gx = Math.floor((event.source.xM / (CELL_KM * 1000) - x0) / z);
     const gy = Math.floor((event.source.yM / (CELL_KM * 1000) - y0) / z);
-    const offscreen = gx < 0 || gy < 0 || gx >= l.w || gy >= l.h;
-    const x = Math.max(0, Math.min(l.w - 1, gx));
-    const y = Math.max(0, Math.min(l.h - 1, gy));
-    const i = y * l.w + x;
+    const px = (gx + 0.5) * l.px;
+    const py = (gy + 0.5) * l.line;
+    const x = Math.max(viewport.left + insetX, Math.min(viewport.right - insetX, px));
+    const y = Math.max(viewport.top + insetY, Math.min(viewport.bottom - insetY, py));
+    const offscreen = px !== x || py !== y;
+    const i = gy * l.w + gx;
     const bearing = ["east", "southeast", "south", "southwest", "west", "northwest", "north", "northeast"];
     const direction = bearing[(Math.round(event.bearingRad / (Math.PI / 4)) % 8 + 8) % 8];
     // The presentation key is local and anonymous. Event IDs contain subject IDs
@@ -412,8 +432,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       const radius = Math.min(30, Math.max(0, event.uncertaintyM)) / (CELL_KM * 1000 * z);
       jitter = `;--startle-x:${(Math.cos(angle) * radius * l.px).toFixed(2)}px;--startle-y:${(Math.sin(angle) * radius * l.line).toFixed(2)}px`;
     }
-    const markup = `<i aria-hidden="true" class="wildlife-startle ${event.perception.kind}${edge}" data-startle="${key}" style="--wildlife-start:${startedAtMs}ms${jitter}">!</i>`;
-    startleAt.set(i, [...startleAt.get(i) ?? [], markup]);
+    const position = offscreen ? `;left:${x}px;top:${y}px` : jitter;
+    const markup = `<i aria-hidden="true" class="wildlife-startle ${event.perception.kind}${edge}" data-startle="${key}" style="--wildlife-start:${startedAtMs}ms${position}">!</i>`;
+    if (offscreen) edgeStartles.push(markup);
+    else startleAt.set(i, [...startleAt.get(i) ?? [], markup]);
     if (event.perception.kind === "seen") recoilAt.set(event.subjectId, startedAtMs);
   }
   const playerCell = cellOf(state, world);
@@ -719,6 +741,6 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (startle) cls.push("has-wildlife-startle");
     parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${wildlife}${style}>${glyph === "\"" ? "&quot;" : glyph}${startle}</span>`);
   }
-  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}</div><i class="shade"></i></div>${tools}`);
+  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}${edgeStartles.join("")}</div><i class="shade"></i></div>${tools}`);
   return parts.join("");
 }

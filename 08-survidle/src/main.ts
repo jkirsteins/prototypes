@@ -45,7 +45,7 @@ import { introduceGoals, unintroducedGoals } from "./sim/goals";
 import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, viewOrigin } from "./ui/map";
+import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, mapViewportBounds, viewOrigin } from "./ui/map";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
@@ -192,10 +192,19 @@ function render(nowMs = performance.now()) {
   setPanel("goals", goalsHtml(state, world, cal));
   setPanel("shopping", shoppingHtml(state, world, cal));
   setPanel("weather", weatherHtml(state, world, cal, ambient, ui.hurry.rate));
-  const key = mapKey(state, world, ui, cal, nowMs);
-  if (key !== lastMapKey) {
+  // A zoom changes the grid's dimensions. Measure again after that morph so
+  // edge effects use the new visible intersection before the browser paints.
+  for (let pass = 0; pass < 2; pass++) {
+    if (ui.wildlifeStartles.length) {
+      const grid = document.querySelector<HTMLElement>("#mapdyn .grid");
+      const viewport = document.querySelector<HTMLElement>("#mapdyn .scroll-x");
+      ui.mapViewport = grid && viewport ? mapViewportBounds(grid.getBoundingClientRect(), viewport.getBoundingClientRect()) : null;
+    }
+    const key = mapKey(state, world, ui, cal, nowMs);
+    if (key === lastMapKey) break;
     lastMapKey = key;
     setPanel("mapdyn", mapHtml(world, state, ui, cal, nowMs));
+    if (!ui.wildlifeStartles.length) break;
   }
   setPanel("task", taskHtml(state, world, cal, ui.hurry));
   setPanel("orders", queueHtml(state, world, cal));

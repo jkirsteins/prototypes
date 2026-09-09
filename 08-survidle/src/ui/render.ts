@@ -37,6 +37,8 @@ export interface UiState {
   /** Perceived live reactions only; neither the queue nor its deduplication history is saved. */
   wildlifeStartles: { event: WildlifeStartleEvent; startedAtMs: number; key: number }[];
   wildlifeStartleIds: Set<string>;
+  /** Visible viewport intersection in pixels relative to the glyph grid. */
+  mapViewport: { left: number; top: number; right: number; bottom: number } | null;
   /** The landing's welcome is open. Every landing has one, fresh survivor or heir. */
   welcome: boolean;
   /** The settings panel (sound, and the play-data beacon) is open. */
@@ -142,7 +144,7 @@ export function newUiState(): UiState {
     panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, selected: null, hover: null, away: null, confirmAbandon: false, confirmCamp: false,
     cemetery: false, manual: false, teach: null, goalGuide: null, recognition: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false, regions: false },
-    hurry: newHurry(), speedHistory: newSpeedHistory(), wildlifeStartles: [], wildlifeStartleIds: new Set(),
+    hurry: newHurry(), speedHistory: newSpeedHistory(), wildlifeStartles: [], wildlifeStartleIds: new Set(), mapViewport: null,
   };
 }
 

@@ -6,7 +6,7 @@ import { newGame } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
 import { activateWildlife } from "../src/sim/wildlife-agents";
 import type { WildlifeStartleEvent } from "../src/sim/wildlife-encounter";
-import { levelAt, mapHtml, mapKey, viewOrigin } from "../src/ui/map";
+import { levelAt, mapHtml, mapKey, mapViewportBounds, viewOrigin } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { cellAt, neighbours } from "../src/world/gen";
 import { passable } from "../src/world/route";
@@ -115,8 +115,34 @@ describe("transient wildlife map cues", () => {
     const cues = document.querySelectorAll(".wildlife-startle");
     expect(cues).toHaveLength(1);
     expect(cues[0].classList.contains("bearing-east")).toBe(true);
-    expect(cues[0].parentElement?.getAttribute("data-map-x")).toBe("35");
-    expect(cues[0].parentElement?.getAttribute("data-map-y")).toBe("4");
+    expect(cues[0].parentElement?.classList.contains("grid")).toBe(true);
+    expect((cues[0] as HTMLElement).style.left).toBe("768px");
+    expect((cues[0] as HTMLElement).style.top).toBe("126px");
+  });
+
+  it("keeps cues inside a 300 by 160 clipped panel, including sources still inside the logical grid", () => {
+    const { state, world, ui, cal, event } = scene();
+    // The 792 by 504 grid is centered in a panel that clips all four sides.
+    ui.mapViewport = mapViewportBounds(
+      { left: 20, top: 60, right: 812, bottom: 564 },
+      { left: 266, top: 232, right: 566, bottom: 392 },
+    );
+    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+    event.source = { xM: (x0 + 30.5) * 300, yM: (y0 + 10.5) * 300 };
+    enqueueWildlifeStartle(ui, event, 1000);
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
+    const cue = document.querySelector<HTMLElement>(".wildlife-startle.edge.bearing-east");
+    expect(cue).not.toBeNull();
+    expect(cue?.parentElement?.classList.contains("grid")).toBe(true);
+    expect(cue?.style.left).toBe("522px");
+    expect(cue?.style.top).toBe("294px");
+    expect(document.querySelectorAll(".wildlife-startle")).toHaveLength(1);
+    const clippedKey = mapKey(state, world, ui, cal, 1100);
+    ui.mapViewport = { left: 0, top: 0, right: 792, bottom: 504 };
+    expect(mapKey(state, world, ui, cal, 1300)).not.toBe(clippedKey);
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1300));
+    expect(document.querySelector(".wildlife-startle.edge")).toBeNull();
+    expect(document.querySelector(".wildlife-startle")?.getAttribute("style")).toContain("--wildlife-start:1000ms");
   });
 
   it("keeps the cue above glyphs and weather and removes motion when reduced motion is requested", () => {

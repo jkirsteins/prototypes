@@ -692,9 +692,6 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   animation-delay: calc(var(--wildlife-start) - var(--wildlife-now, var(--wildlife-start)));
 }
 .wildlife-startle.heard { color: #e8dab1; }
-.wildlife-startle.edge { top: 25%; }
-.wildlife-startle.bearing-east, .wildlife-startle.bearing-northeast, .wildlife-startle.bearing-southeast { left: 35%; }
-.wildlife-startle.bearing-west, .wildlife-startle.bearing-northwest, .wildlife-startle.bearing-southwest { left: 65%; }
 .wildlife-recoil {
   animation: wildlife-recoil .28s ease-out both paused;
   animation-delay: calc(var(--wildlife-start) - var(--wildlife-now, var(--wildlife-start)));
