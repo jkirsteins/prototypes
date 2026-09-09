@@ -90,6 +90,10 @@ function readableWarningMinutes(state: GameState): number {
   return warningMinutes(state) + (state.player.skyReadDay === skyReadDay(state) ? 0 : 30);
 }
 
+function canMakeTeachingRead(state: GameState): boolean {
+  return state.player.skyReadDay !== skyReadDay(state);
+}
+
 function remoteLead(state: GameState, world: World, cal: Calendar, opportunity: GoalOpportunity): number | null {
   if (!opportunity.area) return null;
   const from = cellOf(state, world);
@@ -109,7 +113,9 @@ function eligible(state: GameState, world: World, cal: Calendar, opportunity: Go
     return storm.kind === "rain" && onset > 0 && duration <= MILD_RAIN_MAX_MINUTES;
   }
   if (opportunity.goal === "readWeather") {
-    return storm.from - state.minute > ORDINARY_WARNING_MINUTES && readableWarningMinutes(state) > ORDINARY_WARNING_MINUTES;
+    return canMakeTeachingRead(state)
+      && storm.from - state.minute > ORDINARY_WARNING_MINUTES
+      && readableWarningMinutes(state) > ORDINARY_WARNING_MINUTES;
   }
   if (opportunity.goal === "remoteStorm") {
     const lead = remoteLead(state, world, cal, opportunity);
@@ -132,6 +138,7 @@ function claim(state: GameState, world: World, cal: Calendar, opportunity: GoalO
 }
 
 function synthesize(state: GameState, world: World, cal: Calendar, rng: Rng, opportunity: GoalOpportunity): void {
+  if (opportunity.goal === "readWeather" && !canMakeTeachingRead(state)) return;
   let minLead = 60;
   let maxDuration: number | undefined;
   let kinds: readonly ("rain" | "snow" | "gale")[] = ["rain", "snow", "gale"];
@@ -199,6 +206,16 @@ function stepClaimed(state: GameState, world: World, cal: Calendar, opportunity:
   }
   if (state.minute >= storm.from) {
     opportunity.status = "running";
+    return;
+  }
+  // A read made while the reserved event is still too distant can reveal
+  // nothing, yet it consumes today's observation. Release that event so the
+  // lesson can later reserve a storm for which a new read is meaningful.
+  if (opportunity.goal === "readWeather" && opportunity.status === "reserved"
+    && opportunity.readerIndex == null && !canMakeTeachingRead(state)) {
+    opportunity.stormId = null;
+    opportunity.source = null;
+    opportunity.createdAt = state.minute;
     return;
   }
   const announcedAt = storm.from - announceLead(state, world, cal, opportunity);

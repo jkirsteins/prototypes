@@ -133,6 +133,32 @@ describe("a fire where you stand", () => {
     for (let n = 0; state.task && n < 60; n++) stepTask(state, world, cal, new Rng(1), 1);
     expect(state.goals.done.fieldMeal).toBeUndefined();
   });
+  it("stops field cooking without output or goal credit when rain extinguishes the fire in progress", () => {
+    const game = lightField();
+    const { state, world } = game;
+    for (const goal of GOALS) state.goals.done[goal.id] = true;
+    delete state.goals.done.fieldMeal;
+    delete state.goals.done.remoteStorm;
+    introduceGoals(state, ["fieldMeal"]);
+    state.goals.opportunity = {
+      goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
+      stormId: null, source: null, area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
+      announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
+      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    };
+    addItem(state.player.pack, "rawMeat", 1);
+    expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
+    stepTask(state, world, cal, new Rng(1), 1);
+    state.weather.precip = "heavy";
+    stepCamp(state, world, 5, 1, { region: state.player.region, atCamp: false });
+    expect(state.player.fieldFire).toBeNull();
+
+    stepTask(state, world, cal, new Rng(1), 20);
+    expect(state.task).toBeNull();
+    expect(qty(state.player.pack, "rawMeat")).toBe(1);
+    expect(qty(state.player.pack, "cookedMeat")).toBe(0);
+    expect(state.goals.done.fieldMeal).toBeUndefined();
+  });
   it("requires a lit fire to crack bones or grind bark", () => {
     const { state, world } = field();
     addItem(state.player.pack, "bone", 1);

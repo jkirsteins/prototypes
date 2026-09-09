@@ -73,6 +73,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   const hadStorm = previousStorm !== null;
   const ev = stepWeather(state.weather, cal, rng, dt, state.minute);
   const ambient = ambientTemperature(cal, state.weather);
+  const currentStorm = state.weather.storm;
   if (!nobody) {
     const beforeKnowledge = previousStorm ? forecastKnowledge(state, previousStorm, previousMinute) : null;
     if (ev.coldSnap) log(state, `A cold snap. ${Math.round(ambient)} C and falling.`, "bad");
@@ -83,7 +84,6 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
       state.weather.storm.warned = true;
       log(state, forecastStage(state) === 1 ? "The sky is closing in from the west." : `The sky is closing in: ${forecastText(state)}.`, "bad");
     }
-    const currentStorm = state.weather.storm;
     const knowledgeStorm = currentStorm ?? previousStorm;
     if (knowledgeStorm) {
       const before = previousStorm?.id === knowledgeStorm.id && beforeKnowledge ? beforeKnowledge : { ...NO_FORECAST_KNOWLEDGE };
@@ -92,16 +92,20 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
         goalDeed(state, { kind: "forecastChanged", minute: state.minute, stormId: knowledgeStorm.id, before, after, source: "passive" }, world);
       }
     }
-    if (currentStorm && previousMinute < currentStorm.from && state.minute >= currentStorm.from) {
-      const plan = stormOptions(state, world, currentStorm);
-      goalDeed(state, { kind: "stormStarted", minute: state.minute, stormId: currentStorm.id, plan }, world);
-    }
   }
 
   if (!nobody) {
     stepTask(state, world, cal, rng, dt);
     runOrders(state, world, cal, rng);
     runIntent(state, world, cal, rng);
+  }
+
+  // Work in the elapsed interval belongs before its ending boundary. Capture
+  // the onset plan only after that work has settled, while storm exposure for
+  // the interval remains zero below.
+  if (!nobody && currentStorm && previousMinute < currentStorm.from && state.minute >= currentStorm.from) {
+    const plan = stormOptions(state, world, currentStorm);
+    goalDeed(state, { kind: "stormStarted", minute: state.minute, stormId: currentStorm.id, plan }, world);
   }
 
   // Read after the task step above: a walk, an order or an intent can move

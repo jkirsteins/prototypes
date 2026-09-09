@@ -22,10 +22,10 @@ import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNA
 import { log } from "./log";
 import { baseWalkSpeed, workSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
-import { campSite, regionState, siteAt } from "./regionstate";
+import { campSite, newSite, regionState, siteAt } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { seepStopped } from "./seep";
-import { builtProtection, coverCeiling, EMERGENCY_MINUTES, findCover, galeProtection, improveCoverMinutes, isLee, protectionOf } from "./shelter";
+import { coverCeiling, EMERGENCY_MINUTES, findCover, galeProtection, improveCoverMinutes, protectionOf } from "./shelter";
 import { skillLevel } from "./skills";
 import { collapseRecoveryPending, COLLAPSE_RECOVERED_AT, RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { isRunning, type Step, walkStep } from "./steps";
@@ -568,15 +568,26 @@ interface ShelterPreparation {
   effectiveProtection: Protection;
 }
 
-function projectedEffectiveProtection(
+function projectedShelter(
   inputs: StormPlanInputs,
   world: World,
   cell: number,
-  protection: Protection,
-): Protection {
-  if (inputs.forecast.kind !== "gale") return Math.max(inputs.effectiveProtection, protection) as Protection;
-  const lowProfile = Math.min(3, protection + (isLee(world, cell) ? 1 : 0)) as Protection;
-  return Math.max(inputs.effectiveProtection, lowProfile) as Protection;
+  site: ReturnType<typeof siteAt>,
+  cover: Protection,
+  emergencyMinutes: number,
+): { protection: Protection; effectiveProtection: Protection } {
+  const base = site ?? newSite();
+  const projected = {
+    ...base,
+    structures: { ...base.structures },
+    cover,
+    emergencyMinutes,
+  };
+  const protection = protectionOf(projected);
+  const effectiveProtection = inputs.forecast.kind === "gale"
+    ? galeProtection(world, cell, projected)
+    : protection;
+  return { protection, effectiveProtection };
 }
 
 function taskMinutes(state: GameState, world: World, id: TaskId, effectiveMinutes: number): number {
@@ -600,16 +611,19 @@ function shelterPreparation(
   let protection = inputs.protection;
   let effectiveProtection = inputs.effectiveProtection;
   let cover = site?.cover ?? 0;
+  let built = site?.emergencyMinutes ?? 0;
   const maximum = Math.min(3, coverCeiling(world, cell) + 1) as Protection;
   const adequate = () => inputs.forecast.kind === "snow" ? effectiveProtection >= 1 : effectiveProtection >= 2;
+  const project = () => {
+    ({ protection, effectiveProtection } = projectedShelter(inputs, world, cell, site, cover, built));
+  };
   const improveFoundCover = () => {
     while (cover < maximum && !adequate()) {
       const work = improveCoverMinutes(cover);
       if (work === null) break;
       minutes += taskMinutes(state, world, "improveCover", work);
       cover = Math.min(maximum, cover + 1) as Protection;
-      protection = Math.max(protection, cover) as Protection;
-      effectiveProtection = projectedEffectiveProtection(inputs, world, cell, protection);
+      project();
     }
   };
 
@@ -620,19 +634,16 @@ function shelterPreparation(
     if (search.ok) {
       minutes += taskMinutes(state, world, "findShelter", search.duration);
       cover = findCover(world, cell, skillLevel(state, "naturalShelter"));
-      protection = Math.max(protection, cover) as Protection;
-      effectiveProtection = projectedEffectiveProtection(inputs, world, cell, protection);
+      project();
       improveFoundCover();
     }
   } else {
-    let built = site?.emergencyMinutes ?? 0;
     for (const level of [1, 2, 3] as const) {
       if (built >= EMERGENCY_MINUTES[level] || adequate()) continue;
       const work = EMERGENCY_MINUTES[level] - built;
       minutes += taskMinutes(state, world, "emergencyShelter", work);
       built = EMERGENCY_MINUTES[level];
-      protection = Math.max(protection, builtProtection(built)) as Protection;
-      effectiveProtection = projectedEffectiveProtection(inputs, world, cell, protection);
+      project();
     }
   }
   return { minutes, protection, effectiveProtection };
@@ -646,7 +657,10 @@ function optionSurvivalScore(
   continuing = false,
   preparationMinutes = 0,
 ): number {
-  if (!viable && kind !== "localShelter") return 0;
+  const adequate = shelterAdequate(inputs);
+  const recoverableTravel = !viable && kind !== "localShelter" && adequate && continuing
+    && arrivalMargin !== null && arrivalMargin >= -15;
+  if (!viable && kind !== "localShelter" && !recoverableTravel) return 0;
 
   const drill = inputs.activeGear.includes("fireDrill") || (inputs.packedGear.fireDrill ?? 0) > 0;
   const fire = inputs.fireLit
@@ -655,12 +669,14 @@ function optionSurvivalScore(
   const supplies = Math.min(12, inputs.supplies.firewoodKg) * 2
     + Math.min(2, inputs.supplies.foodKg) * 10
     + Math.min(3, inputs.supplies.waterLitres) * 5;
-  const closeHome = kind === "returnCamp" && (inputs.travelMinutes ?? Infinity) <= 15;
+  const closeHome = kind === "returnCamp" && shelterAdequate(inputs) && (inputs.travelMinutes ?? Infinity) <= 15;
   const place = kind === "returnCamp" ? closeHome ? 300 : 80 : kind === "localShelter" ? 40 : 0;
   const margin = Math.min(60, Math.max(0, arrivalMargin ?? 0));
   const travelExposure = Math.min(120, inputs.travelMinutes ?? 0);
-  return (viable ? 1000 : 0) + inputs.effectiveProtection * 100 + fire + supplies
+  const score = (viable ? 1000 : 0) + (adequate ? 1000 : 0)
+    + inputs.effectiveProtection * 100 + fire + supplies
     + place + margin - travelExposure - preparationMinutes * 3 + (continuing ? 30 : 0);
+  return !viable && kind === "localShelter" ? Math.max(1, score) : score;
 }
 
 function routeReading(state: GameState, world: World, cal: Calendar, target: number): { route: number[] | null; minutes: number | null } {
@@ -697,17 +713,12 @@ export function stormOptions(
     const reading = routeReading(state, world, cal, camp);
     const inputs = planInputs(state, world, storm, state.player.region, camp, reading.route, reading.minutes);
     const arrivalMargin = reading.minutes === null ? null : remaining - reading.minutes;
-    const preparation = shelterPreparation(state, world, cal, camp, inputs);
     const viable = arrivalMargin !== null && arrivalMargin >= 0;
-    const canPrepare = arrivalMargin !== null && arrivalMargin >= preparation.minutes;
-    const projectedInputs = canPrepare
-      ? { ...inputs, protection: preparation.protection, effectiveProtection: preparation.effectiveProtection }
-      : inputs;
+    const continuing = state.task?.id === "walk" && state.route?.target === camp;
     options.push({
       kind: "returnCamp", target: { region: state.player.region, cell: camp }, inputs, arrivalMargin, viable,
       survivalScore: optionSurvivalScore(
-        projectedInputs, "returnCamp", canPrepare && arrivalMargin !== null ? arrivalMargin - preparation.minutes : arrivalMargin,
-        viable, false, canPrepare ? preparation.minutes : 0,
+        inputs, "returnCamp", arrivalMargin, viable, continuing,
       ),
     });
   }
@@ -782,7 +793,7 @@ function stormStep(state: GameState, world: World, cal: Calendar, dry: boolean):
     && check(state, world, cal, "walk", `cell:${choice.target.cell}`).ok) {
     return walkStep(state, world, choice.target.cell, choice.kind === "returnCamp" ? " before the storm" : " to shelter from the storm");
   }
-  if (choice.kind !== "returnCamp" && here !== camp) {
+  if (choice.kind === "localShelter") {
     if (!shelterAdequate(choice.inputs)) {
       if (check(state, world, cal, "improveCover").ok) return { id: "improveCover", step: "improving shelter for the storm" };
       if (coverCeiling(world, here) > 0 && check(state, world, cal, "findShelter").ok) return { id: "findShelter", step: "finding shelter for the storm" };

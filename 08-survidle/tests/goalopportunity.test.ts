@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { recordStormMinute, stepGoalOpportunity, stormMetrics } from "../src/sim/goalopportunity";
-import { goalDeed, introduceGoals, type StormPlanSnapshot } from "../src/sim/goals";
+import { activeGoals, goalDeed, introduceGoals, type StormPlanSnapshot } from "../src/sim/goals";
 import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, die } from "../src/sim/player";
@@ -14,9 +14,9 @@ import { regionState, siteFor } from "../src/sim/regionstate";
 import { survivorRoute } from "../src/sim/routing";
 import { current } from "../src/sim/record";
 import { deserialize, serialize } from "../src/sim/save";
-import { startTask } from "../src/sim/tasks";
+import { startTask, stepTask } from "../src/sim/tasks";
 import type { GameState, GoalId } from "../src/sim/types";
-import { stepWeather } from "../src/sim/weather";
+import { skyReadDay, stepWeather } from "../src/sim/weather";
 import { cellAt, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
@@ -116,6 +116,112 @@ describe("weather teaching opportunity lifecycle", () => {
     expect(state.goals.opportunity).toBeNull();
     expect(state.weather.storm).toEqual({ id: 1, source: "natural", kind: "gale", from: 0, until: 200, warned: true });
     expect(rng.s).toBe(before);
+  });
+
+  it("does not claim a forecast lesson while today's earlier sky reading prevents a meaningful new read", () => {
+    const { state, world } = newGame(17);
+    activateWeatherReading(state);
+    state.player.skyReadDay = calendar(state.minute, state.startDoy).dayIndex;
+    state.weather.storm = {
+      id: 9, source: "natural", kind: "rain", from: state.minute + 90,
+      until: state.minute + 450, warned: false,
+    };
+    const rng = new Rng(23);
+
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.goals.opportunity).toMatchObject({ goal: "readWeather", status: "reserved", stormId: null });
+
+    state.player.skyReadDay = null;
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.goals.opportunity).toMatchObject({ goal: "readWeather", status: "announced", stormId: 9 });
+  });
+
+  it("releases a claimed storm after a premature empty read so a later announced read can teach something", () => {
+    const { state, world } = newGame(17);
+    activateWeatherReading(state);
+    state.weather.storm = {
+      id: 10, source: "natural", kind: "rain", from: state.minute + 120,
+      until: state.minute + 480, warned: false,
+    };
+    const rng = new Rng(24);
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.goals.opportunity).toMatchObject({ status: "reserved", stormId: 10 });
+
+    expect(startTask(state, world, calendar(state.minute, state.startDoy), "readSky")).toBe(true);
+    stepTask(state, world, calendar(state.minute, state.startDoy), rng, 10);
+    expect(state.goals.done.readWeather).toBeUndefined();
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.goals.opportunity).toMatchObject({ status: "reserved", stormId: null });
+
+    state.player.skyReadDay = null;
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    state.minute += 30;
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.goals.opportunity).toMatchObject({ status: "announced", stormId: 10 });
+    expect(startTask(state, world, calendar(state.minute, state.startDoy), "readSky")).toBe(true);
+    stepTask(state, world, calendar(state.minute, state.startDoy), rng, 10);
+    expect(state.goals.done.readWeather).toBe(true);
+  });
+
+  it("releases a retry storm after a premature empty read when the new reader is not yet bound", () => {
+    const { state, world } = newGame(17);
+    activateWeatherReading(state);
+    finish(state, ["readWeather", "prepareWeather"]);
+    introduceGoals(state, ["surviveForecast"]);
+    state.weather.storm = {
+      id: 11, source: "natural", kind: "rain", from: state.minute + 120,
+      until: state.minute + 480, warned: false,
+    };
+    state.goals.opportunity = {
+      goal: "readWeather", status: "reserved", createdAt: state.minute, attempts: 2,
+      stormId: 11, source: "natural", area: null, announcedAt: null, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+      readerIndex: null, plan: null,
+    };
+    const rng = new Rng(25);
+
+    expect(startTask(state, world, calendar(state.minute, state.startDoy), "readSky")).toBe(true);
+    stepTask(state, world, calendar(state.minute, state.startDoy), rng, 10);
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+
+    expect(state.goals.opportunity).toMatchObject({ attempts: 2, status: "reserved", stormId: null, readerIndex: null });
+    expect(state.goals.done.surviveForecast).toBeUndefined();
+  });
+
+  it("credits a read that completes exactly when a reserved storm first becomes readable", () => {
+    const { state, world } = newGame(17);
+    activateWeatherReading(state);
+    state.weather.storm = {
+      id: 12, source: "natural", kind: "rain", from: state.minute + 120,
+      until: state.minute + 480, warned: false,
+    };
+    const rng = new Rng(26);
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.goals.opportunity).toMatchObject({ status: "reserved", stormId: 12 });
+    state.minute += 30;
+
+    expect(startTask(state, world, calendar(state.minute, state.startDoy), "readSky")).toBe(true);
+    stepTask(state, world, calendar(state.minute, state.startDoy), rng, 10);
+
+    expect(state.goals.opportunity).toMatchObject({ status: "reserved", stormId: 12, readerIndex: current(state).index });
+    expect(state.goals.done.readWeather).toBe(true);
+  });
+
+  it("waits past a current sky reading before synthesizing a forecast lesson", () => {
+    const { state, world } = newGame(17);
+    activateWeatherReading(state);
+    const rng = new Rng(27);
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    state.minute += 3 * 1440;
+    state.player.skyReadDay = skyReadDay(state);
+
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.weather.storm).toBeNull();
+    expect(state.goals.opportunity).toMatchObject({ status: "reserved", stormId: null });
+
+    state.player.skyReadDay = null;
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.weather.storm).toMatchObject({ source: "synthetic" });
   });
 });
 
@@ -314,7 +420,7 @@ describe("Chapter 2 forecast evidence", () => {
     }
   });
 
-  it("freezes the onset plan before that minute's task mutation and never rewrites it", () => {
+  it("freezes the onset plan after work in the interval ending at onset and never rewrites it", () => {
     const { state, world } = newGame(17);
     chapter2Attempt(state, 42);
     const meadow = regionAt(world, state.player.region).cells.find((cell) => cellAt(world, cell).terrain === "meadow")!;
@@ -326,12 +432,12 @@ describe("Chapter 2 forecast evidence", () => {
     advance(state, world, 1);
     expect(site.emergencyMinutes).toBe(90);
     const frozen = structuredClone(state.goals.opportunity?.plan);
-    expect(frozen?.options.find((option) => option.kind === "localShelter")?.inputs.protection).toBe(1);
-    expect(frozen?.options.some((option) => option.viable)).toBe(false);
+    expect(frozen?.options.find((option) => option.kind === "localShelter")?.inputs.protection).toBe(2);
+    expect(frozen?.options.some((option) => option.viable)).toBe(true);
     site.emergencyMinutes = 240;
     state.player.fieldFire = { cell: meadow, fuelKg: 30 };
     expect(state.goals.opportunity?.plan).toEqual(frozen);
-    expect(state.goals.done.prepareWeather).toBeUndefined();
+    expect(state.goals.done.prepareWeather).toBe(true);
   });
 
   it("splits a fractional onset to freeze its exact pre-task state", () => {
@@ -540,7 +646,7 @@ describe("natural-first weather", () => {
     expect(state.goals.opportunity).toMatchObject({ stormId: 81, source: "natural" });
   });
 
-  it("reserves weather from refuge completion before the field fire and meal lessons", () => {
+  it("claims and retries refuge weather from home before the field fire and meal lessons", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     activateRemoteRefuge(state);
@@ -554,17 +660,41 @@ describe("natural-first weather", () => {
       from: 1, to: 2, source: "improved",
     }, world);
     const opportunity = state.goals.opportunity!;
+    const homeCell = state.regions[home].campCell!;
+    const mapped = findRoute(world, refuge, homeCell);
+    expect(mapped).not.toBeNull();
+    for (const cell of [refuge, ...(mapped ?? [])]) markKnown(state, cell);
+    placeAt(state, world, homeCell);
+    const route = survivorRoute(state, world, homeCell, refuge, "none", fearsFell(state));
+    expect(route).not.toBeNull();
+    const lead = routeMinutes(world, route!, baseWalkSpeed(state, calendar(state.minute, state.startDoy), state.weather), "none") + 30;
     state.weather.storm = {
-      id: 82, source: "natural", kind: "rain", from: state.minute + 60,
-      until: state.minute + 420, warned: false,
+      id: 82, source: "natural", kind: "rain", from: state.minute + lead,
+      until: state.minute + lead + 360, warned: false,
     };
 
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(82));
 
+    expect(cellOf(state, world)).toBe(homeCell);
     expect(state.goals.done.fieldFire).toBeUndefined();
     expect(state.goals.done.fieldMeal).toBeUndefined();
     expect(state.goals.opportunity).toBe(opportunity);
     expect(state.goals.opportunity).toMatchObject({ goal: "remoteStorm", stormId: 82, source: "natural" });
+
+    const stormEnd = state.weather.storm.until;
+    state.minute = stormEnd;
+    state.weather.storm = null;
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(82));
+    expect(state.goals.opportunity).toMatchObject({ status: "resolved", attempts: 1 });
+    state.weather.stormFreeSince = stormEnd;
+    state.minute = stormEnd + 1440;
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(82));
+    expect(state.goals.opportunity).toMatchObject({
+      goal: "remoteStorm", status: "reserved", attempts: 2, stormId: null,
+      area: { region: remote, centre: refuge, radiusKm: 1 },
+    });
+    expect(state.goals.done.fieldFire).toBeUndefined();
+    expect(state.goals.done.fieldMeal).toBeUndefined();
   });
 
   it("synthesizes Chapter 3 weather after three dawns even before field lessons finish", () => {
@@ -681,6 +811,72 @@ describe("Chapter 3 refuge storm evidence", () => {
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(91));
     expect(state.goals.opportunity).toMatchObject({ status: "reserved", attempts: 2, stormId: null });
     for (const id of ["remoteRefuge", "fieldFire", "fieldMeal"] as const) expect(state.goals.done[id]).toBe(true);
+  });
+
+  it("keeps an introduced remote-storm lesson completable by an heir before day thirty-one", () => {
+    const { state, world } = newGame(17);
+    const { remote } = remoteAttempt(state, world, 96);
+    state.weather.storm = { id: 96, source: "natural", kind: "rain", from: state.minute, until: state.minute + 60, warned: true };
+    die(state, "froze", regionAt(world, state.player.region).name);
+    beginAgain(state, world);
+    land(state, world, { first: "Ilze", last: "Berg" });
+
+    state.minute = 1440;
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(96));
+    expect(activeGoals(state, calendar(state.minute, state.startDoy))).toContain("remoteStorm");
+    expect(state.goals.opportunity).toMatchObject({ goal: "remoteStorm", status: "reserved", attempts: 2 });
+
+    state.goals.opportunity!.status = "running";
+    state.goals.opportunity!.stormId = 97;
+    state.goals.opportunity!.area = { region: remote.id, centre: remote.campCell, radiusKm: 1 };
+    goalDeed(state, {
+      kind: "stormEnded", minute: state.minute + 60, stormId: 97, stormKind: "rain", survivorAlive: true,
+      minutesByProtection: [0, 0, 60, 0], atCampMinutes: 0, awayFromCampMinutes: 60, maxWetness: 10,
+    }, world);
+    expect(state.goals.done.remoteStorm).toBe(true);
+  });
+
+  it("keeps the next field lesson eligible for an heir when the refuge opportunity opened before its modal", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    activateRemoteRefuge(state);
+    const remote = regionAt(world, state.player.region).neighbours[0].id;
+    const refuge = regionAt(world, remote).campCell;
+    placeAt(state, world, refuge);
+    goalDeed(state, {
+      kind: "protectionChanged", minute: state.minute, region: remote, cell: refuge,
+      from: 1, to: 2, source: "improved",
+    }, world);
+    expect(state.goals.introduced.fieldFire).toBeUndefined();
+    die(state, "froze", regionAt(world, remote).name);
+    beginAgain(state, world);
+    land(state, world, { first: "Ilze", last: "Berg" });
+
+    expect(activeGoals(state, calendar(state.minute, state.startDoy))).toContain("fieldFire");
+    introduceGoals(state, ["fieldFire"]);
+    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 1 };
+    goalDeed(state, { kind: "fireLit", minute: state.minute, region: state.player.region, cell: cellOf(state, world), atCamp: false }, world);
+    expect(state.goals.done.fieldFire).toBe(true);
+  });
+
+  it("keeps the next forecast lesson eligible for an heir while its chapter opportunity remains", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    activateWeatherReading(state);
+    finish(state, ["readWeather"]);
+    state.goals.opportunity = {
+      goal: "readWeather", status: "running", createdAt: state.minute, attempts: 1,
+      stormId: 13, source: "natural", area: null, announcedAt: state.minute, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+      readerIndex: current(state).index, plan: null,
+    };
+    state.weather.storm = { id: 13, source: "natural", kind: "rain", from: state.minute, until: state.minute + 60, warned: true };
+    die(state, "froze", regionAt(world, state.player.region).name);
+    beginAgain(state, world);
+    land(state, world, { first: "Ilze", last: "Berg" });
+
+    expect(state.goals.introduced.prepareWeather).toBeUndefined();
+    expect(activeGoals(state, calendar(state.minute, state.startDoy))).toContain("prepareWeather");
   });
 
   it("treats a later camp in the refuge region as beyond the original home", () => {

@@ -80,6 +80,9 @@ export function migrate(state: GameState): void {
     state.goals.chapter3HomeRegion = state.goals.introduced.remoteRefuge && Number.isFinite(camp) ? camp : null;
   }
   if (state.goals.opportunity) {
+    if (state.goals.opportunity.goal === "fieldFire" || state.goals.opportunity.goal === "fieldMeal") {
+      state.goals.opportunity.goal = "remoteStorm";
+    }
     state.goals.opportunity.minutesByProtection ??= [0, 0, 0, 0];
     state.goals.opportunity.atCampMinutes ??= 0;
     state.goals.opportunity.awayFromCampMinutes ??= 0;

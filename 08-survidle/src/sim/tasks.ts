@@ -1440,6 +1440,12 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
     stepSearchHome(state, world, cal, rng, dt);
     return;
   }
+  if ((t.id === "cook" || t.id === "crack" || t.id === "grindBark") && !fireAt(state, world)) {
+    state.task = null;
+    if (isWorkIntent(state.intent) && state.intent.task === t.id) state.intent = null;
+    log(state, `${check(state, world, cal, t.id, t.arg).label}: needs a lit fire. {You} {stop}.`);
+    return;
+  }
   // The site is authoritative: it can expire before this very step, and
   // neither a task bar nor paused work may bring those old minutes back.
   if (t.id === "emergencyShelter") {

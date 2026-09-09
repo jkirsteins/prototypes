@@ -315,7 +315,14 @@ const WEATHER_OVERLAY_GOALS = new Set<GoalId>([
 
 /** Calendar and prerequisite gates decide visibility, never whether an ordinary deed counted early. */
 export function goalEligible(state: GameState, cal: Calendar, goal: GoalDef): boolean {
-  if (goal.notBeforeDay !== undefined && cal.day < goal.notBeforeDay) return false;
+  const opportunity = state.goals.opportunity?.goal;
+  const inheritedChapter = opportunity === "readWeather"
+    ? ["readWeather", "prepareWeather", "surviveForecast"].includes(goal.id)
+    : opportunity === "remoteStorm"
+      ? ["fieldFire", "fieldMeal", "remoteStorm"].includes(goal.id)
+      : false;
+  if (goal.notBeforeDay !== undefined && cal.day < goal.notBeforeDay
+    && !state.goals.introduced[goal.id] && !inheritedChapter) return false;
   return goal.after?.every((id) => state.goals.done[id]) ?? true;
 }
 
@@ -478,7 +485,7 @@ export function goalDeed(state: GameState, d: GoalEvent, world?: World): GoalId[
   if (d.kind === "forecastChanged") {
     const opportunity = state.goals.opportunity;
     const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
-    if (opportunity?.goal === "readWeather" && opportunity.status === "announced"
+    if (opportunity?.goal === "readWeather" && (opportunity.status === "announced" || opportunity.status === "reserved")
       && opportunity.stormId === d.stormId && state.goals.introduced.readWeather
       && d.source === "readSky" && gainedForecastFact(d.before, d.after)) {
       opportunity.readerIndex = current(state).index;

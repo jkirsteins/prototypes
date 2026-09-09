@@ -116,6 +116,21 @@ describe("save", () => {
     });
   });
 
+  it.each(["fieldFire", "fieldMeal"] as const)("migrates a legacy %s opportunity into the shared remote storm attempt", (goal) => {
+    const { state } = newGame(9);
+    state.goals.opportunity = {
+      goal, status: "reserved", createdAt: 20, attempts: 2,
+      stormId: null, source: null, area: { region: 7, centre: 99, radiusKm: 1 },
+      announcedAt: null, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    };
+
+    expect(deserialize(serialize(state))!.state.goals.opportunity).toMatchObject({
+      goal: "remoteStorm", status: "reserved", attempts: 2,
+      area: { region: 7, centre: 99, radiusKm: 1 },
+    });
+  });
+
   it("migrates storms and goals from before stable identity and opportunities", () => {
     const { state } = newGame(9);
     const raw = JSON.parse(serialize(state));
