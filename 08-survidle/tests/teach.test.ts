@@ -3,6 +3,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { beginAgain, land } from "../src/sim/landing";
+import { MANUAL_SECTIONS } from "../src/sim/manual";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { current } from "../src/sim/record";
@@ -306,5 +307,6 @@ describe("the welcome", () => {
     expect(html).toContain(current(state).name.first);
     for (const s of SKILL_IDS) expect(html).toContain(SKILL_NAMES[s]);
     expect(html).toContain('data-act="welcome-close"');
+    expect(html).not.toContain(MANUAL_SECTIONS[0].lines[0]);
   });
 });

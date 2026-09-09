@@ -29,8 +29,8 @@ export interface UiState {
   manual: boolean;
   /** The rung whose moment is open, drained one at a time from state.teachQueue. */
   teach: Rung | null;
-  /** The completions whose congratulation is open, drained from state.goals.queue. */
-  goalsDone: GoalId[] | null;
+  /** Goal guidance open now, whether automatic or reopened from a pinned row. */
+  goalGuide: { ids: GoalId[]; done: GoalId[]; automatic: boolean } | null;
   /** The recognized wildlife subject whose naming moment is open. */
   recognition: number | null;
   /** The landing's welcome is open. Every landing has one, fresh survivor or heir. */
@@ -136,7 +136,7 @@ export function defaultChoiceFor(id: TaskId): RowChoice {
 export function newUiState(): UiState {
   return {
     panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, selected: null, hover: null, away: null, confirmAbandon: false, confirmCamp: false,
-    cemetery: false, manual: false, teach: null, goalsDone: null, recognition: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
+    cemetery: false, manual: false, teach: null, goalGuide: null, recognition: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false, regions: false },
     hurry: newHurry(), speedHistory: newSpeedHistory(),
   };

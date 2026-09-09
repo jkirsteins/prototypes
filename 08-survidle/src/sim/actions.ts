@@ -7,6 +7,7 @@ import { clamp } from "../units";
 import type { World } from "../world/gen";
 import { feedFire, rackCapacity } from "./camp";
 import { creditGut, creditLean, gutEatenToday, gutRefused, leanEatenToday, leanRefused } from "./gut";
+import { goalDeed } from "./goals";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, FOODS, type FoodId, GUT, ITEM_KG, ITEM_NAMES, itemLabel, KCAL_FULL } from "./items";
 import { creditEaten } from "./ledger";
@@ -70,6 +71,7 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): num
   p.kcal = Math.min(KCAL_FULL, p.kcal + gain);
   p.fat += gain;
   creditEaten(state, gain, leanPart);
+  if (def.leanShare < 1) goalDeed(state, { kind: "ateFat" });
   if (def.sickChance && p.sick === 0 && rng.chance(def.sickChance)) {
     p.sick = 48 * 60;
     log(state, "The raw meat turns {your} stomach. A fever follows.", "bad");

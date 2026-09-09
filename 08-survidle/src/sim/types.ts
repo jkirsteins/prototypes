@@ -157,6 +157,8 @@ export interface Task {
   darkSaid?: boolean;
   /** Cells an exploring sweep has already stood at, the starting cell included; pickVantage never picks one twice. */
   visited?: number[];
+  /** Region stood in when a survey began, so another-region credit follows the requested journey rather than the final map state. */
+  originRegion?: number;
   /** The cell a searchHome sweep is trying to reach: fixed at the start, since the sweep's own region drifts as it crosses one to sight another. */
   home?: number;
   /** The real sub-action currently owned by a region survey. */
@@ -663,12 +665,16 @@ export interface SkillState {
 }
 
 export type GoalId =
-  | "site" | "firewood" | "fire" | "cook" | "keptNight" | "bed" | "keptDays" | "roof" | "keptRain"
-  | "water" | "snare" | "store" | "spring" | "summer" | "autumn" | "winter";
+  | "site" | "drink" | "firewood" | "fire" | "bed" | "roof" | "cook" | "keptNight" | "firstOrder"
+  | "water" | "keptDays" | "foodSource" | "store" | "fat" | "longOrder" | "toolCare"
+  | "explore" | "secondCamp" | "seasonalFood" | "durableRoof" | "winterStores"
+  | "spring" | "summer" | "autumn" | "winter";
 
 export interface GoalState {
   done: Partial<Record<GoalId, true>>;
   progress: Partial<Record<GoalId, number>>;
+  /** Active goals whose introduction the player has dismissed. */
+  introduced: Partial<Record<GoalId, true>>;
   /** Completions not yet shown, drained by the overlay one batch at a time. */
   queue: GoalId[];
   /** The season the last daily roll stood in: a turnover is this differing from now. */

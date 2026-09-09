@@ -1,19 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { drop, dropAll, take } from "../src/sim/actions";
+import { drop, dropAll, eat, take } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { activeGoals, goalDeed, GOALS } from "../src/sim/goals";
+import { activeGoals, checkWinterStores, goalDeed, GOALS } from "../src/sim/goals";
+import { setSkillLevel } from "../src/sim/horizon";
 import { startIntent } from "../src/sim/intent";
 import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
 import { ITEM_KG } from "../src/sim/items";
 import { beginAgain, land } from "../src/sim/landing";
+import { orderByHand } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, DEADWOOD_KG, startTask, stepTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
+import { drink } from "../src/sim/water";
 import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
@@ -23,6 +26,74 @@ describe("deeds reach the ladder", () => {
     const { state } = newGame(3);
     expect(GOALS[0].id).toBe("site");
     expect(goalDeed(state, { kind: "task", id: "makeCamp" })).toContain("site");
+  });
+
+  it("does not treat ordinary sleep as exploration", () => {
+    const { state, world } = newGame(3);
+    state.task = { id: "sleep", progress: 0, duration: 0, repeat: false };
+    stepTask(state, world, cal, new Rng(1), 1);
+    expect(state.goals.done.explore).toBeUndefined();
+  });
+
+  it("credits a real drink and food with non-lean energy", () => {
+    const { state, world } = newGame(3);
+    state.player.water = 1;
+    placeAtSpot(state, world, state.player.region, "shore");
+    expect(drink(state, world)).toBe(true);
+    expect(state.goals.done.drink).toBe(true);
+    addItem(state.player.pack, "berries", 0.2);
+    expect(eat(state, world, "berries", new Rng(1))).toBeGreaterThan(0);
+    expect(state.goals.done.fat).toBe(true);
+  });
+
+  it("distinguishes a first standing camp order from a longer one", () => {
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    setSkillLevel(state, "woodcraft", 3);
+    orderByHand(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "times", n: 2 }, deliver: "camp", where: "nearest" }, "job");
+    expect(state.goals.done.firstOrder).toBe(true);
+    expect(state.goals.done.longOrder).toBeUndefined();
+    setSkillLevel(state, "woodcraft", 5);
+    orderByHand(state, world, cal, new Rng(1), { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    expect(state.goals.done.longOrder).toBe(true);
+  });
+
+  it("recognizes full winter food and fuel reserves on the daily roll", () => {
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    const camp = pile(state, regionState(state, world, state.player.region).campCell!);
+    addItem(camp, "driedMeat", 81);
+    addItem(camp, "fat", 21);
+    addItem(camp, "firewood", 610);
+    addItem(camp, "log", 301);
+    advance(state, world, 24 * 60);
+    expect(state.goals.done.winterStores).toBe(true);
+  });
+
+  it("requires each named winter store instead of accepting substitutes", () => {
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    const camp = pile(state, regionState(state, world, state.player.region).campCell!);
+    addItem(camp, "driedMeat", 140);
+    addItem(camp, "firewood", 1000);
+    checkWinterStores(state);
+    expect(state.goals.done.winterStores).toBeUndefined();
+    addItem(camp, "fat", 20);
+    addItem(camp, "log", 300);
+    checkWinterStores(state);
+    expect(state.goals.done.winterStores).toBe(true);
+  });
+
+  it("counts a newly made tool as preparing a replacement", () => {
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    addItem(state.player.pack, "stick", 2);
+    addItem(state.player.pack, "cordage", 1);
+    const o = check(state, world, cal, "craft", "fireDrill");
+    expect(o.ok, o.why).toBe(true);
+    expect(startTask(state, world, cal, "craft", "fireDrill")).toBe(true);
+    advance(state, world, o.duration + 1);
+    expect(state.goals.done.toolCare).toBe(true);
   });
 
   it("credits the fire when this survivor lights one", () => {
@@ -160,7 +231,7 @@ describe("deeds reach the ladder", () => {
   it("credits a season only when the calendar turns over into it", () => {
     const { state, world } = newGame(3);
     siteCamp(state, world);
-    for (const id of ["firewood", "fire", "cook", "bed", "roof", "water", "snare", "store"] as const) {
+    for (const id of ["firewood", "fire", "cook", "bed", "roof", "water", "store"] as const) {
       state.goals.done[id] = true;
     }
     const before = state.goals.lastSeason;
@@ -196,6 +267,22 @@ describe("deeds reach the ladder", () => {
     expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
     advance(state, world, o.duration + 1);
     expect(state.goals.done.cook).toBe(true);
+  });
+
+  it("does not credit cooking when the ingredient is gone at completion", () => {
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell!);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 5;
+    addItem(state.player.pack, "rawMeat", 1);
+    const o = check(state, world, cal, "cook", "rawMeat");
+    expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
+    removeItem(state.player.pack, "rawMeat", 1);
+    advance(state, world, o.duration + 1);
+    expect(state.goals.done.cook).toBeUndefined();
   });
 
   it("credits the store goal when meat actually goes onto the rack", () => {

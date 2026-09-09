@@ -203,23 +203,26 @@ describe("what the tooltip says", () => {
 describe("the tooltip's key", () => {
   it("is the same for the same cell, so a still pointer redraws nothing", () => {
     const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
     const here = cellOf(state, world);
-    expect(tipKey(state, world, here)).toBe(tipKey(state, world, here));
+    expect(tipKey(state, world, cal, here)).toBe(tipKey(state, world, cal, here));
   });
 
   it("differs between cells, so moving to a new one redraws once", () => {
     const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
     const here = cellOf(state, world);
-    expect(tipKey(state, world, here)).not.toBe(tipKey(state, world, here + 5));
+    expect(tipKey(state, world, cal, here)).not.toBe(tipKey(state, world, cal, here + 5));
   });
 
   it("changes when the pile under it changes, so a heap picked up stops being advertised", () => {
     const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
     siteCamp(state, world);
     const camp = campCellOf(state, world)!;
-    const before = tipKey(state, world, camp);
+    const before = tipKey(state, world, cal, camp);
     addItem(pile(state, camp), "firewood", 5);
-    expect(tipKey(state, world, camp)).not.toBe(before);
+    expect(tipKey(state, world, cal, camp)).not.toBe(before);
   });
 });
 

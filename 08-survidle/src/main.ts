@@ -18,7 +18,6 @@ import { startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
 import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
-import { openManualOnFirstLanding } from "./sim/manual";
 import { isKnown } from "./sim/mapped";
 import { frontierRoute } from "./sim/routing";
 import { newWorld } from "./sim/newgame";
@@ -39,7 +38,8 @@ import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
-import { goalDoneHtml, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
+import { introduceGoals, unintroducedGoals } from "./sim/goals";
+import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
 import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, viewOrigin } from "./ui/map";
@@ -175,7 +175,7 @@ function render() {
   setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
   setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
-  setPanel("goals", goalsHtml(state, cal));
+  setPanel("goals", goalsHtml(state, world, cal));
   setPanel("weather", weatherHtml(state, world, cal, ambient, ui.hurry.rate));
   const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
@@ -200,7 +200,7 @@ function render() {
   const tip = document.getElementById("maptip")!;
   tip.hidden = ui.hover === null;
   if (ui.hover !== null) {
-    const tk = tipKey(state, world, ui.hover);
+    const tk = tipKey(state, world, cal, ui.hover);
     if (tk !== lastTipKey) {
       lastTipKey = tk;
       setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay));
@@ -213,7 +213,7 @@ function render() {
   setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world);
   updateFills(state);
-  updateGoalBars(state, cal);
+  updateGoalBars(state, world, cal);
   updateSky(state, cal, ambient);
 
   // The settings panel is static markup with its own listeners (the slider must
@@ -244,8 +244,8 @@ function render() {
   } else if (ui.teach) {
     setPanel("overlay", conceptHtml(state, world, cal, ui.teach));
     overlay.hidden = false;
-  } else if (ui.goalsDone) {
-    setPanel("overlay", goalDoneHtml(state, cal, ui.goalsDone));
+  } else if (ui.goalGuide) {
+    setPanel("overlay", goalGuideHtml(state, world, cal, ui.goalGuide.ids, ui.goalGuide.done));
     overlay.hidden = false;
   } else if (ui.recognition !== null) {
     setPanel("overlay", recognitionHtml(state, ui.recognition));
@@ -260,7 +260,7 @@ let lastSave = performance.now();
 function frame(now: number) {
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
-  if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalsDone && ui.recognition === null) {
+  if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalGuide && ui.recognition === null) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
@@ -275,7 +275,7 @@ function frame(now: number) {
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra, { wildlife: "detailed" });
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
-  } else if (ui.away || ui.teach || ui.welcome || ui.goalsDone || ui.recognition !== null) {
+  } else if (ui.away || ui.teach || ui.welcome || ui.goalGuide || ui.recognition !== null) {
     // An open moment holds the game still. Without the bump, a modal left open
     // past thirty seconds trips the catch-up branch above, and the player
     // dismisses it into an away report they never earned.
@@ -287,11 +287,13 @@ function frame(now: number) {
   if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
   // The queue itself stays put until the overlay is dismissed: it is what
   // makes the congratulation survive a reload. goalMomentToOpen already
-  // refuses to reopen while ui.goalsDone is set, so leaving it be here does
+  // refuses to reopen while goal guidance is set, so leaving it be here does
   // not requeue the overlay every frame.
   const reached = goalMomentToOpen(state, ui);
-  if (reached) ui.goalsDone = reached;
-  if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.goalsDone && ui.recognition === null) {
+  if (reached) ui.goalGuide = { ids: unintroducedGoals(state, calendar(state.minute, state.startDoy)), done: reached, automatic: true };
+  const introduced = goalIntroductionToOpen(state, calendar(state.minute, state.startDoy), ui);
+  if (introduced) ui.goalGuide = { ids: introduced, done: [], automatic: true };
+  if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.goalGuide && ui.recognition === null) {
     ui.recognition = state.wildlife.recognitionQueue[0] ?? null;
   }
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
@@ -453,9 +455,8 @@ function onClick(ev: Event) {
       land(state, world);
       // land() no-ops without a landing or a name; only a real heir's landing is a begin-again.
       if (wasLanding && heir && state.landing === null) beacon.beganAgain(state, Date.now());
-      if (wasLanding && state.landing === null && openManualOnFirstLanding(state, heir)) ui.manual = true;
-      // Every landing gets its welcome, fresh survivor or heir. On a world's
-      // first the manual leads and this waits behind it in the chain.
+      // Every landing gets its welcome, fresh survivor or heir. The first
+      // goal follows it; the manual remains available on demand.
       if (wasLanding && state.landing === null) ui.welcome = true;
       ui.confirmAbandon = false;
       resetForecastAt();
@@ -505,12 +506,18 @@ function onClick(ev: Event) {
       lastReal = performance.now();
       break;
     case "goal-close":
-      ui.goalsDone = null;
-      state.goals.queue = [];
+      if (ui.goalGuide?.automatic) introduceGoals(state, ui.goalGuide.ids);
+      if (ui.goalGuide) state.goals.queue = state.goals.queue.filter((id) => !ui.goalGuide!.done.includes(id));
+      ui.goalGuide = null;
       // The same bump the rung moment's dismiss does: the minutes the
       // screen was open were paused, not spent away.
       lastReal = performance.now();
       break;
+    case "goal-open": {
+      const id = target.dataset.goal;
+      if (id) ui.goalGuide = { ids: [id as import("./sim/types").GoalId], done: [], automatic: false };
+      break;
+    }
     case "recognition-close":
       if (ui.recognition !== null && state.wildlife.recognitionQueue[0] === ui.recognition) state.wildlife.recognitionQueue.shift();
       ui.recognition = null;
@@ -808,6 +815,33 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
   });
   board.addEventListener("pointerleave", (ev) => {
     if (ev.pointerType !== "touch") ui.hover = null;
+  });
+  board.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      ui.hover = null;
+      board.querySelector<HTMLElement>(".grid")?.focus();
+      render();
+      return;
+    }
+    const moves: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+    };
+    const move = moves[ev.key];
+    if (!move) return;
+    const grid = board.querySelector<HTMLElement>(".grid");
+    if (!grid) return;
+    const active = document.activeElement instanceof HTMLElement && document.activeElement.matches(".c")
+      ? document.activeElement
+      : grid.querySelector<HTMLElement>(".mk-player") ?? grid.querySelector<HTMLElement>("[data-map-cell]");
+    if (!active) return;
+    const x = Number(active.dataset.mapX) + move[0];
+    const y = Number(active.dataset.mapY) + move[1];
+    const next = grid.querySelector<HTMLElement>(`[data-map-x="${x}"][data-map-y="${y}"][data-map-cell]`);
+    if (!next) return;
+    ev.preventDefault();
+    next.focus();
+    ui.hover = Number(next.dataset.mapCell);
+    render();
   });
 
   // A row that names somewhere to go points at it while the pointer is on

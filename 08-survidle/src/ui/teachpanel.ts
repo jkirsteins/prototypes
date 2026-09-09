@@ -7,7 +7,6 @@
 import { type Calendar, fmtDate } from "../sim/calendar";
 import { intentOption } from "../sim/intent";
 import { orderGate } from "../sim/ladder";
-import { MANUAL_SECTIONS } from "../sim/manual";
 import { fmtName } from "../sim/names";
 import { orderSentence } from "../sim/orders";
 import { current } from "../sim/record";
@@ -88,8 +87,7 @@ ${shown}
 
 /**
  * The welcome a landing opens to, fresh survivor or heir alike. The first
- * days' advice is taken from the manual's own first section rather than
- * retyped, so the two cannot come to disagree about what to do first.
+ * welcome says who arrived and what they know. Goals say what to do next.
  */
 export function welcomeHtml(state: GameState, cal: Calendar): string {
   const rec = current(state);
@@ -100,7 +98,6 @@ export function welcomeHtml(state: GameState, cal: Calendar): string {
 <p class="dim">${esc(fmtDate(cal))}, day ${cal.day}.</p>
 ${body.map((l) => `<p>${esc(l)}</p>`).join("")}
 <div class="statuses">${skills}</div>
-<p>${esc(MANUAL_SECTIONS[0].lines.slice(0, 2).join(" "))}</p>
 <p class="example">${esc(tipFor(state.seed, state.survivors.length))}</p>
 <button class="act" data-act="welcome-close">Begin</button>
 </div>`;

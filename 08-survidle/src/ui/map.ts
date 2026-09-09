@@ -674,10 +674,13 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const place = reg >= 0 && named ? world.regions.get(reg)?.name : undefined;
     const info = [terrain, place, ...featuresAt.get(i) ?? []].filter(Boolean).join("; ");
     const wildlife = animalId === null ? "" : ` data-wildlife-id="${animalId}"`;
+    const cx = x0 + gx * z;
+    const cy = y0 + gy * z;
+    const mapCell = cx >= 0 && cy >= 0 && cx < world.w && cy < world.h ? ` data-map-cell="${cellIdx(world, cx, cy)}"` : "";
     // No title attribute: the board's own box says all of this, at once and
     // in the page's own voice, where the browser's tooltip said it after a
     // delay and stood over whatever it was next to.
-    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${act}${wildlife}${style}>${glyph === "\"" ? "&quot;" : glyph}</span>`);
+    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${wildlife}${style}>${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
   parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}</div><i class="shade"></i></div>${tools}`);
   return parts.join("");

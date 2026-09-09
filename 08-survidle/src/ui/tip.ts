@@ -53,12 +53,12 @@ const GROUND: Record<string, string> = {
  * for a reader who is looking at it for two seconds, and one that redrew
  * on every mousemove would be the map's whole budget.
  */
-export function tipKey(state: GameState, world: World, cell: number): string {
+export function tipKey(state: GameState, world: World, cal: Calendar, cell: number): string {
   const st = regionState(state, world, state.player.region);
   const heap = state.piles[cell] ? weight(state.piles[cell]).toFixed(1) : "";
   const known = isKnown(state, cell) ? "k" : "";
   const trap = st.trap?.cell === cell ? "T" : "";
-  const wildlife = state.wildlife.subjects
+  const wildlife = visibleWildlife(state, world, cal)
     .filter((subject) => subject.active?.cell === cell)
     .map((subject) => `${subject.id}:${wildlifeMembers(subject)}:${subject.active?.intent}:${state.wildlife.recognized[subject.id] ? subject.name ?? "" : ""}`)
     .join(",");
