@@ -3,6 +3,7 @@ import { fireAt } from "../sim/fire";
 import { goalDef, type GoalPhase, winterStoreProgress } from "../sim/goals";
 import { qty } from "../sim/inventory";
 import { SNOW_SHELTER_CM, STRUCTURES } from "../sim/items";
+import { atCamp } from "../sim/position";
 import { campSite, regionState } from "../sim/regionstate";
 import { check, inReach } from "../sim/tasks";
 import type { GameState, GoalId, ItemId } from "../sim/types";
@@ -93,8 +94,9 @@ export function goalProgress(state: GameState, world: World | undefined, _cal: C
   const site = campSite(st);
   if (id === "fire") {
     const fire = fireAt(state, world);
+    const campFireSite = atCamp(state, world) && Boolean(site?.structures.firePit || site?.structures.hearth);
     const steps = [
-      { label: "Site", done: Boolean(fire || site?.structures.firePit || site?.structures.hearth || check(state, world, _cal, "light").ok) },
+      { label: "Site", done: Boolean(fire || campFireSite || check(state, world, _cal, "light").ok) },
       { label: "Fuel", done: Boolean(fire) || st.fire.fuelKg > 0 || inReach(state, world, "firewood") > 0 },
       { label: "Ignition", done: Boolean(fire) || state.player.tools.some((tool) => tool.id === "fireDrill") || inReach(state, world, "fireDrill") > 0 },
     ];

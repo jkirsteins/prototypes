@@ -4,11 +4,12 @@ import { calendar } from "../src/sim/calendar";
 import { GOALS } from "../src/sim/goals";
 import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { regionState } from "../src/sim/regionstate";
+import { placeAt } from "../src/sim/position";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { beginTask, check, startTask } from "../src/sim/tasks";
 import { goalGuide, goalProgress } from "../src/ui/goalguide";
 import { purposeOf, subtabOf } from "../src/ui/purpose";
-import { siteCamp } from "./siting-helpers";
+import { neighbourLandCell, siteCamp } from "./siting-helpers";
 
 describe("goal guidance", () => {
   it("gives every goal one concise route or prompt", () => {
@@ -50,6 +51,18 @@ describe("goal guidance", () => {
     expect(goalProgress(state, world, cal, "fire").steps.map((step) => [step.label, step.done])).toEqual([
       ["Site", true], ["Fuel", true], ["Ignition", true],
     ]);
+  });
+
+  it("does not count a distant camp fire pit as the current field site", () => {
+    const { state, world } = newGame(3);
+    const camp = siteCamp(state, world);
+    siteFor(regionState(state, world, state.player.region), camp).structures.firePit = true;
+    placeAt(state, world, neighbourLandCell(world, camp));
+    state.player.pack = { items: {}, stacks: {} };
+    state.player.tools = [];
+    const cal = calendar(state.minute, state.startDoy);
+    expect(check(state, world, cal, "light").ok).toBe(false);
+    expect(goalProgress(state, world, cal, "fire").steps[0]).toEqual({ label: "Site", done: false });
   });
 
   it("counts a real field fire as the fire needed to cook", () => {
