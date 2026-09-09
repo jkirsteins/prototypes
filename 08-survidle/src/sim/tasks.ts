@@ -37,7 +37,7 @@ import {
 } from "./position";
 import { EMBER_RELIGHT_MINUTES, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { goalDeed } from "./goals";
-import { findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
+import { builtProtection, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare } from "./mapped";
 import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
@@ -133,7 +133,7 @@ export const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "findDen", "fish", "cook",
   "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
   "setTrap", "emptyTrap", "makeCamp", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
-  "findShelter", "improveCover",
+  "findShelter", "improveCover", "emergencyShelter",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -971,6 +971,19 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (cover === 3) return { ...o, ok: false, why: "cover cannot be improved further" };
       return o;
     }
+    case "emergencyShelter": {
+      const minutes = siteAt(st, at)?.emergencyMinutes ?? 0;
+      const level = builtProtection(minutes);
+      const next = Math.min(3, level + 1) as 1 | 2 | 3;
+      const o = opt({
+        group: "build", label: `Emergency shelter - ${PROTECTION_WORDS[next]}`,
+        detail: `${Math.max(0, EMERGENCY_MINUTES[next] - minutes)} effective minutes to ${PROTECTION_WORDS[next]}; boughs and deadfall last fourteen days without work`,
+        duration: Math.max(0, EMERGENCY_MINUTES[3] - minutes),
+      });
+      if (!passable(terrain)) return { ...o, ok: false, why: "not on water" };
+      if (level === 3) return { ...o, ok: false, why: "emergency shelter is already liveable" };
+      return o;
+    }
     case "haul": {
       const from = at;
       // Haul does not read `repeat` (beginTask refuses "haul" outright; the intent's own until governs it), so a loop button beside it would be a promise the button cannot keep.
@@ -1149,6 +1162,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "searchHome"));
   out.push(check(state, world, cal, "findShelter"));
   out.push(check(state, world, cal, "improveCover"));
+  out.push(check(state, world, cal, "emergencyShelter"));
   return out.map((o) => withProgression(state, world, o));
 }
 
@@ -1320,6 +1334,12 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
       ?? state.wildlife.subjects.find((subject) => subject.species === arg && subject.region === state.player.region && subject.active)?.id
     : undefined;
   state.task = { id, arg, progress: fresh.duration * fraction, duration: fresh.duration, repeat: repeat && o.repeatable, ...(any ? { any: true } : {}), ...(wildlifeSubject !== undefined ? { wildlifeSubject } : {}) };
+  if (id === "emergencyShelter") {
+    const minutes = siteAt(regionState(state, world, state.player.region), cellOf(state, world))?.emergencyMinutes ?? 0;
+    const cost = hasQuirk(state, "bigEater") ? BIG_EATER_PACE : 1;
+    state.task.duration = EMERGENCY_MINUTES[3] * cost;
+    state.task.progress = minutes * cost;
+  }
   return true;
 }
 
@@ -1416,6 +1436,19 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
     stepSearchHome(state, world, cal, rng, dt);
     return;
   }
+  // The site is authoritative: it can expire before this very step, and
+  // neither a task bar nor paused work may bring those old minutes back.
+  if (t.id === "emergencyShelter") {
+    const o = check(state, world, cal, t.id, t.arg);
+    if (!o.ok) {
+      state.task = null;
+      if (isWorkIntent(state.intent) && state.intent.task === t.id) state.intent = null;
+      log(state, `${o.label}: ${o.why}. {You} {stop}.`);
+      return;
+    }
+    const minutes = siteAt(regionState(state, world, state.player.region), cellOf(state, world))?.emergencyMinutes ?? 0;
+    t.progress = minutes * (t.duration / EMERGENCY_MINUTES[3]);
+  }
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state, world) : 1;
   train(state, world, dt);
   // An "any" task is the intent's and the order's work under whatever species it drew.
@@ -1425,6 +1458,14 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   const order = liveOrderFor(state, world, t.id, wanted) ?? liveOrderFor(state, world, t.id, t.arg);
   if (order) order.minutes += dt;
   t.progress += dt * pace;
+  if (t.id === "emergencyShelter" && dt * pace > 0) {
+    const site = siteFor(regionState(state, world, state.player.region), cellOf(state, world));
+    const before = protectionOf(site);
+    site.emergencyMinutes = Math.min(EMERGENCY_MINUTES[3], t.progress / (t.duration / EMERGENCY_MINUTES[3]));
+    site.emergencyAge = 0;
+    const after = protectionOf(site);
+    if (before < 2 && after >= 2) goalDeed(state, { kind: "sheltered", protection: after });
+  }
   if (t.progress < t.duration) return;
   // Existing cover ages before this task step. If it expires in the finishing
   // interval, the improvement has nothing left to work and is not a completion.
@@ -2509,6 +2550,9 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       log(state, `{You} {work} the cover into something ${PROTECTION_WORDS[after]}.`);
       return;
     }
+    case "emergencyShelter":
+      log(state, "{You} {finish} the emergency shelter. It is liveable, but will fall in fourteen days.");
+      return;
     // A sleep leaves nothing behind it: it ran to the wake line, and whether
     // the body lies down again is the model's to say next minute.
     case "sleep":

@@ -23,6 +23,7 @@ import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 /** Tasks done at camp, by the fire and under the roof. */
 const CAMP_TASKS = new Set<TaskId>([
   "rest", "night",
+  "emergencyShelter",
   "sleep", "craft", "cook", "split", "splitWedges", "repair", "build", "mend", "light", "lightTorch", "sharpen", "hone", "melt", "thaw", "lightIndoors", "hang", "crack", "grindBark",
 ]);
 
@@ -38,7 +39,7 @@ export function activityOf(task: Task | null): Activity {
     case "rest": case "night": case "craft": case "cook": case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "melt": case "thaw": case "lightIndoors": case "crack": case "grindBark": return "rest";
     case "sticks": case "bark": case "stone": case "berries": case "eggs": case "innerBark": case "roots": case "tapSap": case "seaweed": case "deadwood": case "hunt": case "findDen": case "fish": case "fill": case "hang": case "read": case "setTrap": case "emptyTrap": case "makeCamp": case "findShelter": case "improveCover": return "light";
     case "travel": case "walk": case "haul": case "explore": case "searchHome": return "walk";
-    case "chop": case "split": case "splitWedges": case "build": case "mend": case "iceHole": return "heavy";
+    case "chop": case "split": case "splitWedges": case "build": case "mend": case "iceHole": case "emergencyShelter": return "heavy";
   }
 }
 

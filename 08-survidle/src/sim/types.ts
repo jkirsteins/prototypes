@@ -132,7 +132,7 @@ export type TaskId =
   | "hunt" | "findDen" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
-  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome" | "findShelter" | "improveCover";
+  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome" | "findShelter" | "improveCover" | "emergencyShelter";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
@@ -140,7 +140,7 @@ export const TASK_IDS: TaskId[] = [
   "hunt", "findDen", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
-  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome", "findShelter", "improveCover",
+  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome", "findShelter", "improveCover", "emergencyShelter",
 ];
 
 export interface Task {
@@ -438,6 +438,10 @@ export interface Site {
   cover: Protection;
   /** Minutes since that cover was last found or improved. */
   coverAge: number;
+  /** Effective work invested in temporary bough-and-deadfall shelter. */
+  emergencyMinutes: number;
+  /** Elapsed minutes since this emergency shelter was last worked on. */
+  emergencyAge: number;
   /** Drying racks standing here, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
   racks: number;
   /** Minutes since the bough bed was laid; boughs go flat and brown after four days. */

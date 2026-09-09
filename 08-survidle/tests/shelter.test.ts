@@ -2,16 +2,30 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
+import { STRUCTURES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
+import { sheltered, workSpeed } from "../src/sim/player";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import { COVER_CEILING, findCover, protectionOf, PROTECTION_WORDS } from "../src/sim/shelter";
-import { check, startTask, stepTask } from "../src/sim/tasks";
-import type { Terrain } from "../src/sim/types";
+import { builtProtection, COVER_CEILING, EMERGENCY_MINUTES, findCover, protectionOf, PROTECTION_WORDS } from "../src/sim/shelter";
+import { check, startTask, stepTask, stopTask } from "../src/sim/tasks";
+import { TASK_IDS, type Terrain } from "../src/sim/types";
 import { cellAt } from "../src/world/gen";
 
 type Game = ReturnType<typeof newGame>;
+
+function emergencyGame() {
+  // Guard the public registration so a missing task fails as a contract
+  // assertion, before check's intentionally exhaustive switch is called.
+  expect(TASK_IDS).toContain("emergencyShelter");
+  const g = newGame(17);
+  const meadow = cellWith(g, "meadow");
+  placeAt(g.state, g.world, meadow);
+  g.state.survivors[0].person.quirks = [];
+  const site = siteFor(regionState(g.state, g.world, g.state.player.region), meadow);
+  return { ...g, site, meadow };
+}
 
 function cellWith({ world }: Game, terrain: Terrain): number {
   for (let cell = 0; cell < world.w * world.h; cell++) if (cellAt(world, cell).terrain === terrain) return cell;
@@ -24,6 +38,19 @@ function finishTask(g: Game): void {
 }
 
 describe("protection", () => {
+  it("pays out as the minutes go in, and joins the lean-to at the top", () => {
+    expect(builtProtection).toBeTypeOf("function");
+    expect(builtProtection(0)).toBe(0);
+    expect(builtProtection(29)).toBe(0);
+    expect(builtProtection(30)).toBe(1);
+    expect(builtProtection(89)).toBe(1);
+    expect(builtProtection(90)).toBe(2);
+    expect(builtProtection(239)).toBe(2);
+    expect(builtProtection(240)).toBe(3);
+    expect(builtProtection(500)).toBe(3);
+    expect(EMERGENCY_MINUTES[3]).toBe(STRUCTURES.leanTo.minutes);
+  });
+
   it("reads nothing as open ground", () => {
     expect(protectionOf(null)).toBe(0);
     expect(PROTECTION_WORDS[0]).toBe("open ground");
@@ -283,5 +310,157 @@ describe("found cover keeping", () => {
     const savedSite = loaded.state.regions[g.state.player.region].sites[cell];
     expect(savedSite.cover).toBe(0);
     expect(savedSite.coverAge).toBe(0);
+  });
+});
+
+describe("emergency shelter", () => {
+  it("raises protection while the task is still running and emits the roof deed only on crossing two", () => {
+    const g = emergencyGame();
+    const cal = calendar(g.state.minute, g.state.startDoy);
+    expect(startTask(g.state, g.world, cal, "emergencyShelter")).toBe(true);
+    const work = (minutes: number) => stepTask(g.state, g.world, cal, new Rng(1), minutes);
+    work(29);
+    expect(g.site.emergencyMinutes).toBe(29);
+    expect(protectionOf(g.site)).toBe(0);
+    expect(sheltered(g.state, g.world)).toBe(false);
+    work(1);
+    expect(protectionOf(g.site)).toBe(1);
+    work(59);
+    expect(g.state.goals.done.roof).toBeUndefined();
+    work(1);
+    expect(protectionOf(g.site)).toBe(2);
+    expect(g.state.task?.id).toBe("emergencyShelter");
+    expect(sheltered(g.state, g.world)).toBe(true);
+    expect(g.state.goals.done.roof).toBe(true);
+    // A second emission would credit a newly empty ledger, even though the
+    // ordinary goal ledger also protects against repeating completed goals.
+    delete g.state.goals.done.roof;
+    delete g.state.goals.progress.roof;
+    work(150);
+    expect(g.state.goals.done.roof).toBeUndefined();
+    expect(g.state.task).toBeNull();
+    expect(protectionOf(g.site)).toBe(3);
+    expect(check(g.state, g.world, cal, "emergencyShelter").ok).toBe(false);
+    expect(Object.values(g.site.structures).some(Boolean)).toBe(false);
+    expect(g.site.build).toEqual({});
+  });
+
+  it("keeps the strongest protection and does not repeat a roof already provided by cover", () => {
+    const g = emergencyGame();
+    g.site.cover = 2;
+    expect(startTask(g.state, g.world, calendar(0), "emergencyShelter")).toBe(true);
+    stepTask(g.state, g.world, calendar(0), new Rng(1), 90);
+    expect(g.state.goals.done.roof).toBeUndefined();
+    expect(protectionOf(g.site)).toBe(2);
+    g.site.structures.cabin = true;
+    expect(protectionOf(g.site)).toBe(3);
+  });
+
+  it("counts effective work rather than elapsed minutes and applies the big-eater pace once", () => {
+    const g = emergencyGame();
+    g.state.player.energy = 10;
+    expect(startTask(g.state, g.world, calendar(0), "emergencyShelter")).toBe(true);
+    stepTask(g.state, g.world, calendar(0), new Rng(1), 60);
+    expect(g.site.emergencyMinutes).toBe(30);
+    expect(protectionOf(g.site)).toBe(1);
+    stopTask(g.state, g.world);
+    g.state.player.energy = 100;
+    g.state.survivors[0].person.quirks = ["bigEater"];
+    expect(startTask(g.state, g.world, calendar(0), "emergencyShelter")).toBe(true);
+    stepTask(g.state, g.world, calendar(0), new Rng(1), 189);
+    expect(g.site.emergencyMinutes).toBe(240);
+    expect(g.state.task).toBeNull();
+  });
+
+  it("resumes site work without creating camp, spending materials, or clearing a shopping target", () => {
+    const g = emergencyGame();
+    const st = regionState(g.state, g.world, g.state.player.region);
+    const pack = JSON.stringify(g.state.player.pack);
+    g.state.shopping = { task: "craft", arg: "knife" };
+    expect(startTask(g.state, g.world, calendar(0), "emergencyShelter")).toBe(true);
+    stepTask(g.state, g.world, calendar(0), new Rng(1), 50);
+    stopTask(g.state, g.world);
+    expect(g.site.emergencyMinutes).toBe(50);
+    expect(g.state.paused).toEqual({});
+    expect(check(g.state, g.world, calendar(0), "emergencyShelter").duration).toBe(190);
+    expect(startTask(g.state, g.world, calendar(0), "emergencyShelter")).toBe(true);
+    finishTask(g);
+    expect(g.site.emergencyMinutes).toBe(240);
+    expect(st.campCell).toBeNull();
+    expect(JSON.stringify(g.state.player.pack)).toBe(pack);
+    expect(g.state.shopping).toEqual({ task: "craft", arg: "knife" });
+  });
+
+  it("binds selected or current land and refuses water at start and during work", async () => {
+    const { resolveCell } = await import("../src/sim/intent");
+    const g = emergencyGame();
+    const named = cellWith(g, "rock");
+    expect(resolveCell(g.state, g.world, calendar(0), "emergencyShelter", undefined, "nearest").cell).toBe(g.meadow);
+    expect(resolveCell(g.state, g.world, calendar(0), "emergencyShelter", undefined, { cell: named }).cell).toBe(named);
+    expect(startTask(g.state, g.world, calendar(0), "emergencyShelter")).toBe(true);
+    const water = cellWith(g, "water");
+    placeAt(g.state, g.world, water);
+    stepTask(g.state, g.world, calendar(0), new Rng(1), 1);
+    expect(g.state.task).toBeNull();
+    expect(g.site.emergencyMinutes).toBe(0);
+    expect(check(g.state, g.world, calendar(0), "emergencyShelter").ok).toBe(false);
+    expect(startTask(g.state, g.world, calendar(0), "emergencyShelter")).toBe(false);
+  });
+
+  it("expires exactly fourteen elapsed days after work and reports its fall without removing structures", () => {
+    const g = emergencyGame();
+    g.state.minute = 1199;
+    g.site.emergencyMinutes = 90;
+    g.site.emergencyAge = 0;
+    g.site.structures.firePit = true;
+    advance(g.state, g.world, 14 * 1440 - 1, { nobody: true });
+    expect(g.site.emergencyAge).toBe(14 * 1440 - 1);
+    expect(protectionOf(g.site)).toBe(2);
+    advance(g.state, g.world, 1, { nobody: true });
+    expect(g.site.emergencyMinutes).toBe(0);
+    expect(g.site.emergencyAge).toBe(0);
+    expect(protectionOf(g.site)).toBe(0);
+    expect(g.site.structures.firePit).toBe(true);
+    expect(g.state.log.filter((entry) => /emergency shelter.*fallen/i.test(entry.text))).toHaveLength(1);
+  });
+
+  it("resets the idle age on new work and never resurrects expired progress in the completion minute", () => {
+    const g = emergencyGame();
+    g.site.emergencyMinutes = 239;
+    g.site.emergencyAge = 14 * 1440 - 1;
+    expect(startTask(g.state, g.world, calendar(0), "emergencyShelter")).toBe(true);
+    advance(g.state, g.world, 1);
+    expect(g.site.emergencyMinutes).toBe(1);
+    expect(g.site.emergencyAge).toBe(0);
+    expect(protectionOf(g.site)).toBe(0);
+    expect(g.state.task?.id).toBe("emergencyShelter");
+    expect(g.state.goals.done.roof).toBeUndefined();
+    stopTask(g.state, g.world);
+    g.site.emergencyAge = 40;
+    expect(startTask(g.state, g.world, calendar(0), "emergencyShelter")).toBe(true);
+    expect(check(g.state, g.world, calendar(0), "emergencyShelter")).toMatchObject({ ok: true });
+    expect(g.state.task).toMatchObject({ progress: 1, duration: 240 });
+    expect(workSpeed(g.state, g.world)).toBeGreaterThan(0);
+    stepTask(g.state, g.world, calendar(0), new Rng(1), 1);
+    expect(cellOf(g.state, g.world)).toBe(g.meadow);
+    expect(g.state.dead).toBeNull();
+    expect(g.state.task?.id).toBe("emergencyShelter");
+    expect(g.site.emergencyAge).toBe(0);
+  });
+
+  it("preserves partial work on save and defaults absent emergency fields in old saves", () => {
+    const g = newGame(17);
+    const here = cellOf(g.state, g.world);
+    const site = siteFor(regionState(g.state, g.world, g.state.player.region), here);
+    expect(site.emergencyMinutes).toBe(0);
+    expect(site.emergencyAge).toBe(0);
+    site.emergencyMinutes = 89;
+    site.emergencyAge = 42;
+    const raw = JSON.parse(serialize(g.state));
+    const loaded = deserialize(JSON.stringify(raw))!;
+    expect(loaded.state.regions[g.state.player.region].sites[here]).toMatchObject({ emergencyMinutes: 89, emergencyAge: 42 });
+    delete raw.state.regions[g.state.player.region].sites[here].emergencyMinutes;
+    delete raw.state.regions[g.state.player.region].sites[here].emergencyAge;
+    expect(deserialize(JSON.stringify(raw))!.state.regions[g.state.player.region].sites[here]).toMatchObject({ emergencyMinutes: 0, emergencyAge: 0 });
   });
 });

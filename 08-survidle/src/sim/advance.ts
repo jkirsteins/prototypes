@@ -3,7 +3,7 @@ import { regionAt, type World } from "../world/gen";
 import { autoEat } from "./actions";
 import { dailyAnimals } from "./animals";
 import { calendar, DAILY_HOUR } from "./calendar";
-import { dailyCamp, stepCamp, stepFoundCover } from "./camp";
+import { dailyCamp, stepCamp, stepEmergencyShelter, stepFoundCover } from "./camp";
 import { hourlyEvents } from "./events";
 import { goalDeed } from "./goals";
 import { hourlyWorld, iceUnderFoot } from "./hazards";
@@ -60,6 +60,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   // This interval elapsed for cover that already existed at its start. Run
   // before tasks so a search completing now resets the new cover to age zero.
   stepFoundCover(state, dt);
+  stepEmergencyShelter(state, world, dt);
 
   const hadStorm = state.weather.storm !== null;
   const ev = stepWeather(state.weather, cal, rng, dt, state.minute);

@@ -284,6 +284,8 @@ export function migrate(state: GameState): void {
     for (const site of Object.values(st.sites)) {
       site.cover ??= 0;
       site.coverAge ??= 0;
+      site.emergencyMinutes ??= 0;
+      site.emergencyAge ??= 0;
     }
     st.snares ??= 0;
     st.fire.wetKg ??= 0;

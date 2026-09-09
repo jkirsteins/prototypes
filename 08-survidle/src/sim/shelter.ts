@@ -14,6 +14,21 @@ export const PROTECTION_WORDS: Record<Protection, string> = {
 };
 
 /**
+ * Design values inside sourced field ranges, not measured build times:
+ * a natural lean-to gives windbreak and roof in under an hour; a debris
+ * hut takes about 1.5 hours to half a day, usually two to four hours.
+ * The top joins the permanent lean-to's labour cost but stays temporary.
+ */
+export const EMERGENCY_MINUTES: Record<1 | 2 | 3, number> = { 1: 30, 2: 90, 3: 240 };
+
+/** Protection already earned by effective work, even with the task unfinished. */
+export function builtProtection(minutes: number): Protection {
+  if (minutes >= EMERGENCY_MINUTES[3]) return 3;
+  if (minutes >= EMERGENCY_MINUTES[2]) return 2;
+  return minutes >= EMERGENCY_MINUTES[1] ? 1 : 0;
+}
+
+/**
  * What each ground can offer someone looking for cover. FM 21-76's own list
  * of natural shelter - caves and rocky crevices, small depressions, large
  * rocks on the leeward side of a hill, large trees with low-hanging limbs,
@@ -55,5 +70,5 @@ export function protectionOf(site: Site | null): Protection {
   if (!site) return 0;
   const s = site.structures;
   const structure: Protection = s.cabin || s.turfHut ? 3 : s.leanTo || s.snowShelter ? 2 : 0;
-  return Math.max(structure, site.cover) as Protection;
+  return Math.max(structure, site.cover, builtProtection(site.emergencyMinutes)) as Protection;
 }

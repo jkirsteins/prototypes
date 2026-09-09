@@ -38,7 +38,7 @@ describe("the gate skill", () => {
   });
 
   it("the runner's own steps and the moves are not orders", () => {
-    expect(NOT_ORDERS).toEqual(["walk", "travel", "rest", "sleep", "night", "makeCamp", "explore", "searchHome", "findShelter", "improveCover"]);
+    expect(NOT_ORDERS).toEqual(["walk", "travel", "rest", "sleep", "night", "makeCamp", "explore", "searchHome", "findShelter", "improveCover", "emergencyShelter"]);
   });
 });
 

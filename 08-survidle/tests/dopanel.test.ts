@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
-import { placeAt, placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { hasSpot, regionAt } from "../src/world/gen";
 import { levelMinutes } from "../src/sim/skills";
 import { availableTasks } from "../src/sim/tasks";
@@ -279,6 +279,21 @@ describe("the purposes and the filter", () => {
     expect(html).toContain('data-opt="intent:improveCover:');
     expect((html.match(/data-opt="intent:improveCover:/g) ?? []).length).toBe(1);
     expect(doHtml(state, world, cal, { ...ui, filter: "roof cover" })).toContain('data-opt="intent:improveCover:');
+  });
+
+  it("Build offers one emergency Shelter row whose face names the next protection threshold", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Build" as const, purpose: "Shelter" } };
+    const html = doHtml(state, world, cal, ui);
+    expect((html.match(/data-opt="intent:emergencyShelter:/g) ?? [])).toHaveLength(1);
+    const face = html.match(/data-opt="intent:emergencyShelter:[\s\S]*?<\/button>/)?.[0];
+    expect(face).toContain("windbreak");
+    expect(doHtml(state, world, cal, { ...ui, filter: "roof cover" })).toContain('data-opt="intent:emergencyShelter:');
+    const site = siteFor(regionState(state, world, state.player.region), cellOf(state, world));
+    site.emergencyMinutes = 50;
+    const next = doHtml(state, world, cal, ui).match(/data-opt="intent:emergencyShelter:[\s\S]*?<\/button>/)?.[0];
+    expect(next).toContain("weatherproof");
   });
 
   it("Camp is no longer one heap of twenty-six rows", () => {

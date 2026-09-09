@@ -56,6 +56,8 @@ export function newSite(): Site {
     structures: { firePit: false, leanTo: false, cabin: false, dryingRack: false, boughBed: false, hearth: false, turfHut: false, waterStore: false, snowShelter: false },
     cover: 0,
     coverAge: 0,
+    emergencyMinutes: 0,
+    emergencyAge: 0,
     racks: 0,
     boughBedAge: 0,
     meltDays: 0,

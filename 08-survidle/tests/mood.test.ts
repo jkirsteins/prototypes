@@ -38,6 +38,8 @@ describe("the mood a task reads as", () => {
     expect(moodOf(state)).toBe("work");
     doing(state, "makeCamp");
     expect(moodOf(state)).toBe("work");
+    doing(state, "emergencyShelter");
+    expect(moodOf(state)).toBe("work");
     doing(state, "rest");
     expect(moodOf(state)).toBe("rest");
     doing(state, "sleep");

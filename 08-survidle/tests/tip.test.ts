@@ -173,6 +173,24 @@ describe("what the tooltip says", () => {
     expect(html).not.toContain('data-id="findShelter"');
   });
 
+  it("updates emergency protection only when work crosses a protection threshold", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const here = cellOf(state, world);
+    const site = siteFor(regionState(state, world, state.player.region), here);
+    site.emergencyMinutes = 29;
+    const before = tipKey(state, world, here);
+    site.emergencyMinutes = 30;
+    const windbreak = tipKey(state, world, here);
+    expect(windbreak).not.toBe(before);
+    expect(tipHtml(state, world, cal, here)).toContain("Protection:</b> windbreak");
+    site.emergencyMinutes = 50;
+    expect(tipKey(state, world, here)).toBe(windbreak);
+    site.emergencyMinutes = 90;
+    expect(tipKey(state, world, here)).not.toBe(windbreak);
+    expect(tipHtml(state, world, cal, here)).toContain("Protection:</b> weatherproof");
+  });
+
   it("it omits generated camp-to-spot estimates", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);

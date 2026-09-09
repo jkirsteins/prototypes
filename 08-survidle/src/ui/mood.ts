@@ -27,7 +27,7 @@ const MOOD: Record<TaskId, Mood> = {
   thaw: "work", lightIndoors: "work", fill: "work", iceHole: "work", hang: "work",
   read: "work", setTrap: "work", emptyTrap: "work", crack: "work", eggs: "work",
   innerBark: "work", grindBark: "work", roots: "work", tapSap: "work", seaweed: "work",
-  makeCamp: "work", findShelter: "work", improveCover: "work",
+  makeCamp: "work", findShelter: "work", improveCover: "work", emergencyShelter: "work",
 };
 
 /**

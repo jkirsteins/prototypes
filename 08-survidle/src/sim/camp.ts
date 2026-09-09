@@ -234,6 +234,24 @@ export function stepFoundCover(state: GameState, dt: number): void {
   }
 }
 
+/**
+ * Like found cover, emergency work decays by elapsed minutes, not daily
+ * rolls: a build just before 04:00 still gets fourteen complete days.
+ * Partial work rots too, everywhere, even with nobody there to see it fall.
+ */
+export function stepEmergencyShelter(state: GameState, world: World, dt: number): void {
+  for (const id of touchedRegions(state)) {
+    for (const site of Object.values(state.regions[id].sites)) {
+      if (site.emergencyMinutes <= 0) continue;
+      site.emergencyAge += dt;
+      if (site.emergencyAge < 14 * 1440) continue;
+      site.emergencyMinutes = 0;
+      site.emergencyAge = 0;
+      log(state, `The emergency shelter at ${regionAt(world, id).name} has fallen in.`, "bad");
+    }
+  }
+}
+
 /** Lean food: fully lean meat and fish (FOODS.leanShare 1), the kind the ceiling caps outright. */
 const LEAN_FOOD_IDS = (Object.keys(FOODS) as FoodId[]).filter((f) => FOODS[f].leanShare === 1);
 
