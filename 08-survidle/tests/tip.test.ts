@@ -16,6 +16,7 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, emptyInventory, pile } from "../src/sim/inventory";
 import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
+import { metricPointForPlayer } from "../src/sim/wildlife-space";
 import { seeFrom } from "../src/sim/sight";
 import { siteCamp } from "./siting-helpers";
 import { campCellOf, cellOf, placeAt } from "../src/sim/position";
@@ -95,7 +96,11 @@ describe("what the tooltip says", () => {
       condition: 70, reproductive: "none", dependentUntilYear: 0,
       name: null, nameKind: "field", colour: 0, lastKnownDay: -1,
       denCell: null,
-      active: { cell: here, hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [] },
+      active: {
+        cell: here, position: metricPointForPlayer(state, world)!, travel: null,
+        hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [],
+        escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
+      },
     });
 
     expect(tipHtml(state, world, cal, here)).toContain("deer, 7, wander");

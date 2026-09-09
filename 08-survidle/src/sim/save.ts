@@ -15,6 +15,8 @@ import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
 import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
 import { emptyWildlife } from "./wildlife-agents";
+import { DISTURBANCE_PROFILES } from "./species";
+import { metricPointForStoredCell } from "./wildlife-space";
 
 export const SAVE_KEY = "survidle.save";
 
@@ -89,7 +91,19 @@ export function migrate(state: GameState, version = 9): void {
   state.wildlife.visible ??= [];
   state.wildlife.knownDens ??= {};
   state.wildlife.recognitionQueue ??= [];
-  for (const subject of state.wildlife.subjects) subject.denCell ??= null;
+  for (const subject of state.wildlife.subjects) {
+    subject.denCell ??= null;
+    if (!subject.active) continue;
+    const active = subject.active;
+    // An old fleeing animal resumes an existing episode without replaying it.
+    active.escapeRemainingM ??= active.intent === "flee" ? DISTURBANCE_PROFILES[subject.species].escapeMinM : 0;
+    active.escapeStartedMinute ??= active.intent === "flee" ? state.minute : null;
+    active.lastDetectionMinute ??= active.alarm > 0 || active.escapeStartedMinute !== null ? state.minute : null;
+    active.escapeEpisode ??= 0;
+    active.position ??= metricPointForStoredCell(state.seed, subject.id, active.cell)
+      ?? { xM: 0, yM: 0 };
+    active.travel ??= null;
+  }
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
   state.survivors ??= [firstRecord(state.seed, state.startDoy)];
   // A record from before the person: the median survivor, with the sex its name says and a face of its own.

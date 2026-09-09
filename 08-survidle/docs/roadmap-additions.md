@@ -4,20 +4,128 @@ Items raised but not built, written here because the roadmap the specs cite
 (`the roadmap's gate table`, `roadmap item B`) is not in this repo. Move them
 into it when they meet.
 
+## Walking skill
+
+**Raised** 2026-09-09, while designing wildlife disturbance.
+
+The disturbance model now accepts a neutral movement-proficiency profile, but
+ordinary walking still trains no skill. Flesh this out as a separate design
+task rather than hiding it inside Hunting or adding a second "stalk" walking
+skill. Hunting owns deliberate approach, reading animals, and identification;
+Walking should own general travel competence.
+
+Start that item by inventorying every bonus it could touch: terrain pace,
+energy and calorie cost, load tolerance, footing noise, falls and injuries,
+route finding versus Wayfinding, snow and darkness penalties, recovery on long
+journeys, and how much nearby wildlife detects. Decide which of those are
+trained by ordinary travel, how inherited competence works, what mastery keys
+mean across terrain and weather, and what the UI exposes before assigning any
+numbers. Guard against a feedback loop where faster walking produces more
+Walking XP simply because it covers more distance per real second. Keep
+deliberate stealth a Hunting input unless playtesting demonstrates a genuinely
+different repeated action that deserves its own verb and progression track.
+
+## Metric reach for legacy predator interactions
+
+**Raised** 2026-09-09, while replacing wildlife cell jumps with continuous
+metric travel.
+
+Animal locomotion, ungulate detection, startle distance, and escape now use
+exact metres and elapsed game minutes. Older wolf attacks, wolf predation,
+bear and wolverine camp-food contact, and fire or torch avoidance still use
+cell membership or cell-count reach. This is a required blocker before
+simulation-cell size itself changes, not an optional polish pass.
+
+Convert those interactions to physical distances with cells serving only as a
+broad-phase lookup. Specify separate warning, pursuit, attack, predation,
+camp-contact, fire-avoidance, and torch-avoidance radii. Pursuit must target the
+moving actor's exact point rather than a stale destination cell. A swept check
+must catch a wolf crossing the survivor or prey between update endpoints, and
+assign the interaction a time inside that elapsed interval. Explicit cooldowns
+must prevent update chunking or smaller cells from multiplying attacks, kills,
+feeding, or theft. Preserve an in-progress pursuit and cooldown across saves.
+
+The current ten-minute wildlife decision tick also owns needs, feeding,
+predation, and attacks. Locomotion has been separated from it, but the remaining
+cadences are still bundled in `moveOne`. Split them before adding swept contact
+so changing decision frequency cannot silently change hunger or lethality.
+Test identical metric separations and moving crossings on two grid scales and
+with split versus whole elapsed intervals. Detailed and aggregate predator
+risk should agree where both modes represent the same exposure.
+
+Predators currently have zero disturbance gain and therefore do not emit the
+new startle event. The `startle_brush_predator` audio slot is reserved but
+unreachable. Decide predator perception, defensive retreat, and disclosure as
+part of this item, or remove the reserved slot if predator departures will use
+a different presentation contract.
+
+## Wildlife scale transition
+
+**Raised** 2026-09-09, during the post-implementation scale audit.
+
+Exact positions and travel speed are metric, but changing the simulation grid
+still has several prerequisites beyond predator reach:
+
+- `advanceWildlifeTravel` stops after 32 waypoint arrivals in one update. The
+  ceiling is only a runaway-loop guard at today's cell size and update cadence;
+  smaller cells or a long detailed update could discard available travel.
+  Replace it with progress detection and preserved residual time or distance,
+  then prove whole and split updates agree beyond 32 crossings.
+- Current tests prove gait distance and split-update invariance at the configured
+  cell scale, not by running one journey against two interchangeable grid
+  scales. Add injectable grid geometry or an equivalent adapter fixture before
+  claiming that a changed simulation grid has been exercised end to end.
+- Saves written before exact positions store only a cell. Their migration uses
+  today's `WORLD_W`, `WORLD_H`, and `CELL_KM`, so a later grid change would
+  reinterpret an old cell under the new geometry. Version the saved world
+  geometry or migrate those saves before changing any of the three constants.
+- Animal visibility and occlusion still use the containing terrain cell even
+  though disturbance geometry is exact. Define how exact sight rays sample
+  cover on a finer grid and test an animal crossing into and out of cover.
+- Active agents stop at their active-region boundary. Decide whether a finer
+  grid keeps that deliberate local-simulation boundary or needs persistent
+  cross-region journeys, including activation, save, and aggregate handoff.
+- A subject uses one stable seeded point per cell as its waypoint. If finer
+  cells expose repetitive paths, replace this with a metric path vocabulary
+  whose outcome is stable across save/load and independent of render detail.
+- Audit map labels, test fixtures, and documentation for literal assumptions
+  about the old cell size. Production map distance labels and the disturbance
+  tests now read `CELL_KM`; descriptive references to today's 300 m world are
+  not conversion logic.
+
+The existing optional mechanical-subcells item covers the larger routing and
+resource consequences. This item is the compatibility gate that must be
+cleared even if the new grid remains visually similar.
+
+## Wildlife calibration and deferred senses
+
+**Raised** 2026-09-09, during the post-implementation scale audit.
+
+The centralized travel and escape speeds are provisional gameplay calibration.
+The cited field studies anchor initiation and escape distances, but do not
+validate every species gait used here. Before wildlife movement becomes a
+hunting balance dependency, compare ordinary travel, escape duration, pursuit,
+and encounter frequency against sources and playtests. Keep physical constants
+in the species profiles and record why each number changed.
+
+Wind and scent are neutral inputs in the disturbance spec and are not yet
+simulated. Add them only through metric encounter context, with direction,
+strength, terrain, precipitation, and Hunting effects specified together.
+Human listening must also confirm that contact plus receding terrain movement
+reads as an animal startling, especially for a heard-only event; automated
+checks establish scheduling and disclosure, not recognisability.
+
 ## Optional revisit: mechanical subcells
 
 **Raised** 2026-09-09, while adding close-map visual detail.
 
-The first close map rung now divides each 300 m simulation cell into a 3 by 3
-field of cosmetic 100 m details. The closest rung subdivides further into a 6
-by 6 field of cosmetic 50 m details. These fields have no individual cell
-borders, so the terrain reads as one continuous surface. Large-animal markers
-can roam through the details and cross toward their next real cell, but their
-visual position does not affect movement, detection, pursuit, targeting,
-resources or encounters. The survivor's marker uses the continuous in-cell
-position the walking simulation already keeps; this adds no second walking
-task, skill or progress bar. All interaction still resolves to the containing
-300 m cell.
+The first close map rung divides each 300 m terrain cell into a 3 by 3 field of
+cosmetic 100 m details. The closest rung subdivides further into a 6 by 6 field
+of cosmetic 50 m details. These fields have no individual cell borders, so the
+terrain reads as one continuous surface. Large-animal and survivor markers are
+projections of their exact movement positions rather than cosmetic subcell
+motion. Resources and most interaction targets still resolve to the containing
+terrain cell; the visual detail cells themselves remain non-mechanical.
 
 This separation is deliberate. Making the details mechanical would multiply
 the routing graph, retune travel and sight, redistribute cell-based resources,
