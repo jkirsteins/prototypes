@@ -91,7 +91,7 @@ export function createScheduler(engine: AudioEngine, random: () => number = Math
       for (let i = 0; i < event.id.length; i++) hash = Math.imul(hash ^ event.id.charCodeAt(i), 16777619);
       const rate = 0.95 + (hash >>> 0) / 4294967295 * 0.1;
       const gain = 1 / (1 + Math.max(0, event.distanceM) / 100);
-      const pan = Math.sin(event.bearingRad);
+      const pan = Math.cos(event.bearingRad);
       engine.duck(900, 0.28);
       engine.play("startle_contact", { gain, pan, rate, delay: 0 });
       // Short recordings contain several impacts. Three increasingly quiet

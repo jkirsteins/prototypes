@@ -64,6 +64,18 @@ function setGround(world: World, cell: number, terrain: Terrain, region?: number
 }
 
 describe("immediate wildlife disturbance", () => {
+  it.each([
+    ["deer", "light"], ["reindeer", "light"], ["elk", "heavy"],
+  ] as const)("emits the %s departure with a %s body class", (species, body) => {
+    const { state, world, deer: subject, cal } = disturbanceScene();
+    subject.species = species;
+    const events: WildlifeStartleEvent[] = [];
+    setWildlifeEventSink((event) => events.push(event));
+    evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ subjectId: subject.id, body });
+  });
+
   it("starts and spends escape in the update that startles a herd", () => {
     const { state, world, deer, startCell, cal } = disturbanceScene();
     const events: WildlifeStartleEvent[] = [];

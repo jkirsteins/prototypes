@@ -253,7 +253,7 @@ export function evaluateWildlifeDisturbance(state: GameState, world: World, cal:
         id: eventId, subjectId: subject.id, source: geometry.subject,
         bearingRad: geometry.bearingRad, distanceM: geometry.distanceM,
         uncertaintyM: result.perception.kind === "heard" ? result.perception.uncertaintyM : geometry.uncertaintyM,
-        perception: result.perception, terrain, body: subject.species === "deer" ? "light" : "heavy", group, logText,
+        perception: result.perception, terrain, body: subject.species === "elk" ? "heavy" : "light", group, logText,
       };
       log(state, event.logText);
       if (live) emitWildlifeEvent(event);

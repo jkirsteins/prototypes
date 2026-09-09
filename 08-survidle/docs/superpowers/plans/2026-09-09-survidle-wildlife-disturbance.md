@@ -281,7 +281,7 @@ git commit -m "feat(survidle): show transient wildlife startle cues"
 it("layers forest departure with distance gain, bearing pan, and deterministic rate", () => {
   scheduler.wildlifeStartle(forestDeerEvent);
   expect(engine.plays.map((p) => p.slot)).toEqual(["startle_contact", "startle_hoof_light_forest"]);
-  expect(engine.plays[1].opts.pan).toBeCloseTo(Math.sin(forestDeerEvent.bearingRad));
+  expect(engine.plays[1].opts.pan).toBeCloseTo(Math.cos(forestDeerEvent.bearingRad));
   expect(engine.ducks).toEqual([{ durationMs: 900, amount: 0.28 }]);
 });
 ```
@@ -297,7 +297,7 @@ Use CC0 Freesound sources `452570` (branch snap) and `684446` (horse gallop), pr
 
 - [ ] **Step 4: Implement event scheduling and graceful fallback**
 
-Map spruce/pine/birch to forest, meadow/fell/rock to open, bog to bog, and snow cover to snow; map deer/reindeer to light and elk to heavy. Contact starts at delay 0; footfalls begin at 0.06-0.12 s and recede through descending gains over 1-3 seconds. Distance controls gain, `sin(bearingRad)` controls pan, event ID controls a rate jitter within +/-0.05, and group class adds one quieter non-identical layer. Duck loops and task footsteps by 0.28 for 900 ms. Missing playback warns once through the engine but leaves callers alive; no stereo centres pan.
+Map spruce/pine/birch to forest, meadow/fell/rock to open, bog to bog, and snow cover to snow; map deer/reindeer to light and elk to heavy. Contact starts at delay 0; footfalls begin at 0.06-0.12 s and recede through descending gains over 1-3 seconds. Distance controls gain, `cos(bearingRad)` controls pan because encounter bearings are measured from the east axis, event ID controls a rate jitter within +/-0.05, and group class adds one quieter non-identical layer. Duck loops and task footsteps by 0.28 for 900 ms. Missing playback warns once through the engine but leaves callers alive; no stereo centres pan.
 
 Run: `npx vitest run tests/wildlife-startle-audio.test.ts tests/scheduler.test.ts tests/audio-settings.test.ts`
 Expected: PASS.

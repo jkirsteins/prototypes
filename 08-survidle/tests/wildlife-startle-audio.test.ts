@@ -3,10 +3,11 @@ import { createAudioEngine, type AudioEngine } from "../src/audio/engine";
 import { SLOTS } from "../src/audio/manifest";
 import { createScheduler } from "../src/audio/scheduler";
 import type { WildlifeStartleEvent } from "../src/sim/wildlife-encounter";
+import { encounterGeometry } from "../src/sim/wildlife-space";
 
 const event: WildlifeStartleEvent = {
   id: "herd-7:escape-3", subjectId: 7, source: { xM: 50, yM: 20 },
-  bearingRad: Math.PI / 2, distanceM: 40, uncertaintyM: 0,
+  bearingRad: 0, distanceM: 40, uncertaintyM: 0,
   perception: { kind: "seen", identification: "species" }, terrain: "spruce",
   body: "light", group: "single", logText: "A roe deer startles.",
 };
@@ -25,6 +26,21 @@ function recorder() {
 }
 
 describe("wildlife departure scheduling", () => {
+  it.each([
+    ["east", { xM: 140, yM: 200 }, 1],
+    ["west", { xM: 60, yM: 200 }, -1],
+    ["north", { xM: 100, yM: 160 }, 0],
+    ["south", { xM: 100, yM: 240 }, 0],
+  ] as const)("pans a source to the %s using encounter geometry", (_direction, source, want) => {
+    const geometry = encounterGeometry({ xM: 100, yM: 200 }, source)!;
+    const { engine, plays } = recorder();
+    createScheduler(engine).wildlifeStartle({
+      ...event, source: geometry.subject, bearingRad: geometry.bearingRad, distanceM: geometry.distanceM,
+    });
+    expect(plays.length).toBeGreaterThan(1);
+    for (const play of plays) expect(play.opts.pan).toBeCloseTo(want);
+  });
+
   it("starts with contact then recedes through delayed, positioned hoofbeats", () => {
     const { engine, plays, ducks } = recorder();
     createScheduler(engine).wildlifeStartle(event);
@@ -77,7 +93,7 @@ describe("wildlife departure scheduling", () => {
   it("attenuates with distance and adds a quieter, non-identical group layer", () => {
     const near = recorder(); const far = recorder(); const group = recorder();
     createScheduler(near.engine).wildlifeStartle(event);
-    createScheduler(far.engine).wildlifeStartle({ ...event, distanceM: 250, bearingRad: -Math.PI / 2 });
+    createScheduler(far.engine).wildlifeStartle({ ...event, distanceM: 250, bearingRad: Math.PI });
     createScheduler(group.engine).wildlifeStartle({ ...event, group: "group" });
     expect(far.plays[1].opts.gain).toBeLessThan(near.plays[1].opts.gain!);
     expect(far.plays[1].opts.pan).toBe(-1);
