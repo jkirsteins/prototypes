@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { activeGoals, goalDeed, goalDef, GOALS, newGoals, SEASON_ORDER } from "../src/sim/goals";
+import { activeGoals, goalDeed, goalDef, GOALS, introduceGoals, newGoals, SEASON_ORDER, unintroducedGoals } from "../src/sim/goals";
 import { ITEM_NAMES, RECIPE_IDS, RECIPES, STRUCTURE_IDS, STRUCTURES, TOOL_IDS, TOOLS } from "../src/sim/items";
 import { newGame, newPerson } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
@@ -41,45 +41,53 @@ const ROUTE_WORDS = [
 const OWN_WORD: Partial<Record<GoalId, string[]>> = {
   firewood: ["firewood"],
   water: ["water"],
-  snare: ["snare", "set a snare"],
+  drink: ["water"],
+  fat: ["fat"],
 };
 
 describe("the goal ladder", () => {
   it("holds out one goal in the opening and starts with choosing where to live", () => {
     const { state } = newGame(3);
     expect(activeGoals(state, cal)).toEqual(["site"]);
+    expect(state.goals.introduced).toEqual({});
   });
 
-  it("stays one goal at a time through the whole opening chain, fire-keeping included", () => {
+  it("introduces each active goal once", () => {
+    const { state } = newGame(3);
+    expect(unintroducedGoals(state, cal)).toEqual(["site"]);
+    introduceGoals(state, ["site"]);
+    expect(unintroducedGoals(state, cal)).toEqual([]);
+  });
+
+  it("stays one goal at a time until the first fire", () => {
     const { state } = newGame(3);
     // site is covered by the case above; walk the rest of the chain the
     // same way, since a width bug widens silently rather than crashing.
-    for (const id of ["site", "firewood", "fire"] as const) {
+    for (const id of ["site", "drink", "firewood"] as const) {
       state.goals.done[id] = true;
       expect(activeGoals(state, cal).length).toBe(1);
     }
-    state.goals.done.cook = true;
-    expect(activeGoals(state, cal)).toEqual(["keptNight"]);
+    expect(activeGoals(state, cal)).toEqual(["fire"]);
   });
 
-  it("widens to two once the fire and food chain is behind it", () => {
+  it("widens to two for first-night preparation", () => {
     const { state } = newGame(3);
-    for (const id of ["site", "firewood", "fire", "cook", "keptNight"] as const) state.goals.done[id] = true;
-    expect(activeGoals(state, cal)).toEqual(["bed", "keptDays"]);
+    for (const id of ["site", "drink", "firewood", "fire"] as const) state.goals.done[id] = true;
+    expect(activeGoals(state, cal)).toEqual(["bed", "roof"]);
   });
 
   it("widens to three once the camp jobs run in parallel", () => {
     const { state } = newGame(3);
     for (const g of GOALS.slice(0, 9)) state.goals.done[g.id] = true;
-    expect(activeGoals(state, cal)).toEqual(["water", "snare", "store"]);
+    expect(activeGoals(state, cal)).toEqual(["water", "keptDays", "foodSource"]);
   });
 
   it("never shows more than the seasons can fill, and never narrows", () => {
     const { state } = newGame(3);
-    for (const g of GOALS.slice(0, 11)) state.goals.done[g.id] = true;
+    for (const g of GOALS) if (!SEASON_ORDER.includes(g.id) && g.id !== "winterStores") state.goals.done[g.id] = true;
     const active = activeGoals(state, cal);
     // One worked goal left and the whole tail behind it, which is one slot.
-    expect(active[0]).toBe("store");
+    expect(active[0]).toBe("winterStores");
     expect(active.length).toBe(2);
     expect(SEASON_ORDER).toContain(active[1]);
   });
@@ -117,11 +125,21 @@ describe("goal guards", () => {
         ...SEASON_ORDER.map((s) => ({ kind: "season", season: s as Season }) as const),
         { kind: "lit" } as const,
         { kind: "stored" } as const,
+        { kind: "cooked", kg: 1 } as const,
         { kind: "gathered", item: "firewood", kg: 99 } as const,
         { kind: "gathered", item: "wetFirewood", kg: 99 } as const,
         { kind: "keptNight" } as const,
         { kind: "keptFor", minutes: 999999 } as const,
         { kind: "keptRain", minutes: 999999 } as const,
+        { kind: "drank" } as const,
+        { kind: "ordered", task: "deadwood", long: true } as const,
+        { kind: "foodSourced" } as const,
+        { kind: "ateFat" } as const,
+        { kind: "toolCared" } as const,
+        { kind: "explored", anotherRegion: true } as const,
+        { kind: "campedAgain", region: 1 } as const,
+        { kind: "seasonalFood" } as const,
+        { kind: "winterStocked" } as const,
       ];
       expect(emitted.some((d) => g.credit(d) > 0), `${g.id} is unreachable`).toBe(true);
     }
@@ -176,7 +194,7 @@ describe("goals are the world's, not a life's", () => {
 
   it("gives a goal reached before it was asked for its credit anyway", () => {
     const { state } = newGame(3);
-    expect(goalDeed(state, { kind: "built", structure: "turfHut" })).toEqual(["roof"]);
+    expect(goalDeed(state, { kind: "built", structure: "turfHut" })).toEqual(["roof", "durableRoof"]);
   });
 
   // Progress surviving a death only means something once a death actually
@@ -190,6 +208,7 @@ describe("goals are the world's, not a life's", () => {
     const g = newGoals("winter");
     expect(g.done).toEqual({});
     expect(g.progress).toEqual({});
+    expect(g.introduced).toEqual({});
     expect(g.queue).toEqual([]);
     expect(g.lastSeason).toBe("winter");
   });
@@ -213,5 +232,30 @@ describe("goals are the world's, not a life's", () => {
     delete raw.state.goals;
     const file = deserialize(JSON.stringify(raw))!;
     expect(file.state.goals).toEqual(newGoals(calendar(state.minute, state.startDoy).season));
+  });
+
+  it("migrates an old ladder without moving its current goal backward", () => {
+    const { state } = newGame(3);
+    for (const id of ["site", "firewood", "fire", "cook"] as const) state.goals.done[id] = true;
+    state.goals.queue = ["cook", "snare" as GoalId];
+    const raw = JSON.parse(serialize(state)) as { state: { goals: Record<string, unknown> } };
+    delete raw.state.goals.introduced;
+    const loaded = deserialize(JSON.stringify(raw))!.state;
+    expect(activeGoals(loaded, calendar(loaded.minute, loaded.startDoy))).toEqual(["keptNight", "firstOrder"]);
+    expect(loaded.goals.done.drink).toBe(true);
+    expect(loaded.goals.done.bed).toBe(true);
+    expect(loaded.goals.done.roof).toBe(true);
+    expect(loaded.goals.queue).toEqual(["cook"]);
+  });
+
+  it("restores the origin of an old survey already inside its target region", () => {
+    const { state } = newGame(3);
+    const target = state.player.region;
+    const origin = target + 10000;
+    state.regions[origin] = structuredClone(state.regions[target]);
+    state.regions[origin].campCell = 123;
+    state.task = { id: "explore", arg: `region:${target}`, progress: 4, duration: 10, repeat: false };
+    const loaded = deserialize(serialize(state))!.state;
+    expect(loaded.task?.originRegion).toBe(origin);
   });
 });

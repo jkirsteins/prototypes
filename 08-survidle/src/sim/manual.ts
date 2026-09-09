@@ -1,10 +1,8 @@
 /**
  * The one-page manual (tables audit spec, section 8): four sections of two
  * to four lines in the game's own voice, and the handbooks it was read
- * against. Opened once, unasked, on a world's first landing; there when
- * wanted after that.
+ * against. Opened by the player when wanted.
  */
-import type { GameState } from "./types";
 
 export const MANUAL_SECTIONS: { title: string; lines: string[] }[] = [
   {
@@ -49,10 +47,3 @@ export const MANUAL_LINKS: { title: string; url: string }[] = [
   { title: "Mors Kochanski, Northern Bushcraft, free to read", url: "https://archive.org/details/northern-bushcraft_202210" },
   { title: "The Norwegian Army's Overlevelseshandbok for Haeren (2025)", url: "https://www.forsvaret.no/aktuelt-og-presse/aktuelt/overlevelse-handbok" },
 ];
-
-/** True once per world, on the first survivor's landing; a heir's landing never opens it. */
-export function openManualOnFirstLanding(state: GameState, heir: boolean): boolean {
-  if (heir || state.manualSeen) return false;
-  state.manualSeen = true;
-  return true;
-}

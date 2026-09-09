@@ -143,7 +143,6 @@ describe("a fire where you stand", () => {
     expect(regionState(state, world, state.player.region).fire.embers).toBe(0);
     expect(state.goals.done.keptNight).toBeUndefined();
     expect(state.goals.done.keptDays).toBeUndefined();
-    expect(state.goals.done.keptRain).toBeUndefined();
   });
   it("dies immediately when leaving its cell and never returns on walking back", () => {
     const { state, world } = lightField();
@@ -224,7 +223,6 @@ describe("a fire where you stand", () => {
     expect(state.player.fieldFire).not.toBeNull();
     expect(state.goals.done.keptNight).toBeUndefined();
     expect(state.goals.done.keptDays).toBeUndefined();
-    expect(state.goals.done.keptRain).toBeUndefined();
     expect(regionState(state, world, state.player.region).fire.litSince).toBeNull();
   });
   it("keeps a field fire useful when camp is sited on its cell without making it a hearth", () => {

@@ -5,7 +5,7 @@ import { dailyAnimals } from "./animals";
 import { calendar, DAILY_HOUR } from "./calendar";
 import { dailyCamp, stepCamp, stepEmergencyShelter, stepFoundCover } from "./camp";
 import { hourlyEvents } from "./events";
-import { goalDeed } from "./goals";
+import { checkWinterStores, goalDeed } from "./goals";
 import { hourlyWorld, iceUnderFoot } from "./hazards";
 import { runIntent } from "./intent";
 import { log } from "./log";
@@ -122,6 +122,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
       state.goals.lastSeason = season;
       if (!nobody) goalDeed(state, { kind: "season", season });
     }
+    if (!nobody) checkWinterStores(state);
     if (!nobody) current(state).forecast.push(null);
   }
 

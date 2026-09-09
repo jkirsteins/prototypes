@@ -28,6 +28,7 @@ import type { GameState, Inventory } from "../sim/types";
 import { plain } from "../sim/voice";
 import { fmtKg } from "../units";
 import { walkableIce } from "../sim/weather";
+import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
 import { cellAt, regionAt, terrainPeek, type World } from "../world/gen";
 import { esc } from "./render";
 import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
@@ -53,15 +54,36 @@ const GROUND: Record<string, string> = {
  * for a reader who is looking at it for two seconds, and one that redrew
  * on every mousemove would be the map's whole budget.
  */
-export function tipKey(state: GameState, world: World, cell: number): string {
+export function tipKey(state: GameState, world: World, cell: number): string;
+export function tipKey(state: GameState, world: World, cal: Calendar, cell: number): string;
+export function tipKey(state: GameState, world: World, calOrCell: Calendar | number, cellArg?: number): string {
+  const cal = typeof calOrCell === "object" ? calOrCell : calendar(state.minute, state.startDoy);
+  const cell = typeof calOrCell === "object" ? cellArg! : calOrCell;
   const st = regionState(state, world, state.player.region);
   const heap = state.piles[cell] ? weight(state.piles[cell]).toFixed(1) : "";
   const known = isKnown(state, cell) ? "k" : "";
   const trap = st.trap?.cell === cell ? "T" : "";
   const site = cellAt(world, cell).region === state.player.region ? st.sites[cell] : undefined;
   const protection = site ? `P${protectionOf(site)}` : "";
-  const field = state.player.fieldFire?.cell === cell && state.player.fieldFire.fuelKg > 0;
-  return `${cell}|${cellOf(state, world)}|${known}|${heap}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}|${protection}|${field ? "field" : ""}`;
+  const fieldFire = state.player.fieldFire;
+  const field = Boolean(fieldFire && fieldFire.cell === cell && fieldFire.fuelKg > 0);
+  const wildlife = visibleWildlife(state, world, cal)
+    .filter((subject) => subject.active?.cell === cell)
+    .map((subject) => `${subject.id}:${wildlifeMembers(subject)}:${subject.active?.intent}:${state.wildlife.recognized[subject.id] ? subject.name ?? "" : ""}`)
+    .join(",");
+  return `${cell}|${cellOf(state, world)}|${known}|${heap}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}|${protection}|${field ? "field" : ""}|${wildlife}`;
+}
+
+function animalsAt(state: GameState, world: World, cal: Calendar, cell: number): string[] {
+  return visibleWildlife(state, world, cal)
+    .filter((subject) => subject.active?.cell === cell)
+    .map((subject) => {
+      const identity = state.wildlife.recognized[subject.id] && subject.name
+        ? subject.name
+        : subject.species === "wolf" ? "wolf pack" : subject.species;
+      const count = wildlifeMembers(subject);
+      return `${identity}${count > 1 ? `, ${count}` : ""}, ${subject.active?.intent ?? "moving"}`;
+    });
 }
 
 /** The named place this cell is, if it is one. */
@@ -169,6 +191,8 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   if (marks.length) lines.push(`<div>${esc(marks.join("; "))}</div>`);
   const site = st.sites[cell] ?? null;
   if (site) lines.push(`<div><b>Protection:</b> ${esc(PROTECTION_WORDS[protectionOf(site)])}</div>`);
+
+  for (const animal of animalsAt(state, world, cal, cell)) lines.push(`<div>${esc(animal)}</div>`);
 
   // What is lying there. He died of cold beside twenty kilos of his own
   // firewood, so a heap is worth saying wherever it sits.

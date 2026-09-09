@@ -15,7 +15,8 @@
     "year": "vite-node scripts/year.ts",
     "december": "vite-node scripts/december.ts",
     "shots": "node scripts/map-shots.mjs",
-    "sky": "node scripts/sky-shots.mjs"
+    "sky": "node scripts/sky-shots.mjs",
+    "goal-ux": "node scripts/goal-ux.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
