@@ -13,7 +13,7 @@ import { BIG_EATER_BURN, body, fatLandmarks, hasQuirk, massFactor, personOf } fr
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { regionState, siteAt } from "./regionstate";
-import { protectionOf } from "./shelter";
+import { galeProtection, protectionOf } from "./shelter";
 import { speedFactor } from "./skills";
 import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
 import type { DeathCause, GameState, IceMode, Site, Task, TaskId, Terrain, Weather } from "./types";
@@ -173,7 +173,12 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   felt -= 0.15 * p.wetness;
   if (stormNow(state.weather, state.minute)) {
     const snowWindbreak = state.weather.storm?.kind === "snow" && campTask && protectionOf(here) >= 1;
-    if (!snowWindbreak) felt -= 6;
+    if (state.weather.storm?.kind === "gale") {
+      // Design scale: each effective level takes a third of the existing
+      // six-degree wind loss off. Terrain lee also helps outdoor work;
+      // a roof and its profile only count while actually using the shelter.
+      felt -= 6 * (3 - galeProtection(world, cellOf(state, world), campTask ? here : null)) / 3;
+    } else if (!snowWindbreak) felt -= 6;
   }
   // A starving body has no insulation and no fuel: up to 4 C gone at the end of the fat.
   felt -= 4 * starvation(state);
@@ -344,6 +349,8 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   // Walls are the walls the survivor is standing inside, the same place roof reads.
   const site = siteAt(r, cellOf(state, world));
   const protection = campTask ? protectionOf(site) : 0;
+  const windProtection = stormNow(w, state.minute) && w.storm?.kind === "gale"
+    ? galeProtection(world, cellOf(state, world), campTask ? site : null) : protection;
   const snowing = w.precip !== "none" && ambient <= 0;
   const snowWindbreak = stormNow(w, state.minute) && w.storm?.kind === "snow" && protection >= 1;
   const walled = roof && (site?.structures.cabin || site?.structures.turfHut || site?.structures.snowShelter);
@@ -357,7 +364,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
     walled: !!walled,
     fireAtCamp: fireAt(state, world) !== null && campTask,
     bedded: bedded(state.task),
-    storm: stormNow(w, state.minute) && protection === 0,
+    storm: stormNow(w, state.minute) && windProtection === 0,
   };
   stepGarments(state, x, dt);
 

@@ -190,6 +190,36 @@ describe("what the tooltip says", () => {
     expect(html).not.toContain('data-id="findShelter"');
   });
 
+  it("names terrain lee and usable profile, refreshing when a low alternative appears at the same protection", () => {
+    const { state, world } = newGame(17);
+    placeAt(state, world, 523074);
+    markKnown(state, 523074);
+    const cal = calendar(0);
+    const site = siteFor(regionState(state, world, state.player.region), 523074);
+    site.emergencyMinutes = 90;
+    const key = tipKey(state, world, 523074);
+    expect(tipHtml(state, world, cal, 523074)).toContain("high profile");
+    expect(tipHtml(state, world, cal, 523074)).toContain("lee ground");
+    site.cover = 2;
+    expect(tipKey(state, world, 523074)).not.toBe(key);
+    expect(tipHtml(state, world, cal, 523074)).toContain("low profile");
+    placeAt(state, world, 523076);
+    markKnown(state, 523076);
+    expect(tipHtml(state, world, cal, 523076)).toContain("exposed to wind");
+  });
+
+  it("does not reveal an unearned gale through tooltip text or its cache key", () => {
+    const { state, world } = newGame(21);
+    const here = cellOf(state, world);
+    const cal = calendar(0);
+    state.weather.storm = { kind: "rain", from: 60, until: 420, warned: false };
+    const html = tipHtml(state, world, cal, here);
+    const key = tipKey(state, world, here);
+    state.weather.storm.kind = "gale";
+    expect(tipHtml(state, world, cal, here)).toBe(html);
+    expect(tipKey(state, world, here)).toBe(key);
+  });
+
   it("updates emergency protection only when work crosses a protection threshold", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);

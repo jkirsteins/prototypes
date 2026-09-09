@@ -3,7 +3,9 @@
  * worked on, a shelter half built and a cabin all answer in the same terms,
  * so every reader asks one question: how much is over this survivor.
  */
-import { cellAt, type World } from "../world/gen";
+import { clamp } from "../units";
+import { cellAt, neighbours, type World } from "../world/gen";
+import { fieldsAt } from "../world/terrain";
 import type { Protection, Site, Terrain } from "./types";
 
 export const PROTECTION_WORDS: Record<Protection, string> = {
@@ -71,4 +73,38 @@ export function protectionOf(site: Site | null): Protection {
   const s = site.structures;
   const structure: Protection = s.cabin || s.turfHut ? 3 : s.leanTo || s.snowShelter ? 2 : 0;
   return Math.max(structure, site.cover, builtProtection(site.emergencyMinutes)) as Protection;
+}
+
+/**
+ * Use the strongest shelter present; equal cover lets the survivor get low.
+ * Lean-tos and temporary bough-and-deadfall builds have a frame, cabins
+ * stand tall, and earth or snow shelters sit low. Racks and other equipment
+ * are not shelter. Found scrapes, caves and canopy cover keep a low profile.
+ */
+export function profileOf(site: Site | null): "low" | "high" {
+  const protection = protectionOf(site);
+  if (!site || protection === 0) return "low";
+  const low = Math.max(site.cover, site.structures.turfHut ? 3 : site.structures.snowShelter ? 2 : 0);
+  return low >= protection ? "low" : "high";
+}
+
+/**
+ * Spruce is the world's dense-canopy terrain. A depression is land lower
+ * than every cardinal neighbour in its generated elevation field; no new
+ * terrain or random stream is needed. Rock and fell remain exposed even
+ * in a local dip, and water is never a refuge. An edge is not a depression.
+ */
+export function isLee(world: World, cell: number): boolean {
+  const { x, y, terrain } = cellAt(world, cell);
+  if (terrain === "spruce") return true;
+  if (terrain === "rock" || terrain === "fell" || terrain === "water") return false;
+  const around = neighbours(world, cell);
+  if (around.length !== 4) return false;
+  const elevation = fieldsAt(world.seed, x, y).e;
+  return around.every((other) => fieldsAt(world.seed, other % world.w, Math.floor(other / world.w)).e > elevation);
+}
+
+/** Design scale for gale wind, not extra roofing or a change to the site. */
+export function galeProtection(world: World, cell: number, site: Site | null): Protection {
+  return clamp(protectionOf(site) + (isLee(world, cell) ? 1 : 0) - (profileOf(site) === "high" ? 1 : 0), 0, 3) as Protection;
 }

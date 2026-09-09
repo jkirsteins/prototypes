@@ -18,7 +18,7 @@ const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, roll
 const at = (hour: number) => calendar((hour - 8) * 60);
 
 describe("forecast knowledge in the weather wall", () => {
-  it("reads the stored kind only at an earned stage, without leaking it into stage-one markup", () => {
+  it.each(["snow", "gale"] as const)("reads stored %s only at an earned stage, without leaking it into stage-one markup", (kind) => {
     resetPanels();
     document.body.innerHTML = '<div id="weather"></div>';
     const { state, world } = newGame(17);
@@ -27,7 +27,7 @@ describe("forecast knowledge in the weather wall", () => {
     state.weather.precip = "none";
     state.weather.snowCm = 0;
     state.weather.iceCm = 0;
-    state.weather.storm = { kind: "snow", from: 60, until: 420, warned: false };
+    state.weather.storm = { kind, from: 60, until: 420, warned: false };
     const cal = calendar(0);
     const render = () => {
       setPanel("weather", weatherHtml(state, world, cal, 15));
@@ -38,11 +38,11 @@ describe("forecast knowledge in the weather wall", () => {
     const sky = document.querySelector("svg.sky");
     state.weather.storm.kind = "rain";
     expect(render()).toBe(noviceSnow);
-    state.weather.storm.kind = "snow";
+    state.weather.storm.kind = kind;
     state.skills.weatherSense.xp = levelMinutes(13);
     render();
-    expect(document.querySelector("[data-weather-forecast]")?.textContent).toBe("heavy snow storm in 1 h");
-    expect(sky?.getAttribute("aria-label")).toBe("sky: heavy snow storm in 1 h");
+    expect(document.querySelector("[data-weather-forecast]")?.textContent).toBe(`heavy ${kind} storm in 1 h`);
+    expect(sky?.getAttribute("aria-label")).toBe(`sky: heavy ${kind} storm in 1 h`);
     expect(document.querySelector("svg.sky")).toBe(sky);
     state.skills.weatherSense.xp = 0;
     expect(render()).toBe(noviceSnow);

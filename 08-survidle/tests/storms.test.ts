@@ -3,11 +3,13 @@ import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { feltTemperature, stepPlayer } from "../src/sim/player";
-import { cellOf } from "../src/sim/position";
+import { cellOf, placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import type { Protection } from "../src/sim/types";
+import type { Protection, Weather } from "../src/sim/types";
 import { ambientTemperature, stepWeather } from "../src/sim/weather";
+import { galeProtection, isLee, profileOf, protectionOf } from "../src/sim/shelter";
+import { cellAt } from "../src/world/gen";
 
 function exposure(protection: Protection, kind: "rain" | "snow", storm = true) {
   const g = newGame(17);
@@ -22,7 +24,7 @@ function exposure(protection: Protection, kind: "rain" | "snow", storm = true) {
 }
 
 describe("rain and snow storms", () => {
-  it("rolls only rain and snow, following the air at onset", () => {
+  it("keeps non-gale storms tied to precipitation at onset", () => {
     const { state } = newGame(17);
     const rng = new Rng(5);
     const kinds = new Set<string>();
@@ -34,10 +36,11 @@ describe("rain and snow storms", () => {
       const storm = state.weather.storm;
       if (!storm || storm === before) continue;
       const air = ambientTemperature(calendar(storm.from, state.startDoy), { ...state.weather, precip: "heavy" });
-      expect(storm.kind).toBe(air <= 0 ? "snow" : "rain");
+      if (storm.kind !== "gale") expect(storm.kind).toBe(air <= 0 ? "snow" : "rain");
       kinds.add(storm.kind);
     }
-    expect([...kinds].sort()).toEqual(["rain", "snow"]);
+    expect(kinds.has("rain")).toBe(true);
+    expect(kinds.has("snow")).toBe(true);
   });
 
   it.each([[-30, "snow"], [30, "rain"]] as const)("migrates an untyped storm at offset %s without changing its window or random stream", (offset, kind) => {
@@ -113,5 +116,185 @@ describe("rain and snow storms", () => {
     }
     expect(covered.state.player.wetness).toBe(open.state.player.wetness);
     expect(covered.state.player.clothing).toEqual(open.state.player.clothing);
+  });
+});
+
+// Seed 17's generated terrain: spruce canopy, an open slope, a meadow
+// depression, and high ground whose local dip must not turn it into lee.
+const SPRUCE = 523074;
+const OPEN = 523076;
+const DEPRESSION = 523121;
+
+function galeSite(cell = OPEN) {
+  const g = exposure(0, "rain");
+  placeAt(g.state, g.world, cell);
+  g.state.weather.storm!.kind = "gale";
+  const site = siteFor(regionState(g.state, g.world, g.state.player.region), cell);
+  return { ...g, site };
+}
+
+function windLoss(g: ReturnType<typeof galeSite>): number {
+  const windy = feltTemperature(g.state, g.world, 10);
+  const storm = g.state.weather.storm;
+  g.state.weather.storm = null;
+  const calm = feltTemperature(g.state, g.world, 10);
+  g.state.weather.storm = storm;
+  return calm - windy;
+}
+
+describe("gale protection", () => {
+  it("reads lee from existing canopy and depressions, never from exposed rock or fell", () => {
+    const { world } = newGame(17);
+    expect(isLee).toBeTypeOf("function");
+    for (const [cell, terrain, lee] of [
+      [SPRUCE, "spruce", true], [DEPRESSION, "meadow", true],
+      [OPEN, "meadow", false], [523075, "pine", false],
+      [524998, "rock", false], [528591, "fell", false], [535986, "water", false],
+    ] as const) {
+      expect(cellAt(world, cell).terrain).toBe(terrain);
+      expect(isLee(world, cell)).toBe(lee);
+    }
+  });
+
+  it("takes the profile of usable cover, including field frames and permanent camp shelters", () => {
+    const { state, world, site } = galeSite();
+    expect(profileOf).toBeTypeOf("function");
+    expect(profileOf(null)).toBe("low");
+    expect(profileOf(site)).toBe("low");
+    site.emergencyMinutes = 29;
+    expect(profileOf(site)).toBe("low");
+    site.emergencyMinutes = 30;
+    expect(profileOf(site)).toBe("high");
+    site.cover = 1;
+    expect(profileOf(site)).toBe("low");
+    site.emergencyMinutes = 90;
+    expect(profileOf(site)).toBe("high");
+    site.cover = 2;
+    expect(profileOf(site)).toBe("low");
+    site.cover = 0;
+    site.emergencyMinutes = 0;
+    const st = regionState(state, world, state.player.region);
+    st.campCell = OPEN;
+    for (const [structure, profile] of [["leanTo", "high"], ["snowShelter", "low"], ["turfHut", "low"], ["cabin", "high"]] as const) {
+      site.structures[structure] = true;
+      expect(profileOf(site)).toBe(profile);
+      site.structures[structure] = false;
+    }
+    // Equipment is not a frame to shelter beneath.
+    site.structures.dryingRack = true;
+    site.structures.firePit = true;
+    expect(profileOf(site)).toBe("low");
+  });
+
+  it("clamps the gale scale without changing the site's actual protection", () => {
+    expect(galeProtection).toBeTypeOf("function");
+    for (const [cell, cover, emergencyMinutes, effective] of [
+      [OPEN, 0, 0, 0], [OPEN, 0, 30, 0], [OPEN, 0, 90, 1],
+      [OPEN, 2, 0, 2], [DEPRESSION, 1, 0, 2], [SPRUCE, 3, 0, 3],
+      [SPRUCE, 0, 240, 3],
+    ] as const) {
+      const g = galeSite(cell);
+      g.site.cover = cover;
+      g.site.emergencyMinutes = emergencyMinutes;
+      const before = JSON.stringify(g.site);
+      expect(galeProtection(g.world, cell, g.site)).toBe(effective);
+      expect(JSON.stringify(g.site)).toBe(before);
+    }
+  });
+
+  it("takes more wind in a frame than low cover at the same base protection, and lee beats a roof", () => {
+    const frame = galeSite();
+    frame.site.emergencyMinutes = 90;
+    const found = galeSite();
+    found.site.cover = 2;
+    const scrape = galeSite(DEPRESSION);
+    scrape.site.cover = 1;
+    expect(protectionOf(frame.site)).toBe(2);
+    expect(protectionOf(found.site)).toBe(2);
+    expect(windLoss(frame)).toBeCloseTo(4);
+    expect(windLoss(found)).toBeCloseTo(2);
+    expect(windLoss(scrape)).toBeCloseTo(2);
+    expect(windLoss(scrape)).toBeLessThan(windLoss(frame));
+    expect(feltTemperature(scrape.state, scrape.world, 10)).toBeGreaterThan(feltTemperature(frame.state, frame.world, 10));
+    expect(feltTemperature(found.state, found.world, 10)).toBeGreaterThan(feltTemperature(frame.state, frame.world, 10));
+    const full = galeSite(SPRUCE);
+    full.site.cover = 3;
+    expect(windLoss(full)).toBe(0);
+  });
+
+  it("uses the gale scale for wind-driven skin and garment wetting while rain still needs a roof", () => {
+    const frame = galeSite();
+    frame.site.emergencyMinutes = 30;
+    const found = galeSite();
+    found.site.cover = 1;
+    const lee = galeSite(SPRUCE);
+    for (const g of [frame, found, lee]) stepPlayer(g.state, g.world, calendar(0), 10, 1);
+    expect(frame.state.player.wetness).toBeGreaterThan(found.state.player.wetness);
+    expect(frame.state.player.clothing[0].wet).toBeGreaterThan(found.state.player.clothing[0].wet!);
+    expect(lee.state.player.wetness).toBe(found.state.player.wetness);
+    expect(lee.state.player.wetness).toBeGreaterThan(10);
+  });
+
+  it("keeps terrain lee during outdoor work but does not carry the site's profile or roof along", () => {
+    const open = galeSite();
+    const frame = galeSite();
+    frame.site.emergencyMinutes = 240;
+    const lee = galeSite(SPRUCE);
+    for (const g of [open, frame, lee]) g.state.task!.id = "walk";
+    expect(windLoss(open)).toBeCloseTo(6);
+    expect(windLoss(frame)).toBeCloseTo(6);
+    expect(windLoss(lee)).toBeCloseTo(4);
+  });
+});
+
+describe("ordinary gale generation", () => {
+  it("turns one fifth of ordinary storms into gale without changing the existing draw count or windows", () => {
+    const { state } = newGame(17);
+    const rng = new Rng(5);
+    const chance = { spring: 0.04, summer: 0.02, autumn: 0.04, winter: 0.08 };
+    let storms = 0;
+    let gales = 0;
+    for (let day = 1; day <= 30000; day++) {
+      state.weather.storm = null;
+      const minute = day * 1440 + 6 * 60;
+      const cal = calendar(minute, state.startDoy);
+      const old = new Rng(rng.s);
+      old.gauss();
+      old.chance(0.6);
+      const rolled = old.chance(chance[cal.season]);
+      const from = rolled ? minute + 60 + old.int(121) : null;
+      const until = from === null ? null : from + 360 + old.int(721);
+      // Ordinary precipitation still consumes its original draws.
+      if (state.weather.precip === "none") {
+        const starts = { spring: 0.04, summer: 0.03, autumn: 0.04, winter: 0.05 };
+        if (old.chance(starts[cal.season] / 60)) old.chance(0.3);
+      } else old.chance(0.25 / 60);
+      stepWeather(state.weather, cal, rng, 1, minute);
+      expect(rng.s).toBe(old.s);
+      const storm = state.weather.storm as Weather["storm"];
+      expect(storm?.from ?? null).toBe(from);
+      expect(storm?.until ?? null).toBe(until);
+      if (storm) { storms++; if (storm.kind === "gale") gales++; }
+    }
+    expect(storms).toBeGreaterThan(1000);
+    expect(gales / storms).toBeGreaterThan(0.17);
+    expect(gales / storms).toBeLessThan(0.23);
+  });
+
+  it("replays gale windows across a save with the same weather and random state", () => {
+    const { state } = newGame(17);
+    const back = deserialize(serialize(state))!.state;
+    const a = new Rng(5), b = new Rng(5);
+    let gales = 0;
+    for (let day = 1; day <= 365; day++) {
+      const minute = day * 1440 + 6 * 60;
+      const cal = calendar(minute, state.startDoy);
+      stepWeather(state.weather, cal, a, 1, minute);
+      stepWeather(back.weather, cal, b, 1, minute);
+      expect(back.weather).toEqual(state.weather);
+      expect(b.s).toBe(a.s);
+      if (state.weather.storm?.kind === "gale") gales++;
+    }
+    expect(gales).toBeGreaterThan(0);
   });
 });

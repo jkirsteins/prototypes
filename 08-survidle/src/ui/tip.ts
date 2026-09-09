@@ -22,7 +22,7 @@ import { isRead, readLine } from "../sim/knowledge";
 import { isKnown } from "../sim/mapped";
 import { campCellOf, cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { regionState } from "../sim/regionstate";
-import { protectionOf, PROTECTION_WORDS } from "../sim/shelter";
+import { isLee, profileOf, protectionOf, PROTECTION_WORDS } from "../sim/shelter";
 import { check, whereIs } from "../sim/tasks";
 import type { GameState, Inventory } from "../sim/types";
 import { plain } from "../sim/voice";
@@ -64,7 +64,7 @@ export function tipKey(state: GameState, world: World, calOrCell: Calendar | num
   const known = isKnown(state, cell) ? "k" : "";
   const trap = st.trap?.cell === cell ? "T" : "";
   const site = cellAt(world, cell).region === state.player.region ? st.sites[cell] : undefined;
-  const protection = site ? `P${protectionOf(site)}` : "";
+  const protection = site ? `P${protectionOf(site)}:${profileOf(site)}` : "";
   const fieldFire = state.player.fieldFire;
   const field = Boolean(fieldFire && fieldFire.cell === cell && fieldFire.fuelKg > 0);
   const wildlife = visibleWildlife(state, world, cal)
@@ -191,6 +191,8 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   if (marks.length) lines.push(`<div>${esc(marks.join("; "))}</div>`);
   const site = st.sites[cell] ?? null;
   if (site) lines.push(`<div><b>Protection:</b> ${esc(PROTECTION_WORDS[protectionOf(site)])}</div>`);
+  if (site && protectionOf(site) > 0) lines.push(`<div>${profileOf(site)} profile</div>`);
+  if (terrain !== "water") lines.push(`<div>${isLee(world, cell) ? "lee ground" : "exposed to wind"}</div>`);
 
   for (const animal of animalsAt(state, world, cal, cell)) lines.push(`<div>${esc(animal)}</div>`);
 

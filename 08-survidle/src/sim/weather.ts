@@ -149,8 +149,12 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, min
     if (!w.storm && rng.chance(STORM_CHANCE[cal.season])) {
       const from = minute + 60 + rng.int(121);
       const startDoy = cal.dayOfYear - cal.dayIndex;
-      const kind = precipitationStormKind(w, calendar(from, startDoy));
-      w.storm = { kind, from, until: from + 360 + rng.int(721), warned: false };
+      // One of five equal sub-buckets per duration is gale: 20% is a design
+      // value, not a sourced frequency. Sharing the duration draw preserves
+      // its 721 equiprobable minutes, every window, and the random stream.
+      const roll = rng.int(721 * 5);
+      const kind = roll % 5 === 0 ? "gale" : precipitationStormKind(w, calendar(from, startDoy));
+      w.storm = { kind, from, until: from + 360 + Math.floor(roll / 5), warned: false };
     }
   }
   const ambient = ambientTemperature(cal, w);
