@@ -76,6 +76,8 @@ export function migrate(state: GameState): void {
     state.goals.opportunity.atCampMinutes ??= 0;
     state.goals.opportunity.awayFromCampMinutes ??= 0;
     state.goals.opportunity.maxWetness ??= 0;
+    state.goals.opportunity.readerIndex ??= null;
+    state.goals.opportunity.plan ??= null;
   }
   const goalIds = new Set(GOALS.map((goal) => goal.id));
   state.goals.queue = (state.goals.queue ?? []).filter((id) => goalIds.has(id));

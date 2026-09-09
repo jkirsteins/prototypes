@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { ARROWS_TO_CARRY, currentNeed, minutesToCamp, SLEEP_AT } from "../src/sim/body";
+import { ARROWS_TO_CARRY, bodyStep, currentNeed, minutesToCamp, SLEEP_AT, stormOptions } from "../src/sim/body";
 import { alertness, minutesToWake, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT } from "../src/sim/sleep";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { bankFire } from "../src/sim/fire";
@@ -727,6 +727,102 @@ describe("the runner in the elements", () => {
     advance(state, world, 1);
     expect(state.player.bodyNeed).toBe("thirsty");
     expect(state.intent?.step).toMatch(/^walking to .+ for water$/);
+  });
+});
+
+describe("the shared storm plan", () => {
+  it("records the full return-home evidence and gives a close camp the body step", () => {
+    const { state, world } = newGame(17);
+    const region = regionAt(world, state.player.region);
+    mapRegion(state, world, region.id);
+    const camp = region.cells.find((cell) => cellAt(world, cell).terrain === "spruce"
+      && neighbours(world, cell).some((other) => cellAt(world, other).region === region.id && cellAt(world, other).terrain === "spruce"))!;
+    const from = neighbours(world, camp).find((cell) => cellAt(world, cell).region === region.id && cellAt(world, cell).terrain === "spruce")!;
+    regionState(state, world, region.id).campCell = camp;
+    placeAt(state, world, from);
+    state.weather.storm = { id: 31, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
+    const plan = stormOptions(state, world, state.weather.storm);
+    const home = plan.options.find((option) => option.kind === "returnCamp")!;
+    expect(home.inputs.forecast.stage).toBe(1);
+    expect(home.inputs.route).toEqual([camp]);
+    expect(home.inputs.travelMinutes).toBeGreaterThan(0);
+    expect(home.arrivalMargin).toBeGreaterThan(0);
+    expect(home.viable).toBe(true);
+    expect(plan.recommended).toBe("returnCamp");
+    expect(currentNeed(state, world, calendar(0))).toBe("storm");
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)).toMatchObject({ id: "walk", arg: `cell:${camp}` });
+  });
+
+  it("records shelter, fire, fuel, active gear and carried supplies for a viable local plan", () => {
+    const { state, world } = newGame(17);
+    const here = cellOf(state, world);
+    const site = siteFor(regionState(state, world, state.player.region), here);
+    site.structures.leanTo = true;
+    state.player.fieldFire = { cell: here, fuelKg: 3 };
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(state.player.pack, "firewood", 4);
+    state.weather.storm = { id: 32, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
+    const plan = stormOptions(state, world, state.weather.storm);
+    const local = plan.options.find((option) => option.kind === "localShelter")!;
+    expect(local.inputs).toMatchObject({
+      route: [], travelMinutes: 0, protection: 2, effectiveProtection: 2,
+      fireLit: true, fuelKg: 3, activeGear: expect.arrayContaining(["axe", "fireDrill"]),
+      supplies: { firewoodKg: 4, foodKg: 1, waterLitres: 2.5 },
+    });
+    expect(local.arrivalMargin).toBe(60);
+    expect(local.viable).toBe(true);
+    expect(plan.recommended).toBe("localShelter");
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("rest");
+  });
+
+  it("offers only an existing weatherproof remote refuge on a mapped route", () => {
+    const { state, world } = newGame(17);
+    const hereRegion = regionAt(world, state.player.region);
+    const remoteRegion = regionAt(world, hereRegion.neighbours[0].id);
+    mapRegion(state, world, hereRegion.id);
+    mapRegion(state, world, remoteRegion.id);
+    const refuge = remoteRegion.campCell;
+    siteFor(regionState(state, world, remoteRegion.id), refuge).structures.leanTo = true;
+    state.weather.storm = { id: 33, source: "natural", kind: "rain", from: 1000, until: 1360, warned: false };
+    const plan = stormOptions(state, world, state.weather.storm);
+    const remote = plan.options.find((option) => option.kind === "remoteRefuge")!;
+    expect(remote.target).toEqual({ region: remoteRegion.id, cell: refuge });
+    expect(remote.inputs.route?.at(-1)).toBe(refuge);
+    expect(remote.inputs.protection).toBe(2);
+    expect(remote.inputs.effectiveProtection).toBe(2);
+    expect(remote.arrivalMargin).toBeGreaterThan(0);
+    expect(remote.viable).toBe(true);
+    expect(plan.recommended).toBe("remoteRefuge");
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)).toMatchObject({ id: "walk", arg: `cell:${refuge}` });
+
+    delete state.mapped[refuge];
+    expect(stormOptions(state, world, state.weather.storm).options.some((option) => option.kind === "remoteRefuge")).toBe(false);
+  });
+
+  it("stays in adequate shelter underfoot instead of walking to a distant refuge", () => {
+    const { state, world } = newGame(17);
+    const here = cellOf(state, world);
+    siteFor(regionState(state, world, state.player.region), here).structures.leanTo = true;
+    const homeRegion = regionAt(world, state.player.region);
+    const remoteRegion = regionAt(world, homeRegion.neighbours[0].id);
+    mapRegion(state, world, homeRegion.id);
+    mapRegion(state, world, remoteRegion.id);
+    siteFor(regionState(state, world, remoteRegion.id), remoteRegion.campCell).structures.turfHut = true;
+    state.weather.storm = { id: 35, source: "natural", kind: "rain", from: 1000, until: 1360, warned: false };
+    expect(stormOptions(state, world, state.weather.storm).recommended).toBe("localShelter");
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("rest");
+  });
+
+  it("can recommend unfinished local work without calling it viable preparation", () => {
+    const { state, world } = newGame(17);
+    const meadow = regionAt(world, state.player.region).cells.find((cell) => cellAt(world, cell).terrain === "meadow")!;
+    placeAt(state, world, meadow);
+    state.weather.storm = { id: 34, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
+    const plan = stormOptions(state, world, state.weather.storm);
+    const local = plan.options.find((option) => option.kind === "localShelter")!;
+    expect(plan.recommended).toBe("localShelter");
+    expect(local.viable).toBe(false);
+    expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("emergencyShelter");
   });
 });
 

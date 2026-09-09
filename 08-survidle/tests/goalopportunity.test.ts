@@ -3,13 +3,15 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { stepGoalOpportunity } from "../src/sim/goalopportunity";
-import { goalDeed } from "../src/sim/goals";
+import { goalDeed, type StormPlanSnapshot } from "../src/sim/goals";
 import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { cellOf, placeAt, straightKm } from "../src/sim/position";
 import { siteFor } from "../src/sim/regionstate";
+import { current } from "../src/sim/record";
 import { deserialize, serialize } from "../src/sim/save";
+import { startTask } from "../src/sim/tasks";
 import type { GameState, GoalId } from "../src/sim/types";
 import { stepWeather } from "../src/sim/weather";
 import { cellAt, regionAt } from "../src/world/gen";
@@ -245,6 +247,96 @@ describe("Chapter 1 shelter storm evidence", () => {
   });
 });
 
+describe("Chapter 2 forecast evidence", () => {
+  function chapter2Attempt(state: GameState, stormId = 40): void {
+    activateWeatherReading(state);
+    finish(state, ["readWeather"]);
+    state.goals.opportunity = {
+      goal: "readWeather", status: "announced", createdAt: state.minute, attempts: 1,
+      stormId, source: "natural", area: null, announcedAt: state.minute, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+      readerIndex: current(state).index, plan: null,
+    };
+  }
+
+  function snapshot(kind: "returnCamp" | "localShelter" | "remoteRefuge", viable = true): StormPlanSnapshot {
+    return {
+      stormId: 40,
+      minute: 100,
+      knowledge: { stage: 2, coming: true, arrivalMinute: 100, kind: "rain", severity: "heavy", durationMinutes: null },
+      recommended: kind,
+      options: [{
+        kind, target: { region: 1, cell: 20 },
+        inputs: {
+          forecast: { stage: 2, coming: true, arrivalMinute: 100, kind: "rain", severity: "heavy", durationMinutes: null },
+          route: [], travelMinutes: 0, protection: 2, effectiveProtection: 2,
+          fireLit: true, fuelKg: 12, activeGear: ["fireDrill"], packedGear: {},
+          supplies: { firewoodKg: 4, foodKg: 1, waterLitres: 2 },
+        },
+        arrivalMargin: 0,
+        viable,
+        survivalScore: viable ? 300 : 100,
+      }],
+    };
+  }
+
+  it.each(["returnCamp", "localShelter", "remoteRefuge"] as const)("accepts a viable %s plan frozen at matching onset", (kind) => {
+    const { state } = newGame(17);
+    chapter2Attempt(state);
+    expect(goalDeed(state, { kind: "stormStarted", minute: 100, stormId: 40, plan: snapshot(kind) })).toContain("prepareWeather");
+  });
+
+  it("rejects a wrong storm or a snapshot with only unfinished preparation", () => {
+    for (const [stormId, plan] of [[41, snapshot("returnCamp")], [40, snapshot("localShelter", false)]] as const) {
+      const { state } = newGame(17);
+      chapter2Attempt(state);
+      goalDeed(state, { kind: "stormStarted", minute: 100, stormId, plan });
+      expect(state.goals.done.prepareWeather).toBeUndefined();
+    }
+  });
+
+  it("freezes the onset plan before that minute's task mutation and never rewrites it", () => {
+    const { state, world } = newGame(17);
+    chapter2Attempt(state, 42);
+    const meadow = regionAt(world, state.player.region).cells.find((cell) => cellAt(world, cell).terrain === "meadow")!;
+    placeAt(state, world, meadow);
+    const site = siteFor(state.regions[state.player.region], meadow);
+    site.emergencyMinutes = 89;
+    state.weather.storm = { id: 42, source: "natural", kind: "rain", from: state.minute + 1, until: state.minute + 361, warned: true };
+    expect(startTask(state, world, calendar(state.minute, state.startDoy), "emergencyShelter")).toBe(true);
+    advance(state, world, 1);
+    expect(site.emergencyMinutes).toBe(90);
+    const frozen = structuredClone(state.goals.opportunity?.plan);
+    expect(frozen?.options.find((option) => option.kind === "localShelter")?.inputs.protection).toBe(1);
+    expect(frozen?.options.some((option) => option.viable)).toBe(false);
+    site.emergencyMinutes = 240;
+    state.player.fieldFire = { cell: meadow, fuelKg: 30 };
+    expect(state.goals.opportunity?.plan).toEqual(frozen);
+    expect(state.goals.done.prepareWeather).toBeUndefined();
+  });
+
+  it("completes survival only for the matching storm, alive, with the same reader still current", () => {
+    const ended = (stormId: number, survivorAlive: boolean) => ({
+      kind: "stormEnded" as const, minute: 500, stormId, survivorAlive,
+      minutesByProtection: [0, 0, 360, 0] as [number, number, number, number],
+      atCampMinutes: 360, awayFromCampMinutes: 0, maxWetness: 10,
+    });
+    const good = newGame(17).state;
+    chapter2Attempt(good);
+    finish(good, ["prepareWeather"]);
+    expect(goalDeed(good, ended(40, true))).toContain("surviveForecast");
+
+    for (const mode of ["wrong-storm", "dead", "heir"] as const) {
+      const state = newGame(17).state;
+      chapter2Attempt(state);
+      finish(state, ["prepareWeather"]);
+      if (mode === "heir") state.survivors.push({ ...structuredClone(current(state)), index: current(state).index + 1 });
+      goalDeed(state, ended(mode === "wrong-storm" ? 41 : 40, mode !== "dead"));
+      expect(state.goals.done.surviveForecast, mode).toBeUndefined();
+    }
+  });
+});
+
 describe("natural-first weather", () => {
   it("claims the first eligible natural rain without changing its event or random state", () => {
     const { state, world } = newGame(17);
@@ -394,6 +486,7 @@ describe("misses and retries", () => {
       goal: "readWeather", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: null, announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+      readerIndex: null, plan: null,
     });
   });
 

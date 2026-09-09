@@ -4,6 +4,7 @@
  * game is how fast the clock runs, and that lives in units.ts.
  */
 import type { FoodId } from "./items";
+import type { StormPlanSnapshot } from "./goals";
 import type { DayLedger } from "./ledger";
 import type { Species } from "./species";
 import type { StormKind } from "./weather";
@@ -712,6 +713,10 @@ export interface GoalOpportunity {
   awayFromCampMinutes: number;
   /** The highest body wetness actually reached during the matching storm. */
   maxWetness: number;
+  /** Stable identity of the survivor whose sky reading earned Chapter 2. */
+  readerIndex?: number | null;
+  /** The immutable shared option reading taken at this storm's onset. */
+  plan?: StormPlanSnapshot | null;
 }
 
 export interface GoalState {

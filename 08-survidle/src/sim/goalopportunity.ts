@@ -40,6 +40,8 @@ function newOpportunity(goal: GoalId, minute: number, attempts = 1): GoalOpportu
     atCampMinutes: 0,
     awayFromCampMinutes: 0,
     maxWetness: 0,
+    readerIndex: null,
+    plan: null,
   };
 }
 

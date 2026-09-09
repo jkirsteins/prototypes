@@ -53,7 +53,7 @@ import {
 import { isWorkIntent } from "./types";
 import { owningOrder } from "./orderowner";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
-import { ambientTemperature, DEEP_SNOW_CM, forecastText, ICE_SAFE_CM, iceMode, skyReadDay, stormNow, walkableIce } from "./weather";
+import { ambientTemperature, DEEP_SNOW_CM, forecastKnowledge, forecastText, ICE_SAFE_CM, iceMode, sameForecastKnowledge, skyReadDay, stormNow, walkableIce } from "./weather";
 import { plain } from "./voice";
 import { AGENT_SPECIES, knownBearDen, takeWildlifeMember, unknownBearDen } from "./wildlife-agents";
 
@@ -2559,10 +2559,17 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       if (hadCampInAnotherRegion) goalDeed(state, { kind: "campedAgain", region: state.player.region });
       return;
     }
-    case "readSky":
+    case "readSky": {
+      const storm = state.weather.storm;
+      const before = storm ? forecastKnowledge(state, storm) : null;
       state.player.skyReadDay = skyReadDay(state);
+      const after = storm ? forecastKnowledge(state, storm) : null;
+      if (storm && before && after && !sameForecastKnowledge(before, after)) {
+        goalDeed(state, { kind: "forecastChanged", minute: state.minute, stormId: storm.id, before, after, source: "readSky" }, world);
+      }
       log(state, `{You} {read} the sky: ${forecastText(state) || "no storm can be read in it"}.`);
       return;
+    }
     case "findShelter": {
       const cell = cellOf(state, world);
       const site = siteFor(st, cell);

@@ -12,6 +12,7 @@ import { bodyPosition, lighting, phaseName, skyHtml, updateSky, WALL } from "../
 import { siteCamp } from "./siting-helpers";
 import { current } from "../src/sim/record";
 import { levelMinutes } from "../src/sim/skills";
+import { stormOptions } from "../src/sim/body";
 
 const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
 /** Minutes since the run start for a clock hour on day one. */
@@ -69,6 +70,26 @@ describe("forecast knowledge in the weather wall", () => {
     state.minute = 100;
     state.skills.weatherSense.xp = 0;
     expect(line()).toBe("storm");
+  });
+
+  it("describes the same recommended option as the body without leaking hidden storm detail", () => {
+    const { state, world } = newGame(17);
+    current(state).person.quirks = [];
+    state.weather.storm = { id: 12, source: "natural", kind: "gale", from: 60, until: 500, warned: false };
+    const render = () => {
+      const root = document.createElement("div");
+      root.innerHTML = weatherHtml(state, world, calendar(0), 15);
+      return root;
+    };
+    const plan = stormOptions(state, world, state.weather.storm);
+    const first = render();
+    const line = first.querySelector<HTMLElement>("[data-weather-plan]")!;
+    expect(line.dataset.weatherPlan).toBe(plan.recommended);
+    expect(line.textContent).toBe("plan: shelter here");
+    const markup = first.innerHTML;
+    state.weather.storm.kind = "snow";
+    state.weather.storm.until = 900;
+    expect(render().innerHTML).toBe(markup);
   });
 
   it("updates accessible forecast detail without replacing the painted sky", () => {

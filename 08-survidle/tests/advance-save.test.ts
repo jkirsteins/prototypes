@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { bodyRowOf, isCampRow, isBodyRow } from "../src/sim/bodyorder";
+import { stormOptions } from "../src/sim/body";
 import { rootStockFor } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
 import { campSite, fillPopulations, siteFor } from "../src/sim/regionstate";
@@ -77,7 +78,7 @@ describe("save", () => {
   });
 
   it("round-trips stable storm identity and an inspectable teaching opportunity", () => {
-    const { state } = newGame(9);
+    const { state, world } = newGame(9);
     state.weather.storm = { id: 4, source: "synthetic", kind: "rain", from: 600, until: 960, warned: false };
     state.weather.nextStormId = 5;
     state.goals.opportunity = {
@@ -85,7 +86,9 @@ describe("save", () => {
       stormId: 4, source: "synthetic", area: { region: 7, centre: 99, radiusKm: 1 },
       announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+      readerIndex: 1, plan: null,
     };
+    state.goals.opportunity.plan = stormOptions(state, world, state.weather.storm);
     const back = deserialize(serialize(state))!.state;
     expect(back.weather.storm).toEqual(state.weather.storm);
     expect(back.weather.nextStormId).toBe(5);
@@ -104,9 +107,12 @@ describe("save", () => {
     delete raw.state.goals.opportunity.atCampMinutes;
     delete raw.state.goals.opportunity.awayFromCampMinutes;
     delete raw.state.goals.opportunity.maxWetness;
+    delete raw.state.goals.opportunity.readerIndex;
+    delete raw.state.goals.opportunity.plan;
 
     expect(deserialize(JSON.stringify(raw))!.state.goals.opportunity).toMatchObject({
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+      readerIndex: null, plan: null,
     });
   });
 

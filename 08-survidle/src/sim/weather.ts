@@ -8,6 +8,24 @@ import type { GameState, IceMode, Season, Weather } from "./types";
 
 export type StormKind = "rain" | "snow" | "gale";
 
+export interface ForecastKnowledge {
+  stage: 0 | 1 | 2 | 3;
+  coming: boolean;
+  arrivalMinute: number | null;
+  kind: StormKind | null;
+  severity: "heavy" | null;
+  durationMinutes: number | null;
+}
+
+export const NO_FORECAST_KNOWLEDGE: ForecastKnowledge = {
+  stage: 0,
+  coming: false,
+  arrivalMinute: null,
+  kind: null,
+  severity: null,
+  durationMinutes: null,
+};
+
 /** Precipitation at onset uses the same freezing threshold as fire burn. */
 export function precipitationStormKind(w: Weather, cal: Calendar): "rain" | "snow" {
   return ambientTemperature(cal, { ...w, precip: "heavy" }) <= 0 ? "snow" : "rain";
@@ -112,22 +130,63 @@ export function stormNow(w: Weather, minute: number): boolean {
 }
 
 /** Observations last until sunrise, including the hours across midnight. */
-export function skyReadDay(state: GameState): number {
-  const cal = calendar(state.minute, state.startDoy);
+function skyReadDayAt(state: GameState, minute: number): number {
+  const cal = calendar(minute, state.startDoy);
   return cal.dayIndex - (cal.hour < cal.sunrise ? 1 : 0);
 }
 
+export function skyReadDay(state: GameState): number {
+  return skyReadDayAt(state, state.minute);
+}
+
 /** Practice, lived weather and deliberate observation all buy time to prepare. */
-export function warningMinutes(state: GameState): number {
+function warningMinutesAt(state: GameState, minute: number): number {
   return 60 + 5 * (skillLevel(state, "weatherSense") - 1)
     + 10 * Math.min(6, survivedStorms(state))
     + (hasQuirk(state, "weatherEye") ? 30 : 0)
-    + (state.player.skyReadDay === skyReadDay(state) ? 30 : 0);
+    + (state.player.skyReadDay === skyReadDayAt(state, minute) ? 30 : 0);
+}
+
+export function warningMinutes(state: GameState): number {
+  return warningMinutesAt(state, state.minute);
 }
 
 export function forecastStage(state: GameState): 1 | 2 | 3 {
   const minutes = warningMinutes(state);
   return minutes >= 180 ? 3 : minutes >= 120 ? 2 : 1;
+}
+
+/** Facts this survivor can currently know about this particular future storm. */
+export function forecastKnowledge(
+  state: GameState,
+  storm: NonNullable<Weather["storm"]>,
+  minute = state.minute,
+): ForecastKnowledge {
+  const warning = warningMinutesAt(state, minute);
+  const stage = warning >= 180 ? 3 : warning >= 120 ? 2 : 1;
+  if (minute < storm.from - warning || minute > storm.from) return { ...NO_FORECAST_KNOWLEDGE };
+  return {
+    stage,
+    coming: true,
+    arrivalMinute: stage >= 2 ? storm.from : null,
+    kind: stage >= 2 ? storm.kind : null,
+    severity: stage >= 2 ? "heavy" : null,
+    durationMinutes: stage >= 3 ? storm.until - storm.from : null,
+  };
+}
+
+export function sameForecastKnowledge(a: ForecastKnowledge, b: ForecastKnowledge): boolean {
+  return a.stage === b.stage && a.coming === b.coming && a.arrivalMinute === b.arrivalMinute
+    && a.kind === b.kind && a.severity === b.severity && a.durationMinutes === b.durationMinutes;
+}
+
+/** A lesson is earned only when an observation turns an unknown fact into a known one. */
+export function gainedForecastFact(before: ForecastKnowledge, after: ForecastKnowledge): boolean {
+  return (!before.coming && after.coming)
+    || (before.arrivalMinute === null && after.arrivalMinute !== null)
+    || (before.kind === null && after.kind !== null)
+    || (before.severity === null && after.severity !== null)
+    || (before.durationMinutes === null && after.durationMinutes !== null);
 }
 
 /** True when this survivor can read a storm that has not started yet. */
@@ -141,7 +200,7 @@ export function forecastText(state: GameState): string {
   const storm = state.weather.storm;
   const blowing = stormNow(state.weather, state.minute);
   if (!storm || (!blowing && !stormComing(state))) return "";
-  const stage = forecastStage(state);
+  const stage = blowing ? forecastStage(state) : forecastKnowledge(state, storm).stage;
   if (stage === 1) return blowing ? "storm" : "a storm is coming";
   const arrival = blowing ? "" : ` in ${fmtDuration(storm.from - state.minute)}`;
   const duration = stage === 3

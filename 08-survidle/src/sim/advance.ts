@@ -2,6 +2,7 @@ import { Rng } from "../rng";
 import { regionAt, type World } from "../world/gen";
 import { autoEat } from "./actions";
 import { dailyAnimals } from "./animals";
+import { stormOptions } from "./body";
 import { calendar, DAILY_HOUR } from "./calendar";
 import { dailyCamp, stepCamp, stepEmergencyShelter, stepFoundCover } from "./camp";
 import { hourlyEvents } from "./events";
@@ -22,7 +23,7 @@ import type { WildlifeMode } from "./types";
 import { stepSeeps } from "./seep";
 import { dailyWildlife, stepWildlife } from "./wildlife-agents";
 import { autoDrink } from "./water";
-import { ambientTemperature, forecastStage, forecastText, stepWeather, stormComing } from "./weather";
+import { ambientTemperature, forecastKnowledge, forecastStage, forecastText, NO_FORECAST_KNOWLEDGE, sameForecastKnowledge, stepWeather, stormComing } from "./weather";
 
 export const MAX_STEP = 1;
 
@@ -55,6 +56,7 @@ export function advance(state: GameState, world: World, dtMinutes: number, opts:
 }
 
 function step(state: GameState, world: World, rng: Rng, dt: number, nobody: boolean, wildlife: WildlifeMode): void {
+  const previousMinute = state.minute;
   state.minute += dt;
   const cal = calendar(state.minute, state.startDoy);
 
@@ -68,6 +70,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   const ev = stepWeather(state.weather, cal, rng, dt, state.minute);
   const ambient = ambientTemperature(cal, state.weather);
   if (!nobody) {
+    const beforeKnowledge = previousStorm ? forecastKnowledge(state, previousStorm, previousMinute) : null;
     if (ev.coldSnap) log(state, `A cold snap. ${Math.round(ambient)} C and falling.`, "bad");
     if (ev.precipStarted) log(state, ambient <= 0 ? "Snow begins to fall." : "Rain sets in.");
     if (ev.precipStopped) log(state, state.weather.snowCm > 0 && ambient <= 0 ? "The snow stops." : "The rain stops.");
@@ -75,6 +78,19 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     if (state.weather.storm && !state.weather.storm.warned && stormComing(state)) {
       state.weather.storm.warned = true;
       log(state, forecastStage(state) === 1 ? "The sky is closing in from the west." : `The sky is closing in: ${forecastText(state)}.`, "bad");
+    }
+    const currentStorm = state.weather.storm;
+    const knowledgeStorm = currentStorm ?? previousStorm;
+    if (knowledgeStorm) {
+      const before = previousStorm?.id === knowledgeStorm.id && beforeKnowledge ? beforeKnowledge : { ...NO_FORECAST_KNOWLEDGE };
+      const after = currentStorm?.id === knowledgeStorm.id ? forecastKnowledge(state, knowledgeStorm) : { ...NO_FORECAST_KNOWLEDGE };
+      if (!sameForecastKnowledge(before, after)) {
+        goalDeed(state, { kind: "forecastChanged", minute: state.minute, stormId: knowledgeStorm.id, before, after, source: "passive" }, world);
+      }
+    }
+    if (currentStorm && previousMinute < currentStorm.from && state.minute >= currentStorm.from) {
+      const plan = stormOptions(state, world, currentStorm);
+      goalDeed(state, { kind: "stormStarted", minute: state.minute, stormId: currentStorm.id, plan }, world);
     }
   }
 

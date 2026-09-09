@@ -18,6 +18,7 @@ import { cellOf, placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { protectionOf } from "../src/sim/shelter";
+import type { GoalId, GoalOpportunity } from "../src/sim/types";
 
 function game() {
   const g = newGame(17);
@@ -25,7 +26,77 @@ function game() {
   return g;
 }
 
+const THROUGH_SHELTER: GoalId[] = [
+  "site", "drink", "firewood", "fire", "bed", "roof", "cook", "findUsefulCover", "makeUsefulShelter",
+  "testShelter", "keptNight",
+];
+
+function weatherLesson(state: ReturnType<typeof game>["state"], stormId: number, status: GoalOpportunity["status"] = "announced"): void {
+  for (const id of THROUGH_SHELTER) state.goals.done[id] = true;
+  state.minute = 7 * 1440;
+  state.goals.opportunity = {
+    goal: "readWeather", status, createdAt: state.minute, attempts: 1,
+    stormId, source: "natural", area: null, announcedAt: state.minute, resolvedAt: null,
+    minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+  };
+}
+
 describe("weather sense", () => {
+  it("describes only the facts actually knowable about a specific forecast storm", () => {
+    const { state } = game();
+    const storm = { id: 9, source: "natural" as const, kind: "gale" as const, from: 100, until: 520, warned: false };
+    state.weather.storm = storm;
+    expect(weather.forecastKnowledge(state, storm)).toEqual({
+      stage: 0, coming: false, arrivalMinute: null, kind: null, severity: null, durationMinutes: null,
+    });
+    state.minute = 40;
+    expect(weather.forecastKnowledge(state, storm)).toEqual({
+      stage: 1, coming: true, arrivalMinute: null, kind: null, severity: null, durationMinutes: null,
+    });
+    state.skills.weatherSense.xp = levelMinutes(13);
+    expect(weather.forecastKnowledge(state, storm)).toEqual({
+      stage: 2, coming: true, arrivalMinute: 100, kind: "gale", severity: "heavy", durationMinutes: null,
+    });
+    state.skills.weatherSense.xp = levelMinutes(25);
+    expect(weather.forecastKnowledge(state, storm)).toEqual({
+      stage: 3, coming: true, arrivalMinute: 100, kind: "gale", severity: "heavy", durationMinutes: 420,
+    });
+  });
+
+  it("credits a matching announced sky read only when it reveals a new fact and binds the reader", () => {
+    const { state, world } = game();
+    weatherLesson(state, 7);
+    state.weather.storm = { id: 7, source: "natural", kind: "rain", from: state.minute + 90, until: state.minute + 450, warned: false };
+    const before = weather.forecastKnowledge(state, state.weather.storm);
+    expect(before.stage).toBe(0);
+    startTask(state, world, calendar(state.minute, state.startDoy), "readSky");
+    stepTask(state, world, calendar(state.minute, state.startDoy), new Rng(1), 10);
+    expect(state.goals.done.readWeather).toBe(true);
+    expect(state.goals.opportunity?.readerIndex).toBe(current(state).index);
+    expect(weather.forecastKnowledge(state, state.weather.storm).stage).toBeGreaterThan(0);
+  });
+
+  it("does not credit a repeated read, a passive warning, an unrelated storm, or a read with no new fact", () => {
+    const cases = ["repeated", "unrelated", "no-new-fact"] as const;
+    for (const kind of cases) {
+      const { state, world } = game();
+      weatherLesson(state, 7);
+      const stormId = kind === "unrelated" ? 8 : 7;
+      state.weather.storm = { id: stormId, source: "natural", kind: "rain", from: state.minute + 60, until: state.minute + 420, warned: false };
+      if (kind === "repeated") state.player.skyReadDay = weather.skyReadDay(state);
+      startTask(state, world, calendar(state.minute, state.startDoy), "readSky");
+      stepTask(state, world, calendar(state.minute, state.startDoy), new Rng(1), 10);
+      expect(state.goals.done.readWeather, kind).toBeUndefined();
+      expect(state.goals.opportunity?.readerIndex, kind).toBeFalsy();
+    }
+
+    const { state, world } = game();
+    weatherLesson(state, 11, "reserved");
+    state.weather.storm = { id: 11, source: "natural", kind: "rain", from: state.minute + 61, until: state.minute + 421, warned: false };
+    advance(state, world, 1);
+    expect(state.goals.opportunity?.status).toBe("announced");
+    expect(state.goals.done.readWeather).toBeUndefined();
+  });
   it("stacks practice, six survived storms, a weather eye and a current reading", () => {
     expect(weather.warningMinutes).toBeTypeOf("function");
     const { state } = game();

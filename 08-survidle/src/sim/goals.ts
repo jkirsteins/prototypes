@@ -10,13 +10,44 @@
 import { calendar, type Calendar } from "./calendar";
 import { qty } from "./inventory";
 import { straightKm } from "./position";
+import { current } from "./record";
+import { gainedForecastFact, type ForecastKnowledge } from "./weather";
 import type { World } from "../world/gen";
-import type { GameState, GoalId, GoalState, ItemId, Protection, Season, StructureId, TaskId } from "./types";
+import type { GameState, GoalId, GoalState, ItemId, Protection, Season, StructureId, TaskId, ToolId } from "./types";
 
 export type { GoalId } from "./types";
 
-/** Task 14 replaces this opaque pre-storm plan with the shared option evaluation. */
-export type StormPlanSnapshot = unknown;
+export type StormOptionKind = "returnCamp" | "localShelter" | "remoteRefuge";
+
+export interface StormPlanInputs {
+  forecast: ForecastKnowledge;
+  route: number[] | null;
+  travelMinutes: number | null;
+  protection: Protection;
+  effectiveProtection: Protection;
+  fireLit: boolean;
+  fuelKg: number;
+  activeGear: ToolId[];
+  packedGear: Partial<Record<ToolId, number>>;
+  supplies: { firewoodKg: number; foodKg: number; waterLitres: number };
+}
+
+export interface StormPlanOption {
+  kind: StormOptionKind;
+  target: { region: number; cell: number };
+  inputs: StormPlanInputs;
+  arrivalMargin: number | null;
+  viable: boolean;
+  survivalScore: number;
+}
+
+export interface StormPlanSnapshot {
+  stormId: number;
+  minute: number;
+  knowledge: ForecastKnowledge;
+  recommended: StormOptionKind;
+  options: StormPlanOption[];
+}
 
 /** Something this survivor did. The only thing that moves a goal. */
 export type GoalEvent =
@@ -26,7 +57,7 @@ export type GoalEvent =
   | { kind: "built"; structure: StructureId }
   | { kind: "sheltered"; protection: Protection }
   | { kind: "protectionChanged"; minute: number; region: number; cell: number; from: Protection; to: Protection; source: "found" | "improved" | "emergency" | "structure" }
-  /** Reserved for the shared Task 14 storm-plan snapshot. No code emits it yet. */
+  | { kind: "forecastChanged"; minute: number; stormId: number; before: ForecastKnowledge; after: ForecastKnowledge; source: "passive" | "readSky" }
   | { kind: "stormStarted"; minute: number; stormId: number; plan: StormPlanSnapshot }
   | { kind: "stormEnded"; minute: number; stormId: number; survivorAlive: boolean; minutesByProtection: [number, number, number, number]; atCampMinutes: number; awayFromCampMinutes: number; maxWetness: number }
   /** The tinder caught. A light that failed is not a fire lit. */
@@ -260,6 +291,7 @@ function shelterOpportunity(goal: "makeUsefulShelter" | "testShelter", minute: n
     goal, status: "reserved", createdAt: minute, attempts: 1,
     stormId: null, source: null, area, announcedAt: null, resolvedAt: null,
     minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    readerIndex: null, plan: null,
   };
 }
 
@@ -301,12 +333,36 @@ export function goalDeed(state: GameState, d: GoalEvent, world?: World): GoalId[
       state.goals.opportunity = shelterOpportunity("testShelter", d.minute, area);
     }
   }
+  if (d.kind === "forecastChanged") {
+    const opportunity = state.goals.opportunity;
+    const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
+    if (opportunity?.goal === "readWeather" && opportunity.status === "announced"
+      && opportunity.stormId === d.stormId && activeNow.has("readWeather")
+      && d.source === "readSky" && gainedForecastFact(d.before, d.after)) {
+      finishGoal(state, "readWeather", finished);
+      opportunity.readerIndex = current(state).index;
+    }
+  }
+  if (d.kind === "stormStarted") {
+    const opportunity = state.goals.opportunity;
+    const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
+    if (opportunity?.goal === "readWeather" && opportunity.stormId === d.stormId && d.plan.stormId === d.stormId) {
+      opportunity.plan ??= structuredClone(d.plan);
+      if (activeNow.has("prepareWeather") && d.plan.options.some((option) => option.viable)) {
+        finishGoal(state, "prepareWeather", finished);
+      }
+    }
+  }
   if (d.kind === "stormEnded") {
     const opportunity = state.goals.opportunity;
     const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
     if (opportunity?.goal === "testShelter" && opportunity.stormId === d.stormId && activeNow.has("testShelter")
       && d.survivorAlive && d.minutesByProtection[2] + d.minutesByProtection[3] + 1e-9 >= 60) {
       finishGoal(state, "testShelter", finished);
+    }
+    if (opportunity?.goal === "readWeather" && opportunity.stormId === d.stormId && activeNow.has("surviveForecast")
+      && d.survivorAlive && opportunity.readerIndex === current(state).index) {
+      finishGoal(state, "surviveForecast", finished);
     }
   }
   return finished;
