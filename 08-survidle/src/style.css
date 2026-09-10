@@ -1473,6 +1473,8 @@ button.act small.gives, span.act small.gives,
    within its own palette through the two custom properties above. */
 .grid .c.water-live {
   animation: water-shimmer 14s ease-in-out infinite;
+  /* ?shimmer= on the page sets the speed factor on the root; unset, the period stays 14 s. */
+  animation-duration: calc(14s / var(--water-shimmer-speed, 1));
   animation-delay: var(--water-phase);
 }
 @keyframes water-shimmer {

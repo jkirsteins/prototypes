@@ -417,7 +417,9 @@ with work, pause, or alter the simulated feature's location or visibility.
 Liquid water in the current viewshed shimmers on the same kind of cycle, 14
 real seconds per cell with a seeded phase, easing its background a shade
 lighter and back within its own depth band. Ice, marked cells and remembered
-water lie still, and reduced motion turns the shimmer off.
+water lie still, and reduced motion turns the shimmer off. `?shimmer=2` is a
+test aid that runs the cycle twice as fast for tuning; it is not a game
+feature.
 
 ### Stationary ground consequences
 

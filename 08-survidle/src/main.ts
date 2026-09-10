@@ -69,6 +69,9 @@ const params = new URLSearchParams(location.search);
 if (params.has("faces")) location.replace(`${import.meta.env.BASE_URL}faces.html`);
 /** Test aid: how many times faster than 60x the clock runs. Not a game feature. */
 const speed = Math.max(0.1, Number(params.get("speed")) || 1);
+/** Test aid: how many times faster the light on open water cycles; 2 halves the 14 s period. Not a game feature. */
+const shimmerSpeed = Number(params.get("shimmer"));
+if (Number.isFinite(shimmerSpeed) && shimmerSpeed > 0) document.documentElement.style.setProperty("--water-shimmer-speed", String(shimmerSpeed));
 const forcedSeed = params.get("seed");
 /** Test aid beside seed: the day of year the run begins on, for a summer or autumn pass. Not a game feature. */
 const forcedDay = params.get("day");

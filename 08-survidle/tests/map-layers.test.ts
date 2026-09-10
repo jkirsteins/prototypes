@@ -298,6 +298,9 @@ describe("the map's compositing layers", () => {
     const live = rule(".grid .c.water-live");
     expect(live).toContain("animation: water-shimmer 14s ease-in-out infinite");
     expect(live).toContain("animation-delay: var(--water-phase)");
+    // A test aid: ?shimmer= scales the speed through one root property and nothing else.
+    expect(live).toContain("animation-duration: calc(14s / var(--water-shimmer-speed, 1))");
+    expect(readFileSync("src/main.ts", "utf8")).toContain('params.get("shimmer")');
     const shimmer = css.match(/@keyframes water-shimmer[\s\S]*?\n}/)?.[0] ?? "";
     expect(shimmer).toContain("background-color: var(--water-rest)");
     expect(shimmer).toContain("background-color: var(--water-lit)");
