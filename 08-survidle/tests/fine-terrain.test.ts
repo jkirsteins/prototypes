@@ -28,12 +28,14 @@ describe("fine terrain", () => {
     expect(found).toBe(true);
   });
 
-  it("keeps coast, ridges, and terrain runs at kilometre-scale wavelengths", () => {
-    const patches = Array.from({ length: 30_000 / PATCH_M }, (_, index) => patchId(4_400 + index, 4_200));
-    const fields = patches.map((patch) => fieldsAtPatch(21, patch));
-    const terrain = patches.map((patch) => terrainAtPatch(21, patch));
-    const seaTransitions = fields.reduce((count, field, index) => count + Number(index > 0 && field.sea !== fields[index - 1].sea), 0);
-    const ridgePeaks = fields
+  it("keeps coastal transitions, ridge peaks, and terrain runs at kilometre-scale wavelengths", () => {
+    const coastPatches = Array.from({ length: 30_000 / PATCH_M }, (_, index) => patchId(7_200 + index, 100));
+    const ridgePatches = Array.from({ length: 30_000 / PATCH_M }, (_, index) => patchId(4_900 + index, 4_000));
+    const coastFields = coastPatches.map((patch) => fieldsAtPatch(21, patch));
+    const ridgeFields = ridgePatches.map((patch) => fieldsAtPatch(21, patch));
+    const terrain = ridgePatches.map((patch) => terrainAtPatch(21, patch));
+    const seaTransitions = coastFields.reduce((count, field, index) => count + Number(index > 0 && field.sea !== coastFields[index - 1].sea), 0);
+    const ridgePeaks = ridgeFields
       .map((field, index) => ({ elevationM: field.elevationM, index }))
       .filter(({ elevationM }, index, values) => index > 0 && index < values.length - 1
         && elevationM > 700 && elevationM > values[index - 1].elevationM && elevationM >= values[index + 1].elevationM);
@@ -41,9 +43,10 @@ describe("fine terrain", () => {
       ? 30_000
       : (ridgePeaks.at(-1)!.index - ridgePeaks[0].index) * PATCH_M / (ridgePeaks.length - 1);
 
-    expect(seaTransitions).toBeLessThan(16);
-    expect(ridgePeakIntervalM).toBeGreaterThanOrEqual(100);
-    expect(ridgePeakIntervalM).toBeLessThanOrEqual(6_000);
+    expect(seaTransitions).toBeGreaterThanOrEqual(1);
+    expect(seaTransitions).toBeLessThanOrEqual(12);
+    expect(ridgePeakIntervalM).toBeGreaterThanOrEqual(600);
+    expect(ridgePeakIntervalM).toBeLessThanOrEqual(1_600);
     expect(runs(terrain)).toBeGreaterThanOrEqual(3);
     expect(runs(terrain)).toBeLessThan(180);
   });
