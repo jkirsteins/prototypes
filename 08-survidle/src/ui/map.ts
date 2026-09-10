@@ -233,8 +233,28 @@ function detailHash(seed: number, x: number, y: number, n: number): number {
   return h >>> 0;
 }
 
-/** The wall-clock period of the light on open water, between fog's 12 s and the clouds' 16 s. */
-const WATER_SHIMMER_MS = 14000;
+/**
+ * The wall-clock period of the light on open water. Fog and clouds swap
+ * shapes on long cycles because a shape lingers; a glint is brief and
+ * moves, so its cycle is short and its phase follows position.
+ */
+export const WATER_SHIMMER_MS = 3500;
+/** How much later than its western neighbour a drawn cell lights: the wave crosses the sheet eastward and, more slowly, southward. */
+export const WATER_WAVE_X_MS = 320;
+export const WATER_WAVE_Y_MS = 180;
+/** Seeded jitter on top of the wave, so the band of light has a ragged edge rather than a ruler's. */
+export const WATER_JITTER_MS = 240;
+
+/**
+ * The animation delay of one water cell in ms. A plane wave through world
+ * coordinates, divided by the zoom so a coarse block keeps the same step per
+ * drawn cell, plus jitter from the seed. Presentation only.
+ */
+export function waterPhaseMs(seed: number, x: number, y: number, zoom: number): number {
+  const wave = Math.round((x * WATER_WAVE_X_MS + y * WATER_WAVE_Y_MS) / zoom);
+  const jitter = detailHash(seed, x, y, 149) % WATER_JITTER_MS;
+  return (wave + jitter) % WATER_SHIMMER_MS;
+}
 
 /** Presentation-only fog motion. Density and location still come exclusively from the atmosphere sample. */
 export function fogGlyphHtml(seed: number, x: number, y: number): string {
@@ -977,12 +997,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (ui.cloudShadows && weather.cloud >= 0.15) content += `<i class="cloud-shadow" aria-hidden="true"></i>`;
       if (weatherGlyphs) content += `<i class="cell-weather" aria-hidden="true">${weatherGlyphs}</i>`;
     }
-    // Open water in sight catches the light. The phase is texture from the
-    // seed like the fog's and the clouds': the same cell writes the same
-    // attribute on every render, so the morph has nothing to change.
+    // Open water in sight catches the light. The phase is a function of the
+    // cell and the seed, so the same cell writes the same attribute on every
+    // render and the morph has nothing to change.
     if (cls.includes("t-water") && seen === 2 && !cls.includes("memory") && !cls.includes("mk") && !cls.includes("ice-thin") && !cls.includes("ice-safe")) {
       cls.push("water-live");
-      styles.push(`--water-phase:-${detailHash(world.seed, cx, cy, 149) % WATER_SHIMMER_MS}ms`);
+      styles.push(`--water-phase:-${waterPhaseMs(world.seed, cx, cy, z)}ms`);
     }
     const style = styles.length ? ` style="${styles.join(";")}"` : "";
     parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${style}>${content}</span>`);

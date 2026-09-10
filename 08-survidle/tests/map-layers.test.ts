@@ -9,7 +9,7 @@ import { visibleCells } from "../src/sim/sight";
 import { ensureGround } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
 import { activateWildlife } from "../src/sim/wildlife-agents";
-import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml } from "../src/ui/map";
+import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml, WATER_JITTER_MS, WATER_SHIMMER_MS, WATER_WAVE_X_MS, waterPhaseMs } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState } from "../src/ui/render";
 import { cellAt, neighbours, regionPeek } from "../src/world/gen";
 import { passable } from "../src/world/route";
@@ -296,16 +296,31 @@ describe("the map's compositing layers", () => {
     // seconds, never simulation minutes, with a per-cell phase from the seed
     // so the sheet moves and a re-render writes the same attribute again.
     const live = rule(".grid .c.water-live");
-    expect(live).toContain("animation: water-shimmer 14s ease-in-out infinite");
+    expect(live).toContain("animation: water-shimmer 3.5s ease-in-out infinite");
     expect(live).toContain("animation-delay: var(--water-phase)");
     // A test aid: ?shimmer= scales the speed through one root property and nothing else.
-    expect(live).toContain("animation-duration: calc(14s / var(--water-shimmer-speed, 1))");
+    expect(live).toContain("animation-duration: calc(3.5s / var(--water-shimmer-speed, 1))");
     expect(readFileSync("src/main.ts", "utf8")).toContain('params.get("shimmer")');
+    // A glint, not a breath: the cell rests for most of the cycle and lights
+    // briefly, so the eye has no symmetric swell to lock onto.
     const shimmer = css.match(/@keyframes water-shimmer[\s\S]*?\n}/)?.[0] ?? "";
-    expect(shimmer).toContain("background-color: var(--water-rest)");
-    expect(shimmer).toContain("background-color: var(--water-lit)");
+    expect(shimmer).toContain("0%, 64% { background-color: var(--water-rest); }");
+    expect(shimmer).toContain("80% { background-color: var(--water-lit); }");
+    expect(shimmer).toContain("100% { background-color: var(--water-rest); }");
     expect(shimmer).not.toContain("transform:");
     expect(shimmer).not.toContain("opacity:");
+    // The phase follows position, so the light travels across the sheet:
+    // a neighbour to the east lights one step later, give or take the
+    // jitter, and a block at a coarser zoom keeps the same step per drawn cell.
+    const step = (a: number, b: number) => ((b - a) % WATER_SHIMMER_MS + WATER_SHIMMER_MS) % WATER_SHIMMER_MS;
+    for (const [x, y] of [[12, 34], [175, 50], [700, 950]]) {
+      const east = step(waterPhaseMs(17, x, y, 1), waterPhaseMs(17, x + 1, y, 1));
+      expect(Math.min(east, WATER_SHIMMER_MS - east)).toBeLessThanOrEqual(WATER_WAVE_X_MS + WATER_JITTER_MS);
+      expect(east).toBeGreaterThan(0);
+      const eastBlock = step(waterPhaseMs(17, x, y, 4), waterPhaseMs(17, x + 4, y, 4));
+      expect(Math.abs(eastBlock - east)).toBeLessThanOrEqual(2 * WATER_JITTER_MS);
+    }
+    expect(waterPhaseMs(17, 12, 34, 1)).toBe(waterPhaseMs(17, 12, 34, 1));
     expect(rule("@media (prefers-reduced-motion: reduce)")).toContain(".water-live");
     // Each depth band shimmers within its own palette.
     expect(rule(".grid .c.t-water")).toContain("--water-rest: #0a1633");
@@ -336,7 +351,7 @@ describe("the map's compositing layers", () => {
     expect(liveCells.length).toBeGreaterThan(20);
     const phases = liveCells.map((el) => Number(el.style.getPropertyValue("--water-phase").match(/^-(\d+)ms$/)?.[1]));
     for (const phase of phases) expect(phase).toBeGreaterThanOrEqual(0);
-    for (const phase of phases) expect(phase).toBeLessThan(14000);
+    for (const phase of phases) expect(phase).toBeLessThan(WATER_SHIMMER_MS);
     expect(new Set(phases).size).toBeGreaterThan(5);
     for (const el of liveCells) {
       expect(el.classList.contains("t-water")).toBe(true);

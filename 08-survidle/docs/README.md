@@ -414,9 +414,11 @@ and accelerated work. The same simulated wind vector drives rain and snow
 drift. Fog and optional ASCII cloud glyphs use slower presentation-only cycles
 of 12 and 16 real seconds. Those decorative shape changes do not accelerate
 with work, pause, or alter the simulated feature's location or visibility.
-Liquid water in the current viewshed shimmers on the same kind of cycle, 14
-real seconds per cell with a seeded phase, easing its background a shade
-lighter and back within its own depth band. Ice, marked cells and remembered
+Liquid water in the current viewshed shimmers on the same kind of wall clock:
+each cell rests in its depth band's blue and lights a shade brighter for a
+moment once every 3.5 real seconds. The phase is a plane wave through world
+coordinates with seeded jitter, so the light reads as a band crossing the
+sheet rather than cells pulsing in place. Ice, marked cells and remembered
 water lie still, and reduced motion turns the shimmer off. `?shimmer=2` is a
 test aid that runs the cycle twice as fast for tuning; it is not a game
 feature.
