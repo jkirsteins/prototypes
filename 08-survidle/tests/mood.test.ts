@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { mapHtml, mapKey } from "../src/ui/map";
@@ -12,6 +12,9 @@ import { regionState } from "../src/sim/regionstate";
 import type { GameState, TaskId } from "../src/sim/types";
 import { css } from "./css";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 /** A task on the player, with only the fields the mood reads filled in. */
 function doing(state: GameState, id: TaskId): void {
@@ -162,6 +165,28 @@ describe("the mood on the screen", () => {
     state.player.sleepDebt = 100;
     updateBars(state, world);
     expect(sleepiness?.querySelector('[data-val="sleepiness"]')?.textContent).toBe("100");
+  });
+
+  it("shows the practical sleep clock beside the Sleepiness bar", () => {
+    const { state, world } = newGame(17);
+    state.minute = 5 * 60;
+    state.player.sleepDebt = 10;
+    const cal = calendar(state.minute, state.startDoy);
+    document.body.innerHTML = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
+    updateBars(state, world);
+    expect(document.querySelector("[data-sleep-forecast]")?.textContent).toBe("Sleep about 00:20");
+
+    state.player.sleeping = { collapsed: false };
+    state.player.sleepDebt = 64;
+    updateBars(state, world);
+    expect(document.querySelector("[data-sleep-forecast]")?.textContent).toMatch(/^Wake about \d\d:\d\d$/);
+
+    state.survivors.at(-1)!.person.quirks = ["sleepsLight"];
+    testAtmosphere({ precipMmPerHour: 10, rainMmPerHour: 10, precip: "rain", windKmh: 40 });
+    updateBars(state, world);
+    expect(document.querySelector("[data-sleep-forecast]")?.textContent).toMatch(
+      /^Wake about \d\d:\d\d - storm reduces sleep quality$/,
+    );
   });
 
   it("never animates a map cell with a positional transform", () => {
