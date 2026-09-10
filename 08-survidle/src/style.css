@@ -676,7 +676,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   height: calc(var(--line) / var(--detail));
   z-index: var(--map-signal);
 }
-.grid .c.t-water { color: #3a6fd8; background-color: #0a1633; --water-rest: #0a1633; --water-lit: #10204a; }
+.grid .c.t-water { color: #3a6fd8; background-color: #0a1633; --water-rest: #0a1633; --water-lit: #24468f; }
 .grid .c.t-spruce { color: #1f8f3a; background-color: #0b1f11; }
 .grid .c.t-pine { color: #3fbf5a; background-color: #0e2415; }
 .grid .c.t-birch { color: #9be36a; background-color: #1a2a12; }
@@ -1463,8 +1463,8 @@ button.act small.gives, span.act small.gives,
    shallows are the lit end and the open water the dark one - the way water
    reads standing on a beach. A lake has no offshore and keeps the plain
    colour. */
-.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; --water-rest: #102047; --water-lit: #182d60; }
-.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; --water-rest: #060d20; --water-lit: #0b1532; }
+.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; --water-rest: #102047; --water-lit: #3160b0; }
+.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; --water-rest: #060d20; --water-lit: #1a3474; }
 /* Light on open water: rippling, faked for the eye. Three smooth waves
    cross the sheet in different directions, with different wavelengths and
    speeds, and each cell shows their sum. A cell's start in each wave comes
@@ -1485,16 +1485,16 @@ button.act small.gives, span.act small.gives,
   background: var(--water-lit);
   opacity: 0;
   will-change: opacity;
-  animation: water-ripple 5s ease-in-out infinite;
+  animation: water-ripple 2.5s ease-in-out infinite;
   /* ?shimmer= on the page sets the speed factor on the root; the delay scales with it so the pattern keeps its shape. */
   animation-delay: calc(var(--water-delay) / var(--water-shimmer-speed, 1));
 }
-.grid .c.water-live .water-ripple-1 { animation-duration: calc(5s / var(--water-shimmer-speed, 1)); }
-.grid .c.water-live .water-ripple-2 { animation-duration: calc(3.75s / var(--water-shimmer-speed, 1)); }
-.grid .c.water-live .water-ripple-3 { animation-duration: calc(8s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-1 { animation-duration: calc(2.5s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-2 { animation-duration: calc(1.875s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-3 { animation-duration: calc(4s / var(--water-shimmer-speed, 1)); }
 @keyframes water-ripple {
   0%, 100% { opacity: 0; }
-  50% { opacity: 0.34; }
+  50% { opacity: 0.4; }
 }
 /* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
    depth palette. Thin ice remains dark and uncertain; safe ice forms the
