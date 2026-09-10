@@ -101,7 +101,7 @@ thin shell that runs it and posts progress by stage; tests call the
 function directly. Six stages:
 
 1. **Coarse surface.** The template plus the two largest noise octaves,
-   sampled on a 2.4 km grid (225 by 278, about 62k cells).
+   sampled on a 1.2 km grid (450 by 556, about 250k cells).
 2. **Erosion loop on the coarse grid.** Stream-power erosion with
    uplift and hillslope diffusion, implicit in the receiver order (Braun
    and Willett), which is stable at any step. Each iteration: fill pits
@@ -112,7 +112,7 @@ function directly. Six stages:
 
    with uplift `U` shaped like the template's crest so the crest is
    held up while the valleys cut, and diffusion applied as a five-point
-   smoothing of the height change. About 40 iterations. Budget 3 s.
+   smoothing of the height change. About 30 iterations. Budget 10 s.
    Sea cells are fixed at their template height and are never eroded.
 3. **Upsample to 300 m.** Bicubic interpolation of the eroded coarse
    surface, plus the two finest noise octaves with amplitude scaled by
@@ -170,12 +170,13 @@ About 44 MB for 4 million cells, held for the world's life.
   the escape hatch if the load bar becomes a complaint, and is not built
   now.
 
-**Budget.** Under 15 s for the whole solve on the dev machine, measured
+**Budget.** Under 20 s for the whole solve on the dev machine, measured
 in the slow suite. Measured on the current 2.34 million cells for
 scale: the elevation field costs 1.4 s and a priority-flood pass 2.8 s.
 The plan's first task is a timing spike of stages 1 to 5 on the full
-size, so the budget is known before the classification is written. If
-the spike comes in under 10 s, the erosion grid moves to 1.2 km.
+size, so the budget is known before the classification is written. The
+erosion grid stays at 1.2 km because that is where the tributary network
+comes from; the iteration count is the knob if the spike runs over.
 
 **Progress bar.** The worker posts `{ stage, fraction }` per stage. The
 UI shows a bar with the stage name on new world and on load: raising the
@@ -351,7 +352,7 @@ printing each measure beside its real target:
 | Bog share by latitude band | rising from about 10 to over 20 percent |
 | Valley bearings in the mountain belt | histogram; expected transverse to the crest |
 | Mean slope per land class; class shares per 100 m band per degree | printed, no target |
-| Solve time | under 15 s |
+| Solve time | under 20 s |
 
 **Existing gates.** April, year, winter and heir gates re-run on the
 new world and their readings go in the report as findings, not targets.
@@ -373,7 +374,7 @@ that fords a river and a route that refuses a river without a ford.
 ## Risks
 
 - **The budget is unmeasured at full size.** The timing spike is the
-  first task; the erosion grid and iteration count are the knobs.
+  first task; the iteration count is the knob, the 1.2 km grid is not.
 - **Lake share may run high** on an upsampled noisy surface. The 2 m
   fill-depth rule is the first defence; the report's lake share is the
   check.
