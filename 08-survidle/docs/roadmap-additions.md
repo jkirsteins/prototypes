@@ -724,34 +724,59 @@ known/unknown boundary, preserve the uniform time-of-day shade across the whole
 viewport, and never reveal terrain or marks in an unknown cell. Treat this as a
 P2 readability pass, with screenshots at day, night and rain before shipping.
 
-## Per-frame panel rewrites
+## Rendering on its own clock - NEXT
 
-**Raised** 2026-09-11, while measuring the water shimmer's cost.
+**Raised** 2026-09-11, while measuring the water shimmer's cost. **Next
+item**, by the author's call the same day.
 
-The frame loop renders every panel on every animation frame, and the browser
-pays for it whether or not anything changed. Measured in headless Chrome on a
-real run (seed 4, day 150, rain): a style recalculation and a layout 60 times
-a second, paint at 73 ms of every second, and a main thread busy 676 ms of
-every second, all with the water shimmer switched off. The per-frame mutation
-census names the writers: the six panes' `hidden` attribute, the sky's
-`aria-label` and gradient centre, the weather panel's children and path, and
-the map tip's `hidden`, each rewritten 60 times a second. The same run had
-358 CSS animations alive at once: 220 fog and rain glyph ripples, 120 sky
-rain drops, 11 water cells.
+The frame loop renders every panel on every animation frame and diffs the
+result, so the page pays style and layout at display rate whether or not
+anything changed. Measured in headless Chrome at 1x on a real run (seed
+12318, day 190, a lake of 189 water cells in view), with all water motion
+switched off: a style recalculation and a layout 60 times a second, paint
+at 74 ms of every second, and a main thread busy 478 ms of every second.
+The per-frame mutation census names the writers: the six panes' `hidden`
+attribute, the sky's `aria-label` and gradient centre, the weather panel's
+children and path, and the map tip's `hidden`, each rewritten 60 times a
+second though the value is almost always the one already there. The same
+run had hundreds of CSS animations alive at once: four glyph ripples per
+fog or rain cell, 120 sky rain drops, and now three ripple overlays per
+water cell.
 
-The shimmer itself is not the cost. With it on, the same run paints 77 ms
-instead of 73 and stays at 60 frames a second; even the coast fixture with
-128 live water cells holds 60 frames a second and adds 43 ms a second of
-paint and raster.
+What it cost in practice: the first water ripple computed a colour per
+cell in place, which repainted every water cell every frame. Paint went
+from 74 to 366 ms a second at 1x, roughly four times that on a Retina
+screen, and the main thread to 94 percent busy. Frames dropped, a smooth
+ripple with dropped frames reads as pulsing, and hover queued behind the
+same work. Moving the ripple to opacity overlays the compositor animates
+by itself put paint back at baseline. The lesson generalises: nothing
+that moves every frame may run on the main thread.
 
-The fix is the one `setPanel` already applies to markup: write only what
-changed. Every per-frame writer above sets a value that is usually equal to
-the one already there; compare first, and the mutation, the style
-invalidation and the layout go away. The weather panel and the sky should
-then render on their own keys, as the weather panel already does for its
-text but not for its path. Measure with the same census before and after,
-and keep the churn budget test honest about it: a panel that rewrites an
-attribute every frame is churn even when the markup does not change. The
-animations are a second, smaller item: four ripples per weather cell could
-be one element whose content steps, and sky rain could cap its drop count
-by viewport size.
+The shape to build has three tiers, each on its own clock:
+
+1. **Presentation motion** - water, fog, rain, cloud shadows, the mood
+   glyph - lives in CSS and runs on the compositor at display rate with no
+   script. Only transform and opacity animate; a colour or a glyph change
+   is a step, never a per-frame paint. Per-cell phases are seeded from
+   the world, as the water ripples are now, so a re-render writes the same
+   markup and the morph has nothing to do.
+2. **State rendering** runs on change or on a fixed cadence of about 10 Hz,
+   whichever is later, since nothing a panel shows moves faster than a
+   game minute. Every writer compares before it writes - the discipline
+   `setPanel` already applies to markup - so an unchanged pane, sky or tip
+   costs no mutation, no style invalidation and no layout. The weather
+   panel and the sky render on their own keys, as the weather panel already
+   does for its text but not for its path.
+3. **The engine** ticks at whatever rate the simulation needs, decoupled
+   from both; the forecaster already shows the pattern for moving that
+   work into a worker when it grows.
+
+Measure with the same per-frame census and the same headless budgets
+before and after, and extend the churn budget test to count attribute
+rewrites, not only markup: a panel that sets `hidden` to the value it
+already has every frame is churn. Acceptance is the lake run above idle at
+under 10 percent main-thread busy with the water rippling, and hover
+answering within a frame. Smaller follow-ons once the tiers exist: four
+glyph ripples per weather cell could be one element whose content steps,
+and sky rain could cap its drop count by viewport size.
+
