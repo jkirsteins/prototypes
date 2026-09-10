@@ -5,7 +5,8 @@ import { calendar } from "../src/sim/calendar";
 import { activeOpportunityKeys, recordOpportunityEvent, opportunityDef, opportunitySteps, OPPORTUNITIES, acknowledgeOpportunities, newOpportunities, unpresentedOpportunityKeys } from "../src/sim/opportunities";
 import { ITEM_NAMES, RECIPE_IDS, RECIPES, STRUCTURE_IDS, STRUCTURES, TOOL_IDS, TOOLS } from "../src/sim/items";
 import { newGame, newPerson } from "../src/sim/newgame";
-import { cellOf } from "../src/sim/position";
+import { cellOf, placeAt } from "../src/sim/position";
+import { regionAt } from "../src/world/gen";
 import { deserialize, serialize } from "../src/sim/save";
 import { resetTeaching } from "../src/sim/teach";
 import { TASK_IDS, type OpportunityKey, type Season } from "../src/sim/types";
@@ -374,6 +375,40 @@ describe("goals are the world's, not a life's", () => {
     raw.state.goals = { introduced: { remoteRefuge: true } };
     const loaded = deserialize(JSON.stringify(raw))!.state;
     expect(loaded.opportunities.context.chapter3HomeRegion).toBeNull();
+  });
+
+  it.each(["refresh", "event"])("initializes a migrated remote chapter during live %s and credits the refuge", (entry) => {
+    const { state, world } = newGame(3);
+    const home = state.player.region;
+    state.regions[home].campCell = cellOf(state, world);
+    const raw = JSON.parse(serialize(state));
+    raw.version = 9;
+    raw.state.minute = 42720;
+    delete raw.state.opportunities;
+    raw.state.goals = {
+      done: Object.fromEntries(["site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook", "findUsefulCover", "makeUsefulShelter", "testShelter", "readWeather", "prepareWeather", "surviveForecast"].map((id) => [id, true])),
+      introduced: {}, chapter3HomeRegion: null,
+    };
+    const loaded = deserialize(JSON.stringify(raw))!.state;
+    expect(loaded.opportunities.discoveredAt.remoteRefuge).toBeDefined();
+    expect(loaded.opportunities.context.chapter3HomeRegion).toBeNull();
+    expect(loaded.opportunities.completedAt.remoteRefuge).toBeUndefined();
+
+    if (entry === "refresh") {
+      activeOpportunityKeys(loaded, calendar(loaded.minute, loaded.startDoy));
+      expect(loaded.opportunities.context.chapter3HomeRegion).toBe(home);
+    }
+    expect(loaded.opportunities.completedAt.remoteRefuge).toBeUndefined();
+    const remote = regionAt(world, home).neighbours[0].id;
+    const refuge = regionAt(world, remote).campCell;
+    placeAt(loaded, world, refuge);
+    expect(recordOpportunityEvent(loaded, {
+      kind: "protectionChanged", minute: loaded.minute, region: remote,
+      cell: refuge, from: 1, to: 2, source: "improved",
+    }, world)).toContain("remoteRefuge");
+    expect(loaded.opportunities.context.chapter3HomeRegion).toBe(home);
+    expect(loaded.opportunities.completedAt.remoteRefuge).toBe(42720);
+    expect(loaded.opportunities.discoveredAt.fieldFire).toBe(42720);
   });
 
   it("selects the old visible leaf on either side of the day-eight weather gate", () => {

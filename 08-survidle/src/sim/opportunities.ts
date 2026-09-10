@@ -282,6 +282,7 @@ function fieldOpportunity(minute: number, area: { region: number; centre: number
 
 /** Discovered leaves can earn credit regardless of presentation or current focus. */
 export function recordOpportunityEvent(state: GameState, d: OpportunityEvent, world?: World): OpportunityKey[] {
+  captureChapterHome(state);
   const known = new Set(Object.keys(state.opportunities.discoveredAt) as OpportunityKey[]);
   const pending = new Set([...known].filter((key) => state.opportunities.completedAt[key] === undefined));
   const result = applyOpportunityEvent(state.opportunities, d, state.minute, (finished) => {
@@ -352,7 +353,7 @@ export function recordOpportunityEvent(state: GameState, d: OpportunityEvent, wo
       }
     }
   });
-  captureChapterHome(state, result.discovered);
+  captureChapterHome(state);
   return result.completed;
 }
 
@@ -364,8 +365,11 @@ function finishOpportunity(state: GameState, key: OpportunityKey, finished: Oppo
   finished.push(key);
 }
 
-function captureChapterHome(state: GameState, keys: OpportunityKey[]): void {
-  if (!keys.includes("remoteRefuge") || state.opportunities.context.chapter3HomeRegion !== null) return;
+/** Live context can initialize after migration or after the first camp appears. */
+function captureChapterHome(state: GameState): void {
+  if (state.dead || state.landing || state.opportunities.discoveredAt.remoteRefuge === undefined
+    || state.opportunities.completedAt.remoteRefuge !== undefined
+    || state.opportunities.context.chapter3HomeRegion !== null) return;
   const here = state.regions[state.player.region];
   const home = here?.campCell !== null && here?.campCell !== undefined
     ? state.player.region : Number(Object.entries(state.regions).find(([, region]) => region.campCell !== null)?.[0]);
@@ -380,7 +384,7 @@ export function refreshOpportunities(state: GameState, minute = state.minute): v
     if (!def.prerequisites || !chapterEligible(state.opportunities, def, minute) || def.prerequisites.some((key) => state.opportunities.completedAt[key] === undefined)) continue;
     if (discoverOpportunity(state.opportunities, def.key, state.minute, false)) discovered.push(def.key);
   }
-  captureChapterHome(state, discovered);
+  captureChapterHome(state);
   if (discovered.length) {
     state.opportunities.notices.push({ id: `${state.minute}:${state.opportunities.nextNoticeId++}`, minute: state.minute, completed: [], completedGroups: [], discovered, messages: [] });
     if (state.opportunities.current === null && discovered.length === 1) setCurrentOpportunity(state.opportunities, discovered[0]);
