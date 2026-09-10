@@ -800,6 +800,91 @@ export type GoalId =
   | "explore" | "secondCamp" | "seasonalFood" | "durableRoof" | "winterStores"
   | "spring" | "summer" | "autumn" | "winter";
 
+export type StaticOpportunityId =
+  | "site" | "drink" | "firewood" | "fire" | "bed" | "roof"
+  | "forageMeal" | "cook" | "keptNight" | "snareMeal" | "huntMeal"
+  | "fishMeal" | "trapMeal" | "preserveHunt" | "firstOrder"
+  | "findUsefulCover" | "makeUsefulShelter" | "testShelter"
+  | "readWeather" | "prepareWeather" | "surviveForecast"
+  | "water" | "keptDays" | "foodSource" | "store" | "fat"
+  | "longOrder" | "toolCare" | "remoteRefuge" | "fieldFire"
+  | "fieldMeal" | "remoteStorm" | "explore" | "secondCamp"
+  | "seasonalFood" | "durableRoof" | "winterStores";
+
+export type OpportunityKey =
+  | StaticOpportunityId
+  | `track:${Species}` | `hunt:${Species}` | `dress:${Species}`
+  | `recover:${Species}` | `catch:${Species}` | `trap:${Species}`
+  | `forage:${FoodId}` | `build:${StructureId}` | `make:${ToolId}`
+  | `season:${Season}`;
+
+export type OpportunityCategory =
+  | "survival" | "camp" | "food" | "wildlife"
+  | "weather" | "exploration" | "mastery";
+
+export type OpportunityGroupId =
+  | "track-animals" | "hunt-animals" | "dress-carcasses" | "recover-kills"
+  | "catch-fish" | "trap-fish" | "forage-foods" | "build-shelters"
+  | "make-tools" | "seasons";
+
+export type OpportunityEvent =
+  | { kind: "drank" }
+  | { kind: "gathered"; item: ItemId; kg: number }
+  | { kind: "season"; season: Season };
+
+export interface OpportunityStepDef {
+  id: string;
+  label: string;
+  target: number;
+  unit?: string;
+  final?: boolean;
+  credit: (event: OpportunityEvent) => number;
+}
+
+export interface OpportunityDef {
+  key: OpportunityKey;
+  title: string;
+  category: OpportunityCategory;
+  group?: OpportunityGroupId;
+  steps: OpportunityStepDef[];
+  prerequisites?: OpportunityKey[];
+  notBeforeDay?: number;
+  note?: string;
+}
+
+export interface OpportunityGroupDef {
+  id: OpportunityGroupId;
+  title: string;
+  category: OpportunityCategory;
+  keys: OpportunityKey[];
+}
+
+export interface OpportunityNotice {
+  id: string;
+  minute: number;
+  completed: OpportunityKey[];
+  completedGroups: OpportunityGroupId[];
+  discovered: OpportunityKey[];
+  messages: string[];
+}
+
+export interface OpportunityContextState {
+  /** Refined to WeatherOpportunityContext when Task 5 moves the runner. */
+  weather: unknown | null;
+  chapter3HomeRegion: number | null;
+}
+
+export interface OpportunityState {
+  discoveredAt: Partial<Record<OpportunityKey, number>>;
+  completedAt: Partial<Record<OpportunityKey, number>>;
+  stepProgress: Partial<Record<OpportunityKey, Record<string, number>>>;
+  current: OpportunityKey | null;
+  notices: OpportunityNotice[];
+  nextNoticeId: number;
+  context: OpportunityContextState;
+  lastCategory: OpportunityCategory;
+}
+
 export interface GoalOpportunity {
   goal: GoalId;
   status: "reserved" | "announced" | "running" | "resolved";
