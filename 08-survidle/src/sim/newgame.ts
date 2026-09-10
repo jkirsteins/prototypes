@@ -1,7 +1,7 @@
 import { derive, Rng } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
 import { calendar, fmtDate, START_DOY } from "./calendar";
-import { newGoals } from "./goals";
+import { newOpportunities } from "./opportunities";
 import { AWAY_HOURS_DEFAULT } from "../units";
 import { addItem, emptyInventory } from "./inventory";
 import { FOODS, KCAL_FULL } from "./items";
@@ -152,7 +152,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     landing: null,
     spine: { fired: {}, announced: {} },
     manualSeen: false,
-    goals: newGoals(calendar(0, startDoy).season),
+    opportunities: newOpportunities(calendar(0, startDoy).season),
     shopping: null,
     taught: {},
     teachQueue: [],

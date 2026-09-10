@@ -1,3 +1,4 @@
+import { reveal } from "./opportunity-helpers";
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { addFirewood, eat } from "../src/sim/actions";
@@ -19,7 +20,7 @@ import type { TaskId } from "../src/sim/types";
 import { intentOption, startIntent } from "../src/sim/intent";
 import { deserialize, serialize } from "../src/sim/save";
 import { siteCamp } from "./siting-helpers";
-import { GOALS, introduceGoals } from "../src/sim/goals";
+import { OPPORTUNITIES } from "../src/sim/opportunities";
 import { ensureGround } from "../src/sim/weather";
 import { testRain } from "./weather-helpers";
 
@@ -39,8 +40,8 @@ function finish(game: ReturnType<typeof newGame>, id: TaskId, arg?: string) {
 function lightField(creditFire = false) {
   const game = field();
   if (creditFire) {
-    introduceGoals(game.state, ["fire"]);
-    game.state.goals.stepProgress.fire = { site: 1, fuel: 1, ignition: 1 };
+    reveal(game.state, ["fire"]);
+    game.state.opportunities.stepProgress.fire = { site: 1, fuel: 1, ignition: 1 };
   }
   addItem(game.state.player.pack, "fireDrill", 1);
   addItem(game.state.player.pack, "firewood", 10);
@@ -53,7 +54,7 @@ describe("a fire where you stand", () => {
     const { state, world } = lightField(true);
     expect(state.player.fieldFire).toEqual({ cell: cellOf(state, world), fuelKg: 1 });
     expect(state.player.tools.some(t => t.id === "fireDrill" && t.durability < 100)).toBe(true);
-    expect(state.goals.done.fire).toBe(true);
+    expect(state.opportunities.completedAt.fire).toBeDefined();
     expect(regionState(state, world, state.player.region).fire.lit).toBe(false);
   });
   it("requires a drill, dry fuel and weather in which tinder can catch", () => {
@@ -68,86 +69,83 @@ describe("a fire where you stand", () => {
   });
   it("cooks away from camp and credits the existing cook goal", () => {
     const game = lightField();
-    introduceGoals(game.state, ["cook"]);
+    reveal(game.state, ["cook"]);
     addItem(game.state.player.pack, "rawMeat", 1);
     finish(game, "cook", "rawMeat");
     expect(qty(game.state.player.pack, "cookedMeat")).toBe(1);
-    expect(game.state.goals.stepProgress.cook?.cook).toBe(1);
-    expect(game.state.goals.done.cook).toBeUndefined();
+    expect(game.state.opportunities.stepProgress.cook?.cook).toBe(1);
+    expect(game.state.opportunities.completedAt.cook).toBeUndefined();
     expect(eat(game.state, game.world, "cookedMeat", new Rng(1))).toBeGreaterThan(0);
-    expect(game.state.goals.done.cook).toBe(true);
+    expect(game.state.opportunities.completedAt.cook).toBeDefined();
   });
   it("credits the introduced field lessons only after a successful field light and productive cook", () => {
     const game = field();
     const { state, world } = game;
-    for (const goal of GOALS) state.goals.done[goal.id] = true;
-    delete state.goals.done.fieldFire;
-    delete state.goals.done.fieldMeal;
-    delete state.goals.done.remoteStorm;
+    for (const goal of OPPORTUNITIES) state.opportunities.completedAt[goal.key] = 0;
+    delete state.opportunities.completedAt.fieldFire;
+    delete state.opportunities.completedAt.fieldMeal;
+    delete state.opportunities.completedAt.remoteStorm;
     state.minute = 30 * 1440;
-    introduceGoals(state, ["fieldFire"]);
-    state.goals.opportunity = {
+    reveal(state, ["fieldFire"]);
+    state.opportunities.context.weather = {
       goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
-      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
-    };
+      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
     addItem(state.player.pack, "fireDrill", 1);
     addItem(state.player.pack, "firewood", 2);
     finish(game, "light");
-    expect(state.goals.done.fieldFire).toBe(true);
+    expect(state.opportunities.completedAt.fieldFire).toBeDefined();
 
-    introduceGoals(state, ["fieldMeal"]);
+    reveal(state, ["fieldMeal"]);
     addItem(state.player.pack, "rawMeat", 1);
     finish(game, "cook", "rawMeat");
-    expect(state.goals.done.fieldMeal).toBe(true);
+    expect(state.opportunities.completedAt.fieldMeal).toBeDefined();
   });
 
   it("does not credit a failed field light or an empty cook completion", () => {
     const game = field();
     const { state, world } = game;
-    for (const goal of GOALS) state.goals.done[goal.id] = true;
-    delete state.goals.done.fieldFire;
-    delete state.goals.done.fieldMeal;
-    delete state.goals.done.remoteStorm;
+    for (const goal of OPPORTUNITIES) state.opportunities.completedAt[goal.key] = 0;
+    delete state.opportunities.completedAt.fieldFire;
+    delete state.opportunities.completedAt.fieldMeal;
+    delete state.opportunities.completedAt.remoteStorm;
     state.minute = 30 * 1440;
-    introduceGoals(state, ["fieldFire", "fieldMeal"]);
-    state.goals.opportunity = {
+    reveal(state, ["fieldFire", "fieldMeal"]);
+    state.opportunities.context.weather = {
       goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
-      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
-    };
+      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
     addItem(state.player.pack, "fireDrill", 1);
     addItem(state.player.pack, "firewood", 2);
     testRain(2);
     expect(startTask(state, world, cal, "light")).toBe(true);
     for (let n = 0; state.task && n < 60; n++) stepTask(state, world, cal, new Rng(7), 1);
     expect(state.player.fieldFire).toBeNull();
-    expect(state.goals.done.fieldFire).toBeUndefined();
+    expect(state.opportunities.completedAt.fieldFire).toBeUndefined();
 
-    state.goals.done.fieldFire = true;
+    state.opportunities.completedAt.fieldFire = 0;
     testRain(0);
     state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 3 };
     addItem(state.player.pack, "rawMeat", 1);
     expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
     removeItem(state.player.pack, "rawMeat", 1);
     for (let n = 0; state.task && n < 60; n++) stepTask(state, world, cal, new Rng(1), 1);
-    expect(state.goals.done.fieldMeal).toBeUndefined();
+    expect(state.opportunities.completedAt.fieldMeal).toBeUndefined();
   });
   it("stops field cooking without output or goal credit when rain extinguishes the fire in progress", () => {
     const game = lightField();
     const { state, world } = game;
-    for (const goal of GOALS) state.goals.done[goal.id] = true;
-    delete state.goals.done.fieldMeal;
-    delete state.goals.done.remoteStorm;
-    introduceGoals(state, ["fieldMeal"]);
-    state.goals.opportunity = {
+    for (const goal of OPPORTUNITIES) state.opportunities.completedAt[goal.key] = 0;
+    delete state.opportunities.completedAt.fieldMeal;
+    delete state.opportunities.completedAt.remoteStorm;
+    reveal(state, ["fieldMeal"]);
+    state.opportunities.context.weather = {
       goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
-      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
-    };
+      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
     addItem(state.player.pack, "rawMeat", 1);
     expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
     stepTask(state, world, cal, new Rng(1), 1);
@@ -159,7 +157,7 @@ describe("a fire where you stand", () => {
     expect(state.task).toBeNull();
     expect(qty(state.player.pack, "rawMeat")).toBe(1);
     expect(qty(state.player.pack, "cookedMeat")).toBe(0);
-    expect(state.goals.done.fieldMeal).toBeUndefined();
+    expect(state.opportunities.completedAt.fieldMeal).toBeUndefined();
   });
   it("requires a lit fire to crack bones or grind bark", () => {
     const { state, world } = field();
@@ -244,8 +242,8 @@ describe("a fire where you stand", () => {
     expect(state.player.fieldFire).toBeNull();
     expect(qty(state.player.pack, "firewood")).toBe(before);
     expect(regionState(state, world, state.player.region).fire.embers).toBe(0);
-    expect(state.goals.done.keptNight).toBeUndefined();
-    expect(state.goals.done.keptDays).toBeUndefined();
+    expect(state.opportunities.completedAt.keptNight).toBeUndefined();
+    expect(state.opportunities.completedAt.keptDays).toBeUndefined();
   });
   it("dies immediately when leaving its cell and never returns on walking back", () => {
     const { state, world } = lightField();
@@ -327,8 +325,8 @@ describe("a fire where you stand", () => {
       stepCamp(state, world, 0, 60, { region: state.player.region, atCamp: false });
     }
     expect(state.player.fieldFire).not.toBeNull();
-    expect(state.goals.done.keptNight).toBeUndefined();
-    expect(state.goals.done.keptDays).toBeUndefined();
+    expect(state.opportunities.completedAt.keptNight).toBeUndefined();
+    expect(state.opportunities.completedAt.keptDays).toBeUndefined();
     expect(regionState(state, world, state.player.region).fire.litSince).toBeNull();
   });
   it("keeps a field fire useful when camp is sited on its cell without making it a hearth", () => {

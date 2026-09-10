@@ -1,3 +1,4 @@
+const SEASON_KEYS = ["season:spring", "season:summer", "season:autumn", "season:winter"] as const;
 /**
  * A full simulated year, the reference survivor's own machinery: real
  * minutes, real weather, real deaths and heirs where they fall. Cheap to
@@ -9,7 +10,7 @@
  * .test.ts already does for the same reference machinery.
  */
 import { describe, expect, it } from "vitest";
-import { GOALS, introduceGoals, SEASON_ORDER } from "../../src/sim/goals";
+import { OPPORTUNITIES } from "../../src/sim/opportunities";
 import { setSkillLevel } from "../../src/sim/horizon";
 import { addItem, pile } from "../../src/sim/inventory";
 import { beginAgain, land } from "../../src/sim/landing";
@@ -24,7 +25,6 @@ describe("the seasonal tail over a real year", () => {
     // bare arrival kit dies too fast to ever be alive when a season turns.
     const ref = setUpReference(17, true);
     const { state, world } = ref;
-    introduceGoals(state, SEASON_ORDER);
     const camp = pile(state, regionState(state, world, state.player.region).campCell!);
     addItem(camp, "driedMeat", 500);
     addItem(camp, "fat", 100);
@@ -35,23 +35,22 @@ describe("the seasonal tail over a real year", () => {
     // has no goal modal to introduce authored lessons, and those lessons now
     // include deliberate field-weather activity that the order list cannot
     // stand in for. Their own focused tests exercise those outcomes.
-    for (const goal of GOALS) {
-      if (!SEASON_ORDER.includes(goal.id)) state.goals.done[goal.id] = true;
+    for (const goal of OPPORTUNITIES) {
+      if (!(SEASON_KEYS as readonly string[]).includes(goal.key)) state.opportunities.completedAt[goal.key] = 0;
     }
-    introduceGoals(state, SEASON_ORDER);
     for (let life = 0; life < 6; life++) {
       measure(ref, 400);
-      if (SEASON_ORDER.every((id) => state.goals.done[id])) break;
+      if (SEASON_KEYS.every((id) => state.opportunities.completedAt[id] !== undefined)) break;
       if (!state.dead) break;
       beginAgain(state, world);
       land(state, world, undefined, medianPerson(state.landing!.candidates[0].person.sex));
     }
-    // The queue records every completion in the order goalDeed reached it,
+    // The queue records every completion in the order recordOpportunityEvent reached it,
     // season and worked goal alike; filtering it for the four seasons is the
     // arrival order itself, not a reconstruction of it. Landed in spring, so
     // spring is already under way and is the last of the four to be earned,
     // a full year after the three that come round before it.
-    const order = state.goals.queue.filter((id) => (SEASON_ORDER as readonly string[]).includes(id));
-    expect(order).toEqual(["summer", "autumn", "winter", "spring"]);
+    const order = state.opportunities.notices.flatMap((notice) => notice.completed).filter((id) => (SEASON_KEYS as readonly string[]).includes(id));
+    expect(order).toEqual(["season:summer", "season:autumn", "season:winter", "season:spring"]);
   }, 120000);
 });

@@ -5,14 +5,14 @@
  * a goal reached and a rung opened are the same kind of event to a reader.
  */
 import { calendar, type Calendar } from "../sim/calendar";
-import { activeGoals, goalDef, type GoalId, unintroducedGoals } from "../sim/goals";
+import { activeOpportunityKeys, opportunityDef, type OpportunityKey, unpresentedOpportunityKeys } from "../sim/opportunities";
 import type { GameState } from "../sim/types";
 import type { World } from "../world/gen";
 import { goalGuide, goalProgress } from "./goalguide";
 import { esc, type UiState } from "./render";
 
-function rowHtml(id: GoalId): string {
-  const g = goalDef(id);
+function rowHtml(id: OpportunityKey): string {
+  const g = opportunityDef(id)!;
   return `<li class="goal"><button class="goal-open" data-act="goal-open" data-goal="${id}"><span aria-hidden="true">[ ]</span> <span class="goal-title">${esc(g.title)}</span></button></li>`;
 }
 
@@ -25,12 +25,12 @@ export function goalsHtml(state: GameState, world: World, cal: Calendar): string
 export function goalsHtml(state: GameState, cal: Calendar): string;
 export function goalsHtml(state: GameState, worldOrCal: World | Calendar, maybeCal?: Calendar): string {
   const cal = maybeCal ?? worldOrCal as Calendar;
-  const active = activeGoals(state, cal);
+  const active = activeOpportunityKeys(state, cal);
   if (active.length === 0) return "";
   return `<h2>Goals</h2><ul class="goals">${active.map(rowHtml).join("")}</ul>`;
 }
 
-function stepsHtml(state: GameState, world: World, cal: Calendar, id: GoalId): string {
+function stepsHtml(state: GameState, world: World, cal: Calendar, id: OpportunityKey): string {
   const progress = goalProgress(state, world, cal, id);
   if (progress.steps.length === 0) return "";
   return `<ul class="goal-steps">${progress.steps.map((step) => `<li class="${step.done ? "done" : ""}"><span aria-hidden="true">[${step.done ? "x" : " "}]</span> ${esc(step.label)}</li>`).join("")}</ul>`;
@@ -40,16 +40,16 @@ export function goalGuideHtml(
   state: GameState,
   world: World,
   cal: Calendar,
-  ids: GoalId[],
-  done: GoalId[] = [],
+  ids: OpportunityKey[],
+  done: OpportunityKey[] = [],
   automaticOrNotices: boolean | string[] = true,
   queuedNotices: string[] = [],
 ): string {
   const automatic = typeof automaticOrNotices === "boolean" ? automaticOrNotices : true;
   const notices = Array.isArray(automaticOrNotices) ? automaticOrNotices : queuedNotices;
-  const completed = done.map((id) => `<p class="goal-status goal-complete">Goal completed: ${esc(goalDef(id).title)}</p>`).join("");
+  const completed = done.map((id) => `<p class="goal-status goal-complete">Goal completed: ${esc(opportunityDef(id)!.title)}</p>`).join("");
   const cards = ids.map((id) => {
-    const def = goalDef(id);
+    const def = opportunityDef(id)!;
     const guide = goalGuide(id);
     const label = automatic ? "New goal available" : "Current goal";
     return `<section class="goal-guide"><p class="goal-status">${label}: ${esc(def.title)}</p>${stepsHtml(state, world, cal, id)}${guide.note ? `<p class="goal-note">${esc(guide.note)}</p>` : ""}</section>`;
@@ -64,22 +64,24 @@ export function goalGuideHtml(
  * finished in the same minute; a landing, a death and an away report all
  * come first for the same reason.
  */
-export function goalMomentToOpen(state: GameState, ui: UiState): GoalId[] | null {
+export function goalMomentToOpen(state: GameState, ui: UiState): OpportunityKey[] | null {
   if (ui.goalGuide || ui.teach || ui.welcome || ui.manual || ui.cemetery || ui.away || state.landing || state.dead) return null;
-  return state.goals.queue.length > 0 ? [...state.goals.queue] : null;
+  const completed = state.opportunities.notices.flatMap((notice) => notice.completed);
+  return completed.length ? completed : null;
 }
 
-export function goalIntroductionToOpen(state: GameState, cal: Calendar, ui: UiState): GoalId[] | null {
+export function goalIntroductionToOpen(state: GameState, cal: Calendar, ui: UiState): OpportunityKey[] | null {
   if (ui.goalGuide || ui.teach || ui.welcome || ui.manual || ui.cemetery || ui.away || state.landing || state.dead) return null;
-  const ids = unintroducedGoals(state, cal);
+  const ids = unpresentedOpportunityKeys(state, cal);
   return ids.length > 0 ? ids : null;
 }
 
 export function goalNoticeToOpen(state: GameState, ui: UiState): string[] | null {
   if (ui.goalGuide || ui.teach || ui.welcome || ui.manual || ui.cemetery || ui.away || state.landing || state.dead) return null;
-  if (state.goals.queue.length > 0) return null;
-  if (unintroducedGoals(state, calendar(state.minute, state.startDoy)).length > 0) return null;
-  return state.goals.noticeQueue.length > 0 ? [...state.goals.noticeQueue] : null;
+  if (state.opportunities.notices.some((notice) => notice.completed.length)) return null;
+  if (unpresentedOpportunityKeys(state, calendar(state.minute, state.startDoy)).length > 0) return null;
+  const messages = state.opportunities.notices.flatMap((notice) => notice.messages);
+  return messages.length ? messages : null;
 }
 
 /**
@@ -87,12 +89,12 @@ export function goalNoticeToOpen(state: GameState, ui: UiState): string[] | null
  * the one screen, and the goals now standing are introduced under it, so
  * a single dismissal leaves the player knowing where to walk.
  */
-export function goalDoneHtml(state: GameState, cal: Calendar, done: GoalId[]): string {
-  const met = done.map((id) => `<p class="goal-status goal-complete">Goal completed: ${esc(goalDef(id).title)}</p>`).join("");
-  const next = activeGoals(state, cal);
+export function goalDoneHtml(state: GameState, cal: Calendar, done: OpportunityKey[]): string {
+  const met = done.map((id) => `<p class="goal-status goal-complete">Goal completed: ${esc(opportunityDef(id)!.title)}</p>`).join("");
+  const next = activeOpportunityKeys(state, cal);
   const ahead = next.length === 0
     ? `<p class="dim">That is the last of them. What you do here now is yours to choose.</p>`
-    : next.map((id) => `<p class="goal-status">New goal available: ${esc(goalDef(id).title)}</p>`).join("");
+    : next.map((id) => `<p class="goal-status">New goal available: ${esc(opportunityDef(id)!.title)}</p>`).join("");
   return `<div class="box teach">
 <h1>Goals</h1>
 ${met}

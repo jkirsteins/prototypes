@@ -9,7 +9,7 @@ import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { intentOption, startIntent, yieldItem } from "./intent";
-import { goalDeed } from "./goals";
+import { recordOpportunityEvent } from "./opportunities";
 import { log } from "./log";
 import { addOrder, type Landing, orderSentence } from "./orders";
 import { RUNG_LEVEL, RUNG_WORD, type Rung, SKILL_NAMES, skillLevel, skillOf } from "./skills";
@@ -108,7 +108,7 @@ export function giveOrder(state: GameState, world: World, req: IntentRequest, ki
   const gate = orderGate(state, req, kind);
   if (!gate.ok) throw new Error(gate.why);
   const order = addOrder(state, world, req, kind, rank);
-  if (order.req.until.kind !== "once") goalDeed(state, { kind: "ordered", task: order.req.task, long: order.kind === "grind" || order.kind === "keep" });
+  if (order.req.until.kind !== "once") recordOpportunityEvent(state, { kind: "ordered", task: order.req.task, long: order.kind === "grind" || order.kind === "keep" });
   return order;
 }
 

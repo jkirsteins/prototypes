@@ -1,6 +1,7 @@
+import { reveal } from "./opportunity-helpers";
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { GOALS, goalDeed, introduceGoals } from "../src/sim/goals";
+import { OPPORTUNITIES, recordOpportunityEvent, acknowledgeOpportunities, queueOpportunityMessage, refreshOpportunities } from "../src/sim/opportunities";
 import { newGame, newPerson } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
 import { goalDoneHtml, goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalNoticeToOpen, goalsHtml } from "../src/ui/goalpanel";
@@ -24,9 +25,9 @@ describe("the goal panel", () => {
 
   it("makes every active row one keyboard button with its goal id", () => {
     const { state, world } = newGame(3);
-    for (const id of ["site", "drink", "firewood", "fire"] as const) state.goals.done[id] = true;
+    for (const id of ["site", "drink", "firewood", "fire"] as const) state.opportunities.completedAt[id] = 0;
     document.body.innerHTML = goalsHtml(state, world, cal);
-    const rows = [...document.querySelectorAll<HTMLLIElement>("li.goal")];
+    const rows = [...document.querySelectorAll<HTMLLIElement>('li.goal:has(button:not([data-goal^="season:"]))')];
     expect(rows).toHaveLength(3);
     expect(rows.map((row) => [...row.children].map((child) => child.tagName))).toEqual([["BUTTON"], ["BUTTON"], ["BUTTON"]]);
     expect(rows.map((row) => row.querySelector("button")?.dataset.goal)).toEqual(["bed", "roof", "keptNight"]);
@@ -34,14 +35,14 @@ describe("the goal panel", () => {
 
   it("shows nothing once the ladder is finished", () => {
     const { state } = newGame(3);
-    for (const g of GOALS) state.goals.done[g.id] = true;
+    for (const g of OPPORTUNITIES) state.opportunities.completedAt[g.key] = 0;
     expect(goalsHtml(state, cal)).toBe("");
   });
 });
 
 describe("goal guidance", () => {
   it("covers every goal exactly once", () => {
-    expect(GOAL_GUIDES.map((guide) => guide.id)).toEqual(GOALS.map((goal) => goal.id));
+    expect(GOAL_GUIDES.map((guide) => guide.id)).toEqual(OPPORTUNITIES.map((goal) => goal.key));
   });
 
   it("keeps every optional mechanics note in ASCII", () => {
@@ -54,7 +55,7 @@ describe("goal guidance", () => {
     const { state } = newGame(3);
     const ui = newUiState();
     expect(goalIntroductionToOpen(state, cal, ui)).toEqual(["site"]);
-    introduceGoals(state, ["site"]);
+    acknowledgeOpportunities(state, ["site"]);
     expect(goalIntroductionToOpen(state, cal, ui)).toBe(null);
   });
 
@@ -84,9 +85,10 @@ describe("goal guidance", () => {
 
   it("reopens a weather lesson with the same copy without mutating world state", () => {
     const { state, world } = newGame(3);
-    for (const id of ["site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook"] as const) state.goals.done[id] = true;
-    state.goals.introduced.findUsefulCover = true;
-    const before = structuredClone(state.goals);
+    for (const id of ["site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook"] as const) state.opportunities.completedAt[id] = 0;
+    state.opportunities.discoveredAt.findUsefulCover = 0;
+    refreshOpportunities(state);
+    const before = structuredClone(state.opportunities);
     const html = goalsHtml(state, world, cal);
     expect(html).toContain('data-goal="findUsefulCover"');
     const modal = goalGuideHtml(state, world, cal, ["findUsefulCover"], [], false);
@@ -94,13 +96,15 @@ describe("goal guidance", () => {
     expect(modal).toContain(guide.note);
     expect(modal).toContain("Current goal: Find useful cover");
     expect(modal).not.toContain("Explore &gt; Shelter");
-    expect(state.goals).toEqual(before);
+    expect(state.opportunities).toEqual(before);
   });
 
   it("does not automatically introduce a lesson again after an heir arrives", () => {
     const { state, world } = newGame(3);
-    for (const id of ["site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook"] as const) state.goals.done[id] = true;
-    state.goals.introduced.findUsefulCover = true;
+    for (const id of ["site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook"] as const) state.opportunities.completedAt[id] = 0;
+    state.opportunities.discoveredAt.findUsefulCover = 0;
+    refreshOpportunities(state);
+    acknowledgeOpportunities(state, state.opportunities.notices.flatMap((notice) => notice.discovered));
     const cell = cellOf(state, world);
     const region = state.player.region;
     newPerson(state, world, cell, region);
@@ -112,34 +116,34 @@ describe("the congratulation", () => {
   it("keeps factual notices behind completions and introductions until the shared overlay dismisses them", () => {
     const { state, world } = newGame(3);
     const ui = newUiState();
-    state.goals.noticeQueue = ["The storm passed. Another opportunity will come."];
-    state.goals.queue = ["site"];
+    queueOpportunityMessage(state, "The storm passed. Another opportunity will come.");
+    state.opportunities.notices[0].completed = ["site"];
     expect(goalNoticeToOpen(state, ui)).toBe(null);
-    state.goals.queue = [];
+    acknowledgeOpportunities(state, [], ["site"]);
     expect(goalNoticeToOpen(state, ui)).toBe(null);
-    state.goals.introduced.site = true;
+    acknowledgeOpportunities(state, ["site"]);
     const notices = goalNoticeToOpen(state, ui);
-    expect(notices).toEqual(state.goals.noticeQueue);
-    const before = structuredClone(state.goals);
+    expect(notices).toEqual(state.opportunities.notices.flatMap((notice) => notice.messages));
+    const before = structuredClone(state.opportunities);
     const html = goalGuideHtml(state, world, cal, [], [], notices!);
     expect(html).toContain("The storm passed. Another opportunity will come.");
     expect(html).toContain('data-act="goal-close"');
-    expect(state.goals).toEqual(before);
+    expect(state.opportunities).toEqual(before);
   });
 
   it("opens only on an announced queued completion", () => {
     const { state } = newGame(3);
     const ui = newUiState();
-    introduceGoals(state, ["firewood"]);
+    reveal(state, ["firewood"]);
     expect(goalMomentToOpen(state, ui)).toBe(null);
-    goalDeed(state, { kind: "gathered", item: "firewood", kg: 20 });
+    recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: 20 });
     expect(goalMomentToOpen(state, ui)).toEqual(["firewood"]);
   });
 
   it("lets a completion outrank a new introduction in the same minute", () => {
     const { state } = newGame(3);
-    state.goals.done.site = true;
-    state.goals.queue = ["site"];
+    state.opportunities.completedAt.site = 0;
+    state.opportunities.notices[0].completed = ["site"];
     const ui = newUiState();
     const done = goalMomentToOpen(state, ui);
     expect(done).toEqual(["site"]);
@@ -150,15 +154,15 @@ describe("the congratulation", () => {
   it("queues behind a larger teaching moment", () => {
     const { state } = newGame(3);
     const ui = newUiState();
-    introduceGoals(state, ["firewood"]);
-    goalDeed(state, { kind: "gathered", item: "firewood", kg: 20 });
+    reveal(state, ["firewood"]);
+    recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: 20 });
     ui.teach = "job";
     expect(goalMomentToOpen(state, ui)).toBe(null);
   });
 
   it("uses explicit completed and available wording in one modal", () => {
     const { state, world } = newGame(3);
-    state.goals.done.site = true;
+    state.opportunities.completedAt.site = 0;
     const html = goalGuideHtml(state, world, cal, ["drink"], ["site"]);
     expect(html).toContain("Goal completed: Choose where to live");
     expect(html).toContain("New goal available: Drink water");
@@ -167,7 +171,7 @@ describe("the congratulation", () => {
 
   it("uses the same explicit wording in the standalone renderer", () => {
     const { state } = newGame(3);
-    state.goals.done.site = true;
+    state.opportunities.completedAt.site = 0;
     const html = goalDoneHtml(state, cal, ["site"]);
     expect(html).toContain("<h1>Goals</h1>");
     expect(html).toContain("Goal completed: Choose where to live");

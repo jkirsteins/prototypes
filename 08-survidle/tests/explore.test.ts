@@ -1,7 +1,7 @@
+import { reveal } from "./opportunity-helpers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
-import { introduceGoals } from "../src/sim/goals";
 import { NOT_ORDERS } from "../src/sim/ladder";
 import { isKnown, knownShare } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -65,7 +65,7 @@ describe("explore", () => {
     const g = newGame(4);
     siteCamp(g.state, g.world);
     const { state, world } = g;
-    introduceGoals(state, ["explore", "secondCamp"]);
+    reveal(state, ["explore", "secondCamp"]);
     const region = partlyKnownNeighbour(g);
     const before = knownShare(state, world, region);
     expect(before).toBeGreaterThan(0);
@@ -81,10 +81,10 @@ describe("explore", () => {
     expect(minutes).toBeGreaterThanOrEqual(expected);
     expect(minutes).toBeLessThan(expected + legs + 1);
     expect(state.player.region).toBe(region);
-    expect(state.goals.done.explore).toBe(true);
+    expect(state.opportunities.completedAt.explore).toBeDefined();
     expect(startTask(state, world, calendar(state.minute), "makeCamp")).toBe(true);
     driveExplore(g, 30);
-    expect(state.goals.done.secondCamp).toBe(true);
+    expect(state.opportunities.completedAt.secondCamp).toBeDefined();
   });
 
   it("leaves a crossable corridor when it is stopped halfway", () => {

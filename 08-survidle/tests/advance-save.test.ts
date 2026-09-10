@@ -194,36 +194,38 @@ describe("save", () => {
     const { state, world } = newGame(9);
     state.weather.storm = { id: 4, source: "synthetic", kind: "rain", from: 600, until: 960, warned: false };
     state.weather.nextStormId = 5;
-    state.goals.opportunity = {
+    state.opportunities.context.weather = {
       goal: "testShelter", status: "reserved", createdAt: 20, attempts: 2,
       stormId: 4, source: "synthetic", area: { region: 7, centre: 99, radiusKm: 1 },
       announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
       readerIndex: 1, plan: null,
     };
-    state.goals.opportunity.plan = stormOptions(state, world, state.weather.storm);
+    state.opportunities.context.weather.plan = stormOptions(state, world, state.weather.storm);
     const back = deserialize(serialize(state))!.state;
     expect(back.weather.storm).toEqual(state.weather.storm);
     expect(back.weather.nextStormId).toBe(5);
-    expect(back.goals.opportunity).toEqual(state.goals.opportunity);
+    expect(back.opportunities.context.weather).toEqual(state.opportunities.context.weather);
   });
 
   it("adds zeroed storm metrics to an opportunity from before shelter testing", () => {
     const { state } = newGame(9);
-    state.goals.opportunity = {
+    state.opportunities.context.weather = {
       goal: "testShelter", status: "reserved", createdAt: 20, attempts: 1,
       stormId: null, source: null, area: null, announcedAt: null, resolvedAt: null,
       minutesByProtection: [4, 3, 2, 1], atCampMinutes: 9, awayFromCampMinutes: 1, maxWetness: 70,
     };
     const raw = JSON.parse(serialize(state));
-    delete raw.state.goals.opportunity.minutesByProtection;
-    delete raw.state.goals.opportunity.atCampMinutes;
-    delete raw.state.goals.opportunity.awayFromCampMinutes;
-    delete raw.state.goals.opportunity.maxWetness;
-    delete raw.state.goals.opportunity.readerIndex;
-    delete raw.state.goals.opportunity.plan;
+    delete raw.state.opportunities.context.weather.minutesByProtection;
+    delete raw.state.opportunities.context.weather.atCampMinutes;
+    delete raw.state.opportunities.context.weather.awayFromCampMinutes;
+    delete raw.state.opportunities.context.weather.maxWetness;
+    delete raw.state.opportunities.context.weather.readerIndex;
+    delete raw.state.opportunities.context.weather.plan;
+    raw.state.goals = { opportunity: raw.state.opportunities.context.weather };
+    delete raw.state.opportunities;
 
-    expect(deserialize(JSON.stringify(raw))!.state.goals.opportunity).toMatchObject({
+    expect(deserialize(JSON.stringify(raw))!.state.opportunities.context.weather).toMatchObject({
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
       readerIndex: null, plan: null,
     });
@@ -231,14 +233,17 @@ describe("save", () => {
 
   it.each(["fieldFire", "fieldMeal"] as const)("migrates a legacy %s opportunity into the shared remote storm attempt", (goal) => {
     const { state } = newGame(9);
-    state.goals.opportunity = {
+    state.opportunities.context.weather = {
       goal, status: "reserved", createdAt: 20, attempts: 2,
       stormId: null, source: null, area: { region: 7, centre: 99, radiusKm: 1 },
       announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
 
-    expect(deserialize(serialize(state))!.state.goals.opportunity).toMatchObject({
+    const raw = JSON.parse(serialize(state));
+    raw.state.goals = { opportunity: raw.state.opportunities.context.weather };
+    delete raw.state.opportunities;
+    expect(deserialize(JSON.stringify(raw))!.state.opportunities.context.weather).toMatchObject({
       goal: "remoteStorm", status: "reserved", attempts: 2,
       area: { region: 7, centre: 99, radiusKm: 1 },
     });
@@ -249,11 +254,11 @@ describe("save", () => {
     const raw = JSON.parse(serialize(state));
     raw.state.weather.storm = { kind: "rain", from: 600, until: 960, warned: false };
     delete raw.state.weather.nextStormId;
-    delete raw.state.goals.opportunity;
+    delete raw.state.opportunities;
     const back = deserialize(JSON.stringify(raw))!.state;
     expect(back.weather.storm).toEqual({ id: 1, source: "natural", kind: "rain", from: 600, until: 960, warned: false });
     expect(back.weather.nextStormId).toBe(2);
-    expect(back.goals.opportunity).toBeNull();
+    expect(back.opportunities.context.weather).toBeNull();
   });
 
   it("keeps a fractional tick across a save and reload", () => {
@@ -559,9 +564,9 @@ describe("the world save", () => {
     expect(back.player.huntSigns).toEqual({});
   });
 
-  it("writes version 9 and reads 4 by wrapping the survivor as the first of the world", () => {
+  it("writes version 10 and reads 4 by wrapping the survivor as the first of the world", () => {
     const { state } = newGame(8);
-    expect(JSON.parse(serialize(state)).version).toBe(9);
+    expect(JSON.parse(serialize(state)).version).toBe(10);
     const v4 = JSON.parse(serialize(state)) as { version: number; savedAt: number; state: Record<string, unknown> };
     v4.version = 4;
     delete v4.state.advanceCarry;
@@ -586,7 +591,7 @@ describe("the version 6 save", () => {
   it("writes version 6 and fills the producers' fields into an older save", () => {
     const { state } = newGame(8);
     const text = serialize(state);
-    expect(JSON.parse(text).version).toBe(9);
+    expect(JSON.parse(text).version).toBe(10);
     const old = JSON.parse(text);
     old.version = 5;
     delete old.state.player.known;

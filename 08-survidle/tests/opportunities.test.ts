@@ -7,10 +7,61 @@ import {
   opportunityDef,
   opportunityEligible,
   setCurrentOpportunity,
+  recordOpportunityEvent,
 } from "../src/sim/opportunities";
+import { newGame } from "../src/sim/newgame";
 import type { OpportunityDef } from "../src/sim/types";
 
 describe("opportunity focus", () => {
+  it("discovers authored parallel leaves only after their prerequisite chain", () => {
+    const { state } = newGame(3);
+    expect(state.opportunities.discoveredAt.site).toBeDefined();
+    recordOpportunityEvent(state, { kind: "task", id: "makeCamp" });
+    expect(state.opportunities.discoveredAt.drink).toBeDefined();
+    recordOpportunityEvent(state, { kind: "drank" });
+    recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: 10 });
+    recordOpportunityEvent(state, { kind: "built", structure: "firePit" });
+    recordOpportunityEvent(state, { kind: "fuelled" });
+    recordOpportunityEvent(state, { kind: "crafted", recipe: "fireDrill" });
+    recordOpportunityEvent(state, { kind: "lit" });
+    expect(Object.keys(state.opportunities.discoveredAt)).toEqual(expect.arrayContaining(["bed", "roof", "keptNight"]));
+    expect(state.opportunities.discoveredAt.cook).toBeUndefined();
+  });
+
+  it("requires a hunt before a later generic preservation event", () => {
+    const state = newOpportunities("spring");
+    discoverOpportunity(state, "preserveHunt", 0);
+    applyOpportunityEvent(state, { kind: "preserved" }, 1);
+    applyOpportunityEvent(state, { kind: "animalKilled", species: "deer" }, 2);
+    expect(state.completedAt.preserveHunt).toBeUndefined();
+    applyOpportunityEvent(state, { kind: "preserved" }, 3);
+    expect(state.completedAt.preserveHunt).toBe(3);
+  });
+
+  it("keeps a running weather reservation when completed refuge work happens again", () => {
+    const { state } = newGame(3);
+    discoverOpportunity(state.opportunities, "remoteRefuge", 0);
+    state.opportunities.context.chapter3HomeRegion = state.player.region;
+    const event = { kind: "protectionChanged", minute: 0, region: state.player.region + 1, cell: 1, from: 1, to: 2, source: "improved" } as const;
+    recordOpportunityEvent(state, event);
+    state.opportunities.context.weather!.stormId = 42;
+    state.opportunities.context.weather!.status = "running";
+    recordOpportunityEvent(state, event);
+    expect(state.opportunities.context.weather).toMatchObject({ stormId: 42, status: "running" });
+  });
+
+  it("continues an inherited remote chapter without waiting another thirty-one days", () => {
+    const { state } = newGame(3);
+    state.minute = 42720;
+    discoverOpportunity(state.opportunities, "remoteRefuge", state.minute);
+    state.opportunities.context.chapter3HomeRegion = state.player.region;
+    recordOpportunityEvent(state, { kind: "protectionChanged", minute: state.minute, region: state.player.region + 1, cell: 1, from: 1, to: 2, source: "improved" });
+    state.minute = 0;
+    recordOpportunityEvent(state, { kind: "fireLit", minute: 0, region: state.player.region + 1, cell: 1, atCamp: false });
+    expect(state.opportunities.discoveredAt.fieldMeal).toBe(0);
+    recordOpportunityEvent(state, { kind: "taskCompleted", id: "cook", minute: 0, region: state.player.region + 1, cell: 1, atCamp: false });
+    expect(state.opportunities.discoveredAt.remoteStorm).toBe(0);
+  });
   it("credits a discovered opportunity while another leaf is current", () => {
     const opportunities = newOpportunities("winter");
     discoverOpportunity(opportunities, "drink", 0);
@@ -26,6 +77,15 @@ describe("opportunity focus", () => {
     applyOpportunityEvent(opportunities, { kind: "drank" }, 1);
     discoverOpportunity(opportunities, "drink", 2);
     expect(opportunities.completedAt.drink).toBeUndefined();
+  });
+
+  it("credits an inherited discovery after the life clock resets", () => {
+    const opportunities = newOpportunities("winter");
+    discoverOpportunity(opportunities, "firewood", 9000);
+    applyOpportunityEvent(opportunities, { kind: "gathered", item: "firewood", kg: 4 }, 9001);
+    applyOpportunityEvent(opportunities, { kind: "gathered", item: "firewood", kg: 6 }, 1);
+    expect(opportunities.discoveredAt.firewood).toBe(9000);
+    expect(opportunities.completedAt.firewood).toBe(1);
   });
 
   it("keeps a group incomplete while an unknown child remains", () => {
@@ -55,7 +115,6 @@ describe("opportunity focus", () => {
   });
 
   it("does not materialize unsupported definitions", () => {
-    expect(opportunityDef("fire")).toBeUndefined();
     expect(opportunityDef("hunt:deer")).toBeUndefined();
   });
 });

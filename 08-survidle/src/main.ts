@@ -42,7 +42,7 @@ import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
-import { introduceGoals, unintroducedGoals } from "./sim/goals";
+import { acknowledgeOpportunities, unpresentedOpportunityKeys } from "./sim/opportunities";
 import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalNoticeToOpen, goalsHtml } from "./ui/goalpanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
@@ -347,7 +347,7 @@ function frame(now: number) {
     // refuses to reopen while goal guidance is set, so leaving it be here does
     // not requeue the overlay every frame.
     const reached = goalMomentToOpen(state, ui);
-    if (reached) ui.goalGuide = { ids: unintroducedGoals(state, calendar(state.minute, state.startDoy)), done: reached, automatic: true };
+    if (reached) ui.goalGuide = { ids: unpresentedOpportunityKeys(state, calendar(state.minute, state.startDoy)), done: reached, automatic: true };
     const introduced = goalIntroductionToOpen(state, calendar(state.minute, state.startDoy), ui);
     if (introduced) ui.goalGuide = { ids: introduced, done: [], automatic: true };
     const notices = goalNoticeToOpen(state, ui);
@@ -566,9 +566,7 @@ function onClick(ev: Event) {
       lastReal = performance.now();
       break;
     case "goal-close":
-      if (ui.goalGuide?.automatic) introduceGoals(state, ui.goalGuide.ids);
-      if (ui.goalGuide) state.goals.queue = state.goals.queue.filter((id) => !ui.goalGuide!.done.includes(id));
-      if (ui.goalGuide?.notices) state.goals.noticeQueue = state.goals.noticeQueue.filter((notice) => !ui.goalGuide!.notices!.includes(notice));
+      if (ui.goalGuide?.automatic) acknowledgeOpportunities(state, ui.goalGuide.ids, ui.goalGuide.done, ui.goalGuide.notices);
       ui.goalGuide = null;
       // The same bump the rung moment's dismiss does: the minutes the
       // screen was open were paused, not spent away.
@@ -593,7 +591,7 @@ function onClick(ev: Event) {
     }
     case "goal-open": {
       const id = target.dataset.goal;
-      if (id) ui.goalGuide = { ids: [id as import("./sim/types").GoalId], done: [], automatic: false };
+      if (id) ui.goalGuide = { ids: [id as import("./sim/types").OpportunityKey], done: [], automatic: false };
       break;
     }
     case "recognition-close":

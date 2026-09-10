@@ -55,7 +55,7 @@ describe("rain and snow storms", () => {
     const back = deserialize(JSON.stringify(raw))!.state;
     expect(back.weather.storm).toEqual({ id: 1, source: "natural", kind, from: 60, until: 420, warned: true });
     expect(back.rng).toBe(state.rng);
-    expect(back.goals).toEqual(state.goals);
+    expect(back.opportunities).toEqual(state.opportunities);
     expect(back.shopping).toEqual(state.shopping);
     back.weather.offset *= -1;
     expect(deserialize(serialize(back))!.state.weather.storm?.kind).toBe(kind);

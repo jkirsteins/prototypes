@@ -1,9 +1,10 @@
+import { reveal } from "./opportunity-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { drop, dropAll, eat, take } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { activeGoals, checkWinterStores, goalDeed, goalSteps, GOALS, introduceGoals } from "../src/sim/goals";
+import { activeOpportunityKeys, checkWinterStores, recordOpportunityEvent, opportunitySteps, OPPORTUNITIES } from "../src/sim/opportunities";
 import { setSkillLevel } from "../src/sim/horizon";
 import { startIntent } from "../src/sim/intent";
 import { createCarcass, carcassMinutes } from "../src/sim/hunting";
@@ -29,10 +30,10 @@ const cal = calendar(0);
 const THROUGH_COOK = ["site", "drink", "firewood", "fire", "bed", "roof", "cook"] as const;
 
 function openShelterChapter(state: ReturnType<typeof newGame>["state"]): void {
-  for (const id of THROUGH_COOK) state.goals.done[id] = true;
-  state.goals.done.keptNight = true;
-  state.goals.done.forageMeal = true;
-  introduceGoals(state, ["findUsefulCover"]);
+  for (const id of THROUGH_COOK) state.opportunities.completedAt[id] = 0;
+  state.opportunities.completedAt.keptNight = 0;
+  state.opportunities.completedAt.forageMeal = 0;
+  reveal(state, ["findUsefulCover"]);
 }
 
 function openRemoteChapter(state: ReturnType<typeof newGame>["state"]): void {
@@ -40,22 +41,22 @@ function openRemoteChapter(state: ReturnType<typeof newGame>["state"]): void {
     ...THROUGH_COOK, "keptNight", "forageMeal", "findUsefulCover", "makeUsefulShelter", "testShelter",
     "snareMeal", "huntMeal", "fishMeal", "trapMeal", "foodSource", "store", "fat", "firstOrder", "water",
     "keptDays", "readWeather", "prepareWeather", "surviveForecast", "longOrder", "toolCare", "explore",
-  ] as const) state.goals.done[id] = true;
+  ] as const) state.opportunities.completedAt[id] = 0;
   state.minute = 30 * 1440;
-  introduceGoals(state, ["remoteRefuge"]);
+  reveal(state, ["remoteRefuge"]);
 }
 
 function announcedGame(seed: number) {
   const game = newGame(seed);
-  introduceGoals(game.state, GOALS.map((g) => g.id));
+  reveal(game.state, OPPORTUNITIES.map((g) => g.key));
   return game;
 }
 
 describe("deeds reach the ladder", () => {
   it("the first goal is choosing where to live, credited by making camp", () => {
     const { state } = announcedGame(3);
-    expect(GOALS[0].id).toBe("site");
-    expect(goalDeed(state, { kind: "task", id: "makeCamp" })).toContain("site");
+    expect(OPPORTUNITIES[0].key).toBe("site");
+    expect(recordOpportunityEvent(state, { kind: "task", id: "makeCamp" })).toContain("site");
   });
 
   it("does not infer the roof goal from shelter already standing", () => {
@@ -63,29 +64,29 @@ describe("deeds reach the ladder", () => {
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell ?? 0).structures.leanTo = true;
     advance(state, world, 1);
-    expect(state.goals.done.roof).toBeUndefined();
+    expect(state.opportunities.completedAt.roof).toBeUndefined();
   });
 
   it("does not credit a windbreak as a roof", () => {
     const { state } = newGame(3);
-    introduceGoals(state, ["roof"]);
-    expect(goalDeed(state, { kind: "sheltered", protection: 1 })).not.toContain("roof");
-    expect(state.goals.done.roof).toBeUndefined();
+    reveal(state, ["roof"]);
+    expect(recordOpportunityEvent(state, { kind: "sheltered", protection: 1 })).not.toContain("roof");
+    expect(state.opportunities.completedAt.roof).toBeUndefined();
   });
 
   it("credits weatherproof shelter as the roof outcome", () => {
     const { state } = newGame(3);
-    introduceGoals(state, ["roof"]);
-    expect(goalDeed(state, { kind: "sheltered", protection: 2 })).toContain("roof");
-    expect(state.goals.done.roof).toBe(true);
+    reveal(state, ["roof"]);
+    expect(recordOpportunityEvent(state, { kind: "sheltered", protection: 2 })).toContain("roof");
+    expect(state.opportunities.completedAt.roof).toBeDefined();
   });
 
   it("keeps every existing built deed as a route to the roof goal", () => {
     for (const structure of ["leanTo", "turfHut", "snowShelter", "cabin"] as const) {
       const { state } = newGame(3);
-      introduceGoals(state, ["roof"]);
-      expect(goalDeed(state, { kind: "built", structure })).toContain("roof");
-      expect(state.goals.done.roof).toBe(true);
+      reveal(state, ["roof"]);
+      expect(recordOpportunityEvent(state, { kind: "built", structure })).toContain("roof");
+      expect(state.opportunities.completedAt.roof).toBeDefined();
     }
   });
 
@@ -93,7 +94,7 @@ describe("deeds reach the ladder", () => {
     const { state, world } = announcedGame(3);
     state.task = { id: "sleep", progress: 0, duration: 0, repeat: false };
     stepTask(state, world, cal, new Rng(1), 1);
-    expect(state.goals.done.explore).toBeUndefined();
+    expect(state.opportunities.completedAt.explore).toBeUndefined();
   });
 
   it("credits a real drink and food with non-lean energy", () => {
@@ -102,10 +103,10 @@ describe("deeds reach the ladder", () => {
     state.player.water = 1;
     placeAtSpot(state, world, state.player.region, "shore");
     expect(drink(state, world)).toBe(true);
-    expect(state.goals.done.drink).toBe(true);
+    expect(state.opportunities.completedAt.drink).toBeDefined();
     addItem(state.player.pack, "berries", 0.2);
     expect(eat(state, world, "berries", new Rng(1))).toBeGreaterThan(0);
-    expect(state.goals.done.fat).toBe(true);
+    expect(state.opportunities.completedAt.fat).toBeDefined();
   });
 
   it("distinguishes a first standing camp order from a longer one", () => {
@@ -113,11 +114,11 @@ describe("deeds reach the ladder", () => {
     siteCamp(state, world);
     setSkillLevel(state, "woodcraft", 3);
     orderByHand(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "times", n: 2 }, deliver: "camp", where: "nearest" }, "job");
-    expect(state.goals.done.firstOrder).toBe(true);
-    expect(state.goals.done.longOrder).toBeUndefined();
+    expect(state.opportunities.completedAt.firstOrder).toBeDefined();
+    expect(state.opportunities.completedAt.longOrder).toBeUndefined();
     setSkillLevel(state, "woodcraft", 5);
     orderByHand(state, world, cal, new Rng(1), { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
-    expect(state.goals.done.longOrder).toBe(true);
+    expect(state.opportunities.completedAt.longOrder).toBeDefined();
   });
 
   it("recognizes full winter food and fuel reserves on the daily roll", () => {
@@ -129,7 +130,7 @@ describe("deeds reach the ladder", () => {
     addItem(camp, "firewood", 610);
     addItem(camp, "log", 301);
     advance(state, world, 24 * 60);
-    expect(state.goals.done.winterStores).toBe(true);
+    expect(state.opportunities.completedAt.winterStores).toBeDefined();
   });
 
   it("requires each named winter store instead of accepting substitutes", () => {
@@ -139,11 +140,11 @@ describe("deeds reach the ladder", () => {
     addItem(camp, "driedMeat", 140);
     addItem(camp, "firewood", 1000);
     checkWinterStores(state);
-    expect(state.goals.done.winterStores).toBeUndefined();
+    expect(state.opportunities.completedAt.winterStores).toBeUndefined();
     addItem(camp, "fat", 20);
     addItem(camp, "log", 300);
     checkWinterStores(state);
-    expect(state.goals.done.winterStores).toBe(true);
+    expect(state.opportunities.completedAt.winterStores).toBeDefined();
   });
 
   it("counts a newly made tool as preparing a replacement", () => {
@@ -155,21 +156,21 @@ describe("deeds reach the ladder", () => {
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "craft", "fireDrill")).toBe(true);
     advance(state, world, o.duration + 1);
-    expect(state.goals.done.toolCare).toBe(true);
+    expect(state.opportunities.completedAt.toolCare).toBeDefined();
   });
 
   it("credits the fire when this survivor lights one", () => {
     const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    state.goals.done.firewood = true;
+    state.opportunities.completedAt.firewood = 0;
     placeAt(state, world, st.campCell!);
     // Everything a light needs, so the deed is the only thing under test.
     siteFor(st, st.campCell!).structures.firePit = true;
     addItem(state.player.pack, "firewood", 5);
     state.player.tools.push({ id: "fireDrill", durability: 100 });
-    goalDeed(state, { kind: "built", structure: "firePit" });
-    goalDeed(state, { kind: "crafted", recipe: "fireDrill" });
+    recordOpportunityEvent(state, { kind: "built", structure: "firePit" });
+    recordOpportunityEvent(state, { kind: "crafted", recipe: "fireDrill" });
     const o = check(state, world, cal, "light");
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "light")).toBe(true);
@@ -177,7 +178,7 @@ describe("deeds reach the ladder", () => {
     // No rain at landing means lightingInRain's failChance is 0: this light
     // cannot fail, so the fire goal must be credited outright.
     expect(st.fire.lit).toBe(true);
-    expect(state.goals.done.fire).toBe(true);
+    expect(state.opportunities.completedAt.fire).toBeDefined();
   });
 
   it("credits nothing when the tinder does not catch", () => {
@@ -196,7 +197,7 @@ describe("deeds reach the ladder", () => {
     const rng = new Rng(7);
     for (let m = 0; m < o.duration + 1 && state.task; m++) stepTask(state, world, cal, rng, 1);
     expect(st.fire.lit).toBe(false);
-    expect(state.goals.done.fire).toBeUndefined();
+    expect(state.opportunities.completedAt.fire).toBeUndefined();
   });
 
   it("does not credit the fire to a survivor who only found one burning", () => {
@@ -206,7 +207,7 @@ describe("deeds reach the ladder", () => {
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     advance(state, world, 60);
-    expect(state.goals.done.fire).toBeUndefined();
+    expect(state.opportunities.completedAt.fire).toBeUndefined();
   });
 
   it("credits nothing for firewood that just exists in a pile, since nobody gathered it", () => {
@@ -215,7 +216,7 @@ describe("deeds reach the ladder", () => {
     const st = regionState(state, world, state.player.region);
     addItem(pile(state, st.campCell!), "firewood", 40);
     advance(state, world, 120);
-    expect(state.goals.progress.firewood ?? 0).toBe(0);
+    expect(state.opportunities.stepProgress.firewood?.wood ?? 0).toBe(0);
   });
 
   it("credits goal 1 by the kilos a real gather actually produces", () => {
@@ -226,8 +227,8 @@ describe("deeds reach the ladder", () => {
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "deadwood")).toBe(true);
     advance(state, world, o.duration + 1);
-    expect(state.goals.progress.firewood).toBeCloseTo(DEADWOOD_KG);
-    expect(state.goals.done.firewood).toBe(true);
+    expect(state.opportunities.stepProgress.firewood?.wood).toBeCloseTo(DEADWOOD_KG);
+    expect(state.opportunities.completedAt.firewood).toBeDefined();
   });
 
   it("credits goal 1 by the kilos a real split actually produces", () => {
@@ -239,7 +240,7 @@ describe("deeds reach the ladder", () => {
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "split")).toBe(true);
     advance(state, world, o.duration + 1);
-    expect(state.goals.progress.firewood).toBeCloseTo(Math.min(10, ITEM_KG.log));
+    expect(state.opportunities.stepProgress.firewood?.wood).toBeCloseTo(Math.min(10, ITEM_KG.log));
   });
 
   it("credits goal 1 by the kilos a real splitWedges actually produces", () => {
@@ -251,7 +252,7 @@ describe("deeds reach the ladder", () => {
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "splitWedges")).toBe(true);
     advance(state, world, o.duration + 1);
-    expect(state.goals.progress.firewood).toBeCloseTo(Math.min(10, ITEM_KG.log));
+    expect(state.opportunities.stepProgress.firewood?.wood).toBeCloseTo(Math.min(10, ITEM_KG.log));
   });
 
   it("credits nothing when a standing order carries firewood home and drops it at camp", () => {
@@ -268,7 +269,7 @@ describe("deeds reach the ladder", () => {
     addItem(state.player.pack, "firewood", 4);
     advance(state, world, 1);
     expect(qty(pile(state, camp), "firewood")).toBe(4);
-    expect(state.goals.progress.firewood ?? 0).toBe(0);
+    expect(state.opportunities.stepProgress.firewood?.wood ?? 0).toBe(0);
   });
 
   it("credits nothing for firewood taken out of the camp pile and put straight back", () => {
@@ -279,7 +280,7 @@ describe("deeds reach the ladder", () => {
     addItem(pile(state, camp), "firewood", 10);
     expect(take(state, world, "firewood", 10)).toBe(10);
     expect(drop(state, world, "firewood", 10)).toBe(10);
-    expect(state.goals.progress.firewood ?? 0).toBe(0);
+    expect(state.opportunities.stepProgress.firewood?.wood ?? 0).toBe(0);
   });
 
   it("credits a season goal when the calendar actually turns the corner", () => {
@@ -287,22 +288,22 @@ describe("deeds reach the ladder", () => {
     siteCamp(state, world);
     // Backdating lastSeason forces the very next day roll to see a turnover,
     // without simulating the months a real one would take.
-    state.goals.lastSeason = "winter";
+    state.opportunities.lastSeason = "winter";
     advance(state, world, 1440);
-    expect(state.goals.lastSeason).toBe("spring");
-    expect(state.goals.done.spring).toBe(true);
+    expect(state.opportunities.lastSeason).toBe("spring");
+    expect(state.opportunities.completedAt["season:spring"]).toBeDefined();
   });
 
   it("credits a season only when the calendar turns over into it", () => {
     const { state, world } = announcedGame(3);
     siteCamp(state, world);
     for (const id of ["firewood", "fire", "cook", "bed", "roof", "water", "store"] as const) {
-      state.goals.done[id] = true;
+      state.opportunities.completedAt[id] = 0;
     }
-    const before = state.goals.lastSeason;
+    const before = state.opportunities.lastSeason;
     // A landing does not credit the season it lands in.
     advance(state, world, 60);
-    expect(state.goals.done[before as "winter"]).toBeUndefined();
+    expect(state.opportunities.completedAt[`season:${before}`]).toBeUndefined();
   });
 
   it("credits the bed goal when the survivor actually builds one", () => {
@@ -315,7 +316,7 @@ describe("deeds reach the ladder", () => {
     expect(startTask(state, world, cal, "build", "boughBed")).toBe(true);
     advance(state, world, o.duration + 1);
     expect(campSite(st)!.structures.boughBed).toBe(true);
-    expect(state.goals.done.bed).toBe(true);
+    expect(state.opportunities.completedAt.bed).toBeDefined();
   });
 
   it("finishes the hot-meal goal when cooked food is eaten", () => {
@@ -331,9 +332,9 @@ describe("deeds reach the ladder", () => {
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
     advance(state, world, o.duration + 1);
-    expect(state.goals.done.cook).toBeUndefined();
+    expect(state.opportunities.completedAt.cook).toBeUndefined();
     expect(eat(state, world, "cookedMeat", new Rng(1))).toBeGreaterThan(0);
-    expect(state.goals.done.cook).toBe(true);
+    expect(state.opportunities.completedAt.cook).toBeDefined();
   });
 
   it("does not credit cooking when the ingredient is gone at completion", () => {
@@ -349,7 +350,7 @@ describe("deeds reach the ladder", () => {
     expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
     removeItem(state.player.pack, "rawMeat", 1);
     advance(state, world, o.duration + 1);
-    expect(state.goals.done.cook).toBeUndefined();
+    expect(state.opportunities.completedAt.cook).toBeUndefined();
   });
 
   it("finishes the preserving goal only after preserved meat is eaten", () => {
@@ -365,25 +366,25 @@ describe("deeds reach the ladder", () => {
     expect(startTask(state, world, cal, "hang")).toBe(true);
     advance(state, world, o.duration + 1);
     expect(st.rack.kg).toBeGreaterThan(0);
-    expect(state.goals.done.store).toBeUndefined();
+    expect(state.opportunities.completedAt.store).toBeUndefined();
     addItem(state.player.pack, "driedMeat", 0.2);
     expect(eat(state, world, "driedMeat", new Rng(1))).toBeGreaterThan(0);
-    expect(state.goals.done.store).toBe(true);
+    expect(state.opportunities.completedAt.store).toBeDefined();
   });
 
   it("teaches the hunting loop through real sign and camp recovery deeds", () => {
     const { state } = newGame(17);
-    introduceGoals(state, ["huntMeal"]);
-    goalDeed(state, { kind: "foundSign" });
-    goalDeed(state, { kind: "recoveredAtCamp" });
-    expect(goalSteps(state, "huntMeal").filter((step) => step.id === "sign" || step.id === "recover").map((step) => [step.id, step.done])).toEqual([
+    reveal(state, ["huntMeal"]);
+    recordOpportunityEvent(state, { kind: "foundSign" });
+    recordOpportunityEvent(state, { kind: "recoveredAtCamp" });
+    expect(opportunitySteps(state, "huntMeal").filter((step) => step.id === "sign" || step.id === "recover").map((step) => [step.id, step.done])).toEqual([
       ["sign", true], ["recover", true],
     ]);
   });
 
   it("credits recovered meat only when a field-dressed carcass reaches camp", () => {
     const { state, world } = newGame(17);
-    introduceGoals(state, ["huntMeal"]);
+    reveal(state, ["huntMeal"]);
     siteCamp(state, world);
     const camp = regionState(state, world, state.player.region).campCell!;
     placeAtSpot(state, world, state.player.region, "forest");
@@ -391,22 +392,20 @@ describe("deeds reach the ladder", () => {
     const carcass = createCarcass(state, world, "deer", { meatKg: 12 });
     state.intent = {
       mode: "hand", task: "hunt", arg: "deer", cell: field, campCell: camp,
-      until: { kind: "once" }, deliver: "camp", done: 0, step: "", orderId: null, windDown: false,
-    };
+      until: { kind: "once" }, deliver: "camp", done: 0, step: "", orderId: null, windDown: false };
     state.task = {
       id: "hunt", arg: "deer", progress: 0, duration: carcassMinutes(carcass), repeat: false,
-      huntPhase: "field", carcassId: carcass.id,
-    };
+      huntPhase: "field", carcassId: carcass.id };
     stepTask(state, world, cal, new Rng(1), state.task.duration + 1);
-    expect(goalSteps(state, "huntMeal").find((step) => step.id === "recover")?.done).toBe(false);
+    expect(opportunitySteps(state, "huntMeal").find((step) => step.id === "recover")?.done).toBe(false);
     placeAt(state, world, camp);
     advance(state, world, 1);
-    expect(goalSteps(state, "huntMeal").find((step) => step.id === "recover")?.done).toBe(true);
+    expect(opportunitySteps(state, "huntMeal").find((step) => step.id === "recover")?.done).toBe(true);
   });
 
   it("does not mistake unrelated raw meat for the dressed carcass", () => {
     const { state, world } = newGame(17);
-    introduceGoals(state, ["huntMeal"]);
+    reveal(state, ["huntMeal"]);
     siteCamp(state, world);
     const camp = regionState(state, world, state.player.region).campCell!;
     placeAtSpot(state, world, state.player.region, "forest");
@@ -416,17 +415,15 @@ describe("deeds reach the ladder", () => {
     const carcass = createCarcass(state, world, "deer", { meatKg: 12 });
     state.intent = {
       mode: "hand", task: "hunt", arg: "deer", cell: field, campCell: camp,
-      until: { kind: "once" }, deliver: "camp", done: 0, step: "", orderId: null, windDown: false,
-    };
+      until: { kind: "once" }, deliver: "camp", done: 0, step: "", orderId: null, windDown: false };
     state.task = {
       id: "hunt", arg: "deer", progress: 0, duration: carcassMinutes(carcass), repeat: false,
-      huntPhase: "field", carcassId: carcass.id,
-    };
+      huntPhase: "field", carcassId: carcass.id };
     stepTask(state, world, cal, new Rng(1), state.task.duration + 1);
     expect(qty(pile(state, field), "rawMeat")).toBeGreaterThan(0);
     placeAt(state, world, camp);
     advance(state, world, 1);
-    expect(goalSteps(state, "huntMeal").find((step) => step.id === "recover")?.done).toBe(false);
+    expect(opportunitySteps(state, "huntMeal").find((step) => step.id === "recover")?.done).toBe(false);
   });
 
   it("credits nothing when the meat is gone before the hang finishes", () => {
@@ -446,7 +443,7 @@ describe("deeds reach the ladder", () => {
     removeItem(camp, "rawMeat", qty(camp, "rawMeat"));
     advance(state, world, o.duration + 1);
     expect(st.rack.kg).toBe(0);
-    expect(state.goals.done.store).toBeUndefined();
+    expect(state.opportunities.completedAt.store).toBeUndefined();
   });
 });
 
@@ -455,13 +452,12 @@ describe("Chapter 1 shelter deeds", () => {
     const { state } = newGame(3);
     openShelterChapter(state);
 
-    goalDeed(state, {
+    recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: 10, region: state.player.region, cell: 12,
-      from: 0, to: 0, source: "found",
-    });
+      from: 0, to: 0, source: "found" });
 
-    expect(state.goals.done.findUsefulCover).toBeUndefined();
-    expect(state.goals.opportunity).toBeNull();
+    expect(state.opportunities.completedAt.findUsefulCover).toBeUndefined();
+    expect(state.opportunities.context.weather).toBeNull();
   });
 
   it("remembers the found area when natural cover first reaches protection one", () => {
@@ -469,35 +465,30 @@ describe("Chapter 1 shelter deeds", () => {
     openShelterChapter(state);
     const cell = cellOf(state, world);
 
-    expect(goalDeed(state, {
+    expect(recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: 10, region: state.player.region, cell,
-      from: 0, to: 1, source: "found",
-    })).toContain("findUsefulCover");
+      from: 0, to: 1, source: "found" })).toContain("findUsefulCover");
 
-    expect(state.goals.opportunity).toMatchObject({
+    expect(state.opportunities.context.weather).toMatchObject({
       goal: "makeUsefulShelter", status: "reserved", createdAt: 10, attempts: 1,
-      area: { region: state.player.region, centre: cell, radiusKm: 1 },
-    });
+      area: { region: state.player.region, centre: cell, radiusKm: 1 } });
   });
 
   it("accepts improving the original found cell into weatherproof shelter", () => {
     const { state, world } = newGame(3);
     openShelterChapter(state);
     const origin = cellOf(state, world);
-    goalDeed(state, {
+    recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: 10, region: state.player.region, cell: origin,
-      from: 0, to: 1, source: "found",
-    });
-    introduceGoals(state, ["makeUsefulShelter"]);
+      from: 0, to: 1, source: "found" });
+    reveal(state, ["makeUsefulShelter"]);
 
-    expect(goalDeed(state, {
+    expect(recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: 11, region: state.player.region, cell: origin,
-      from: 1, to: 2, source: "improved",
-    }, world)).toContain("makeUsefulShelter");
-    expect(state.goals.opportunity).toMatchObject({
+      from: 1, to: 2, source: "improved" }, world)).toContain("makeUsefulShelter");
+    expect(state.opportunities.context.weather).toMatchObject({
       goal: "testShelter", status: "reserved", createdAt: 11, attempts: 1,
-      stormId: null, area: { region: state.player.region, centre: origin, radiusKm: 1 },
-    });
+      stormId: null, area: { region: state.player.region, centre: origin, radiusKm: 1 } });
   });
 
   it("does not accept weatherproof shelter outside the original local area", () => {
@@ -507,32 +498,28 @@ describe("Chapter 1 shelter deeds", () => {
     const region = regionAt(world, state.player.region);
     const far = region.cells.reduce((best, cell) => straightKm(world, origin, cell) > straightKm(world, origin, best) ? cell : best, origin);
     expect(straightKm(world, origin, far)).toBeGreaterThan(1);
-    goalDeed(state, {
+    recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: 10, region: state.player.region, cell: origin,
-      from: 0, to: 1, source: "found",
-    });
-    introduceGoals(state, ["makeUsefulShelter"]);
+      from: 0, to: 1, source: "found" });
+    reveal(state, ["makeUsefulShelter"]);
 
-    goalDeed(state, {
+    recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: 11, region: state.player.region, cell: far,
-      from: 1, to: 2, source: "structure",
-    }, world);
-    goalDeed(state, {
+      from: 1, to: 2, source: "structure" }, world);
+    recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: 12, region: state.player.region + 1, cell: origin,
-      from: 1, to: 2, source: "structure",
-    }, world);
+      from: 1, to: 2, source: "structure" }, world);
 
-    expect(state.goals.done.makeUsefulShelter).toBeUndefined();
+    expect(state.opportunities.completedAt.makeUsefulShelter).toBeUndefined();
   });
 
   it("credits the roof from every real transition to protection two or higher", () => {
     for (const source of ["found", "improved", "emergency", "structure"] as const) {
       const { state } = newGame(3);
-      introduceGoals(state, ["roof"]);
-      expect(goalDeed(state, {
+      reveal(state, ["roof"]);
+      expect(recordOpportunityEvent(state, {
         kind: "protectionChanged", minute: 1, region: state.player.region, cell: 1,
-        from: 1, to: 2, source,
-      })).toContain("roof");
+        from: 1, to: 2, source })).toContain("roof");
     }
   });
 });
@@ -546,20 +533,17 @@ describe("Chapter 3 field deeds", () => {
     const refuge = regionAt(world, remote).campCell;
     openRemoteChapter(state);
 
-    goalDeed(state, {
+    recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: state.minute, region: home, cell: cellOf(state, world),
-      from: 1, to: 2, source,
-    }, world);
-    expect(state.goals.done.remoteRefuge).toBeUndefined();
+      from: 1, to: 2, source }, world);
+    expect(state.opportunities.completedAt.remoteRefuge).toBeUndefined();
 
-    expect(goalDeed(state, {
+    expect(recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: state.minute + 1, region: remote, cell: refuge,
-      from: 1, to: 2, source,
-    }, world)).toContain("remoteRefuge");
-    expect(state.goals.opportunity).toMatchObject({
+      from: 1, to: 2, source }, world)).toContain("remoteRefuge");
+    expect(state.opportunities.context.weather).toMatchObject({
       goal: "remoteStorm", status: "reserved", createdAt: state.minute + 1,
-      area: { region: remote, centre: refuge, radiusKm: 1 },
-    });
+      area: { region: remote, centre: refuge, radiusKm: 1 } });
   });
 
   it("accepts permanent shelter at a later camp while rejecting the original home", () => {
@@ -571,15 +555,13 @@ describe("Chapter 3 field deeds", () => {
     state.regions[remote].campCell = regionAt(world, remote).campCell;
     openRemoteChapter(state);
 
-    goalDeed(state, {
+    recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: state.minute, region: home, cell: state.regions[home].campCell!,
-      from: 1, to: 2, source: "structure",
-    }, world);
-    expect(state.goals.done.remoteRefuge).toBeUndefined();
-    expect(goalDeed(state, {
+      from: 1, to: 2, source: "structure" }, world);
+    expect(state.opportunities.completedAt.remoteRefuge).toBeUndefined();
+    expect(recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: state.minute + 1, region: remote, cell: state.regions[remote].campCell!,
-      from: 1, to: 2, source: "structure",
-    }, world)).toContain("remoteRefuge");
+      from: 1, to: 2, source: "structure" }, world)).toContain("remoteRefuge");
   });
 
   it("does not credit Chapter 3 before introduction or from camp fire and meal events", () => {
@@ -589,42 +571,40 @@ describe("Chapter 3 field deeds", () => {
     const home = state.player.region;
     const remote = regionAt(world, home).neighbours[0].id;
     const refuge = regionAt(world, remote).campCell;
-    goalDeed(state, { kind: "protectionChanged", minute: state.minute, region: remote, cell: refuge, from: 1, to: 2, source: "improved" }, world);
-    const opportunity = state.goals.opportunity!;
+    recordOpportunityEvent(state, { kind: "protectionChanged", minute: state.minute, region: remote, cell: refuge, from: 1, to: 2, source: "improved" }, world);
+    const opportunity = state.opportunities.context.weather!;
     opportunity.stormId = 80;
     opportunity.source = "natural";
     opportunity.status = "announced";
     opportunity.announcedAt = state.minute + 1;
     opportunity.minutesByProtection[2] = 7;
 
-    goalDeed(state, { kind: "fireLit", minute: state.minute + 1, region: home, cell: cellOf(state, world), atCamp: true }, world);
-    expect(state.goals.done.fieldFire).toBeUndefined();
-    introduceGoals(state, ["fieldFire"]);
-    goalDeed(state, { kind: "fireLit", minute: state.minute + 2, region: home, cell: cellOf(state, world), atCamp: true }, world);
-    expect(state.goals.done.fieldFire).toBeUndefined();
+    recordOpportunityEvent(state, { kind: "fireLit", minute: state.minute + 1, region: home, cell: cellOf(state, world), atCamp: true }, world);
+    expect(state.opportunities.completedAt.fieldFire).toBeUndefined();
+    reveal(state, ["fieldFire"]);
+    recordOpportunityEvent(state, { kind: "fireLit", minute: state.minute + 2, region: home, cell: cellOf(state, world), atCamp: true }, world);
+    expect(state.opportunities.completedAt.fieldFire).toBeUndefined();
 
-    expect(goalDeed(state, { kind: "fireLit", minute: state.minute + 3, region: remote, cell: refuge, atCamp: false }, world)).toContain("fieldFire");
-    expect(state.goals.opportunity).toBe(opportunity);
-    expect(state.goals.opportunity).toMatchObject({ goal: "remoteStorm", stormId: 80, source: "natural", status: "announced", minutesByProtection: [0, 0, 7, 0] });
-    introduceGoals(state, ["fieldMeal"]);
-    goalDeed(state, { kind: "taskCompleted", minute: state.minute + 4, id: "cook", arg: "rawMeat", region: home, cell: cellOf(state, world), atCamp: true }, world);
-    expect(state.goals.done.fieldMeal).toBeUndefined();
+    expect(recordOpportunityEvent(state, { kind: "fireLit", minute: state.minute + 3, region: remote, cell: refuge, atCamp: false }, world)).toContain("fieldFire");
+    expect(state.opportunities.context.weather).toBe(opportunity);
+    expect(state.opportunities.context.weather).toMatchObject({ goal: "remoteStorm", stormId: 80, source: "natural", status: "announced", minutesByProtection: [0, 0, 7, 0] });
+    reveal(state, ["fieldMeal"]);
+    recordOpportunityEvent(state, { kind: "taskCompleted", minute: state.minute + 4, id: "cook", arg: "rawMeat", region: home, cell: cellOf(state, world), atCamp: true }, world);
+    expect(state.opportunities.completedAt.fieldMeal).toBeUndefined();
 
-    expect(goalDeed(state, { kind: "taskCompleted", minute: state.minute + 5, id: "cook", arg: "rawMeat", region: remote, cell: refuge, atCamp: false }, world)).toContain("fieldMeal");
-    expect(state.goals.opportunity).toBe(opportunity);
-    expect(state.goals.opportunity).toMatchObject({
+    expect(recordOpportunityEvent(state, { kind: "taskCompleted", minute: state.minute + 5, id: "cook", arg: "rawMeat", region: remote, cell: refuge, atCamp: false }, world)).toContain("fieldMeal");
+    expect(state.opportunities.context.weather).toBe(opportunity);
+    expect(state.opportunities.context.weather).toMatchObject({
       goal: "remoteStorm", createdAt: state.minute, stormId: 80, source: "natural", status: "announced",
       minutesByProtection: [0, 0, 7, 0],
-      area: { region: remote, centre: refuge },
-    });
+      area: { region: remote, centre: refuge } });
   });
 
   it("completes the remote storm only for matching refuge-region protection without camp time", () => {
-    const ended = (overrides: Partial<Extract<Parameters<typeof goalDeed>[1], { kind: "stormEnded" }>> = {}) => ({
+    const ended = (overrides: Partial<Extract<Parameters<typeof recordOpportunityEvent>[1], { kind: "stormEnded" }>> = {}) => ({
       kind: "stormEnded" as const, minute: 40 * 1440, stormId: 70, stormKind: "rain" as const, survivorAlive: true,
       minutesByProtection: [0, 0, 60, 0] as [number, number, number, number],
-      atCampMinutes: 0, awayFromCampMinutes: 60, maxWetness: 10, ...overrides,
-    });
+      atCampMinutes: 0, awayFromCampMinutes: 60, maxWetness: 10, ...overrides });
     for (const bad of [
       { stormId: 71 }, { survivorAlive: false },
       { minutesByProtection: [0, 60, 0, 0] as [number, number, number, number] },
@@ -633,34 +613,32 @@ describe("Chapter 3 field deeds", () => {
       const { state, world } = newGame(17);
       siteCamp(state, world);
       openRemoteChapter(state);
-      state.goals.done.remoteRefuge = true;
-      state.goals.done.fieldFire = true;
-      state.goals.done.fieldMeal = true;
-      introduceGoals(state, ["remoteStorm"]);
+      state.opportunities.completedAt.remoteRefuge = 0;
+      state.opportunities.completedAt.fieldFire = 0;
+      state.opportunities.completedAt.fieldMeal = 0;
+      reveal(state, ["remoteStorm"]);
       const remote = regionAt(world, regionAt(world, state.player.region).neighbours[0].id);
-      state.goals.opportunity = {
+      state.opportunities.context.weather = {
         goal: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
         stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
         announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
-        atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
-      };
-      goalDeed(state, ended(bad), world);
-      expect(state.goals.done.remoteStorm).toBeUndefined();
+        atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
+      recordOpportunityEvent(state, ended(bad), world);
+      expect(state.opportunities.completedAt.remoteStorm).toBeUndefined();
     }
 
     const { state, world } = newGame(17);
     siteCamp(state, world);
     openRemoteChapter(state);
-    for (const id of ["remoteRefuge", "fieldFire", "fieldMeal"] as const) state.goals.done[id] = true;
-    introduceGoals(state, ["remoteStorm"]);
+    for (const id of ["remoteRefuge", "fieldFire", "fieldMeal"] as const) state.opportunities.completedAt[id] = 0;
+    reveal(state, ["remoteStorm"]);
     const remote = regionAt(world, regionAt(world, state.player.region).neighbours[0].id);
-    state.goals.opportunity = {
+    state.opportunities.context.weather = {
       goal: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
       stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
       announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
-      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
-    };
-    expect(goalDeed(state, ended(), world)).toContain("remoteStorm");
+      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
+    expect(recordOpportunityEvent(state, ended(), world)).toContain("remoteStorm");
   });
 });
 
@@ -672,7 +650,7 @@ describe("a hand-played drop credits nothing, at camp or away", () => {
     placeAt(state, world, camp);
     addItem(state.player.pack, "firewood", 6);
     expect(drop(state, world, "firewood", 6)).toBe(6);
-    expect(state.goals.progress.firewood ?? 0).toBe(0);
+    expect(state.opportunities.stepProgress.firewood?.wood ?? 0).toBe(0);
   });
 
   it("drop() away from camp credits nothing either", () => {
@@ -681,7 +659,7 @@ describe("a hand-played drop credits nothing, at camp or away", () => {
     placeAtSpot(state, world, state.player.region, "forest");
     addItem(state.player.pack, "firewood", 6);
     drop(state, world, "firewood", 6);
-    expect(state.goals.progress.firewood ?? 0).toBe(0);
+    expect(state.opportunities.stepProgress.firewood?.wood ?? 0).toBe(0);
   });
 
   it("dropAll() at camp credits nothing", () => {
@@ -691,7 +669,7 @@ describe("a hand-played drop credits nothing, at camp or away", () => {
     placeAt(state, world, camp);
     addItem(state.player.pack, "firewood", 3);
     dropAll(state, world);
-    expect(state.goals.progress.firewood ?? 0).toBe(0);
+    expect(state.opportunities.stepProgress.firewood?.wood ?? 0).toBe(0);
   });
 
   it("dropAll() away from camp credits nothing", () => {
@@ -700,7 +678,7 @@ describe("a hand-played drop credits nothing, at camp or away", () => {
     placeAtSpot(state, world, state.player.region, "forest");
     addItem(state.player.pack, "firewood", 3);
     dropAll(state, world);
-    expect(state.goals.progress.firewood ?? 0).toBe(0);
+    expect(state.opportunities.stepProgress.firewood?.wood ?? 0).toBe(0);
   });
 });
 
@@ -714,25 +692,25 @@ describe("an heir inherits the world and not the ladder's credit", () => {
     st.fire.fuelKg = 20;
     siteFor(st, st.campCell!).structures.turfHut = true;
     addItem(pile(state, st.campCell!), "firewood", 200);
-    const before = activeGoals(state, calendar(state.minute, state.startDoy));
+    const before = activeOpportunityKeys(state, calendar(state.minute, state.startDoy));
     die(state, "froze", regionAt(world, oldRegion).name);
     beginAgain(state, world);
     land(state, world, { first: "Ilze", last: "Berg" });
-    expect(activeGoals(state, calendar(state.minute, state.startDoy))).toEqual(before);
-    expect(state.goals.done.fire).toBeUndefined();
-    expect(state.goals.done.roof).toBeUndefined();
-    expect(state.goals.progress.firewood ?? 0).toBe(0);
+    expect(activeOpportunityKeys(state, calendar(state.minute, state.startDoy))).toEqual(before);
+    expect(state.opportunities.completedAt.fire).toBeUndefined();
+    expect(state.opportunities.completedAt.roof).toBeUndefined();
+    expect(state.opportunities.stepProgress.firewood?.wood ?? 0).toBe(0);
   });
 
   it("carries an incomplete goal's progress across a real death", () => {
     const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const region = state.player.region;
-    goalDeed(state, { kind: "gathered", item: "firewood", kg: 6 });
+    recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: 6 });
     die(state, "froze", regionAt(world, region).name);
     beginAgain(state, world);
     land(state, world, { first: "Ilze", last: "Berg" });
-    expect(state.goals.progress.firewood).toBeCloseTo(6);
-    expect(state.goals.done.firewood).toBeUndefined();
+    expect(state.opportunities.stepProgress.firewood?.wood).toBeCloseTo(6);
+    expect(state.opportunities.completedAt.firewood).toBeUndefined();
   });
 });

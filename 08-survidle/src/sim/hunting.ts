@@ -2,7 +2,7 @@ import type { Calendar } from "./calendar";
 import { absence } from "./animals";
 import { body } from "./person";
 import { hasTool, produce } from "./inventory";
-import { goalDeed } from "./goals";
+import { recordOpportunityEvent } from "./opportunities";
 import { campCellOf, cellOf, forestCell, heathCell, kmBetween, rockCell, watersideCell } from "./position";
 import { skillLevel, oddsFactor } from "./skills";
 import { huntedLand, SPECIES_DEFS, type Species } from "./species";
@@ -133,7 +133,7 @@ export function noteHuntSign(state: GameState, cell: number, species: Species): 
     species: { ...previous, [species]: state.minute },
     ...(Object.keys(failures).length ? { failures } : {}),
   };
-  if (discovered) goalDeed(state, { kind: "foundSign" });
+  if (discovered) recordOpportunityEvent(state, { kind: "foundSign" });
   return discovered;
 }
 

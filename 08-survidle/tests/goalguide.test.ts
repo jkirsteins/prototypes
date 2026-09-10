@@ -1,14 +1,15 @@
+import { reveal } from "./opportunity-helpers";
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { GOALS, goalDeed, introduceGoals } from "../src/sim/goals";
+import { OPPORTUNITIES, recordOpportunityEvent } from "../src/sim/opportunities";
 import { newGame } from "../src/sim/newgame";
 import { goalGuide, goalProgress } from "../src/ui/goalguide";
 
 describe("goal guidance", () => {
   it("covers every goal without prescribing UI paths", () => {
-    for (const goal of GOALS) {
-      const guide = goalGuide(goal.id);
-      expect(guide.id).toBe(goal.id);
+    for (const goal of OPPORTUNITIES) {
+      const guide = goalGuide(goal.key);
+      expect(guide.id).toBe(goal.key);
       expect(guide.note ?? "").not.toContain(">");
       expect(guide.note ?? "").toMatch(/^[\x20-\x7e]*$/);
     }
@@ -29,9 +30,9 @@ describe("goal guidance", () => {
 
   it("shows stored deed progress instead of inferring it from possessions", () => {
     const { state, world } = newGame(3);
-    introduceGoals(state, ["fire"]);
+    reveal(state, ["fire"]);
     state.player.tools.push({ id: "fireDrill", durability: 100 });
-    goalDeed(state, { kind: "built", structure: "firePit" });
+    recordOpportunityEvent(state, { kind: "built", structure: "firePit" });
     const progress = goalProgress(state, world, calendar(state.minute, state.startDoy), "fire");
     expect(progress.steps.map((step) => [step.label, step.done])).toEqual([
       ["Establish a fire site", true],

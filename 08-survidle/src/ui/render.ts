@@ -8,7 +8,7 @@ import { defaultPanes, type Panes } from "./panes";
 import { DEFAULT_TRAVEL_DISPLAY, type TravelDisplay } from "./travel";
 import type { AwaySummary } from "../sim/save";
 import type { WildlifeStartleEvent } from "../sim/wildlife-encounter";
-import type { GoalId, IntentRequest, ItemId, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
+import type { OpportunityKey, IntentRequest, ItemId, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
 
 /** What the screen remembers that the game does not. */
 export interface UiState {
@@ -34,7 +34,7 @@ export interface UiState {
   /** The rung whose moment is open, drained one at a time from state.teachQueue. */
   teach: Rung | null;
   /** Goal guidance open now, whether automatic or reopened from a pinned row. */
-  goalGuide: { ids: GoalId[]; done: GoalId[]; notices?: string[]; automatic: boolean } | null;
+  goalGuide: { ids: OpportunityKey[]; done: OpportunityKey[]; notices?: string[]; automatic: boolean } | null;
   /** The recognized wildlife subject whose naming moment is open. */
   recognition: number | null;
   /** Perceived live reactions only; neither the queue nor its deduplication history is saved. */

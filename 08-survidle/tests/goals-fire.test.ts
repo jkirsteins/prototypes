@@ -1,8 +1,8 @@
+import { reveal } from "./opportunity-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { advance } from "../src/sim/advance";
 import { leaveCamp } from "../src/sim/camp";
 import { EMBER_MINUTES } from "../src/sim/fire";
-import { introduceGoals } from "../src/sim/goals";
 import { newGame } from "../src/sim/newgame";
 import { fatLandmarks, personOf } from "../src/sim/person";
 import { placeAt } from "../src/sim/position";
@@ -45,7 +45,7 @@ function run(state: ReturnType<typeof newGame>["state"], world: World, minutes: 
 /** A camp with a huge fuel stock so the fire's own burn math never ends a test early; only the deliberate mutations in each test do. */
 function litCamp(startDoy?: number) {
   const { state, world } = startDoy === undefined ? newGame(3) : newGame(3, startDoy);
-  introduceGoals(state, ["keptNight", "keptDays"]);
+  reveal(state, ["keptNight", "keptDays"]);
   siteCamp(state, world);
   const st = regionState(state, world, state.player.region);
   placeAt(state, world, st.campCell!);
@@ -60,7 +60,7 @@ describe("keeping a fire overnight", () => {
   it("credits a fire alive at dusk that is still alive at dawn", () => {
     const { state, world } = litCamp();
     run(state, world, 26 * 60);
-    expect(state.goals.done.keptNight).toBe(true);
+    expect(state.opportunities.completedAt.keptNight).toBeDefined();
   });
 
   it("credits nothing when the fire dies at 03:00, well before dawn", () => {
@@ -72,7 +72,7 @@ describe("keeping a fire overnight", () => {
     st.fire.embers = 0;
     st.fire.litSince = null;
     run(state, world, 8 * 60); // well past day 2's dawn
-    expect(state.goals.done.keptNight).toBeUndefined();
+    expect(state.opportunities.completedAt.keptNight).toBeUndefined();
   });
 
   it("credits an ember-only night when the coals outlast a short summer one", () => {
@@ -87,7 +87,7 @@ describe("keeping a fire overnight", () => {
     st.fire.wetKg = 0;
     st.fire.embers = EMBER_MINUTES; // banked fresh, right as the short night begins
     run(state, world, 430); // through dusk and the night, past dawn, coals still alight
-    expect(state.goals.done.keptNight).toBe(true);
+    expect(state.opportunities.completedAt.keptNight).toBeDefined();
   });
 });
 
@@ -95,7 +95,7 @@ describe("keeping a fire for three days", () => {
   it("credits a fire kept continuously across seventy-two hours", () => {
     const { state, world } = litCamp();
     run(state, world, 5 * 24 * 60);
-    expect(state.goals.done.keptDays).toBe(true);
+    expect(state.opportunities.completedAt.keptDays).toBeDefined();
   });
 
   it("restarts the count when the run breaks, so five elapsed days since a two-day-old relight is not enough", () => {
@@ -113,7 +113,7 @@ describe("keeping a fire for three days", () => {
     st.fire.fuelKg = 1e7;
     st.fire.litSince = state.minute;
     run(state, world, 2 * 24 * 60);
-    expect(state.goals.done.keptDays).toBeUndefined();
+    expect(state.opportunities.completedAt.keptDays).toBeUndefined();
   });
 
   it("credits three days kept even with a brief dip to embers along the way", () => {
@@ -129,7 +129,7 @@ describe("keeping a fire for three days", () => {
     st.fire.fuelKg = 1e7;
     st.fire.embers = 0;
     run(state, world, 3 * 24 * 60);
-    expect(state.goals.done.keptDays).toBe(true);
+    expect(state.opportunities.completedAt.keptDays).toBeDefined();
     // The dip never broke the run: litSince is still the original light.
     expect(st.fire.litSince).toBe(0);
   });
@@ -137,9 +137,9 @@ describe("keeping a fire for three days", () => {
   it("credits the tick it reaches seventy-two hours, rather than waiting for the next day's roll", () => {
     const { state, world } = litCamp();
     run(state, world, 3 * 24 * 60 - 1);
-    expect(state.goals.done.keptDays).toBeUndefined();
+    expect(state.opportunities.completedAt.keptDays).toBeUndefined();
     run(state, world, 1);
-    expect(state.goals.done.keptDays).toBe(true);
+    expect(state.opportunities.completedAt.keptDays).toBeDefined();
   });
 });
 
@@ -194,8 +194,8 @@ describe("the fire goals credit only the player's own region", () => {
     otherSt.fire.litSince = state.minute;
 
     run(state, world, 5 * 24 * 60);
-    expect(state.goals.done.keptNight).toBeUndefined();
-    expect(state.goals.done.keptDays).toBeUndefined();
+    expect(state.opportunities.completedAt.keptNight).toBeUndefined();
+    expect(state.opportunities.completedAt.keptDays).toBeUndefined();
   });
 });
 
@@ -208,7 +208,7 @@ describe("leaving a camp kills its fire outright", () => {
     expect(st.fire.embers).toBe(0);
     expect(st.fire.litSince).toBeNull();
     run(state, world, 3 * 24 * 60); // long enough to cross keptDays had the run survived
-    expect(state.goals.done.keptDays).toBeUndefined();
+    expect(state.opportunities.completedAt.keptDays).toBeUndefined();
   });
 });
 
@@ -218,7 +218,7 @@ describe("a catch-up with nobody home", () => {
     const { state, world, st } = litCamp();
     advance(state, world, 5 * 24 * 60, { nobody: true });
     expect(st.fire.lit).toBe(true); // 1e7 kg of fuel never runs out, so nothing here ends the run early
-    expect(state.goals.done.keptNight).toBeUndefined();
-    expect(state.goals.done.keptDays).toBeUndefined();
+    expect(state.opportunities.completedAt.keptNight).toBeUndefined();
+    expect(state.opportunities.completedAt.keptDays).toBeUndefined();
   });
 });
