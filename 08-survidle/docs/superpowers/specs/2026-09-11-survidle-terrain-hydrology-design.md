@@ -134,8 +134,10 @@ function directly. Six stages:
 5. **Glacial carving and the coast re-read.** For cells that drain to
    the western sea and lie within 150 km of it, valley floors along the
    drainage lines are lowered by a trough of depth
-   `min(700, 40 * sqrt(A_km2))` m and half-width `1.5 * sqrt(A_km2)`
-   km with a parabolic cross profile. Within 40 km of the coast an extra
+   `min(700, 40 * sqrt(A_km2))` m and half-width
+   `min(4, 0.15 * sqrt(A_km2))` km with a parabolic cross profile, so a
+   100 km2 valley is 3 km wide and 400 m deep and the largest troughs are
+   8 km wide and 700 m deep, the shape of a real fjord valley. Within 40 km of the coast an extra
    `300 * (1 - coastKm / 40)` m is taken off the floor so the trough
    drowns. Then sea is re-read: a cell at or below 0 that is
    4-connected to the ocean edge is sea; a cell at or below 0 that is
