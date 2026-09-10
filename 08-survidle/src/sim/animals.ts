@@ -48,6 +48,10 @@ export function popOf(st: RegionState, s: Species): number {
   return st.pop[s] ?? 0;
 }
 
+function inMonths(month: number, range: [number, number]): boolean {
+  return range[0] <= range[1] ? month >= range[0] && month <= range[1] : month >= range[0] || month <= range[1];
+}
+
 /**
  * Why a species cannot be met here at all just now, in the words the hunt
  * row and the region card both say, or null when it can be met. The one
@@ -57,6 +61,8 @@ export function popOf(st: RegionState, s: Species): number {
  */
 export function absence(def: SpeciesDef, cal: Calendar, iceCm: number): string | null {
   if (def.season.kind === "migrant" && seasonFactor(def, cal.month) === 0) return `${awayWord(def)} until ${monthName(def.season.arrive)}`;
+  const den = def.agent?.denMonths;
+  if (den && inMonths(cal.month, den)) return `denned until ${monthName((den[1] + 1) % 12)}`;
   if (def.kind === "bird" && def.habitat.lake !== undefined && iceCm >= ICE_THIN_CM) return "the lake is frozen";
   return null;
 }
@@ -64,7 +70,8 @@ export function absence(def: SpeciesDef, cal: Calendar, iceCm: number): string |
 /** Capacity as it stands this season: winter thins the browsers, migrants are away, lake birds leave a frozen lake. */
 export function seasonalCapacity(world: World, region: number, s: Species, cal: Calendar, iceCm = 0): number {
   const def = SPECIES_DEFS[s];
-  if (absence(def, cal, iceCm)) return 0;
+  if (def.season.kind === "migrant" && seasonFactor(def, cal.month) === 0) return 0;
+  if (def.kind === "bird" && def.habitat.lake !== undefined && iceCm >= ICE_THIN_CM) return 0;
   return (regionAt(world, region).capacity[s] ?? 0) * seasonFactor(def, cal.month);
 }
 

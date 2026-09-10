@@ -7,7 +7,7 @@ import { regionDensity } from "./animals";
 import { regionState, siteAt } from "./regionstate";
 import { skillLevel } from "./skills";
 import { noteHuntSign } from "./hunting";
-import type { AgentSpecies, GameState, WildlifeMode, WildlifeState, WildlifeSubject } from "./types";
+import type { AgentSpecies, GameState, Species, WildlifeMode, WildlifeState, WildlifeSubject } from "./types";
 import { cellOf } from "./position";
 import { visibleCells } from "./sight";
 import { record } from "./record";
@@ -74,10 +74,6 @@ function denning(subject: WildlifeSubject, cal: Calendar): boolean {
 function reconcileRegion(state: GameState, world: World, region: number, cal: Calendar): void {
   const st = regionState(state, world, region);
   for (const species of AGENT_SPECIES) {
-    // Regional bear abundance used to fall to zero while bears were "away".
-    // A persistent bear is instead still here in its den, so that seasonal
-    // aggregate convention must never erase its identity at emergence.
-    if (species === "bear") continue;
     const subjects = state.wildlife.subjects.filter((s) => s.region === region && s.species === species && !denning(s, cal));
     let excess = subjects.reduce((sum, subject) => sum + wildlifeMembers(subject), 0) - Math.floor(popOf(st, species));
     if (excess <= 0) continue;
@@ -431,18 +427,60 @@ export function resetWildlifeKnowledge(state: GameState): void {
   state.wildlife.lastSpatialTick = -1;
 }
 
-/** Removes one represented member after another system has already reduced aggregate population. */
-export function takeWildlifeMember(state: GameState, species: AgentSpecies, subjectId?: number): WildlifeSubject | null {
-  const candidates = state.wildlife.subjects.filter((s) => s.region === state.player.region && s.species === species && wildlifeMembers(s) > 0);
-  const subject = candidates.find((s) => s.id === subjectId) ?? candidates.find((s) => s.active) ?? candidates[0];
+/** Removes one member from a concrete wildlife subject without touching aggregate abundance. */
+export function takeWildlifeMember(state: GameState, species: AgentSpecies, subjectId?: number, region = state.player.region): WildlifeSubject | null {
+  const candidates = state.wildlife.subjects.filter((s) => s.region === region && s.species === species && wildlifeMembers(s) > 0);
+  const subject = subjectId === undefined
+    ? candidates.find((s) => s.active) ?? candidates[0]
+    : candidates.find((s) => s.id === subjectId);
   if (!subject) return null;
   if (!removeMember(subject)) return null;
   if (wildlifeMembers(subject) === 0) removeSubject(state, subject);
   return subject;
 }
 
+function isAgentSpecies(species: Species): species is AgentSpecies {
+  return AGENT_SPECIES.includes(species as AgentSpecies);
+}
+
+/**
+ * Atomically claims one whole animal from aggregate abundance. Agent species
+ * must also resolve to a concrete subject: an explicit target is authoritative,
+ * while a generic successful search may materialize an unrepresented member at
+ * the encounter cell before removing it.
+ */
+export function claimHuntableAnimal(state: GameState, world: World, species: Species, cell: number, subjectId?: number): boolean {
+  const region = cellAt(world, cell).region;
+  const st = regionState(state, world, region);
+  const population = popOf(st, species);
+  if (Math.floor(population + 1e-9) < 1) return false;
+  if (!isAgentSpecies(species)) {
+    st.pop[species] = population - 1;
+    return true;
+  }
+
+  let subject = subjectId === undefined
+    ? state.wildlife.subjects.find((candidate) => candidate.region === region && candidate.species === species && candidate.active?.cell === cell && wildlifeMembers(candidate) > 0)
+    : state.wildlife.subjects.find((candidate) => candidate.id === subjectId && candidate.region === region && candidate.species === species
+      && (candidate.active?.cell === cell || candidate.denCell === cell) && wildlifeMembers(candidate) > 0);
+  if (!subject && subjectId === undefined) {
+    const represented = state.wildlife.subjects
+      .filter((candidate) => candidate.region === region && candidate.species === species)
+      .reduce((sum, candidate) => sum + wildlifeMembers(candidate), 0);
+    if (Math.floor(population + 1e-9) <= represented) return false;
+    subject = makeSubject(state, species, region, 1);
+    subject.active = { cell, hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [] };
+    state.wildlife.subjects.push(subject);
+  }
+  if (!subject) return false;
+
+  const removed = takeWildlifeMember(state, species, subject.id, region);
+  if (!removed) return false;
+  st.pop[species] = population - 1;
+  return true;
+}
+
 export function knownBearDen(state: GameState, cal: Calendar): WildlifeSubject | null {
-  if (cal.month < 1 || cal.month > 2) return null;
   return state.wildlife.subjects.find((subject) => subject.species === "bear" && subject.region === state.player.region && subject.denCell !== null && state.wildlife.knownDens[subject.denCell] && denning(subject, cal) && wildlifeMembers(subject) > 0) ?? null;
 }
 

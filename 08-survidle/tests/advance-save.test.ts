@@ -332,6 +332,16 @@ describe("the world save", () => {
     expect(back.player.huntSigns).toEqual({ 12: { species: { deer: 40 } } });
   });
 
+  it("round-trips learned negative hunting evidence", () => {
+    const { state } = newGame(4);
+    state.player.huntSigns[12] = {
+      species: { deer: 40 },
+      failures: { deer: { at: 50, count: 3 } },
+    };
+    const back = deserialize(serialize(state))!.state;
+    expect(back.player.huntSigns[12]).toEqual(state.player.huntSigns[12]);
+  });
+
   it("initializes hunting recovery state in older saves", () => {
     const { state } = newGame(8);
     const old = JSON.parse(serialize(state));

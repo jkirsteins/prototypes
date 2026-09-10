@@ -64,8 +64,8 @@ describe("the epitaph", () => {
 
   it("is deterministic for reference deaths", () => {
     // These snapshots guard the complete report seam, not a balance target.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 27. Starved at camp, with nothing in the pack and 35 kg of firewood at camp."`);
-    expect(epitaph(runReference(42, 60).record)).toMatchInlineSnapshot(`"Darius Paulauskas. Day 28. Starved at camp, with nothing in the pack and 20 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 26. Starved at camp, with nothing in the pack and 78 kg of firewood at camp."`);
+    expect(epitaph(runReference(42, 60).record)).toMatchInlineSnapshot(`"Darius Paulauskas. Day 53. Starved at camp, with nothing in the pack and 40 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

@@ -16,6 +16,7 @@ import { campSite, regionState } from "../src/sim/regionstate";
 import { cellAt, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 import { isWorkOrder } from "../src/sim/types";
+import { activateWildlife } from "../src/sim/wildlife-agents";
 
 type G = ReturnType<typeof newGame>;
 function run(g: G, minutes: number, seed = 1) {
@@ -234,6 +235,21 @@ describe("tasks", () => {
     expect(qty(state.player.pack, "rawMeat") + qty(herePile(state, world), "rawMeat")).toBeGreaterThan(0);
   });
 
+  it("does not bind a species hunt to arbitrary wildlife elsewhere in the region", () => {
+    const g = newGame(3);
+    siteCamp(g.state, g.world);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
+    state.player.tools.push({ id: "bow", durability: 100 });
+    addItem(state.player.pack, "arrow", 10);
+    regionState(state, world, state.player.region).pop.deer = 2;
+    activateWildlife(state, world, new Rng(1));
+    noteHuntSign(state, cellOf(state, world), "deer");
+
+    expect(startTask(state, world, cal, "hunt", "deer")).toBe(true);
+    expect(state.task?.wildlifeSubject).toBeUndefined();
+  });
+
   it("never invents animal sign on empty ground", () => {
     const g = newGame(3);
     siteCamp(g.state, g.world);
@@ -246,7 +262,42 @@ describe("tasks", () => {
     const signs = structuredClone(state.player.huntSigns);
     expect(startTask(state, world, cal, "hunt", "deer")).toBe(true);
     stepTask(state, world, cal, new Rng(9), state.task!.duration + 1);
-    expect(state.player.huntSigns).toEqual(signs);
+    expect(state.player.huntSigns[cellOf(state, world)].species).toEqual(signs[cellOf(state, world)].species);
+    expect(state.player.huntSigns[cellOf(state, world)].failures?.deer?.count).toBe(1);
+  });
+
+  it("does not create a carcass from fractional abundance", () => {
+    const g = newGame(3);
+    siteCamp(g.state, g.world);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
+    state.player.tools.push({ id: "bow", durability: 100 });
+    addItem(state.player.pack, "arrow", 10);
+    regionState(state, world, state.player.region).pop.deer = 0.69;
+    noteHuntSign(state, cellOf(state, world), "deer");
+    expect(startTask(state, world, cal, "hunt", "deer")).toBe(true);
+    stepTask(state, world, cal, { chance: () => true } as never, state.task!.duration + 1);
+    expect(state.carcasses).toHaveLength(0);
+    expect(state.stats.animals).toBe(0);
+    expect(regionState(state, world, state.player.region).pop.deer).toBeCloseTo(0.69, 9);
+  });
+
+  it("does not create a carcass when its targeted wildlife subject is gone", () => {
+    const g = newGame(3);
+    siteCamp(g.state, g.world);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
+    state.player.tools.push({ id: "bow", durability: 100 });
+    addItem(state.player.pack, "arrow", 10);
+    regionState(state, world, state.player.region).pop.deer = 2.4;
+    state.task = {
+      id: "hunt", arg: "deer", progress: 180, duration: 180, repeat: false,
+      wildlifeSubject: 99999,
+    };
+    stepTask(state, world, cal, { chance: () => true } as never, 1);
+    expect(state.carcasses).toHaveLength(0);
+    expect(state.stats.animals).toBe(0);
+    expect(regionState(state, world, state.player.region).pop.deer).toBeCloseTo(2.4, 9);
   });
 
   it("resumes a generic hunt's carcass work without another animal or bow", () => {

@@ -727,6 +727,17 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       const t = terrains[i];
       cls.push(`t-${t}`);
       if (seen === 1) cls.push("dim");
+      const fogLeft = gx > 0 && seenAt[i - 1] === 0;
+      const fogRight = gx < l.w - 1 && seenAt[i + 1] === 0;
+      const fogTop = gy > 0 && seenAt[i - l.w] === 0;
+      const fogBottom = gy < l.h - 1 && seenAt[i + l.w] === 0;
+      if (fogLeft || fogRight || fogTop || fogBottom) {
+        cls.push("fog-edge");
+        if (fogLeft) cls.push("fog-left");
+        if (fogRight) cls.push("fog-right");
+        if (fogTop) cls.push("fog-top");
+        if (fogBottom) cls.push("fog-bottom");
+      }
       if (drawBorders) {
         if (gx > 0 && ownsEdge(reg, regions[i - 1])) cls.push("bl");
         if (gx < l.w - 1 && ownsEdge(reg, regions[i + 1])) cls.push("br");

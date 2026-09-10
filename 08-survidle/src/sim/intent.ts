@@ -28,6 +28,7 @@ import { type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
 import { check, isShortAtCamp, loadPack, setAside, type InitialWalk, type TaskOption, whereIs } from "./tasks";
 import { bestHuntCell, hasRecentHuntSign, huntEstimate } from "./hunting";
+import { knownBearDen } from "./wildlife-agents";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, UntilChoice, Where, WorkIntent,
 } from "./types";
@@ -177,6 +178,10 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     return { cell: canConsume(reach(state, world), needs) ? here : (st.campCell ?? here), note: "" };
   }
   if (task === "hunt" && arg === "any") return anyHuntCell(state, world, cal, where);
+  if (task === "hunt" && arg === "bear") {
+    const den = knownBearDen(state, cal);
+    if (den?.denCell !== null && den?.denCell !== undefined) return { cell: den.denCell, note: "" };
+  }
   if (task === "fill" && st.iceHole && state.weather.iceCm >= ICE_SHORE_CM) return { cell: st.iceHole.cell, note: "" };
   if (task === "emptyTrap" && st.trap) return { cell: st.trap.cell, note: "" };
   if (task === "fill" && arg === "seep") {

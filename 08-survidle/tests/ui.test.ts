@@ -508,6 +508,7 @@ describe("panels", () => {
     };
     for (const c of thread) expect(glyphAt(c).classList.contains("fog")).toBe(false);
     for (const c of untouched) expect(glyphAt(c).classList.contains("fog")).toBe(true);
+    expect(thread.some((c) => glyphAt(c).classList.contains("fog-edge"))).toBe(true);
   });
 
   it("names black ground it has heard of without embedding controls in its hover surface", () => {

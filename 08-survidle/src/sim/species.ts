@@ -16,8 +16,8 @@ export type WaterKind = "lake" | "sea";
 
 export type SeasonRule =
   | { kind: "resident"; /** capacity factor December to February */ winter?: number }
-  /** Present from the arrive month to the month before leave, 0-based; absent otherwise. away is how the absence reads: gone south, or denned. */
-  | { kind: "migrant"; arrive: number; leave: number; away?: "gone" | "denned" };
+  /** Present from the arrive month to the month before leave, 0-based; absent otherwise. */
+  | { kind: "migrant"; arrive: number; leave: number };
 
 export interface Call {
   /** Slot in the audio manifest. */
@@ -76,7 +76,7 @@ export interface SpeciesDef {
 }
 
 const resident = (winter?: number): SeasonRule => (winter === undefined ? { kind: "resident" } : { kind: "resident", winter });
-const migrant = (arrive: number, leave: number, away?: "denned"): SeasonRule => (away ? { kind: "migrant", arrive, leave, away } : { kind: "migrant", arrive, leave });
+const migrant = (arrive: number, leave: number): SeasonRule => ({ kind: "migrant", arrive, leave });
 
 /**
  * Fish per square kilometre of water from a standing biomass in kg per
@@ -131,8 +131,8 @@ const SPECIES_DEFS_RAW = {
   wolverine: { name: "wolverine", kind: "mammal", habitat: { fell: 0.03, spruce: 0.03, rock: 0.02, bog: 0.02 }, range: 0.4, season: resident(), growth: 0.0005,
     agent: { form: "individual", group: [1, 1], active: "night", matingMonths: [3, 7], birthMonths: [1, 3], litter: [1, 3], maturityYears: 2, independentYears: 1, oldAgeYears: 12 },
     hunt: { spot: "outcrop", minutes: 240, odds: 0.2, injury: 0, level: 10 }, yields: { meatKg: 8, furKg: 1.5, bone: 3, sinew: 2 } },
-  // Denned November to March: absent the way a migrant is, and the same rule says so.
-  bear: { name: "brown bear", kind: "mammal", habitat: { spruce: 0.15, pine: 0.1, bog: 0.1, birch: 0.08 }, range: 0.5, season: migrant(3, 10, "denned"), growth: 0.0006,
+  // The population remains resident while individual bears den November to March.
+  bear: { name: "brown bear", kind: "mammal", habitat: { spruce: 0.15, pine: 0.1, bog: 0.1, birch: 0.08 }, range: 0.5, season: resident(), growth: 0.0006,
     agent: { form: "individual", group: [1, 1], active: "dawn-dusk", matingMonths: [4, 6], birthMonths: [0, 1], litter: [1, 3], maturityYears: 4, independentYears: 2, oldAgeYears: 20, denMonths: [10, 2] },
     hunt: { spot: "forest", minutes: 300, odds: 0.25, injury: 0.5, level: 15 }, yields: { meatKg: 80, furKg: 8, fatKg: 25, bone: 8, sinew: 5 } },
 
@@ -270,9 +270,9 @@ export function waterOf(s: Species): WaterKind | null {
   return null;
 }
 
-/** How a migrant's absence reads on the region card: "gone until April" or "denned until April". */
-export function awayWord(def: SpeciesDef): "gone" | "denned" {
-  return def.season.kind === "migrant" ? (def.season.away ?? "gone") : "gone";
+/** How a migrant's absence reads on the region card. */
+export function awayWord(_def: SpeciesDef): "gone" {
+  return "gone";
 }
 
 /** Capacity factor for a month: a resident's winter thinning, a migrant's absence. */

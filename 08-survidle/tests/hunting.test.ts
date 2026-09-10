@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { bestHuntCell, carcassMinutes, createCarcass, disturbHuntingGround, huntEstimate, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteHuntSign, processCarcass, stepCarcasses } from "../src/sim/hunting";
+import { bestHuntCell, carcassMinutes, createCarcass, disturbHuntingGround, huntEstimate, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteFailedHunt, noteHuntSign, processCarcass, stepCarcasses } from "../src/sim/hunting";
 import { addItem, herePile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt, placeAtSpot, straightKm } from "../src/sim/position";
@@ -11,6 +11,9 @@ import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellAt, regionAt, spotOf } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 import { isWorkIntent } from "../src/sim/types";
+import { mapRegion } from "../src/sim/mapped";
+import { Rng } from "../src/rng";
+import { activateWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
 
 const cal = calendar(0);
 
@@ -89,6 +92,44 @@ describe("hunting knowledge", () => {
     for (const species of huntedLand()) st.pop[species] = 0;
     expect(huntEstimate(state, world, cal, cell).species.length).toBeGreaterThan(0);
     expect(bestHuntCell(state, world, cal)).toBe(cell);
+  });
+
+  it("learns negative evidence without learning the hidden population", () => {
+    const { state, world } = armedGame();
+    const cell = bestHuntCell(state, world, cal);
+    const before = huntEstimate(state, world, cal, cell).kgPerHour;
+    noteFailedHunt(state, cell, "deer");
+    noteFailedHunt(state, cell, "deer");
+    expect(huntEstimate(state, world, cal, cell).kgPerHour).toBeLessThan(before);
+
+    const st = regionState(state, world, state.player.region);
+    st.pop.deer = 0;
+    expect(huntEstimate(state, world, cal, cell).kgPerHour).toBeLessThan(before);
+  });
+
+  it("lets an expert range onto mapped neighboring ground after local failures", () => {
+    const { state, world } = armedGame();
+    setSkillLevel(state, "hunting", 20);
+    const local = regionAt(world, state.player.region);
+    for (const neighbour of local.neighbours) mapRegion(state, world, neighbour.id);
+    for (const cell of local.cells) {
+      for (const species of huntedLand()) {
+        noteFailedHunt(state, cell, species);
+        noteFailedHunt(state, cell, species);
+        noteFailedHunt(state, cell, species);
+      }
+    }
+    expect(cellAt(world, bestHuntCell(state, world, cal)).region).not.toBe(state.player.region);
+  });
+
+  it("lets an expert compare mapped neighboring ground after sustained local pressure", () => {
+    const { state, world } = armedGame();
+    setSkillLevel(state, "hunting", 20);
+    const local = regionAt(world, state.player.region);
+    for (const neighbour of local.neighbours) mapRegion(state, world, neighbour.id);
+    for (const cell of local.cells) state.huntPressure[cell] = 1;
+
+    expect(cellAt(world, bestHuntCell(state, world, cal)).region).not.toBe(state.player.region);
   });
 
   it("keeps recent signs as personal knowledge and lets them expire", () => {
@@ -249,5 +290,16 @@ describe("local hunting pressure", () => {
     disturbHuntingGround(state, world, cell, true);
     expect(huntPressureFactor(state, world, nearby)).toBeLessThan(1);
     expect(huntPressureFactor(state, world, distant)).toBe(1);
+  });
+
+  it("alerts represented wildlife on disturbed ground without changing population", () => {
+    const { state, world } = armedGame();
+    activateWildlife(state, world, new Rng(1));
+    const subject = state.wildlife.subjects.find((candidate) => candidate.active);
+    expect(subject).toBeDefined();
+    const before = wildlifeMembers(subject!);
+    disturbHuntingGround(state, world, subject!.active!.cell, false);
+    expect(subject!.active).toMatchObject({ alarm: 100, intent: "flee" });
+    expect(wildlifeMembers(subject!)).toBe(before);
   });
 });

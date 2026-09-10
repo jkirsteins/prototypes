@@ -106,7 +106,11 @@ export interface Garment { id: ClothingId; durability: number; /** 0 dry to 100 
 /** What an hour's watching told a survivor about one shore: which fish this water holds. Dies with the person. */
 export interface Observation { minute: number; fish: Species[] }
 /** The last minute each species left evidence on this cell. */
-export interface HuntSign { species: Partial<Record<Species, number>> }
+export interface HuntSign {
+  species: Partial<Record<Species, number>>;
+  /** Repeated fruitless searches are learned evidence, not hidden population knowledge. */
+  failures?: Partial<Record<Species, { at: number; count: number }>>;
+}
 
 export interface CarcassYields {
   meatKg: number;

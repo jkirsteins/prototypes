@@ -6,7 +6,7 @@ import {
   SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS,
 } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { inSeason, ordersHere, removeOrder } from "../src/sim/orders";
+import { inSeason, keepStock, ordersHere, removeOrder } from "../src/sim/orders";
 import { regionState } from "../src/sim/regionstate";
 import {
   HANG_ABOVE_KG, PLANT_HOURS_ROOTS, PLANT_HOURS_WINDOW_ROW, REFERENCE_ORDERS, setUpReference, stepReference, wantOpen, winterStockWant,
@@ -226,6 +226,14 @@ describe("the list after the axe", () => {
     siteCamp(state, world);
     addItem(pile(state, regionState(state, world, state.player.region).campCell!), "driedMeat", WINTER_STOCK.driedMeatKg);
     for (const w of [hunt, fish]) expect(wantOpen(state, world, w)).toBe(true);
+  });
+
+  it("counts meat drying on the rack toward a hunting keep", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const hunt = want("hunt:any:keep");
+    regionState(state, world, state.player.region).rack.kg = 40;
+    expect(keepStock(state, world, { ...hunt, id: 1, done: 0, minutes: 0, skipped: "" })).toBe(40);
   });
 
   it("the runner gives the plain shape under the rung and costs no morning on a job the list passes over", () => {

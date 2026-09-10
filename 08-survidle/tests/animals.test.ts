@@ -106,6 +106,19 @@ describe("seasons", () => {
     expect(popOf(st, "mallard")).toBeLessThan(k * 0.1);
   });
 
+  it("keeps a denned resident bear in the population without daily flock replenishment", () => {
+    const { state, world } = newGame(5);
+    const id = regionWith(state, world, "bear");
+    const st = regionState(state, world, id);
+    const capacity = regionAt(world, id).capacity.bear!;
+    st.pop.bear = 0.069;
+
+    expect(seasonalCapacity(world, id, "bear", calendar(1440 * 275))).toBe(capacity);
+    dailyAnimals(state, world, calendar(1440 * 30), new Rng(3), null);
+    expect(popOf(st, "bear")).toBeGreaterThanOrEqual(0.069);
+    expect(popOf(st, "bear")).toBeLessThan(0.07);
+  });
+
   it("voice-only species sit at capacity and residents thin in winter by their factor", () => {
     const { state, world } = newGame(5);
     const id = regionWith(state, world, "raven");

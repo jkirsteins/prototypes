@@ -219,9 +219,10 @@ Revisit these in order after the hunting gate has settled:
   for realistic recovery.
 
 Large game should usually respond to repeated hunting through local avoidance
-and worse encounters. Population depletion belongs mainly to small, localized
-animals such as beaver unless later evidence justifies a broader population
-model.
+and worse encounters, while every actual kill still removes one whole animal
+from the regional population. Small, localized animals such as beaver can be
+depleted outright; wide-ranging large game should more often become difficult
+to encounter locally and recover only through explicit movement and births.
 
 The 2026-09-09 post-merge year gate confirms that recovery alone did not settle
 expert hunting. Three of five kitted Hunting 20 survivors lived a year, one
@@ -258,3 +259,107 @@ against 3-5. Trap/hut/trough held 24 days to alive at 30 against 10-20, while
 every stocked life was alive at 30 and in its 20-60 band. These are transformed
 snapshots of the changing reference list, so the readings mix capability,
 world seed and policy and must not be used to tune the game.
+
+## Hunting population accounting and learned range
+
+**Raised** 2026-09-10, after tracing impossible expert harvests to the
+population model rather than to hunting-pressure constants.
+
+**Addressed** 2026-09-10. Whole-animal claims, resident bear seasonality,
+authoritative concrete targets, learned negative evidence, skilled neighboring
+range selection and wildlife alarm behavior are implemented with conservation
+regressions. Numeric hunting calibration remains open under Post-recovery
+balance calibration above.
+
+The final mechanics audit also closed two indirect repeat-hunt paths. Meat
+already on a drying rack counts toward a hunting keep, so preservation in
+progress cannot launch another hunt. A species hunt no longer binds an
+arbitrary active animal elsewhere in the region, and a claim cannot consume a
+represented animal unless it is at the encounter cell (or at its explicitly
+known den). Skilled automatic hunters can compare mapped neighboring ground
+after either repeated failures or sustained local pressure.
+
+The governing invariant is that every carcass represents one whole animal
+removed from the simulated population. Continuous abundance may remain useful
+for ecological growth, but a fractional remainder is not a huntable animal.
+The harvest transaction must therefore fail without producing a carcass when
+no whole individual can be claimed, and a failed wildlife-subject removal must
+never be ignored.
+
+Priority order:
+
+- **P0:** Make the removal of one whole animal and creation of its carcass one
+  atomic operation. A failed removal means a failed kill.
+- **P0:** Stop applying flock-style daily return-to-capacity to resident
+  mammals. Bears remain in their resident population while denning; births,
+  deaths, explicit movement, immigration and emigration are the only population
+  changes. Migratory flock replenishment remains species-class-specific.
+- **P1:** Make a concrete wildlife subject authoritative when one was targeted.
+  A probabilistic search may materialize an otherwise unrepresented whole
+  individual as an encounter, but it must then remove that individual and its
+  aggregate population exactly once.
+- **P1:** Record negative evidence from unsuccessful searches. Recent repeated
+  failures must lower the estimated value of that locality without exposing the
+  hidden true population.
+- **P1:** Let skilled automatic hunters compare mapped, reachable neighboring
+  regions once learned local yield falls. Fresh nearby ground should not be
+  chosen merely because its hidden population is larger.
+- **P2:** Keep hunting pressure as a behavioral overlay: animals become alert,
+  avoid disturbed ground and are harder to approach. Pressure is not population
+  accounting and cannot create or destroy animals.
+
+Required regression coverage:
+
+- No carcass when continuous abundance is below one and no whole subject exists.
+- A failed subject claim cannot produce a carcass.
+- Resident bear abundance cannot jump toward carrying capacity each day.
+- Total harvest cannot exceed whole animals present plus explicit arrivals.
+- Replenishment behavior is selected by species class, not by a shared seasonal
+  label.
+- Repeated empty hunts reduce estimated local yield, and a sufficiently skilled
+  hunter can then select known reachable ground in a neighboring region.
+- In controlled populations, ending abundance equals starting abundance plus
+  births and explicit immigration, minus deaths and explicit emigration.
+
+Do not recalibrate kill odds, body weights, skill curves, food sources, cold
+constants or survival bands until these invariants hold and the paired
+evaluators below are rebuilt. Exceeding 1,500 kcal/day can be a legitimate
+jackpot; routine production of several annual diets by one hunter is the defect.
+
+### Mechanics-complete diagnostic, 2026-09-10
+
+The structural mechanics are ready for evaluation: 1,651 fast tests, 10 slow
+simulation tests and the production build pass. The five-seed expert year probe
+passes 2 of 5. Seeds 19 and 79 survive the year with about 430,000 and 220,000
+kcal at camp. Seed 19 takes eight elk and six deer in one 18.54 square km region
+between days 7 and 134; the region began with 6.10 elk and 53.30 deer, and every
+additional animal now comes through explicit conserved growth or movement.
+That is an aggressive local harvest and remains a calibration question, but it
+is no longer evidence of animals or carcasses being created from nothing.
+
+The existing large-game kcal/day verdict is not ready to gate calibration. It
+divides recovered kill calories by days lived, so seed 42's single elk in a
+15-day life reports 10,623 kcal/day. It also measures field recovery rather than
+what survives hauling, spoilage, preservation and consumption. Rebuild it around
+whole kill windows, hunted area, recovered calories, preserved calories and
+ending stock before changing the 300-1,500 band.
+
+The late-August first-snow probe also passes 2 of 5. The three failures starve
+on days 27, 38 and 27 while reporting large reachable root stands and known fish
+that the reference policy barely or never uses. This is unhealthy automation,
+but it does not show a player-facing food-source shortage. Repair the reference
+policy and paired source probes before tuning food production.
+
+## Fog edge translucency
+
+**Raised** 2026-09-10, while repairing hunting and exploration feedback.
+
+**Addressed** 2026-09-10. Known cells now feather into adjacent unknown cells
+without drawing unknown terrain or covering map marks; day, night and rain were
+checked in the headless map-shot harness.
+
+At the boundary between explored and unexplored map cells, consider a narrow
+translucent fog edge to soften the hard cutoff. It must be derived only from the
+known/unknown boundary, preserve the uniform time-of-day shade across the whole
+viewport, and never reveal terrain or marks in an unknown cell. Treat this as a
+P2 readability pass, with screenshots at day, night and rain before shipping.

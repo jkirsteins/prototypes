@@ -244,6 +244,10 @@ export function keepStock(state: GameState, world: World, o: WorkOrder): number 
   // A form that is the keep's own yield item is already in the sum. No row names
   // one today, and skipping it is what keeps that true whatever a row grows into.
   for (const f of KEEP_FORMS[o.req.task] ?? []) if (f.item !== keep.item) have += qty(camp, f.item) * f.ratio;
+  // Meat on the rack is already secured at camp and remains raw-meat equivalent
+  // until drying finishes. Omitting it can launch another hunt while the first
+  // carcass is visibly being preserved.
+  if (o.req.task === "hunt") have += st.rack.kg;
   return have;
 }
 

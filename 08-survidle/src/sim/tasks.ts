@@ -54,8 +54,8 @@ import { owningOrder } from "./orderowner";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
 import { plain } from "./voice";
-import { AGENT_SPECIES, knownBearDen, takeWildlifeMember, unknownBearDen } from "./wildlife-agents";
-import { carcassMinutes, createCarcass, disturbHuntingGround, hasRecentHuntSign, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteHuntSign, processCarcass } from "./hunting";
+import { claimHuntableAnimal, knownBearDen, unknownBearDen } from "./wildlife-agents";
+import { carcassMinutes, createCarcass, disturbHuntingGround, hasRecentHuntSign, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteFailedHunt, noteHuntSign, processCarcass } from "./hunting";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
 
@@ -1281,10 +1281,9 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   const fresh = checkFresh(state, world, cal, id, arg, cellOf(state, world), any);
   const fraction = paused?.fraction ?? 0;
   if (key) delete state.paused[key];
-  const wildlifeSubject = id === "hunt" && arg && AGENT_SPECIES.includes(arg as (typeof AGENT_SPECIES)[number])
-    ? (arg === "bear" ? knownBearDen(state, cal)?.id : undefined)
-      ?? state.wildlife.subjects.find((subject) => subject.species === arg && subject.region === state.player.region && subject.active)?.id
-    : undefined;
+  // A species hunt is an encounter, not a lock on an arbitrary animal elsewhere
+  // in the region. Only a known den names a concrete subject before pursuit.
+  const wildlifeSubject = id === "hunt" && arg === "bear" ? knownBearDen(state, cal)?.id : undefined;
   const duration = paused?.duration ?? fresh.duration;
   state.task = {
     id, arg, progress: duration * fraction, duration, repeat: repeat && o.repeatable,
@@ -2053,7 +2052,6 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
 /** Resolves the pursuit half of a hunt. True means a kill became field work. */
 function resolveHuntPursuit(state: GameState, world: World, cal: Calendar, rng: Rng, task: NonNullable<GameState["task"]>): boolean {
   const p = state.player;
-  const st = regionState(state, world, p.region);
   const s = task.arg as Species;
   const def = SPECIES_DEFS[s];
   if (!def?.hunt || isFish(s)) return false;
@@ -2068,14 +2066,13 @@ function resolveHuntPursuit(state: GameState, world: World, cal: Calendar, rng: 
   cue("arrow");
   const den = s === "bear" ? knownBearDen(state, cal) : null;
   const odds = den ? Math.min(0.9, 0.55 * oddsFactor(state, "bear")) : huntOdds(state, world, cal, d, s);
-  const killed = rng.chance(odds);
+  const struck = rng.chance(odds);
+  const killed = struck && claimHuntableAnimal(state, world, s, here, den?.id ?? task.wildlifeSubject);
   const signOdds = huntSignOdds(state, d);
   if (d > 0 && (killed || rng.chance(signOdds))) {
     if (noteHuntSign(state, here, s)) log(state, `Fresh sign: ${anAnimal(s)}.`);
   }
   if (killed) {
-    st.pop[s] = Math.max(0, popOf(st, s) - 1);
-    if (AGENT_SPECIES.includes(s as (typeof AGENT_SPECIES)[number])) takeWildlifeMember(state, s as (typeof AGENT_SPECIES)[number], den?.id ?? task.wildlifeSubject);
     state.stats.animals++;
     state.stats.kills[s] = (state.stats.kills[s] ?? 0) + 1;
     if (!hasEvent(state, (e) => e.kind === "firstKill" && e.species === s)) record(state, { kind: "firstKill", species: s });
@@ -2097,6 +2094,7 @@ function resolveHuntPursuit(state: GameState, world: World, cal: Calendar, rng: 
     }
     return true;
   }
+  noteFailedHunt(state, here, s);
   const hurt = Math.min(0.95, gapInjury(state, s) * (den ? 2 : 1));
   if (hurt > 0 && rng.chance(hurt)) {
     p.injured = Math.max(p.injured, 24 * 60);

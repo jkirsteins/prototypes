@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { activateWildlife, dailyWildlife, emptyWildlife, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
-import { calendar } from "../src/sim/calendar";
+import { activateWildlife, claimHuntableAnimal, dailyWildlife, emptyWildlife, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
+import { calendar, monthStartDoy } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
@@ -19,6 +19,7 @@ import { beginTask, check } from "../src/sim/tasks";
 import { placeAt } from "../src/sim/position";
 import { dailyAnimals } from "../src/sim/animals";
 import { siteCamp } from "./siting-helpers";
+import { resolveCell } from "../src/sim/intent";
 
 function campCell(st: { campCell: number | null }): number {
   if (st.campCell === null) throw new Error("test needs a camp");
@@ -76,6 +77,18 @@ describe("large animal agents", () => {
     }
   });
 
+  it("removes an active bear subject when no whole bear remains in its population", () => {
+    const { state, world } = newGame(79);
+    const st = regionState(state, world, state.player.region);
+    st.pop.bear = 1;
+    activateWildlife(state, world, new Rng(1));
+    expect(state.wildlife.subjects.some((s) => s.species === "bear")).toBe(true);
+
+    st.pop.bear = 0.69;
+    activateWildlife(state, world, new Rng(2));
+    expect(state.wildlife.subjects.some((s) => s.species === "bear")).toBe(false);
+  });
+
   it("uses social group targets while solitary animals remain individuals", () => {
     const { state, world } = newGame(79);
     const st = regionState(state, world, state.player.region);
@@ -119,6 +132,7 @@ describe("large animal agents", () => {
     const hunt = check(state, world, calendar(state.minute, state.startDoy), "hunt", "bear");
     expect(hunt.ok).toBe(true);
     expect(hunt.label).toContain("at den");
+    expect(resolveCell(state, world, calendar(state.minute, state.startDoy), "hunt", "bear", "nearest").cell).toBe(bear.denCell);
     expect(beginTask(state, world, calendar(state.minute, state.startDoy), "hunt", "bear", false, new Rng(7))).toBe(true);
     expect(state.task?.wildlifeSubject).toBe(bear.id);
     const away = neighbours(world, bear.denCell!).find((cell) => passable(cellAt(world, cell).terrain) && cellAt(world, cell).region === state.player.region)!;
@@ -128,6 +142,22 @@ describe("large animal agents", () => {
     const html = mapHtml(world, state, ui, calendar(state.minute, state.startDoy));
     expect(html).toContain("mk-den");
     expect(html).toMatch(/data-map-info="[^"]*known bear den/);
+  });
+
+  it("keeps a known bear den huntable throughout the modeled denning season", () => {
+    const { state, world } = newGame(79, monthStartDoy(10));
+    const st = regionState(state, world, state.player.region);
+    st.pop.bear = 1;
+    activateWildlife(state, world, new Rng(1));
+    const bear = state.wildlife.subjects.find((s) => s.species === "bear")!;
+    expect(bear.denCell).not.toBeNull();
+    state.wildlife.knownDens[bear.denCell!] = true;
+    state.player.tools.push({ id: "bow", durability: 100 });
+    addItem(state.player.pack, "arrow", 1);
+
+    const hunt = check(state, world, calendar(state.minute, state.startDoy), "hunt", "bear");
+    expect(hunt.ok).toBe(true);
+    expect(hunt.label).toContain("at den");
   });
 
   it("collapses old cells and activates the new current region", () => {
@@ -278,6 +308,71 @@ describe("large animal agents", () => {
     stepWildlife(state, world, calendar(state.minute, state.startDoy), new Rng(2), 10, "aggregate");
     expect(takeWildlifeMember(state, "deer")).toBe(subject);
     expect(wildlifeMembers(subject)).toBe(members - 2);
+  });
+
+  it("cannot claim a fractional animal or harvest more whole animals than exist", () => {
+    const { state, world } = newGame(79);
+    const st = regionState(state, world, state.player.region);
+    const cell = cellOf(state, world);
+    st.pop.hare = 1.69;
+
+    expect(claimHuntableAnimal(state, world, "hare", cell)).toBe(true);
+    expect(st.pop.hare).toBeCloseTo(0.69, 9);
+    expect(claimHuntableAnimal(state, world, "hare", cell)).toBe(false);
+    expect(st.pop.hare).toBeCloseTo(0.69, 9);
+  });
+
+  it("requires a targeted wildlife subject to exist before claiming its animal", () => {
+    const { state, world } = newGame(79);
+    const st = regionState(state, world, state.player.region);
+    st.pop.deer = 2.4;
+    expect(claimHuntableAnimal(state, world, "deer", cellOf(state, world), 99999)).toBe(false);
+    expect(st.pop.deer).toBeCloseTo(2.4, 9);
+  });
+
+  it("does not claim a represented animal from another cell", () => {
+    const { state, world } = newGame(79);
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    st.pop.deer = 2;
+    activateWildlife(state, world, new Rng(1));
+    const deer = state.wildlife.subjects.find((subject) => subject.species === "deer")!;
+    const encounter = regionAt(world, region).cells.find((cell) => cell !== deer.active?.cell)!;
+
+    expect(claimHuntableAnimal(state, world, "deer", encounter)).toBe(false);
+    expect(wildlifeMembers(deer)).toBe(2);
+    expect(st.pop.deer).toBe(2);
+  });
+
+  it("claims a represented animal only at its encounter cell", () => {
+    const { state, world } = newGame(79);
+    const st = regionState(state, world, state.player.region);
+    st.pop.deer = 2;
+    activateWildlife(state, world, new Rng(1));
+    const deer = state.wildlife.subjects.find((subject) => subject.species === "deer")!;
+
+    expect(claimHuntableAnimal(state, world, "deer", deer.active!.cell)).toBe(true);
+    expect(st.pop.deer).toBe(1);
+    expect(wildlifeMembers(deer)).toBe(1);
+  });
+
+  it("conserves aggregate animals across claims and explicit regional movement", () => {
+    const { state, world } = newGame(79);
+    const home = state.player.region;
+    const neighbour = regionAt(world, home).neighbours.find((candidate) => regionAt(world, candidate.id).capacity.deer);
+    expect(neighbour).toBeDefined();
+    const a = regionState(state, world, home);
+    const b = regionState(state, world, neighbour!.id);
+    a.pop.deer = 3.6;
+    b.pop.deer = 1.2;
+    const starting = a.pop.deer + b.pop.deer;
+
+    expect(claimHuntableAnimal(state, world, "deer", cellOf(state, world))).toBe(true);
+    const afterHarvest = a.pop.deer + b.pop.deer;
+    expect(afterHarvest).toBeCloseTo(starting - 1, 9);
+
+    dailyAnimals(state, world, calendar(1440 * 220), new Rng(4), null);
+    expect(a.pop.deer + b.pop.deer).toBeCloseTo(afterHarvest, 9);
   });
 
   it("is wired into advance only when detailed mode is requested", () => {

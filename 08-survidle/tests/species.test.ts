@@ -65,8 +65,8 @@ describe("the species catalogue", () => {
     expect(seasonFactor(SPECIES_DEFS.mallard, 9)).toBe(0);
     expect(seasonFactor(SPECIES_DEFS.loon, 3)).toBe(0);
     expect(seasonFactor(SPECIES_DEFS.loon, 4)).toBe(1);
-    // A denned bear is a migrant to the rule.
-    expect(seasonFactor(SPECIES_DEFS.bear, 0)).toBe(0);
+    // A denned bear remains in its resident population.
+    expect(seasonFactor(SPECIES_DEFS.bear, 0)).toBe(1);
     expect(seasonFactor(SPECIES_DEFS.bear, 6)).toBe(1);
   });
 
@@ -92,7 +92,7 @@ describe("the species catalogue", () => {
     expect(AUTO_EAT_ORDER.at(-1)).toBe("fat");
     // Peak autumn fat before denning, a fattened brown bear (fat and carbohydrate design, section 2).
     expect(SPECIES_DEFS.bear.yields?.fatKg).toBe(25);
-    expect(awayWord(SPECIES_DEFS.bear)).toBe("denned");
+    expect(SPECIES_DEFS.bear.agent?.denMonths).toEqual([10, 2]);
     expect(awayWord(SPECIES_DEFS.mallard)).toBe("gone");
     expect(RECIPES.furHat.needs).toEqual([{ item: "fur", qty: 1, alt: "hide" }, { item: "sinew", qty: 1 }]);
     expect(RECIPES.furMittens.needs[0]).toEqual({ item: "fur", qty: 1, alt: "hide" });
