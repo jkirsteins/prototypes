@@ -15,6 +15,14 @@ describe("names", () => {
     expect(LAST_NAMES).toContain("Berg");
   });
 
+  it("keeps the Norwegian letters in Norwegian names", () => {
+    const norwegian = CULTURES.find((culture) => culture.id === "norwegian");
+    expect(norwegian?.men).toContain("Bj\u00f8rn");
+    expect(norwegian?.surnames).toContain("Nyg\u00e5rd");
+    expect(norwegian?.men).not.toContain("Bjorn");
+    expect(norwegian?.surnames).not.toContain("Nygard");
+  });
+
   it("is deterministic per rng and never offers a taken name", () => {
     const a = rollName(new Rng(5), "m", []);
     const b = rollName(new Rng(5), "m", []);

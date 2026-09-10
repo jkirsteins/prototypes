@@ -11,6 +11,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { addItem } from "../src/sim/inventory";
 import { beginAgain } from "../src/sim/landing";
+import { MANUAL_LINKS } from "../src/sim/manual";
 import { isCareRow } from "../src/sim/bodyorder";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
@@ -29,6 +30,16 @@ describe("the names are Norwegian", () => {
     const home = regionAt(world, state.player.region);
     const names = [home, ...home.neighbours.map((n) => regionAt(world, n.id))].map((r) => r.name);
     expect(names.join(" ")).toMatch(/[åøæÅØÆ]/);
+  });
+});
+
+describe("the Norwegian handbook title", () => {
+  it("uses the Norwegian letters rather than ASCII transliterations", () => {
+    const handbook = MANUAL_LINKS.find((link) => link.url.includes("overlevelse-handbok"));
+    expect(handbook?.title).toContain("Overlevelsesh\u00e5ndbok");
+    expect(handbook?.title).toContain("H\u00e6ren");
+    expect(handbook?.title).not.toContain("Overlevelseshandbok");
+    expect(handbook?.title).not.toContain("Haeren");
   });
 });
 

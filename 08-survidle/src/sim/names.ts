@@ -4,8 +4,8 @@
  * culture's own pools, so nobody is ever a Finnish first name on a
  * Norwegian farm surname. First names are drawn for the person's sex; a
  * Latvian or Lithuanian surname carries the form that language gives a
- * woman, and every other surname is one form for anyone. Plain ASCII
- * spellings, since the UI and the epitaph are typed text.
+ * woman, and every other surname is one form for anyone. Names retain the
+ * letters used by their language even though the UI and epitaph are typed text.
  */
 import type { Rng } from "../rng";
 
@@ -27,8 +27,8 @@ export const CULTURES: Culture[] = [
   {
     id: "norwegian",
     women: ["Sigrid", "Ingrid", "Astrid", "Solveig", "Ragnhild", "Kari", "Liv", "Jorunn", "Turid", "Bergljot"],
-    men: ["Eirik", "Bjorn", "Leif", "Torvald", "Halvard", "Olav", "Arne", "Trygve", "Harald", "Sindre"],
-    surnames: ["Berg", "Dahl", "Haugen", "Lund", "Nygard", "Solberg", "Strand", "Vik", "Bakke", "Moen", "Fjeld", "Ness"],
+    men: ["Eirik", "Bj\u00f8rn", "Leif", "Torvald", "Halvard", "Olav", "Arne", "Trygve", "Harald", "Sindre"],
+    surnames: ["Berg", "Dahl", "Haugen", "Lund", "Nyg\u00e5rd", "Solberg", "Strand", "Vik", "Bakke", "Moen", "Fjeld", "Ness"],
   },
   {
     id: "swedish",

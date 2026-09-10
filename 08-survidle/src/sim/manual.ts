@@ -45,5 +45,5 @@ export const MANUAL_SECTIONS: { title: string; lines: string[] }[] = [
 export const MANUAL_LINKS: { title: string; url: string }[] = [
   { title: "Forsvarsmakten, Handbok Overlevnad (1988), free to read", url: "https://archive.org/details/handbok_overlevnad_1988" },
   { title: "Mors Kochanski, Northern Bushcraft, free to read", url: "https://archive.org/details/northern-bushcraft_202210" },
-  { title: "The Norwegian Army's Overlevelseshandbok for Haeren (2025)", url: "https://www.forsvaret.no/aktuelt-og-presse/aktuelt/overlevelse-handbok" },
+  { title: "The Norwegian Army's Overlevelsesh\u00e5ndbok for H\u00e6ren (2025)", url: "https://www.forsvaret.no/aktuelt-og-presse/aktuelt/overlevelse-handbok" },
 ];
