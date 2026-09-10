@@ -163,7 +163,9 @@ export function regionOfCell(seed: number, x: number, y: number): number {
     for (let lx = lx0 - 1; lx <= lx0 + 1; lx++) {
       if (lx < 0 || lx >= LATTICE_W) continue;
       const s = latticeSeed(seed, lx, ly);
-      const d = (x + 0.5 - s.x) ** 2 + (y + 0.5 - s.y) ** 2;
+      const dx = x + 0.5 - s.x;
+      const dy = y + 0.5 - s.y;
+      const d = dx * dx + dy * dy;
       if (d < bestD) {
         bestD = d;
         best = ly * LATTICE_W + lx;

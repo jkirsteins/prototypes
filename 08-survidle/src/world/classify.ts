@@ -4,8 +4,10 @@
  * rules here are the geology and ecology of the setting, in real units.
  */
 import { CELL_KM } from "../units";
-import { NO_FLOW, receiverOf } from "./hydro";
-import { coastKmAt, runoffLsKm2 } from "./terrain";
+import { DIST8, DY8, NO_FLOW, receiverOf } from "./hydro";
+import { fbm } from "./noise";
+import { coastKmAt, latitudeAt, runoffLsKm2, seedsFor, TEMPLATE_H_KM, TEMPLATE_W_KM, TERRAIN_INDEX, treelineM } from "./terrain";
+import type { HydrologyResult } from "./solve";
 
 const CELL_KM2 = CELL_KM * CELL_KM;
 
@@ -90,4 +92,86 @@ export function carveGlacial(height: Float32Array, w: number, h: number, dir: Ui
     }
   }
   for (let i = 0; i < n; i++) if (!seaBefore[i]) height[i] -= lower[i];
+}
+
+export const KIND = { land: 0, sea: 1, lake: 2, river: 3 } as const;
+export const FLAG_STREAM = 1;
+export const FLAG_FORD = 2;
+/** Mean discharge above this is a river about 50 m wide at bankfull: its own terrain, crossed on ice or at a ford. */
+export const RIVER_M3S = 40;
+/** A brook that runs all year. */
+export const STREAM_M3S = 0.05;
+/** A river cell dropping faster than this to its receiver is a riffle a walker can ford. */
+export const FORD_GRADIENT = 0.005;
+/** Slopes above this (20 degrees) shed their soil. */
+const STEEP = 0.36;
+/** Spruce does not grow within this of the Atlantic, nor north of this latitude. */
+const SPRUCE_COAST_KM = 30;
+const SPRUCE_LAT_LIMIT = 66;
+
+/** Bare rock share by band; the highest applicable rate wins. */
+function rockRate(coastKm: number, slope: number, underTreeline: number): number {
+  let rate = 0.04;
+  if (coastKm < 1) rate = 0.30;
+  if (slope > STEEP && rate < 0.25) rate = 0.25;
+  if (underTreeline >= 0 && underTreeline < 100 && rate < 0.35) rate = 0.35;
+  return rate;
+}
+
+export function classify(hydro: HydrologyResult, seed: number, w: number, h: number): { terrain: Uint8Array; kind: Uint8Array; flags: Uint8Array; moisture: Uint8Array } {
+  const n = w * h;
+  const s = seedsFor(seed);
+  const terrain = new Uint8Array(n);
+  const kind = new Uint8Array(n);
+  const flags = new Uint8Array(n);
+  const moisture = new Uint8Array(n);
+  const { height, sea, lake, dir, count, flow } = hydro;
+  const kmPerU = TEMPLATE_W_KM / w;
+  const kmPerV = TEMPLATE_H_KM / h;
+  for (let i = 0; i < n; i++) {
+    const x = i % w;
+    const y = (i - x) / w;
+    if (sea[i]) { kind[i] = KIND.sea; terrain[i] = TERRAIN_INDEX.water; continue; }
+    if (lake[i]) { kind[i] = KIND.lake; terrain[i] = TERRAIN_INDEX.water; continue; }
+    const q = flow[i];
+    // Slope to the receiver, metres per metre; a sink is flat.
+    let slope = 0;
+    let northFacing = 0.5;
+    if (dir[i] !== NO_FLOW) {
+      const r = receiverOf(i, dir[i], w);
+      slope = (height[i] - height[r]) / (DIST8[dir[i]] * CELL_KM * 1000);
+      if (slope < 0) slope = 0;
+      const dy = DY8[dir[i]];
+      northFacing = dy < 0 ? 1 : dy > 0 ? 0 : 0.5;
+    }
+    if (q >= RIVER_M3S) {
+      kind[i] = KIND.river;
+      terrain[i] = TERRAIN_INDEX.river;
+      if (slope > FORD_GRADIENT) flags[i] |= FLAG_FORD;
+      continue;
+    }
+    kind[i] = KIND.land;
+    if (q >= STREAM_M3S) flags[i] |= FLAG_STREAM;
+    const coastKm = coastKmOfCell(x, y, w, h);
+    const lat = latitudeAt(y + 0.5, h);
+    const treeline = treelineM(lat, coastKm);
+    const hm = height[i];
+    const s0 = slope < 0.001 ? 0.001 : slope;
+    const a = count[i];
+    const wetness = a / (a + 200 * s0);
+    const p = (runoffLsKm2(coastKm) - 12) / 38;
+    const m = 0.5 * p + 0.4 * wetness + 0.1 * northFacing;
+    moisture[i] = Math.round((m < 0 ? 0 : m > 1 ? 1 : m) * 255);
+    const soil = fbm((x + 0.5) * kmPerU / 2 + 11, (y + 0.5) * kmPerV / 2 + 5, s.soil, 2);
+    const underTreeline = treeline - hm;
+    if (hm > treeline) { terrain[i] = TERRAIN_INDEX.fell; continue; }
+    if (soil < rockRate(coastKm, slope, underTreeline)) { terrain[i] = TERRAIN_INDEX.rock; continue; }
+    if (slope < 0.02 && wetness > 0.6 && p > 0.3) { terrain[i] = TERRAIN_INDEX.bog; continue; }
+    if (underTreeline < 60 || (coastKm < 3 && soil < 0.5)) { terrain[i] = TERRAIN_INDEX.meadow; continue; }
+    const spruceAllowed = coastKm > SPRUCE_COAST_KM && lat < SPRUCE_LAT_LIMIT;
+    if (underTreeline < 150 || coastKm < 10 || (m > 0.55 && !spruceAllowed)) { terrain[i] = TERRAIN_INDEX.birch; continue; }
+    if (m > 0.55 && spruceAllowed) { terrain[i] = TERRAIN_INDEX.spruce; continue; }
+    terrain[i] = TERRAIN_INDEX.pine;
+  }
+  return { terrain, kind, flags, moisture };
 }
