@@ -88,7 +88,7 @@ describe("a fire where you stand", () => {
     state.minute = 30 * 1440;
     reveal(state, ["fieldFire"]);
     state.opportunities.context.weather = {
-      goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
+      opportunity: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
@@ -113,7 +113,7 @@ describe("a fire where you stand", () => {
     state.minute = 30 * 1440;
     reveal(state, ["fieldFire", "fieldMeal"]);
     state.opportunities.context.weather = {
-      goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
+      opportunity: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
@@ -142,7 +142,7 @@ describe("a fire where you stand", () => {
     delete state.opportunities.completedAt.remoteStorm;
     reveal(state, ["fieldMeal"]);
     state.opportunities.context.weather = {
-      goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
+      opportunity: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };

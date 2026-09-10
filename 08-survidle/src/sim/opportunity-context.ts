@@ -2,7 +2,7 @@ import type { Rng } from "../rng";
 import { routeMinutes } from "../world/route";
 import type { World } from "../world/gen";
 import { baseWalkSpeed } from "./player";
-import { activeOpportunityKeys, queueOpportunityMessage } from "./opportunities";
+import { isOpportunityComplete, isOpportunityDiscovered, queueOpportunityMessage, refreshOpportunities } from "./opportunities";
 import { fearsFell } from "./person";
 import { cellOf } from "./position";
 import { atCamp, straightKm } from "./position";
@@ -14,7 +14,7 @@ import { calendar } from "./calendar";
 import type { GameState, OpportunityKey, WeatherOpportunityContext } from "./types";
 import { atmosphereAtMinute, localStorm, scheduledStormMatches, skyReadDay, stormNow, type StormKind, walkableIce, warningMinutes } from "./weather";
 
-const WEATHER_GOALS = new Set<OpportunityKey>(["testShelter", "readWeather", "remoteStorm"]);
+const WEATHER_OPPORTUNITIES = new Set<OpportunityKey>(["testShelter", "readWeather", "remoteStorm"]);
 const NATURAL_DAWNS = 3;
 const RETRY_MINUTES = 24 * 60;
 const ORDINARY_WARNING_MINUTES = 60;
@@ -24,13 +24,14 @@ const SPATIAL_STORM_SEARCH_MINUTES = 30 * 24 * 60;
 const SPATIAL_STORM_SCAN_STEP = 5;
 const MIN_TEACHING_STORM_MINUTES = 60;
 
-function activeWeatherGoal(state: GameState, cal: Calendar): OpportunityKey | null {
-  return activeOpportunityKeys(state, cal).find((id) => WEATHER_GOALS.has(id)) ?? null;
+function discoveredWeatherOpportunity(state: GameState): OpportunityKey | null {
+  return [...WEATHER_OPPORTUNITIES].find((key) => isOpportunityDiscovered(state.opportunities, key)
+    && !isOpportunityComplete(state.opportunities, key)) ?? null;
 }
 
-function newOpportunity(goal: OpportunityKey, minute: number, attempts = 1): WeatherOpportunityContext {
+function newOpportunity(opportunity: OpportunityKey, minute: number, attempts = 1): WeatherOpportunityContext {
   return {
-    goal,
+    opportunity,
     status: "reserved",
     createdAt: minute,
     attempts,
@@ -54,7 +55,7 @@ export function recordStormMinute(state: GameState, world: World, stormId: numbe
   const opportunity = state.opportunities.context.weather;
   if (!opportunity || opportunity.stormId !== stormId) return;
   opportunity.maxWetness = Math.max(opportunity.maxWetness, state.player.wetness);
-  const homeCamp = opportunity.goal === "remoteStorm" && state.opportunities.context.chapter3HomeRegion !== null
+  const homeCamp = opportunity.opportunity === "remoteStorm" && state.opportunities.context.chapter3HomeRegion !== null
     ? atCamp(state, world) && state.player.region === state.opportunities.context.chapter3HomeRegion
     : atCamp(state, world);
   if (homeCamp) opportunity.atCampMinutes += minutes;
@@ -62,7 +63,7 @@ export function recordStormMinute(state: GameState, world: World, stormId: numbe
   const area = opportunity.area;
   const cell = cellOf(state, world);
   if (!area || state.player.region !== area.region) return;
-  if (opportunity.goal !== "remoteStorm" && straightKm(world, area.centre, cell) > area.radiusKm) return;
+  if (opportunity.opportunity !== "remoteStorm" && straightKm(world, area.centre, cell) > area.radiusKm) return;
   const site = siteAt(state.regions[state.player.region], cell);
   const protection = stormKind === "gale"
     ? galeProtection(world, cell, site)
@@ -112,17 +113,17 @@ function eligible(state: GameState, world: World, cal: Calendar, opportunity: We
   if (storm?.source !== "natural" || storm.from <= state.minute) return false;
   const stormCell = opportunity.area?.centre ?? cellOf(state, world);
   if (!scheduledStormMatches(state, world, stormCell, storm)) return false;
-  if (opportunity.goal === "testShelter") {
+  if (opportunity.opportunity === "testShelter") {
     const duration = storm.until - storm.from;
     const onset = atmosphereAtMinute(state, world, cellOf(state, world), storm.from).temperatureC;
     return storm.kind === "rain" && onset > 0 && duration <= MILD_RAIN_MAX_MINUTES;
   }
-  if (opportunity.goal === "readWeather") {
+  if (opportunity.opportunity === "readWeather") {
     return canMakeTeachingRead(state)
       && storm.from - state.minute > ORDINARY_WARNING_MINUTES
       && readableWarningMinutes(state) > ORDINARY_WARNING_MINUTES;
   }
-  if (opportunity.goal === "remoteStorm") {
+  if (opportunity.opportunity === "remoteStorm") {
     const lead = remoteLead(state, world, cal, opportunity);
     return lead !== null && storm.from - state.minute >= lead;
   }
@@ -130,8 +131,8 @@ function eligible(state: GameState, world: World, cal: Calendar, opportunity: We
 }
 
 function announceLead(state: GameState, world: World, cal: Calendar, opportunity: WeatherOpportunityContext): number {
-  if (opportunity.goal === "readWeather") return readableWarningMinutes(state);
-  if (opportunity.goal === "remoteStorm") return remoteLead(state, world, cal, opportunity) ?? warningMinutes(state);
+  if (opportunity.opportunity === "readWeather") return readableWarningMinutes(state);
+  if (opportunity.opportunity === "remoteStorm") return remoteLead(state, world, cal, opportunity) ?? warningMinutes(state);
   return warningMinutes(state);
 }
 
@@ -150,7 +151,7 @@ function claim(state: GameState, world: World, cal: Calendar, opportunity: Weath
 }
 
 /** Reject restored or already claimed metadata before it can announce clear air. */
-export function validateScheduledGoalStorm(state: GameState, world: World): void {
+export function validateScheduledOpportunityStorm(state: GameState, world: World): void {
   const storm = state.weather.storm;
   const opportunity = state.opportunities.context.weather;
   if (!storm) return;
@@ -221,16 +222,16 @@ function nextSpatialStorm(
 }
 
 function synthesize(state: GameState, world: World, cal: Calendar, opportunity: WeatherOpportunityContext): void {
-  if (opportunity.goal === "readWeather" && !canMakeTeachingRead(state)) return;
+  if (opportunity.opportunity === "readWeather" && !canMakeTeachingRead(state)) return;
   let minLead = 60;
   let maxDuration: number | undefined;
   let kinds: readonly ("rain" | "snow" | "gale")[] = ["rain", "snow", "gale"];
-  if (opportunity.goal === "testShelter") {
+  if (opportunity.opportunity === "testShelter") {
     maxDuration = MILD_RAIN_MAX_MINUTES;
     kinds = ["rain"];
-  } else if (opportunity.goal === "readWeather") {
+  } else if (opportunity.opportunity === "readWeather") {
     minLead = ORDINARY_WARNING_MINUTES + 1;
-  } else if (opportunity.goal === "remoteStorm") {
+  } else if (opportunity.opportunity === "remoteStorm") {
     const lead = remoteLead(state, world, cal, opportunity);
     if (lead === null) return;
     minLead = lead;
@@ -249,15 +250,15 @@ function synthesize(state: GameState, world: World, cal: Calendar, opportunity: 
 }
 
 function attemptSucceeded(state: GameState, opportunity: WeatherOpportunityContext): boolean {
-  if (opportunity.goal === "testShelter") return (state.opportunities.completedAt.testShelter !== undefined);
-  if (opportunity.goal === "readWeather") return (state.opportunities.completedAt.surviveForecast !== undefined);
+  if (opportunity.opportunity === "testShelter") return (state.opportunities.completedAt.testShelter !== undefined);
+  if (opportunity.opportunity === "readWeather") return (state.opportunities.completedAt.surviveForecast !== undefined);
   return (state.opportunities.completedAt.remoteStorm !== undefined);
 }
 
 function failureNotice(opportunity: WeatherOpportunityContext, death: boolean): string {
   if (death) return "The survivor died before the offered storm ended. Another opportunity will come.";
-  if (opportunity.goal === "testShelter") return "The rain passed without shelter being tested. Another opportunity will come.";
-  if (opportunity.goal === "readWeather") return "The storm passed before the forecast lesson was completed. Another opportunity will come.";
+  if (opportunity.opportunity === "testShelter") return "The rain passed without shelter being tested. Another opportunity will come.";
+  if (opportunity.opportunity === "readWeather") return "The storm passed before the forecast lesson was completed. Another opportunity will come.";
   return "The storm passed before the refuge was tested. Another opportunity will come.";
 }
 
@@ -268,7 +269,7 @@ function resolve(state: GameState, opportunity: WeatherOpportunityContext, death
 }
 
 /** Rebase world-owned opportunity timestamps when an heir's life clock returns to zero. */
-export function rebaseGoalOpportunityClock(state: GameState): void {
+export function rebaseOpportunityContextClock(state: GameState): void {
   state.weather.stormFreeSince = 0;
   const opportunity = state.opportunities.context.weather;
   if (!opportunity) return;
@@ -298,7 +299,7 @@ function stepClaimed(state: GameState, world: World, cal: Calendar, opportunity:
   // A read made while the reserved event is still too distant can reveal
   // nothing, yet it consumes today's observation. Release that event so the
   // lesson can later reserve a storm for which a new read is meaningful.
-  if (opportunity.goal === "readWeather" && opportunity.status === "reserved"
+  if (opportunity.opportunity === "readWeather" && opportunity.status === "reserved"
     && opportunity.readerIndex == null && !canMakeTeachingRead(state)) {
     opportunity.stormId = null;
     opportunity.source = null;
@@ -312,21 +313,22 @@ function stepClaimed(state: GameState, world: World, cal: Calendar, opportunity:
   }
 }
 
-/** Claims or creates weather for an active lesson. It never starts survivor work. */
-export function stepGoalOpportunity(state: GameState, world: World, cal: Calendar, _rng: Rng): void {
+/** Claims or creates weather for a discovered lesson. It never starts survivor work. */
+export function stepOpportunityContext(state: GameState, world: World, cal: Calendar, _rng: Rng): void {
   let opportunity = state.opportunities.context.weather;
   if (opportunity && opportunity.status !== "resolved" && state.dead) {
     resolve(state, opportunity, true);
     return;
   }
-  const goal = activeWeatherGoal(state, cal);
+  refreshOpportunities(state, (cal.day - 1) * 1440);
+  const key = discoveredWeatherOpportunity(state);
   if (opportunity?.status === "resolved" && attemptSucceeded(state, opportunity)) {
     state.opportunities.context.weather = null;
     opportunity = null;
   }
   if (!opportunity) {
-    if (!goal || state.dead || state.landing || stormNow(state.weather, state.minute) || goal === "remoteStorm") return;
-    opportunity = newOpportunity(goal, state.minute);
+    if (!key || state.dead || state.landing || stormNow(state.weather, state.minute) || key === "remoteStorm") return;
+    opportunity = newOpportunity(key, state.minute);
     state.opportunities.context.weather = opportunity;
   }
   if (opportunity.status === "resolved") {
@@ -334,16 +336,16 @@ export function stepGoalOpportunity(state: GameState, world: World, cal: Calenda
     const stormFreeSince = Math.max(opportunity.resolvedAt ?? state.minute, state.weather.stormFreeSince);
     if (state.weather.storm || opportunity.resolvedAt === null || state.minute - stormFreeSince < RETRY_MINUTES) return;
     const area = opportunity.area;
-    opportunity = newOpportunity(opportunity.goal, state.minute, opportunity.attempts + 1);
+    opportunity = newOpportunity(opportunity.opportunity, state.minute, opportunity.attempts + 1);
     opportunity.area = area;
     state.opportunities.context.weather = opportunity;
   }
   // Chapter 1 uses this slot as local-cover context until the shelter exists.
   // It must not reserve or synthesize weather before that outcome is earned.
-  if (opportunity.goal === "makeUsefulShelter") return;
+  if (opportunity.opportunity === "makeUsefulShelter") return;
   // Chapter 3 reserves weather as soon as the refuge exists. The same remote
   // opportunity stays alive through the field-fire and field-meal lessons.
-  if (!WEATHER_GOALS.has(opportunity.goal)) return;
+  if (!WEATHER_OPPORTUNITIES.has(opportunity.opportunity)) return;
   if (opportunity.stormId !== null) {
     stepClaimed(state, world, cal, opportunity);
     return;

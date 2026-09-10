@@ -6,7 +6,7 @@ import { stormOptions } from "./body";
 import { calendar, DAILY_HOUR } from "./calendar";
 import { dailyCamp, stepCamp, stepEmergencyShelter, stepFoundCover } from "./camp";
 import { hourlyEvents } from "./events";
-import { recordStormMinute, stepGoalOpportunity, stormMetrics, validateScheduledGoalStorm } from "./goalopportunity";
+import { recordStormMinute, stepOpportunityContext, stormMetrics, validateScheduledOpportunityStorm } from "./opportunity-context";
 import { checkWinterStores, recordOpportunityEvent } from "./opportunities";
 import { hourlyWorld, iceUnderFoot } from "./hazards";
 import { runIntent } from "./intent";
@@ -115,7 +115,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   stepFoundCover(state, dt);
   stepEmergencyShelter(state, world, dt);
 
-  if (!nobody) validateScheduledGoalStorm(state, world);
+  if (!nobody) validateScheduledOpportunityStorm(state, world);
   const previousStorm = state.weather.storm;
   const hadStorm = previousStorm !== null;
   const beforeKnowledge = previousStorm ? forecastKnowledge(state, previousStorm, previousMinute) : null;
@@ -250,5 +250,5 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
       ...stormMetrics(state, previousStorm.id),
     });
   }
-  stepGoalOpportunity(state, world, cal, rng);
+  stepOpportunityContext(state, world, cal, rng);
 }

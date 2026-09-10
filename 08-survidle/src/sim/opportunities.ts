@@ -191,6 +191,14 @@ export function setCurrentOpportunity(state: OpportunityState, key: OpportunityK
   return true;
 }
 
+export function isOpportunityDiscovered(state: OpportunityState, key: OpportunityKey): boolean {
+  return state.discoveredAt[key] !== undefined;
+}
+
+export function isOpportunityComplete(state: OpportunityState, key: OpportunityKey): boolean {
+  return state.completedAt[key] !== undefined;
+}
+
 export function discoverOpportunity(state: OpportunityState, key: OpportunityKey, minute: number, announce = true): boolean {
   if (!opportunityDef(key) || state.discoveredAt[key] !== undefined) return false;
   state.discoveredAt[key] = minute;
@@ -263,9 +271,9 @@ export function opportunityGroupView(state: OpportunityState, id: OpportunityGro
   return { ...group, done: group.keys.length > 0 && group.keys.every((key) => state.completedAt[key] !== undefined), discovered: group.keys.filter((key) => state.discoveredAt[key] !== undefined), completed: group.keys.filter((key) => state.completedAt[key] !== undefined) };
 }
 
-function shelterOpportunity(goal: "makeUsefulShelter" | "testShelter", minute: number, area: { region: number; centre: number; radiusKm: 1 }): WeatherOpportunityContext | null {
+function shelterOpportunity(opportunity: "makeUsefulShelter" | "testShelter", minute: number, area: { region: number; centre: number; radiusKm: 1 }): WeatherOpportunityContext | null {
   return {
-    goal, status: "reserved", createdAt: minute, attempts: 1,
+    opportunity, status: "reserved", createdAt: minute, attempts: 1,
     stormId: null, source: null, area, announcedAt: null, resolvedAt: null,
     minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     readerIndex: null, plan: null,
@@ -274,7 +282,7 @@ function shelterOpportunity(goal: "makeUsefulShelter" | "testShelter", minute: n
 
 function fieldOpportunity(minute: number, area: { region: number; centre: number; radiusKm: 1 }): WeatherOpportunityContext | null {
   return {
-    goal: "remoteStorm", status: "reserved", createdAt: minute, attempts: 1,
+    opportunity: "remoteStorm", status: "reserved", createdAt: minute, attempts: 1,
     stormId: null, source: null, area, announcedAt: null, resolvedAt: null,
     minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     readerIndex: null, plan: null,
@@ -293,7 +301,7 @@ export function recordOpportunityEvent(state: GameState, d: OpportunityEvent, wo
     if (d.kind === "protectionChanged") {
       const opportunity = state.opportunities.context.weather;
       const area = opportunity?.area;
-      if (opportunity?.goal === "makeUsefulShelter" && area && world && pending.has("makeUsefulShelter")
+      if (opportunity?.opportunity === "makeUsefulShelter" && area && world && pending.has("makeUsefulShelter")
         && d.to > d.from && d.to >= 2 && d.region === area.region
         && straightKm(world, area.centre, d.cell) <= area.radiusKm) {
         finishOpportunity(state, "makeUsefulShelter", finished);
@@ -307,19 +315,19 @@ export function recordOpportunityEvent(state: GameState, d: OpportunityEvent, wo
     }
     if (d.kind === "fireLit" && !d.atCamp) {
       const opportunity = state.opportunities.context.weather;
-      if (opportunity?.goal === "remoteStorm" && opportunity.area && pending.has("fieldFire")) {
+      if (opportunity?.opportunity === "remoteStorm" && opportunity.area && pending.has("fieldFire")) {
         finishOpportunity(state, "fieldFire", finished);
       }
     }
     if (d.kind === "taskCompleted" && d.id === "cook" && !d.atCamp) {
       const opportunity = state.opportunities.context.weather;
-      if (opportunity?.goal === "remoteStorm" && opportunity.area && pending.has("fieldMeal")) {
+      if (opportunity?.opportunity === "remoteStorm" && opportunity.area && pending.has("fieldMeal")) {
         finishOpportunity(state, "fieldMeal", finished);
       }
     }
     if (d.kind === "forecastChanged") {
       const opportunity = state.opportunities.context.weather;
-      if (opportunity?.goal === "readWeather" && (opportunity.status === "announced" || opportunity.status === "reserved")
+      if (opportunity?.opportunity === "readWeather" && (opportunity.status === "announced" || opportunity.status === "reserved")
         && opportunity.stormId === d.stormId && known.has("readWeather")
         && d.source === "readSky" && gainedForecastFact(d.before, d.after)) {
         opportunity.readerIndex = current(state).index;
@@ -328,7 +336,7 @@ export function recordOpportunityEvent(state: GameState, d: OpportunityEvent, wo
     }
     if (d.kind === "stormStarted") {
       const opportunity = state.opportunities.context.weather;
-      if (opportunity?.goal === "readWeather" && opportunity.stormId === d.stormId && d.plan.stormId === d.stormId) {
+      if (opportunity?.opportunity === "readWeather" && opportunity.stormId === d.stormId && d.plan.stormId === d.stormId) {
         opportunity.plan ??= structuredClone(d.plan);
         if (pending.has("prepareWeather") && d.plan.options.some((option) => option.viable)) {
           finishOpportunity(state, "prepareWeather", finished);
@@ -337,18 +345,18 @@ export function recordOpportunityEvent(state: GameState, d: OpportunityEvent, wo
     }
     if (d.kind === "stormEnded") {
       const opportunity = state.opportunities.context.weather;
-      if (opportunity?.goal === "testShelter" && opportunity.stormId === d.stormId && pending.has("testShelter")
+      if (opportunity?.opportunity === "testShelter" && opportunity.stormId === d.stormId && pending.has("testShelter")
         && d.survivorAlive && d.minutesByProtection[2] + d.minutesByProtection[3] + 1e-9 >= 60) {
         finishOpportunity(state, "testShelter", finished);
       }
-      if (opportunity?.goal === "readWeather" && opportunity.stormId === d.stormId && pending.has("surviveForecast")
+      if (opportunity?.opportunity === "readWeather" && opportunity.stormId === d.stormId && pending.has("surviveForecast")
         && d.survivorAlive && opportunity.readerIndex === current(state).index) {
         finishOpportunity(state, "surviveForecast", finished);
       }
       const adequateMinutes = d.stormKind === "snow"
         ? d.minutesByProtection[1] + d.minutesByProtection[2] + d.minutesByProtection[3]
         : d.minutesByProtection[2] + d.minutesByProtection[3];
-      if (opportunity?.goal === "remoteStorm" && opportunity.stormId === d.stormId && pending.has("remoteStorm")
+      if (opportunity?.opportunity === "remoteStorm" && opportunity.stormId === d.stormId && pending.has("remoteStorm")
         && d.survivorAlive && d.atCampMinutes <= 1e-9 && adequateMinutes + 1e-9 >= 60) {
         finishOpportunity(state, "remoteStorm", finished);
       }

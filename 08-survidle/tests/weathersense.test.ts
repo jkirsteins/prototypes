@@ -40,7 +40,7 @@ function weatherLesson(state: ReturnType<typeof game>["state"], stormId: number,
   state.minute = 7 * 1440;
   reveal(state, ["readWeather"]);
   state.opportunities.context.weather = {
-    goal: "readWeather", status, createdAt: state.minute, attempts: 1,
+    opportunity: "readWeather", status, createdAt: state.minute, attempts: 1,
     stormId, source: "natural", area: null, announcedAt: state.minute, resolvedAt: null,
     minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
 }

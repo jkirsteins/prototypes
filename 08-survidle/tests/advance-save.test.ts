@@ -195,7 +195,7 @@ describe("save", () => {
     state.weather.storm = { id: 4, source: "synthetic", kind: "rain", from: 600, until: 960, warned: false };
     state.weather.nextStormId = 5;
     state.opportunities.context.weather = {
-      goal: "testShelter", status: "reserved", createdAt: 20, attempts: 2,
+      opportunity: "testShelter", status: "reserved", createdAt: 20, attempts: 2,
       stormId: 4, source: "synthetic", area: { region: 7, centre: 99, radiusKm: 1 },
       announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
@@ -211,7 +211,7 @@ describe("save", () => {
   it("adds zeroed storm metrics to an opportunity from before shelter testing", () => {
     const { state } = newGame(9);
     state.opportunities.context.weather = {
-      goal: "testShelter", status: "reserved", createdAt: 20, attempts: 1,
+      opportunity: "testShelter", status: "reserved", createdAt: 20, attempts: 1,
       stormId: null, source: null, area: null, announcedAt: null, resolvedAt: null,
       minutesByProtection: [4, 3, 2, 1], atCampMinutes: 9, awayFromCampMinutes: 1, maxWetness: 70,
     };
@@ -222,6 +222,8 @@ describe("save", () => {
     delete raw.state.opportunities.context.weather.maxWetness;
     delete raw.state.opportunities.context.weather.readerIndex;
     delete raw.state.opportunities.context.weather.plan;
+    raw.state.opportunities.context.weather.goal = raw.state.opportunities.context.weather.opportunity;
+    delete raw.state.opportunities.context.weather.opportunity;
     raw.state.goals = { opportunity: raw.state.opportunities.context.weather };
     delete raw.state.opportunities;
 
@@ -234,17 +236,19 @@ describe("save", () => {
   it.each(["fieldFire", "fieldMeal"] as const)("migrates a legacy %s opportunity into the shared remote storm attempt", (goal) => {
     const { state } = newGame(9);
     state.opportunities.context.weather = {
-      goal, status: "reserved", createdAt: 20, attempts: 2,
+      opportunity: goal, status: "reserved", createdAt: 20, attempts: 2,
       stormId: null, source: null, area: { region: 7, centre: 99, radiusKm: 1 },
       announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
 
     const raw = JSON.parse(serialize(state));
+    raw.state.opportunities.context.weather.goal = raw.state.opportunities.context.weather.opportunity;
+    delete raw.state.opportunities.context.weather.opportunity;
     raw.state.goals = { opportunity: raw.state.opportunities.context.weather };
     delete raw.state.opportunities;
     expect(deserialize(JSON.stringify(raw))!.state.opportunities.context.weather).toMatchObject({
-      goal: "remoteStorm", status: "reserved", attempts: 2,
+      opportunity: "remoteStorm", status: "reserved", attempts: 2,
       area: { region: 7, centre: 99, radiusKm: 1 },
     });
   });

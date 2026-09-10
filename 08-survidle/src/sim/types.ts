@@ -960,7 +960,7 @@ export interface OpportunityState {
 }
 
 export interface WeatherOpportunityContext {
-  goal: OpportunityKey;
+  opportunity: OpportunityKey;
   status: "reserved" | "announced" | "running" | "resolved";
   createdAt: number;
   attempts: number;

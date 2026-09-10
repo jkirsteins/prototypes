@@ -505,10 +505,12 @@ function migrateLegacyNotices(legacy: LegacyProgressState): OpportunityNotice[] 
 }
 
 function migrateLegacyOpportunityContext(legacy: LegacyProgressState): OpportunityContextState {
-  const raw = legacy.opportunity as WeatherOpportunityContext | null | undefined;
+  const raw = legacy.opportunity as (Omit<WeatherOpportunityContext, "opportunity"> & { goal: string }) | null | undefined;
   let weather: WeatherOpportunityContext | null = null;
-  if (raw && typeof raw === "object" && legacyStaticOpportunityKey(raw.goal)) {
-    weather = { ...raw, goal: raw.goal === "fieldFire" || raw.goal === "fieldMeal" ? "remoteStorm" : raw.goal,
+  const key = raw && typeof raw === "object" ? legacyStaticOpportunityKey(raw.goal) : undefined;
+  if (raw && key) {
+    const { goal, ...context } = raw;
+    weather = { ...context, opportunity: goal === "fieldFire" || goal === "fieldMeal" ? "remoteStorm" : key,
       minutesByProtection: raw.minutesByProtection ?? [0, 0, 0, 0], atCampMinutes: raw.atCampMinutes ?? 0,
       awayFromCampMinutes: raw.awayFromCampMinutes ?? 0, maxWetness: raw.maxWetness ?? 0,
       readerIndex: raw.readerIndex ?? null, plan: raw.plan ?? null };

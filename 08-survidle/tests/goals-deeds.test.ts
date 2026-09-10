@@ -470,7 +470,7 @@ describe("Chapter 1 shelter deeds", () => {
       from: 0, to: 1, source: "found" })).toContain("findUsefulCover");
 
     expect(state.opportunities.context.weather).toMatchObject({
-      goal: "makeUsefulShelter", status: "reserved", createdAt: 10, attempts: 1,
+      opportunity: "makeUsefulShelter", status: "reserved", createdAt: 10, attempts: 1,
       area: { region: state.player.region, centre: cell, radiusKm: 1 } });
   });
 
@@ -487,7 +487,7 @@ describe("Chapter 1 shelter deeds", () => {
       kind: "protectionChanged", minute: 11, region: state.player.region, cell: origin,
       from: 1, to: 2, source: "improved" }, world)).toContain("makeUsefulShelter");
     expect(state.opportunities.context.weather).toMatchObject({
-      goal: "testShelter", status: "reserved", createdAt: 11, attempts: 1,
+      opportunity: "testShelter", status: "reserved", createdAt: 11, attempts: 1,
       stormId: null, area: { region: state.player.region, centre: origin, radiusKm: 1 } });
   });
 
@@ -542,7 +542,7 @@ describe("Chapter 3 field deeds", () => {
       kind: "protectionChanged", minute: state.minute + 1, region: remote, cell: refuge,
       from: 1, to: 2, source }, world)).toContain("remoteRefuge");
     expect(state.opportunities.context.weather).toMatchObject({
-      goal: "remoteStorm", status: "reserved", createdAt: state.minute + 1,
+      opportunity: "remoteStorm", status: "reserved", createdAt: state.minute + 1,
       area: { region: remote, centre: refuge, radiusKm: 1 } });
   });
 
@@ -587,7 +587,7 @@ describe("Chapter 3 field deeds", () => {
 
     expect(recordOpportunityEvent(state, { kind: "fireLit", minute: state.minute + 3, region: remote, cell: refuge, atCamp: false }, world)).toContain("fieldFire");
     expect(state.opportunities.context.weather).toBe(opportunity);
-    expect(state.opportunities.context.weather).toMatchObject({ goal: "remoteStorm", stormId: 80, source: "natural", status: "announced", minutesByProtection: [0, 0, 7, 0] });
+    expect(state.opportunities.context.weather).toMatchObject({ opportunity: "remoteStorm", stormId: 80, source: "natural", status: "announced", minutesByProtection: [0, 0, 7, 0] });
     reveal(state, ["fieldMeal"]);
     recordOpportunityEvent(state, { kind: "taskCompleted", minute: state.minute + 4, id: "cook", arg: "rawMeat", region: home, cell: cellOf(state, world), atCamp: true }, world);
     expect(state.opportunities.completedAt.fieldMeal).toBeUndefined();
@@ -595,7 +595,7 @@ describe("Chapter 3 field deeds", () => {
     expect(recordOpportunityEvent(state, { kind: "taskCompleted", minute: state.minute + 5, id: "cook", arg: "rawMeat", region: remote, cell: refuge, atCamp: false }, world)).toContain("fieldMeal");
     expect(state.opportunities.context.weather).toBe(opportunity);
     expect(state.opportunities.context.weather).toMatchObject({
-      goal: "remoteStorm", createdAt: state.minute, stormId: 80, source: "natural", status: "announced",
+      opportunity: "remoteStorm", createdAt: state.minute, stormId: 80, source: "natural", status: "announced",
       minutesByProtection: [0, 0, 7, 0],
       area: { region: remote, centre: refuge } });
   });
@@ -619,7 +619,7 @@ describe("Chapter 3 field deeds", () => {
       reveal(state, ["remoteStorm"]);
       const remote = regionAt(world, regionAt(world, state.player.region).neighbours[0].id);
       state.opportunities.context.weather = {
-        goal: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
+        opportunity: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
         stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
         announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
         atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
@@ -634,7 +634,7 @@ describe("Chapter 3 field deeds", () => {
     reveal(state, ["remoteStorm"]);
     const remote = regionAt(world, regionAt(world, state.player.region).neighbours[0].id);
     state.opportunities.context.weather = {
-      goal: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
+      opportunity: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
       stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
       announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };

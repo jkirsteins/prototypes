@@ -446,7 +446,11 @@ describe("goals are the world's, not a life's", () => {
       atCampMinutes: 5, awayFromCampMinutes: 6, maxWetness: 70, readerIndex: 2, plan: null };
     raw.state.goals = { opportunity: weather, chapter3HomeRegion: 5 };
     const loaded = deserialize(JSON.stringify(raw))!.state;
-    expect(loaded.opportunities.context).toEqual({ weather, chapter3HomeRegion: 5 });
+    const { goal: _goal, ...legacyContext } = weather;
+    expect(loaded.opportunities.context).toEqual({
+      weather: { ...legacyContext, opportunity: "remoteStorm" },
+      chapter3HomeRegion: 5,
+    });
   });
 
   it("restores the origin of an old survey already inside its target region", () => {

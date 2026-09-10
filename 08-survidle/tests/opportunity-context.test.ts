@@ -4,8 +4,8 @@ import * as climate from "../src/sim/climate";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { recordStormMinute, stepGoalOpportunity, stormMetrics } from "../src/sim/goalopportunity";
-import { activeOpportunityKeys, recordOpportunityEvent, queueOpportunityMessage, type StormPlanSnapshot } from "../src/sim/opportunities";
+import { recordStormMinute, stepOpportunityContext, stormMetrics } from "../src/sim/opportunity-context";
+import { activeOpportunityKeys, discoverOpportunity, recordOpportunityEvent, queueOpportunityMessage, setCurrentOpportunity, type StormPlanSnapshot } from "../src/sim/opportunities";
 import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, die } from "../src/sim/player";
@@ -77,6 +77,24 @@ function testStormWindow(from: number, until: number, temperatureC = 5): void {
 describe("weather teaching opportunity lifecycle", () => {
   beforeEach(() => testRain(8, 5, 40));
 
+  it("reserves a discovered weather opportunity while another leaf is current", () => {
+    const { state, world } = newGame(17);
+    discoverOpportunity(state.opportunities, "testShelter", state.minute, false);
+    discoverOpportunity(state.opportunities, "drink", state.minute, false);
+    setCurrentOpportunity(state.opportunities, "drink");
+    state.weather.storm = {
+      id: 7, source: "natural", kind: "rain", from: 120, until: 480, warned: false,
+    };
+    state.weather.nextStormId = 8;
+
+    stepOpportunityContext(state, world, calendar(0, state.startDoy), new Rng(12));
+
+    expect(state.opportunities.context.weather).toMatchObject({
+      opportunity: "testShelter", status: "reserved", stormId: 7,
+    });
+    expect(state.opportunities.current).toBe("drink");
+  });
+
   it("moves one stable natural storm through reserved, announced, running, and resolved at its exact minutes", () => {
     const { state, world } = newGame(17);
     activateShelterTest(state);
@@ -84,23 +102,23 @@ describe("weather teaching opportunity lifecycle", () => {
     state.weather.nextStormId = 8;
     const rng = new Rng(12);
 
-    stepGoalOpportunity(state, world, calendar(0, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(0, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({
-      goal: "testShelter", status: "reserved", createdAt: 0, attempts: 1,
+      opportunity: "testShelter", status: "reserved", createdAt: 0, attempts: 1,
       stormId: 7, source: "natural", announcedAt: null, resolvedAt: null });
 
     state.minute = 59;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather?.status).toBe("reserved");
     state.minute = 60;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ status: "announced", announcedAt: 60, stormId: 7 });
     state.minute = 120;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ status: "running", stormId: 7 });
     state.minute = 480;
     state.weather.storm = null;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ status: "resolved", resolvedAt: 480, stormId: 7 });
   });
 
@@ -138,7 +156,7 @@ describe("weather teaching opportunity lifecycle", () => {
     activateShelterTest(state);
     state.weather.storm = { id: 4, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
     state.opportunities.context.weather = {
-      goal: "testShelter", status: "reserved", createdAt: 0, attempts: 1,
+      opportunity: "testShelter", status: "reserved", createdAt: 0, attempts: 1,
       stormId: 4, source: "natural", area: null, announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
       readerIndex: null, plan: null };
@@ -158,7 +176,7 @@ describe("weather teaching opportunity lifecycle", () => {
     state.weather.nextStormId = 2;
     const rng = new Rng(22);
     const before = rng.s;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toBeNull();
     expect(state.weather.storm).toEqual({ id: 1, source: "natural", kind: "gale", from: 0, until: 200, warned: true });
     expect(rng.s).toBe(before);
@@ -173,12 +191,12 @@ describe("weather teaching opportunity lifecycle", () => {
       until: state.minute + 450, warned: false };
     const rng = new Rng(23);
 
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
-    expect(state.opportunities.context.weather).toMatchObject({ goal: "readWeather", status: "reserved", stormId: null });
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.opportunities.context.weather).toMatchObject({ opportunity: "readWeather", status: "reserved", stormId: null });
 
     state.player.skyReadDay = null;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
-    expect(state.opportunities.context.weather).toMatchObject({ goal: "readWeather", status: "announced", stormId: 9 });
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.opportunities.context.weather).toMatchObject({ opportunity: "readWeather", status: "announced", stormId: 9 });
   });
 
   it("releases a claimed storm after a premature empty read so a later announced read can teach something", () => {
@@ -188,19 +206,19 @@ describe("weather teaching opportunity lifecycle", () => {
       id: 10, source: "natural", kind: "rain", from: state.minute + 120,
       until: state.minute + 480, warned: false };
     const rng = new Rng(24);
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ status: "reserved", stormId: 10 });
 
     expect(startTask(state, world, calendar(state.minute, state.startDoy), "readSky")).toBe(true);
     stepTask(state, world, calendar(state.minute, state.startDoy), rng, 10);
     expect(state.opportunities.completedAt.readWeather).toBeUndefined();
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ status: "reserved", stormId: null });
 
     state.player.skyReadDay = null;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     state.minute += 30;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ status: "announced", stormId: 10 });
     expect(startTask(state, world, calendar(state.minute, state.startDoy), "readSky")).toBe(true);
     stepTask(state, world, calendar(state.minute, state.startDoy), rng, 10);
@@ -216,7 +234,7 @@ describe("weather teaching opportunity lifecycle", () => {
       id: 11, source: "natural", kind: "rain", from: state.minute + 120,
       until: state.minute + 480, warned: false };
     state.opportunities.context.weather = {
-      goal: "readWeather", status: "reserved", createdAt: state.minute, attempts: 2,
+      opportunity: "readWeather", status: "reserved", createdAt: state.minute, attempts: 2,
       stormId: 11, source: "natural", area: null, announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
       readerIndex: null, plan: null };
@@ -224,7 +242,7 @@ describe("weather teaching opportunity lifecycle", () => {
 
     expect(startTask(state, world, calendar(state.minute, state.startDoy), "readSky")).toBe(true);
     stepTask(state, world, calendar(state.minute, state.startDoy), rng, 10);
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
 
     expect(state.opportunities.context.weather).toMatchObject({ attempts: 2, status: "reserved", stormId: null, readerIndex: null });
     expect(state.opportunities.completedAt.surviveForecast).toBeUndefined();
@@ -237,7 +255,7 @@ describe("weather teaching opportunity lifecycle", () => {
       id: 12, source: "natural", kind: "rain", from: state.minute + 120,
       until: state.minute + 480, warned: false };
     const rng = new Rng(26);
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ status: "reserved", stormId: 12 });
     state.minute += 30;
 
@@ -246,7 +264,7 @@ describe("weather teaching opportunity lifecycle", () => {
 
     expect(state.opportunities.context.weather).toMatchObject({ status: "reserved", stormId: 12, readerIndex: current(state).index });
     expect(state.opportunities.completedAt.readWeather).toBeDefined();
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ status: "announced", stormId: 12, readerIndex: current(state).index });
   });
 
@@ -254,17 +272,17 @@ describe("weather teaching opportunity lifecycle", () => {
     const { state, world } = newGame(17);
     activateWeatherReading(state);
     const rng = new Rng(27);
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     state.minute += 3 * 1440;
     state.player.skyReadDay = skyReadDay(state);
 
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.weather.storm).toBeNull();
     expect(state.opportunities.context.weather).toMatchObject({ status: "reserved", stormId: null });
 
     state.player.skyReadDay = null;
     testStormWindow(state.minute + 180, state.minute + 540);
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.weather.storm).toMatchObject({ source: "synthetic" });
   });
 });
@@ -275,7 +293,7 @@ describe("Chapter 1 shelter storm evidence", () => {
   function shelterAttempt(state: GameState, world: ReturnType<typeof newGame>["world"], stormId = 7): void {
     const centre = cellOf(state, world);
     state.opportunities.context.weather = {
-      goal: "testShelter", status: "running", createdAt: 0, attempts: 1,
+      opportunity: "testShelter", status: "running", createdAt: 0, attempts: 1,
       stormId, source: "natural", area: { region: state.player.region, centre, radiusKm: 1 },
       announcedAt: 0, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
@@ -421,7 +439,7 @@ describe("Chapter 2 forecast evidence", () => {
     finish(state, ["readWeather"]);
     reveal(state, ["prepareWeather"]);
     state.opportunities.context.weather = {
-      goal: "readWeather", status: "announced", createdAt: state.minute, attempts: 1,
+      opportunity: "readWeather", status: "announced", createdAt: state.minute, attempts: 1,
       stormId, source: "natural", area: null, announcedAt: state.minute, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
       readerIndex: current(state).index, plan: null };
@@ -530,10 +548,10 @@ describe("natural-first weather", () => {
     const { state, world } = newGame(17);
     activateShelterTest(state);
     const rng = new Rng(41);
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     state.minute = 4320;
 
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
 
     expect(state.weather.storm).toMatchObject({ source: "synthetic", kind: "rain", from: 4500, until: 4860 });
     expect(state.opportunities.context.weather).toMatchObject({ stormId: state.weather.storm?.id, source: "synthetic" });
@@ -548,7 +566,7 @@ describe("natural-first weather", () => {
     const rng = new Rng(27);
     const beforeState = rng.s;
     const beforeStorm = structuredClone(storm);
-    stepGoalOpportunity(state, world, calendar(0, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(0, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ stormId: 3, source: "natural", status: "reserved" });
     expect(state.weather.storm).toEqual(beforeStorm);
     expect(state.weather.nextStormId).toBe(4);
@@ -559,12 +577,12 @@ describe("natural-first weather", () => {
     const { state, world } = newGame(17);
     activateShelterTest(state);
     const rng = new Rng(31);
-    stepGoalOpportunity(state, world, calendar(0, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(0, state.startDoy), rng);
     state.minute = 3 * 1440;
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 180, until: state.minute + 540, warned: false };
     state.weather.nextStormId = 2;
     const before = rng.s;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ stormId: 1, source: "natural" });
     expect(state.weather.nextStormId).toBe(2);
     expect(rng.s).toBe(before);
@@ -574,16 +592,16 @@ describe("natural-first weather", () => {
     const { state, world } = newGame(17);
     activateShelterTest(state);
     const rng = new Rng(41);
-    stepGoalOpportunity(state, world, calendar(0, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(0, state.startDoy), rng);
     for (const minute of [1440, 2880]) {
       state.minute = minute;
-      stepGoalOpportunity(state, world, calendar(minute, state.startDoy), rng);
+      stepOpportunityContext(state, world, calendar(minute, state.startDoy), rng);
       expect(state.weather.storm).toBeNull();
     }
     const beforeSynthesis = rng.s;
     state.minute = 4320;
     testStormWindow(4500, 4860);
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     const storm = state.weather.storm;
     expect(storm).toMatchObject({ id: 1, source: "synthetic", kind: "rain", from: 4500, until: 4860 });
     expect(state.opportunities.context.weather).toMatchObject({ stormId: 1, source: "synthetic" });
@@ -591,7 +609,7 @@ describe("natural-first weather", () => {
     expect(rng.s).toBe(beforeSynthesis);
 
     const exactStorm = structuredClone(storm);
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.weather.storm).toEqual(exactStorm);
     expect(state.weather.nextStormId).toBe(2);
   });
@@ -600,13 +618,13 @@ describe("natural-first weather", () => {
     const { state, world } = newGame(17);
     activateShelterTest(state);
     const rng = new Rng(51);
-    stepGoalOpportunity(state, world, calendar(0, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(0, state.startDoy), rng);
     state.minute = 4320;
     const gale = { id: 1, source: "natural" as const, kind: "gale" as const, from: state.minute + 120, until: state.minute + 1200, warned: false };
     state.weather.storm = gale;
     state.weather.nextStormId = 2;
     const beforeRng = rng.s;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.weather.storm).toEqual(gale);
     expect(state.opportunities.context.weather).toMatchObject({ status: "reserved", stormId: null, source: null });
     expect(state.weather.nextStormId).toBe(2);
@@ -620,14 +638,14 @@ describe("natural-first weather", () => {
     const rng = new Rng(61);
     state.weather.storm = { id: 1, source: "natural", kind: "snow", from: state.minute + 60, until: state.minute + 500, warned: false };
     state.weather.nextStormId = 2;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
-    expect(state.opportunities.context.weather).toMatchObject({ goal: "readWeather", stormId: null });
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.opportunities.context.weather).toMatchObject({ opportunity: "readWeather", stormId: null });
 
     state.weather.storm = { id: 2, source: "natural", kind: "snow", from: state.minute + 90, until: state.minute + 500, warned: false };
     state.weather.nextStormId = 3;
     const before = rng.s;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
-    expect(state.opportunities.context.weather).toMatchObject({ goal: "readWeather", stormId: 2, source: "natural", status: "announced" });
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
+    expect(state.opportunities.context.weather).toMatchObject({ opportunity: "readWeather", stormId: 2, source: "natural", status: "announced" });
     expect(rng.s).toBe(before);
   });
 
@@ -636,9 +654,9 @@ describe("natural-first weather", () => {
     const { state, world } = newGame(17);
     activateWeatherReading(state);
     const rng = new Rng(4);
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     state.minute += 3 * 1440;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.weather.storm).toBeNull();
     expect(state.opportunities.context.weather).toMatchObject({ status: "reserved", stormId: null, source: null });
   });
@@ -649,16 +667,16 @@ describe("natural-first weather", () => {
     const rng = new Rng(71);
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 60, until: state.minute + 500, warned: false };
     state.weather.nextStormId = 2;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toBeNull();
 
     state.opportunities.context.weather = {
-      goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
+      opportunity: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null,
       area: { region: state.player.region + 1, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather!.stormId).toBe(1);
   });
 
@@ -678,16 +696,16 @@ describe("natural-first weather", () => {
     expect(route).not.toBeNull();
     const lead = routeMinutes(world, route!, baseWalkSpeed(state, calendar(state.minute, state.startDoy), state.weather), "none") + 30;
     state.opportunities.context.weather = {
-      goal: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
+      opportunity: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: { region: remote.id, centre: refuge, radiusKm: 1 },
       announcedAt: null, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
     state.weather.storm = { id: 80, source: "natural", kind: "rain", from: state.minute + lead - 0.01, until: state.minute + lead + 360, warned: false };
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(80));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(80));
     expect(state.opportunities.context.weather?.stormId).toBeNull();
 
     state.weather.storm = { id: 81, source: "natural", kind: "rain", from: state.minute + lead, until: state.minute + lead + 360, warned: false };
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(81));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(81));
     expect(cellOf(state, world)).toBe(home);
     expect(state.opportunities.context.weather).toMatchObject({ stormId: 81, source: "natural" });
   });
@@ -717,24 +735,24 @@ describe("natural-first weather", () => {
       id: 82, source: "natural", kind: "rain", from: state.minute + lead,
       until: state.minute + lead + 360, warned: false };
 
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(82));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(82));
 
     expect(cellOf(state, world)).toBe(homeCell);
     expect(state.opportunities.completedAt.fieldFire).toBeUndefined();
     expect(state.opportunities.completedAt.fieldMeal).toBeUndefined();
     expect(state.opportunities.context.weather).toBe(opportunity);
-    expect(state.opportunities.context.weather).toMatchObject({ goal: "remoteStorm", stormId: 82, source: "natural" });
+    expect(state.opportunities.context.weather).toMatchObject({ opportunity: "remoteStorm", stormId: 82, source: "natural" });
 
     const stormEnd = state.weather.storm.until;
     state.minute = stormEnd;
     state.weather.storm = null;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(82));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(82));
     expect(state.opportunities.context.weather).toMatchObject({ status: "resolved", attempts: 1 });
     state.weather.stormFreeSince = stormEnd;
     state.minute = stormEnd + 1440;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(82));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(82));
     expect(state.opportunities.context.weather).toMatchObject({
-      goal: "remoteStorm", status: "reserved", attempts: 2, stormId: null,
+      opportunity: "remoteStorm", status: "reserved", attempts: 2, stormId: null,
       area: { region: remote, centre: refuge, radiusKm: 1 } });
     expect(state.opportunities.completedAt.fieldFire).toBeUndefined();
     expect(state.opportunities.completedAt.fieldMeal).toBeUndefined();
@@ -753,10 +771,10 @@ describe("natural-first weather", () => {
     state.minute += 3 * 1440;
     testStormWindow(state.minute + 1440, state.minute + 1800);
 
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(83));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(83));
 
     expect(state.opportunities.completedAt.fieldFire).toBeUndefined();
-    expect(state.opportunities.context.weather).toMatchObject({ goal: "remoteStorm", source: "synthetic" });
+    expect(state.opportunities.context.weather).toMatchObject({ opportunity: "remoteStorm", source: "synthetic" });
     expect(state.weather.storm).toMatchObject({ source: "synthetic" });
   });
 });
@@ -770,7 +788,7 @@ describe("Chapter 3 refuge storm evidence", () => {
     const home = state.player.region;
     const remote = regionAt(world, regionAt(world, home).neighbours[0].id);
     state.opportunities.context.weather = {
-      goal: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
+      opportunity: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
       stormId, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
       announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
@@ -850,7 +868,7 @@ describe("Chapter 3 refuge storm evidence", () => {
     state.minute = resolvedAt + 1440;
     state.weather.storm = null;
     state.weather.stormFreeSince = resolvedAt;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(91));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(91));
     expect(state.opportunities.context.weather).toMatchObject({ status: "reserved", attempts: 2, stormId: null });
     for (const id of ["remoteRefuge", "fieldFire", "fieldMeal"] as const) expect(state.opportunities.completedAt[id]).toBeDefined();
   });
@@ -864,9 +882,9 @@ describe("Chapter 3 refuge storm evidence", () => {
     land(state, world, { first: "Ilze", last: "Berg" });
 
     state.minute = 1440;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(96));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(96));
     expect(activeOpportunityKeys(state, calendar(state.minute, state.startDoy))).toContain("remoteStorm");
-    expect(state.opportunities.context.weather).toMatchObject({ goal: "remoteStorm", status: "reserved", attempts: 2 });
+    expect(state.opportunities.context.weather).toMatchObject({ opportunity: "remoteStorm", status: "reserved", attempts: 2 });
 
     state.opportunities.context.weather!.status = "running";
     state.opportunities.context.weather!.stormId = 97;
@@ -905,7 +923,7 @@ describe("Chapter 3 refuge storm evidence", () => {
     activateWeatherReading(state);
     finish(state, ["readWeather"]);
     state.opportunities.context.weather = {
-      goal: "readWeather", status: "running", createdAt: state.minute, attempts: 1,
+      opportunity: "readWeather", status: "running", createdAt: state.minute, attempts: 1,
       stormId: 13, source: "natural", area: null, announcedAt: state.minute, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
       readerIndex: current(state).index, plan: null };
@@ -940,14 +958,14 @@ describe("misses and retries", () => {
     const { state, world } = newGame(17);
     activateWeatherReading(state);
     state.opportunities.context.weather = {
-      goal: "testShelter", status: "resolved", createdAt: 100, attempts: 1,
+      opportunity: "testShelter", status: "resolved", createdAt: 100, attempts: 1,
       stormId: 1, source: "natural", area: null, announcedAt: 200, resolvedAt: 600,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
 
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(76));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(76));
 
     expect(state.opportunities.context.weather).toEqual({
-      goal: "readWeather", status: "reserved", createdAt: state.minute, attempts: 1,
+      opportunity: "readWeather", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: null, announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
       readerIndex: null, plan: null });
@@ -957,11 +975,11 @@ describe("misses and retries", () => {
     const { state, world } = newGame(17);
     activateRemoteStorm(state);
     state.opportunities.context.weather = {
-      goal: "readWeather", status: "resolved", createdAt: 100, attempts: 2,
+      opportunity: "readWeather", status: "resolved", createdAt: 100, attempts: 2,
       stormId: 2, source: "synthetic", area: null, announcedAt: 200, resolvedAt: 700,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
 
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(77));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(77));
 
     expect(state.opportunities.context.weather).toBeNull();
   });
@@ -971,17 +989,17 @@ describe("misses and retries", () => {
     activateWeatherReading(state);
     finish(state, ["readWeather", "prepareWeather"]);
     state.opportunities.context.weather = {
-      goal: "readWeather", status: "resolved", createdAt: state.minute - 500, attempts: 1,
+      opportunity: "readWeather", status: "resolved", createdAt: state.minute - 500, attempts: 1,
       stormId: 1, source: "natural", area: null, announcedAt: state.minute - 400, resolvedAt: state.minute,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
     state.weather.stormFreeSince = state.minute;
     state.minute += 1440;
 
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(80));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(80));
 
     expect(state.opportunities.completedAt.surviveForecast).toBeUndefined();
     expect(state.opportunities.context.weather).toMatchObject({
-      goal: "readWeather", status: "reserved", attempts: 2, createdAt: state.minute,
+      opportunity: "readWeather", status: "reserved", attempts: 2, createdAt: state.minute,
       stormId: null, source: null });
   });
 
@@ -992,12 +1010,12 @@ describe("misses and retries", () => {
     const rng = new Rng(81);
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
     state.weather.nextStormId = 2;
-    stepGoalOpportunity(state, world, calendar(0, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(0, state.startDoy), rng);
     state.minute = 60;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     state.minute = 420;
     state.weather.storm = null;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ status: "resolved", attempts: 1, resolvedAt: 420 });
     expect(state.opportunities.notices.flatMap((notice) => notice.messages)).toHaveLength(1);
     expect(state.opportunities.notices.flatMap((notice) => notice.messages)[0]).toContain("Another opportunity will come.");
@@ -1005,10 +1023,10 @@ describe("misses and retries", () => {
 
     const completedBefore = structuredClone(state.opportunities.completedAt);
     state.minute = 420 + 1439;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather?.status).toBe("resolved");
     state.minute = 420 + 1440;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({
       status: "reserved", attempts: 2, createdAt: 1860, stormId: null, source: null,
       announcedAt: null, resolvedAt: null });
@@ -1019,25 +1037,25 @@ describe("misses and retries", () => {
     const { state, world } = newGame(17);
     activateShelterTest(state);
     state.opportunities.context.weather = {
-      goal: "testShelter", status: "resolved", createdAt: 0, attempts: 1,
+      opportunity: "testShelter", status: "resolved", createdAt: 0, attempts: 1,
       stormId: 1, source: "natural", area: null, announcedAt: 0, resolvedAt: 420,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
     state.weather.nextStormId = 3;
     state.minute = 1000;
     state.weather.storm = { id: 2, source: "natural", kind: "snow", from: 900, until: 1100, warned: true };
     const rng = new Rng(86);
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather!.status).toBe("resolved");
 
     state.minute = 1100;
     stepWeather(state.weather, calendar(state.minute, state.startDoy), rng, 1, state.minute);
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.weather.storm).toBeNull();
     state.minute = 2539;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather!.status).toBe("resolved");
     state.minute = 2540;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.opportunities.context.weather).toMatchObject({ status: "reserved", attempts: 2, createdAt: 2540 });
   });
 
@@ -1048,13 +1066,13 @@ describe("misses and retries", () => {
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 0, until: 360, warned: true };
     state.weather.nextStormId = 2;
     state.opportunities.context.weather = {
-      goal: "testShelter", status: "running", createdAt: 0, attempts: 1,
+      opportunity: "testShelter", status: "running", createdAt: 0, attempts: 1,
       stormId: 1, source: "natural", area: null, announcedAt: 0, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
     const completedBefore = structuredClone(state.opportunities.completedAt);
     state.minute = 10;
     state.dead = { cause: "froze", minute: 10 };
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(91));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(91));
     expect(state.opportunities.context.weather).toMatchObject({ status: "resolved", resolvedAt: 10, stormId: 1 });
     expect(state.opportunities.notices.flatMap((notice) => notice.messages)).toHaveLength(1);
     expect(state.opportunities.completedAt).toEqual(completedBefore);
@@ -1068,7 +1086,7 @@ describe("misses and retries", () => {
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 1900, until: 2200, warned: true };
     state.weather.nextStormId = 2;
     state.opportunities.context.weather = {
-      goal: "testShelter", status: "running", createdAt: 1800, attempts: 1,
+      opportunity: "testShelter", status: "running", createdAt: 1800, attempts: 1,
       stormId: 1, source: "natural",
       area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: 1840, resolvedAt: null,
@@ -1086,17 +1104,17 @@ describe("misses and retries", () => {
     expect(state.weather.storm).toBeNull();
     expect(state.weather.stormFreeSince).toBe(0);
     expect(state.opportunities.completedAt).toEqual(completed);
-    expect(state.opportunities.discoveredAt).toEqual(introduced);
+    expect(state.opportunities.discoveredAt).toMatchObject(introduced);
     expect(state.opportunities.context.weather).toMatchObject({
-      goal: "testShelter", status: "resolved", createdAt: 0, attempts: 1,
+      opportunity: "testShelter", status: "resolved", createdAt: 0, attempts: 1,
       area, resolvedAt: 0 });
     state.minute = 1439;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(92));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(92));
     expect(state.opportunities.context.weather?.attempts).toBe(1);
     state.minute = 1440;
-    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(92));
+    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(92));
     expect(state.opportunities.context.weather).toMatchObject({
-      goal: "testShelter", status: "reserved", createdAt: 1440, attempts: 2,
+      opportunity: "testShelter", status: "reserved", createdAt: 1440, attempts: 2,
       stormId: null, source: null, area });
   });
 
@@ -1109,7 +1127,7 @@ describe("misses and retries", () => {
     beginAgain(state, world);
     const area = { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 } as const;
     state.opportunities.context.weather = {
-      goal: "testShelter", status: "resolved", createdAt: 81000, attempts: 4,
+      opportunity: "testShelter", status: "resolved", createdAt: 81000, attempts: 4,
       stormId: 8, source: "natural", area, announcedAt: 81500, resolvedAt: 82000,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
     state.weather.stormFreeSince = 82750;
@@ -1128,10 +1146,10 @@ describe("misses and retries", () => {
     expect(loaded.minute).toBe(1440);
     expect(loaded.weather.stormFreeSince).toBe(0);
     expect(loaded.opportunities.context.weather).toMatchObject({
-      goal: "testShelter", status: "reserved", createdAt: 1440, attempts: 5,
+      opportunity: "testShelter", status: "reserved", createdAt: 1440, attempts: 5,
       stormId: null, source: null, area });
     expect(loaded.opportunities.completedAt).toEqual(completed);
-    expect(loaded.opportunities.discoveredAt).toEqual(introduced);
+    expect(loaded.opportunities.discoveredAt).toMatchObject(introduced);
     expect(loaded.opportunities.notices.flatMap((notice) => notice.messages)).toEqual(notices);
   });
 });
