@@ -1465,54 +1465,36 @@ button.act small.gives, span.act small.gives,
    colour. */
 .grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; --water-rest: #102047; --water-lit: #182d60; }
 .grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; --water-rest: #060d20; --water-lit: #0b1532; }
-/* Light on open water. A liquid surface in sight flickers between its own
-   blue and a shade lighter, on the wall clock like fog and clouds, never on
-   the simulation's, and only where the survivor can see it now. Remembered
-   water lies still, like remembered ground shows no current weather. Each
-   depth band lifts within its own palette through the two custom properties
-   above.
-
-   It is faked for the eye, not modelled. Three small waves at periods that
-   do not divide into each other, each on the cell's own seeded phase, and
-   the background is their sum. No cell ever rests, none is in step with its
-   neighbour, and the sum never visibly repeats, so there is no beat for the
-   eye to lock onto - which is what a single wave gave, however scattered
-   its cells were. The waves move registered numbers, and one colour-mix
-   turns the sum into the colour.
-
-   They step rather than slide, like the fog and cloud glyphs. A colour that
-   ramps smoothly up and back down reads as breathing at any period; a
-   colour that holds and jumps reads as a glint. A 6-frame-a-second capture
-   of the sliding version looked right for exactly this reason: sampling had
-   turned the ramps into jumps. Three levels per half-wave give the sum a
-   jump every few tenths of a second at irregular moments, and a held level
-   is a frame with nothing to repaint. */
-@property --water-glint-a { syntax: "<number>"; inherits: false; initial-value: 0; }
-@property --water-glint-b { syntax: "<number>"; inherits: false; initial-value: 0; }
-@property --water-glint-c { syntax: "<number>"; inherits: false; initial-value: 0; }
-/* The same weight as the depth rules above, and after them, so the mixed
-   colour wins on shallow and deep cells alike; water-live already implies
-   every :not() here. */
-.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.water-live {
-  background-color: color-mix(in srgb, var(--water-lit) calc((var(--water-glint-a) + var(--water-glint-b) + var(--water-glint-c)) * 33.3%), var(--water-rest));
-}
+/* Light on open water: a random shimmer, faked for the eye. Each cell in
+   sight steps through sixteen irregular shades between its depth band's
+   blue and a shade lighter, holding each about a quarter second, from its
+   own seeded starting point. Steps and no pattern, so nothing breathes and
+   nothing lines up. Wall clock, never the simulation's; remembered water
+   and ice lie still. */
 .grid .c.water-live {
-  animation: water-glint-a 2.3s steps(3) infinite, water-glint-b 3.7s steps(3) infinite, water-glint-c 5.9s steps(3) infinite;
-  /* ?shimmer= on the page sets the speed factor on the root; unset, the periods stay as written. */
-  animation-duration: calc(2.3s / var(--water-shimmer-speed, 1)), calc(3.7s / var(--water-shimmer-speed, 1)), calc(5.9s / var(--water-shimmer-speed, 1));
-  animation-delay: var(--water-phase-a), var(--water-phase-b), var(--water-phase-c);
+  animation: water-shimmer 4.1s step-end infinite;
+  /* ?shimmer= on the page sets the speed factor on the root; unset, the period stays as written. */
+  animation-duration: calc(4.1s / var(--water-shimmer-speed, 1));
+  animation-delay: var(--water-phase);
 }
-@keyframes water-glint-a {
-  0%, 100% { --water-glint-a: 0; }
-  50% { --water-glint-a: 1; }
-}
-@keyframes water-glint-b {
-  0%, 100% { --water-glint-b: 0; }
-  50% { --water-glint-b: 1; }
-}
-@keyframes water-glint-c {
-  0%, 100% { --water-glint-c: 0; }
-  50% { --water-glint-c: 1; }
+@keyframes water-shimmer {
+  0% { background-color: color-mix(in srgb, var(--water-lit) 20%, var(--water-rest)); }
+  6.25% { background-color: color-mix(in srgb, var(--water-lit) 75%, var(--water-rest)); }
+  12.5% { background-color: color-mix(in srgb, var(--water-lit) 40%, var(--water-rest)); }
+  18.75% { background-color: color-mix(in srgb, var(--water-lit) 100%, var(--water-rest)); }
+  25% { background-color: color-mix(in srgb, var(--water-lit) 10%, var(--water-rest)); }
+  31.25% { background-color: color-mix(in srgb, var(--water-lit) 85%, var(--water-rest)); }
+  37.5% { background-color: color-mix(in srgb, var(--water-lit) 30%, var(--water-rest)); }
+  43.75% { background-color: color-mix(in srgb, var(--water-lit) 55%, var(--water-rest)); }
+  50% { background-color: color-mix(in srgb, var(--water-lit) 0%, var(--water-rest)); }
+  56.25% { background-color: color-mix(in srgb, var(--water-lit) 65%, var(--water-rest)); }
+  62.5% { background-color: color-mix(in srgb, var(--water-lit) 45%, var(--water-rest)); }
+  68.75% { background-color: color-mix(in srgb, var(--water-lit) 90%, var(--water-rest)); }
+  75% { background-color: color-mix(in srgb, var(--water-lit) 25%, var(--water-rest)); }
+  81.25% { background-color: color-mix(in srgb, var(--water-lit) 70%, var(--water-rest)); }
+  87.5% { background-color: color-mix(in srgb, var(--water-lit) 5%, var(--water-rest)); }
+  93.75% { background-color: color-mix(in srgb, var(--water-lit) 50%, var(--water-rest)); }
+  100% { background-color: color-mix(in srgb, var(--water-lit) 20%, var(--water-rest)); }
 }
 /* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
    depth palette. Thin ice remains dark and uncertain; safe ice forms the

@@ -233,19 +233,12 @@ function detailHash(seed: number, x: number, y: number, n: number): number {
   return h >>> 0;
 }
 
-/**
- * The wall-clock periods of the three waves whose sum lights a water cell.
- * Faked for the eye, not modelled: none divides into another, so the sum
- * never visibly repeats, and every cell starts each wave at its own seeded
- * phase, so no cell is in step with its neighbour and the sheet has no beat.
- * Fog and clouds swap shapes on long cycles because a shape lingers; a
- * shimmer is a flicker, so these are short.
- */
-export const WATER_GLINT_PERIODS_MS = [2300, 3700, 5900] as const;
+/** The wall-clock period of the water shimmer's sixteen-shade sequence. */
+export const WATER_SHIMMER_MS = 4100;
 
-/** The animation delay of one of a water cell's three waves in ms, texture from the seed. Presentation only: the timing is the wall clock's. */
-export function waterPhaseMs(seed: number, x: number, y: number, wave: number): number {
-  return detailHash(seed, x, y, 149 + 2 * wave) % WATER_GLINT_PERIODS_MS[wave];
+/** Where in the sequence a water cell starts, in ms, texture from the seed. Presentation only: the timing is the wall clock's. */
+export function waterPhaseMs(seed: number, x: number, y: number): number {
+  return detailHash(seed, x, y, 149) % WATER_SHIMMER_MS;
 }
 
 /** Presentation-only fog motion. Density and location still come exclusively from the atmosphere sample. */
@@ -994,7 +987,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // render and the morph has nothing to change.
     if (cls.includes("t-water") && seen === 2 && !cls.includes("memory") && !cls.includes("mk") && !cls.includes("ice-thin") && !cls.includes("ice-safe")) {
       cls.push("water-live");
-      styles.push(`--water-phase-a:-${waterPhaseMs(world.seed, cx, cy, 0)}ms`, `--water-phase-b:-${waterPhaseMs(world.seed, cx, cy, 1)}ms`, `--water-phase-c:-${waterPhaseMs(world.seed, cx, cy, 2)}ms`);
+      styles.push(`--water-phase:-${waterPhaseMs(world.seed, cx, cy)}ms`);
     }
     const style = styles.length ? ` style="${styles.join(";")}"` : "";
     parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${style}>${content}</span>`);
