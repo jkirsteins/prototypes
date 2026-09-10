@@ -64,6 +64,16 @@ export const OPPORTUNITY_GROUPS: OpportunityGroupDef[] = [
 ];
 
 const COLLECTION_OPPORTUNITIES: OpportunityDef[] = [
+  ...SUPPORTED_WILDLIFE_SPECIES.flatMap((species): OpportunityDef[] => {
+    const name = SPECIES_DEFS[species].name;
+    const dress = `Dress ${/^[aeiou]/i.test(name) ? "an" : "a"} ${name} carcass`;
+    return [
+      { key: `track:${species}`, title: `Track ${name}`, category: "wildlife", group: "track-animals", steps: one("sign", `Find fresh ${name} sign`, (event) => event.kind === "signFound" && event.species === species ? 1 : 0) },
+      { key: `hunt:${species}`, title: `Hunt ${name}`, category: "wildlife", group: "hunt-animals", prerequisites: [`track:${species}`], steps: one("kill", `Kill ${name}`, (event) => event.kind === "animalKilled" && event.species === species ? 1 : 0) },
+      { key: `dress:${species}`, title: dress, category: "wildlife", group: "dress-carcasses", prerequisites: [`hunt:${species}`], steps: one("dress", dress, (event) => event.kind === "carcassDressed" && event.species === species ? 1 : 0) },
+      { key: `recover:${species}`, title: `Bring ${name} meat to camp`, category: "wildlife", group: "recover-kills", prerequisites: [`dress:${species}`], steps: one("recover", `Bring ${name} meat to camp`, (event) => event.kind === "carcassRecovered" && event.species === species ? 1 : 0) },
+    ];
+  }),
   ...SUPPORTED_FISH_SPECIES.flatMap((species): OpportunityDef[] => [
     { key: `catch:${species}`, title: `Catch ${SPECIES_DEFS[species].name}`, category: "food", group: "catch-fish", steps: one("catch", `Catch ${SPECIES_DEFS[species].name}`, (event) => event.kind === "fishCaught" && event.method === "direct" && event.species === species ? 1 : 0) },
     { key: `trap:${species}`, title: `Trap ${SPECIES_DEFS[species].name}`, category: "food", group: "trap-fish", steps: one("trap", `Collect ${SPECIES_DEFS[species].name} from a trap`, (event) => event.kind === "fishCaught" && event.method === "trap" && event.species === species ? 1 : 0) },
@@ -152,6 +162,7 @@ export function discoverAvailableOpportunities(state: GameState, world: World, c
 }
 
 export function eventDiscoveryKeys(event: OpportunityEvent, state?: GameState): OpportunityKey[] {
+  if (event.kind === "speciesSeen") return [`track:${event.species}`];
   if (event.kind === "waterRead") {
     const fish = event.species.filter((species) => SUPPORTED_FISH_SET.has(species));
     const trapKnown = state !== undefined && capabilityLevel(state, "fishing") >= 5;

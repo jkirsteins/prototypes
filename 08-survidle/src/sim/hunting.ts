@@ -2,7 +2,6 @@ import type { Calendar } from "./calendar";
 import { absence } from "./animals";
 import { body } from "./person";
 import { hasTool, produce } from "./inventory";
-import { recordOpportunityEvent } from "./opportunities";
 import { campCellOf, cellOf, forestCell, heathCell, kmBetween, rockCell, watersideCell } from "./position";
 import { skillLevel, oddsFactor } from "./skills";
 import { huntedLand, SPECIES_DEFS, type Species } from "./species";
@@ -88,7 +87,7 @@ export function carcassMinutes(carcass: Carcass): number {
 }
 
 /** Finishes the field work and turns only the recoverable share into goods. */
-export function processCarcass(state: GameState, world: World, id: number): (CarcassYields & { meatDestination: "pack" | "pile" }) | null {
+export function processCarcass(state: GameState, world: World, id: number): (CarcassYields & { species: Species; carcassId: number; meatDestination: "pack" | "pile"; fatDestination?: "pack" | "pile" }) | null {
   const index = state.carcasses.findIndex((x) => x.id === id && x.cell === cellOf(state, world));
   if (index < 0) return null;
   const carcass = state.carcasses[index];
@@ -105,11 +104,11 @@ export function processCarcass(state: GameState, world: World, id: number): (Car
   const meatDestination = produce(state, world, "rawMeat", recovered.meatKg);
   if (recovered.hideKg) produce(state, world, "hide", recovered.hideKg);
   if (recovered.furKg) produce(state, world, "fur", recovered.furKg);
-  if (recovered.fatKg) produce(state, world, "rawFat", recovered.fatKg);
+  const fatDestination = recovered.fatKg ? produce(state, world, "rawFat", recovered.fatKg) : undefined;
   if (recovered.bone) produce(state, world, "bone", recovered.bone);
   if (recovered.sinew) produce(state, world, "sinew", recovered.sinew);
   state.carcasses.splice(index, 1);
-  return { ...recovered, meatDestination };
+  return { ...recovered, species: carcass.species, carcassId: carcass.id, meatDestination, fatDestination };
 }
 
 function suits(world: World, cell: number, species: Species): boolean {
@@ -121,7 +120,7 @@ function suits(world: World, cell: number, species: Species): boolean {
   return false;
 }
 
-/** Personal evidence found by seeing or pursuing an animal at this cell. */
+/** Personal knowledge from seeing or pursuing an animal. Fresh-sign deeds belong to the pursuit seam. */
 export function noteHuntSign(state: GameState, cell: number, species: Species): boolean {
   const existing = state.player.huntSigns[cell];
   const previous = existing?.species ?? {};
@@ -133,7 +132,6 @@ export function noteHuntSign(state: GameState, cell: number, species: Species): 
     species: { ...previous, [species]: state.minute },
     ...(Object.keys(failures).length ? { failures } : {}),
   };
-  if (discovered) recordOpportunityEvent(state, { kind: "foundSign" });
   return discovered;
 }
 

@@ -122,7 +122,7 @@ export const OPPORTUNITIES: OpportunityDef[] = [
   { key: "huntMeal", title: "Hunt, cook, and eat meat", category: "food", steps: [
       step("bow", "Make a bow", crafted("bow")),
       step("arrows", "Make arrows", crafted("arrows")),
-      step("sign", "Find fresh animal sign", (d) => (d.kind === "foundSign" ? 1 : 0)),
+      step("sign", "Find fresh animal sign", (d) => (d.kind === "signFound" ? 1 : 0)),
       step("recover", "Bring meat back to camp", (d) => (d.kind === "recoveredAtCamp" ? 1 : 0)),
       { ...step("eat", "Eat cooked meat", cookedMeat), final: true },
     ], prerequisites: ["remoteStorm"] },

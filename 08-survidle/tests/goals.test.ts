@@ -10,8 +10,16 @@ import { regionAt } from "../src/world/gen";
 import { deserialize, serialize } from "../src/sim/save";
 import { resetTeaching } from "../src/sim/teach";
 import { TASK_IDS, type OpportunityKey, type Season } from "../src/sim/types";
+import { allOpportunityDefs } from "../src/sim/opportunity-catalog";
 
 const cal = calendar(0);
+
+const INITIAL_COLLECTIONS = [
+  "forage:berries", "forage:eggs", "forage:barkFlour", "forage:cookedRoots",
+  "build:leanTo", "build:cabin", "build:boughBed", "build:turfHut", "build:snowShelter",
+  "make:knife", "make:fireDrill", "make:bow", "make:fishingSpear", "make:needle",
+  "make:stoneAxe", "make:flakedAxe", "make:whetstone", "make:barkBucket", "make:waterskin",
+] as const;
 
 const CHAPTER_1 = ["findUsefulCover", "makeUsefulShelter", "testShelter"] as const;
 const CHAPTER_2 = ["readWeather", "prepareWeather", "surviveForecast"] as const;
@@ -62,11 +70,13 @@ const OWN_WORD: Partial<Record<OpportunityKey, string[]>> = {
   trapMeal: ["fish", "basket trap", "cooked fish"] };
 
 describe("the authored opportunity journey", () => {
-  it("starts with site and the four known season leaves", () => {
+  it("starts with site, the four known seasons, and the visible collection possibilities", () => {
     const { state } = newGame(3);
-    expect(activeOpportunityKeys(state, cal)).toEqual(["site", ...SEASON_KEYS]);
-    expect(unpresentedOpportunityKeys(state, cal)).toEqual(["site"]);
+    expect(activeOpportunityKeys(state, cal)).toEqual(["site", ...SEASON_KEYS, ...INITIAL_COLLECTIONS]);
+    expect(unpresentedOpportunityKeys(state, cal).sort()).toEqual(["site", ...INITIAL_COLLECTIONS].sort());
     acknowledgeOpportunities(state, ["site"]);
+    expect(unpresentedOpportunityKeys(state, cal).sort()).toEqual([...INITIAL_COLLECTIONS].sort());
+    acknowledgeOpportunities(state, [...INITIAL_COLLECTIONS]);
     expect(unpresentedOpportunityKeys(state, cal)).toEqual([]);
   });
   it("releases all first-night leaves, then waits for all three before meals", () => {
@@ -97,17 +107,17 @@ describe("the authored opportunity journey", () => {
   it("keeps all unfinished seasonal leaves available from world start", () => {
     const { state } = newGame(3);
     recordOpportunityEvent(state, { kind: "season", season: "winter" });
-    expect(activeOpportunityKeys(state, cal)).toEqual(["site", "season:spring", "season:summer", "season:autumn"]);
+    expect(activeOpportunityKeys(state, cal)).toEqual(["site", "season:spring", "season:summer", "season:autumn", ...INITIAL_COLLECTIONS]);
   });
   it("has no unfinished keys after every definition is completed", () => {
     const { state } = newGame(3);
-    for (const def of OPPORTUNITIES) state.opportunities.completedAt[def.key] = 0;
+    for (const def of allOpportunityDefs()) state.opportunities.completedAt[def.key] = 0;
     expect(activeOpportunityKeys(state, cal)).toEqual([]);
   });
 });
 
 describe("goal guards", () => {
-  it("credits every goal by a deed the game actually emits", () => {
+  it("credits every authored goal step by a deed the game actually emits", () => {
     for (const g of OPPORTUNITIES) {
       if (WEATHER_GOALS.includes(g.key)) continue;
       const emitted = [
@@ -118,7 +128,8 @@ describe("goal guards", () => {
         ...SEASON_KEYS.map((s) => ({ kind: "season", season: s.slice(7) as Season }) as const),
         { kind: "lit" } as const,
         { kind: "stored" } as const,
-        { kind: "foundSign" } as const,
+        { kind: "signFound", species: "deer" } as const,
+        { kind: "animalKilled", species: "deer" } as const,
         { kind: "recoveredAtCamp" } as const,
         { kind: "cooked", kg: 1 } as const,
         { kind: "gathered", item: "firewood", kg: 99 } as const,
@@ -147,7 +158,9 @@ describe("goal guards", () => {
         { kind: "seasonalFood" } as const,
         { kind: "winterStocked" } as const,
       ];
-      expect(emitted.some((d) => g.steps.some((step) => step.credit(d) > 0)), `${g.key} is unreachable`).toBe(true);
+      for (const step of g.steps) {
+        expect(emitted.some((d) => step.credit(d) > 0), `${g.key}/${step.id} is unreachable`).toBe(true);
+      }
     }
   });
 
@@ -219,7 +232,8 @@ describe("goals are the world's, not a life's", () => {
 
   it("does not credit later building goals before they are announced", () => {
     const { state } = newGame(3);
-    expect(recordOpportunityEvent(state, { kind: "built", structure: "turfHut" })).toEqual([]);
+    expect(recordOpportunityEvent(state, { kind: "built", structure: "turfHut" })).toEqual(["build:turfHut"]);
+    expect(state.opportunities.completedAt["build:turfHut"]).toBe(state.minute);
     expect(state.opportunities.completedAt.roof).toBeUndefined();
     expect(state.opportunities.completedAt.durableRoof).toBeUndefined();
   });
@@ -233,7 +247,7 @@ describe("goals are the world's, not a life's", () => {
 
     recordOpportunityEvent(state, { kind: "crafted", recipe: "bow" });
     recordOpportunityEvent(state, { kind: "crafted", recipe: "arrows" });
-    recordOpportunityEvent(state, { kind: "foundSign" });
+    recordOpportunityEvent(state, { kind: "signFound", species: "deer" });
     recordOpportunityEvent(state, { kind: "recoveredAtCamp" });
     expect(opportunitySteps(state, "huntMeal").map((step) => [step.label, step.done])).toEqual([
       ["Make a bow", true],
@@ -264,7 +278,7 @@ describe("goals are the world's, not a life's", () => {
       setup: [
         { kind: "crafted", recipe: "bow" },
         { kind: "crafted", recipe: "arrows" },
-        { kind: "foundSign" },
+        { kind: "signFound", species: "deer" },
         { kind: "recoveredAtCamp" },
       ] as const,
       acquire: { kind: "foodAcquired", method: "hunt" } as const,

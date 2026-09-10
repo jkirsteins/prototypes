@@ -1575,6 +1575,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   if (id === "hunt" && t.huntPhase === "field") {
     const recovered = t.carcassId === undefined ? null : processCarcass(state, world, t.carcassId);
     if (recovered) {
+      recordOpportunityEvent(state, { kind: "carcassDressed", species: recovered.species, carcassId: recovered.carcassId });
       const kcal = recovered.meatKg * FOODS.rawMeat.kcalPerKg + (recovered.fatKg ?? 0) * FOODS.fat.kcalPerKg;
       noteFieldRecovery(state, recovered.meatKg, recovered.fatKg ?? 0);
       creditYield(state, "hunt", kcal);
@@ -1582,14 +1583,17 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
       if (LARGE_GAME.includes(arg as Species) || arg === "bear") state.stats.killsKcal += kcal;
       const camp = campCellOf(state, world);
       if (camp !== null && camp === cellOf(state, world)) {
+        recordOpportunityEvent(state, { kind: "carcassRecovered", species: recovered.species, carcassId: recovered.carcassId });
         noteHauledHuntFood(state, recovered.meatKg, recovered.fatKg ?? 0);
         recordOpportunityEvent(state, { kind: "recoveredAtCamp" });
       }
       else if (isWorkIntent(it) && it.task === "hunt" && it.deliver === "camp") {
-        if (recovered.meatDestination === "pack") it.recoveredMeatPackedKg = recovered.meatKg;
-        else it.recoveredMeatAtSourceKg = recovered.meatKg;
-        if (recovered.meatDestination === "pack") it.recoveredFatPackedKg = recovered.fatKg ?? 0;
-        else it.recoveredFatAtSourceKg = recovered.fatKg ?? 0;
+        it.recoveredSpecies = recovered.species;
+        it.recoveredCarcassId = recovered.carcassId;
+        it.recoveredMeatPackedKg = recovered.meatDestination === "pack" ? recovered.meatKg : 0;
+        it.recoveredMeatAtSourceKg = recovered.meatDestination === "pile" ? recovered.meatKg : 0;
+        it.recoveredFatPackedKg = recovered.fatDestination === "pack" ? recovered.fatKg ?? 0 : 0;
+        it.recoveredFatAtSourceKg = recovered.fatDestination === "pile" ? recovered.fatKg ?? 0 : 0;
       }
       log(state, `${Math.round(recovered.meatKg * 10) / 10} kg of meat dressed from the carcass.`, "good");
     }
@@ -2213,8 +2217,12 @@ function resolveHuntPursuit(state: GameState, world: World, cal: Calendar, rng: 
   const signOdds = huntSignOdds(state, d);
   if (d > 0 && (killed || rng.chance(signOdds))) {
     if (noteHuntSign(state, here, s)) log(state, `Fresh sign: ${anAnimal(s)}.`);
+    // A sighting may already have taught this location; finding fresh sign is
+    // still a new deed even when the knowledge/log entry is deduplicated.
+    recordOpportunityEvent(state, { kind: "signFound", species: s });
   }
   if (killed) {
+    recordOpportunityEvent(state, { kind: "animalKilled", species: s });
     state.stats.animals++;
     state.stats.kills[s] = (state.stats.kills[s] ?? 0) + 1;
     if (!hasEvent(state, (e) => e.kind === "firstKill" && e.species === s)) record(state, { kind: "firstKill", species: s });

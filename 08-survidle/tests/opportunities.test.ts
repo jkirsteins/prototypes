@@ -115,6 +115,6 @@ describe("opportunity focus", () => {
   });
 
   it("does not materialize unsupported definitions", () => {
-    expect(opportunityDef("hunt:deer")).toBeUndefined();
+    expect(opportunityDef("hunt:hare")).toBeUndefined();
   });
 });

@@ -420,6 +420,9 @@ interface WorkIntentBase extends IntentBase {
   recoveredFatAtSourceKg?: number;
   /** This hunt's dressed fat currently carried in the pack. */
   recoveredFatPackedKg?: number;
+  /** Temporary identity of the carcass whose dressed food this hunt is delivering. */
+  recoveredSpecies?: Species;
+  recoveredCarcassId?: number;
 }
 
 /**
@@ -874,7 +877,7 @@ export type OpportunityEvent =
   /** Meat actually went on the rack. A hang that racked nothing put nothing by. */
   | { kind: "stored" }
   /** A real animal left evidence this survivor noticed. */
-  | { kind: "foundSign" }
+  | { kind: "signFound"; species: Species }
   /** Meat recovered from a carcass reached this survivor's camp. */
   | { kind: "recoveredAtCamp" }
   | { kind: "cooked"; kg: number; item?: ItemId }
@@ -898,7 +901,10 @@ export type OpportunityEvent =
   | { kind: "seasonalFood" }
   | { kind: "winterStocked" }
   | { kind: "season"; season: Season }
-  | { kind: "animalKilled"; species: Species };
+  | { kind: "speciesSeen"; species: Species }
+  | { kind: "animalKilled"; species: Species }
+  | { kind: "carcassDressed"; species: Species; carcassId: number }
+  | { kind: "carcassRecovered"; species: Species; carcassId: number };
 
 export interface OpportunityStepDef {
   id: string;

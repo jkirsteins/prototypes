@@ -375,7 +375,7 @@ describe("deeds reach the ladder", () => {
   it("teaches the hunting loop through real sign and camp recovery deeds", () => {
     const { state } = newGame(17);
     reveal(state, ["huntMeal"]);
-    recordOpportunityEvent(state, { kind: "foundSign" });
+    recordOpportunityEvent(state, { kind: "signFound", species: "deer" });
     recordOpportunityEvent(state, { kind: "recoveredAtCamp" });
     expect(opportunitySteps(state, "huntMeal").filter((step) => step.id === "sign" || step.id === "recover").map((step) => [step.id, step.done])).toEqual([
       ["sign", true], ["recover", true],

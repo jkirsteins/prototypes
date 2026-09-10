@@ -174,6 +174,8 @@ describe("immediate wildlife disturbance", () => {
     expect(deer.active!.intent).toBe("flee");
     expect(events).toHaveLength(1);
     expect(events[0].perception).toEqual({ kind: "seen", identification: recognized ? "subject" : "species" });
+    expect(state.opportunities.discoveredAt["track:deer"]).toBe(state.minute);
+    expect(state.opportunities.completedAt["track:deer"]).toBeUndefined();
     expect(events[0].logText).toContain("startles and bounds");
     expect(state.log.filter((entry) => entry.text === events[0].logText)).toHaveLength(1);
     expect(state.wildlife.visible).toEqual([]);
@@ -188,6 +190,7 @@ describe("immediate wildlife disturbance", () => {
     expect(deer.active!.intent).toBe("flee");
     expect(events).toHaveLength(0);
     expect(state.log).toHaveLength(before);
+    expect(state.opportunities.discoveredAt["track:deer"]).toBeUndefined();
   });
 
   it("does not map, recognize or expose a heard-only departure", () => {
@@ -203,6 +206,7 @@ describe("immediate wildlife disturbance", () => {
     evaluateWildlifeDisturbance(state, world, cal, true, { ...seesStartle, sightRoll: 1, hearingRoll: 0 });
     expect(events).toHaveLength(1);
     expect(events[0].perception.kind).toBe("heard");
+    expect(state.opportunities.discoveredAt["track:deer"]).toBeUndefined();
     expect(events[0].logText).not.toContain("River");
     expect(JSON.stringify({ mapped: state.mapped, discovered: state.discovered, wildlife: {
       visible: state.wildlife.visible, familiarity: state.wildlife.familiarity, lastKnownDay: deer.lastKnownDay,
