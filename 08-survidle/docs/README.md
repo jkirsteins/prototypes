@@ -417,8 +417,10 @@ with work, pause, or alter the simulated feature's location or visibility.
 Liquid water in the current viewshed shimmers on the same kind of wall clock:
 each cell rests in its depth band's blue and lights a shade brighter for a
 moment once every 3.5 real seconds. The phase is a plane wave through world
-coordinates with seeded jitter, so the light reads as a band crossing the
-sheet rather than cells pulsing in place. Ice, marked cells and remembered
+coordinates along the wind where the survivor stands, quantized to sixteen
+compass sectors, with seeded jitter, and each cell glints at its own seeded
+strength, so the light reads as scattered flecks running downwind rather
+than cells pulsing in place or a stripe. Ice, marked cells and remembered
 water lie still, and reduced motion turns the shimmer off. `?shimmer=2` is a
 test aid that runs the cycle twice as fast for tuning; it is not a game
 feature.

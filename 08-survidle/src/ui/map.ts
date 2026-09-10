@@ -239,21 +239,36 @@ function detailHash(seed: number, x: number, y: number, n: number): number {
  * moves, so its cycle is short and its phase follows position.
  */
 export const WATER_SHIMMER_MS = 3500;
-/** How much later than its western neighbour a drawn cell lights: the wave crosses the sheet eastward and, more slowly, southward. */
-export const WATER_WAVE_X_MS = 320;
-export const WATER_WAVE_Y_MS = 180;
-/** Seeded jitter on top of the wave, so the band of light has a ragged edge rather than a ruler's. */
-export const WATER_JITTER_MS = 240;
+/** How much later a drawn cell lights than its neighbour one step upwind: ripples run downwind, and so does the light. */
+export const WATER_WAVE_MS = 360;
+/** Seeded jitter on top of the wave, so the front is ragged rather than ruled. */
+export const WATER_JITTER_MS = 600;
+/** The compass sectors the wind direction is quantized to, so a drifting wind does not rewrite every water cell's phase on each render. */
+const WIND_SECTORS = 16;
 
 /**
  * The animation delay of one water cell in ms. A plane wave through world
- * coordinates, divided by the zoom so a coarse block keeps the same step per
- * drawn cell, plus jitter from the seed. Presentation only.
+ * coordinates along the wind, divided by the zoom so a coarse block keeps
+ * the same step per drawn cell, plus jitter from the seed. A calm keeps the
+ * last sector a westerly would give, so the sheet is never still.
+ * Presentation only: the timing is the wall clock's.
  */
-export function waterPhaseMs(seed: number, x: number, y: number, zoom: number): number {
-  const wave = Math.round((x * WATER_WAVE_X_MS + y * WATER_WAVE_Y_MS) / zoom);
+export function waterPhaseMs(seed: number, x: number, y: number, zoom: number, wind: { windXKmh: number; windYKmh: number }): number {
+  const angle = Math.hypot(wind.windXKmh, wind.windYKmh) < 1e-6 ? 0 : Math.atan2(wind.windYKmh, wind.windXKmh);
+  const sector = Math.round(angle / (2 * Math.PI) * WIND_SECTORS) * (2 * Math.PI / WIND_SECTORS);
+  const wave = Math.round((x * Math.cos(sector) + y * Math.sin(sector)) * WATER_WAVE_MS / zoom);
   const jitter = detailHash(seed, x, y, 149) % WATER_JITTER_MS;
-  return (wave + jitter) % WATER_SHIMMER_MS;
+  return ((wave + jitter) % WATER_SHIMMER_MS + WATER_SHIMMER_MS) % WATER_SHIMMER_MS;
+}
+
+/**
+ * How brightly one water cell glints, 0 to 1. Most of the sheet barely
+ * lights and a few cells catch the sun, so the wave reads as flecks moving
+ * together rather than a stripe. Texture from the seed, like the phase.
+ */
+export function waterGlint(seed: number, x: number, y: number): number {
+  const draw = detailHash(seed, x, y, 151) % 10;
+  return draw < 4 ? 0.15 : draw < 7 ? 0.35 : draw < 9 ? 0.6 : 1;
 }
 
 /** Presentation-only fog motion. Density and location still come exclusively from the atmosphere sample. */
@@ -578,6 +593,9 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   // majority-visible block is a precise view.
   const currentVisible = currentViewshed(state, world, cal, playerCell).cells;
   const visibleNow = z === 1 ? currentVisible : null;
+  // One wind for the whole view: the light on every sheet of water runs
+  // the way it blows where the survivor stands.
+  const wind = atmosphereAt(state, world, playerCell);
   const toGlyph = (cell: number): number => {
     const c = cellAt(world, cell);
     const gx = Math.floor((c.x - x0) / z);
@@ -1002,7 +1020,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // render and the morph has nothing to change.
     if (cls.includes("t-water") && seen === 2 && !cls.includes("memory") && !cls.includes("mk") && !cls.includes("ice-thin") && !cls.includes("ice-safe")) {
       cls.push("water-live");
-      styles.push(`--water-phase:-${waterPhaseMs(world.seed, cx, cy, z)}ms`);
+      styles.push(`--water-phase:-${waterPhaseMs(world.seed, cx, cy, z, wind)}ms`, `--water-glint:${waterGlint(world.seed, cx, cy)}`);
     }
     const style = styles.length ? ` style="${styles.join(";")}"` : "";
     parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${style}>${content}</span>`);

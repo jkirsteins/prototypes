@@ -1472,11 +1472,13 @@ button.act small.gives, span.act small.gives,
    weather. Each depth band lifts within its own palette through the two
    custom properties above.
 
-   Two things keep it from pulsing. The glint is brief: the cell rests for
-   most of the cycle and a symmetric swell is exactly the breath the eye
-   locks onto. And the phase follows position rather than a hash, so the
-   light is a band moving across the sheet instead of cells blinking where
-   they stand. */
+   Three things keep it from pulsing or ruling a stripe. The glint is brief:
+   the cell rests for most of the cycle and a symmetric swell is exactly the
+   breath the eye locks onto. The phase follows position along the wind, so
+   the light runs downwind across the sheet instead of cells blinking where
+   they stand. And each cell has its own strength, most of them faint and a
+   few bright, so the front is scattered flecks moving together and not a
+   line. */
 .grid .c.water-live {
   animation: water-shimmer 3.5s ease-in-out infinite;
   /* ?shimmer= on the page sets the speed factor on the root; unset, the period stays 3.5 s. */
@@ -1485,7 +1487,7 @@ button.act small.gives, span.act small.gives,
 }
 @keyframes water-shimmer {
   0%, 64% { background-color: var(--water-rest); }
-  80% { background-color: var(--water-lit); }
+  80% { background-color: color-mix(in srgb, var(--water-lit) calc(var(--water-glint, 1) * 100%), var(--water-rest)); }
   100% { background-color: var(--water-rest); }
 }
 /* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue

@@ -9,7 +9,7 @@ import { visibleCells } from "../src/sim/sight";
 import { ensureGround } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
 import { activateWildlife } from "../src/sim/wildlife-agents";
-import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml, WATER_JITTER_MS, WATER_SHIMMER_MS, WATER_WAVE_X_MS, waterPhaseMs } from "../src/ui/map";
+import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml, WATER_JITTER_MS, WATER_SHIMMER_MS, WATER_WAVE_MS, waterGlint, waterPhaseMs } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState } from "../src/ui/render";
 import { cellAt, neighbours, regionPeek } from "../src/world/gen";
 import { passable } from "../src/world/route";
@@ -305,22 +305,42 @@ describe("the map's compositing layers", () => {
     // briefly, so the eye has no symmetric swell to lock onto.
     const shimmer = css.match(/@keyframes water-shimmer[\s\S]*?\n}/)?.[0] ?? "";
     expect(shimmer).toContain("0%, 64% { background-color: var(--water-rest); }");
-    expect(shimmer).toContain("80% { background-color: var(--water-lit); }");
+    // Each cell glints at its own strength, so the front is scattered flecks and not a stripe.
+    expect(shimmer).toContain("80% { background-color: color-mix(in srgb, var(--water-lit) calc(var(--water-glint, 1) * 100%), var(--water-rest)); }");
     expect(shimmer).toContain("100% { background-color: var(--water-rest); }");
     expect(shimmer).not.toContain("transform:");
     expect(shimmer).not.toContain("opacity:");
-    // The phase follows position, so the light travels across the sheet:
-    // a neighbour to the east lights one step later, give or take the
+    const strengths = new Set([12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].flatMap((x) => [34, 35, 36, 37].map((y) => waterGlint(17, x, y))));
+    expect(strengths.size).toBeGreaterThanOrEqual(3);
+    for (const s of strengths) { expect(s).toBeGreaterThan(0); expect(s).toBeLessThanOrEqual(1); }
+    expect(waterGlint(17, 12, 34)).toBe(waterGlint(17, 12, 34));
+    // The phase follows position along the wind, so the light travels
+    // downwind across the sheet: in a westerly the eastern neighbour lights
+    // one step later, in an easterly one step earlier, give or take the
     // jitter, and a block at a coarser zoom keeps the same step per drawn cell.
-    const step = (a: number, b: number) => ((b - a) % WATER_SHIMMER_MS + WATER_SHIMMER_MS) % WATER_SHIMMER_MS;
-    for (const [x, y] of [[12, 34], [175, 50], [700, 950]]) {
-      const east = step(waterPhaseMs(17, x, y, 1), waterPhaseMs(17, x + 1, y, 1));
-      expect(Math.min(east, WATER_SHIMMER_MS - east)).toBeLessThanOrEqual(WATER_WAVE_X_MS + WATER_JITTER_MS);
-      expect(east).toBeGreaterThan(0);
-      const eastBlock = step(waterPhaseMs(17, x, y, 4), waterPhaseMs(17, x + 4, y, 4));
-      expect(Math.abs(eastBlock - east)).toBeLessThanOrEqual(2 * WATER_JITTER_MS);
+    // Signed difference on the cycle, in (-half, half]: how much later b lights than a.
+    const later = (a: number, b: number) => { const d = ((b - a) % WATER_SHIMMER_MS + WATER_SHIMMER_MS) % WATER_SHIMMER_MS; return d > WATER_SHIMMER_MS / 2 ? d - WATER_SHIMMER_MS : d; };
+    const meanEastStep = (wind: { windXKmh: number; windYKmh: number }, zoom: number) => {
+      const steps: number[] = [];
+      for (const y of [34, 50, 950]) for (let x = 100; x < 160; x += zoom) steps.push(later(waterPhaseMs(17, x, y, zoom, wind), waterPhaseMs(17, x + zoom, y, zoom, wind)));
+      return steps.reduce((a, b) => a + b, 0) / steps.length;
+    };
+    const westerly = { windXKmh: 20, windYKmh: 0 };
+    const easterly = { windXKmh: -20, windYKmh: 0 };
+    expect(meanEastStep(westerly, 1)).toBeGreaterThan(WATER_WAVE_MS - 150);
+    expect(meanEastStep(westerly, 1)).toBeLessThan(WATER_WAVE_MS + 150);
+    expect(meanEastStep(easterly, 1)).toBeLessThan(-WATER_WAVE_MS + 150);
+    expect(meanEastStep(easterly, 1)).toBeGreaterThan(-WATER_WAVE_MS - 150);
+    expect(Math.abs(meanEastStep(westerly, 4) - meanEastStep(westerly, 1))).toBeLessThan(150);
+    // Every step is the wave plus jitter and nothing wilder.
+    for (let x = 100; x < 140; x++) {
+      const d = later(waterPhaseMs(17, x, 34, 1, westerly), waterPhaseMs(17, x + 1, 34, 1, westerly));
+      expect(Math.abs(d - WATER_WAVE_MS)).toBeLessThanOrEqual(WATER_JITTER_MS);
     }
-    expect(waterPhaseMs(17, 12, 34, 1)).toBe(waterPhaseMs(17, 12, 34, 1));
+    // A calm has a direction too, so the sheet never freezes into a stripe pattern that depends on rounding.
+    expect(waterPhaseMs(17, 12, 34, 1, { windXKmh: 0, windYKmh: 0 })).toBe(waterPhaseMs(17, 12, 34, 1, { windXKmh: 0, windYKmh: 0 }));
+    // The direction is quantized to compass sectors so a drifting wind does not rewrite every water cell each render.
+    expect(waterPhaseMs(17, 12, 34, 1, { windXKmh: 20, windYKmh: 1 })).toBe(waterPhaseMs(17, 12, 34, 1, { windXKmh: 20, windYKmh: 2 }));
     expect(rule("@media (prefers-reduced-motion: reduce)")).toContain(".water-live");
     // Each depth band shimmers within its own palette.
     expect(rule(".grid .c.t-water")).toContain("--water-rest: #0a1633");
