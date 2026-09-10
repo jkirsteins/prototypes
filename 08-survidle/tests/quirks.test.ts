@@ -8,7 +8,7 @@ import { lightingInRain } from "../src/sim/fire";
 import { addItem, freshTool } from "../src/sim/inventory";
 import { isRead } from "../src/sim/knowledge";
 import { newGame } from "../src/sim/newgame";
-import { FELL_FEAR_LINE, medianPerson, SHORE_FEAR_LINE } from "../src/sim/person";
+import { FELL_FEAR_LINE, medianPerson, quirkLine, SHORE_FEAR_LINE } from "../src/sim/person";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { gap } from "../src/sim/skills";
@@ -82,6 +82,7 @@ describe("the quirks", () => {
   });
 
   it("sleeps light: the wolves never reach the bed, and a storm night pays off half the sleep debt", () => {
+    expect(quirkLine("sleepsLight")).toBe("Light sleeper. Safe from wolves while asleep. Storms reduce sleep quality.");
     const light = withQuirk(17, "sleepsLight");
     const median = withQuirk(17, null);
     const night = calendar(15 * 60, START_DOY);

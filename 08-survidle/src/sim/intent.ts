@@ -774,9 +774,10 @@ export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rn
   if (!isWorkIntent(it)) return;
   // At the collapse line the work is released back to the queue. Its row
   // reads "too exhausted", so the next ranked row wins visibly instead of
-  // a hidden sleep task bypassing the list.
+  // a hidden recovery task bypassing the list.
   if (tooExhausted(state)) {
-    state.player.sleeping = { collapsed: true };
+    state.player.collapsed = true;
+    state.player.bodyNeed = "spent";
     setAside(state, world);
     if (it.orderId === null) endIntent(state, `${labelOf(state, world, cal, it)}: {you} {are} too exhausted. {You} {stop}.`, "bad");
     else state.intent = null;

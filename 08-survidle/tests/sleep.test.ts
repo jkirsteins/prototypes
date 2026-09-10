@@ -9,7 +9,7 @@ import { derived, medianPerson } from "../src/sim/person";
 import { stepPlayer, taskDrain } from "../src/sim/player";
 import {
   CIRCADIAN_PEAK_HOUR, ULTRADIAN_AMPLITUDE,
-  alertness, circadian, debtStep, minutesToWake, sleepiness,
+  alertness, circadian, debtStep, minutesToSleep, minutesToWake, minutesUntilWake, sleepiness,
   SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT,
 } from "../src/sim/sleep";
 
@@ -49,6 +49,18 @@ describe("sleep debt, the homeostatic process", () => {
 
     expect(debtStep(40, false, 1)).toBeGreaterThan(40);
     expect(debtStep(40, true, 1)).toBeLessThan(40);
+  });
+});
+
+describe("sleep timing projections", () => {
+  it("projects sleep onset from sleep pressure and the body clock", () => {
+    expect(minutesToSleep(10, 13)).toBe(680);
+    expect(minutesToSleep(40, 20)).toBe(250);
+  });
+
+  it("projects the live wake crossing without imposing the legacy task floor", () => {
+    expect(minutesUntilWake(0, 12)).toBe(10);
+    expect(minutesToWake(0, 12)).toBe(SLEEP_MIN_MINUTES);
   });
 });
 

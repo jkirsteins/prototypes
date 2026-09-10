@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { bodyStep, campNeed, canFeed, currentNeed, SLEEP_AT, snaresWaiting, SOAKED_WETNESS, WET_COLD_C } from "../src/sim/body";
-import { alertness, COLLAPSE_RECOVERED_AT, RESTED_AT, sleepiness, sleepMinutes, SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
+import { alertness, RESTED_AT, sleepiness, sleepMinutes, SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { calendar } from "../src/sim/calendar";
 import { WATER_FULL } from "../src/sim/water";
 import { fuelTotal } from "../src/sim/fire";
@@ -16,7 +16,7 @@ import { placeAt, straightKm } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { seepGround } from "../src/sim/seep";
 import { huntedLand } from "../src/sim/species";
-import { check, startTask } from "../src/sim/tasks";
+import { check } from "../src/sim/tasks";
 import type { Intent, Task } from "../src/sim/types";
 import { regionAt, spotOf } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
@@ -417,23 +417,19 @@ describe("sleep by the model, not by the clock", () => {
     expect(currentNeed(state, world, night)).not.toBe("sleep");
   });
 
-  it("a body under the collapse line sleeps parched and holds that sleep until it is rested", () => {
+  it("a body below the collapse line rests unless the sleep model is at onset", () => {
     const { state, world, night } = septemberEvening();
     const p = state.player;
-    // Nothing sleepy about it: the debt is at the bottom of the range.
     p.sleepDebt = 0;
-    p.water = 0.1;
+    p.water = WATER_FULL;
     p.energy = SLEEP_AT;
+    expect(currentNeed(state, world, night)).toBe("spent");
+    expect(p.sleeping).toBeNull();
+
+    p.bodyNeed = null;
+    p.sleepDebt = debtFor(SLEEP_ONSET + 1, night.hour);
     expect(currentNeed(state, world, night)).toBe("sleep");
-    expect(state.player.sleeping).toEqual({ collapsed: true });
-    // Past the collapse line but not yet rested: still down.
-    p.energy = COLLAPSE_RECOVERED_AT - 1;
-    expect(currentNeed(state, world, night)).toBe("sleep");
-    // Rested, and with no sleepiness to hold it there, it is up by the fire.
-    p.energy = COLLAPSE_RECOVERED_AT;
-    state.player.bodyNeed = null;
-    expect(currentNeed(state, world, night)).not.toBe("sleep");
-    expect(state.player.sleeping).toBeNull();
+    expect(p.sleeping).toEqual({ collapsed: false });
   });
 
   it("a rested body with its debt paid works by firelight at 23:00, with no night clause to stop it", () => {
@@ -463,7 +459,7 @@ describe("sleep by the model, not by the clock", () => {
     expect(currentNeed(state, world, night)).not.toBe("spent");
   });
 
-  it("the sleep task runs to the model's wake line, with no dawn floor and no cap", () => {
+  it("automatic sleep is one continuous task that runs to the model's wake line", () => {
     const { state, world, night } = septemberEvening();
     state.intent = null;
     state.task = null;
@@ -473,8 +469,15 @@ describe("sleep by the model, not by the clock", () => {
     expect(check(state, world, night, "sleep").detail).toContain("until rested");
     expect(minutes).toBeGreaterThanOrEqual(SLEEP_MIN_MINUTES);
     expect(minutes).toBeLessThanOrEqual(SLEEP_MAX_MINUTES);
-    expect(startTask(state, world, night, "sleep")).toBe(true);
-    expect(state.task!.duration).toBe(minutes);
+    advance(state, world, 1);
+    const sameSleep = state.task as Task | null;
+    expect(sameSleep?.id).toBe("sleep");
+    // A stale short estimate must be extended, not completed and restarted as
+    // another small sleep bucket while the model still says this is one sleep.
+    sameSleep!.duration = sameSleep!.progress + 1;
+    advance(state, world, 2);
+    expect(state.task).toBe(sameSleep);
+    expect(state.task!.duration).toBeGreaterThan(state.task!.progress);
     advance(state, world, minutes);
     expect(state.task).toBeNull();
     // It ended on the wake line, which is the body's own reading and not the sun's.

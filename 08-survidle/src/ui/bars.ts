@@ -13,6 +13,7 @@ import { ambientTemperature, localWeather } from "../sim/weather";
 import { sleepiness } from "../sim/sleep";
 import { fmtDuration, fmtReal } from "../units";
 import type { World } from "../world/gen";
+import { sleepForecast } from "./sleep";
 
 /**
  * The named bar, wherever it is drawn.
@@ -79,6 +80,10 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   setBar("energy", p.energy / 100, `${Math.floor(p.energy + 1e-9)}`, root);
   const sleepy = sleepiness(p.sleepDebt, cal.hour);
   setBar("sleepiness", sleepy / 100, `${Math.max(0, Math.min(100, Math.round(sleepy)))}`, root);
+  const forecast = sleepForecast(state, world, cal);
+  for (const line of root.querySelectorAll<HTMLElement>("[data-sleep-forecast]")) {
+    if (line.textContent !== forecast) line.textContent = forecast;
+  }
   setBar("wet", p.wetness / 100, `${Math.round(p.wetness)}`, root);
   setBar("water", p.water / WATER_FULL, `${p.water.toFixed(1)} l`, root);
 

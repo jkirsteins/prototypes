@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { mapHtml, mapKey } from "../src/ui/map";
@@ -7,11 +7,14 @@ import { statsHtml } from "../src/ui/panels";
 import { updateBars } from "../src/ui/bars";
 import { newUiState } from "../src/ui/render";
 import { ambientTemperature } from "../src/sim/weather";
-import { COLLAPSE_RECOVERED_AT, SLEEP_ONSET, SLEEPY_AT, WAKE_AT } from "../src/sim/sleep";
+import { RESTED_AT, SLEEP_ONSET, SLEEPY_AT, WAKE_AT } from "../src/sim/sleep";
 import { regionState } from "../src/sim/regionstate";
 import type { GameState, TaskId } from "../src/sim/types";
 import { css } from "./css";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 /** A task on the player, with only the fields the mood reads filled in. */
 function doing(state: GameState, id: TaskId): void {
@@ -121,24 +124,24 @@ describe("the mood on the screen", () => {
 
   it("names the physical reserve Stamina and shows why collapse still blocks work", () => {
     const { state, world } = newGame(17);
-    state.player.energy = 55;
-    state.player.sleeping = { collapsed: true };
+    state.player.energy = RESTED_AT - 1;
+    state.player.collapsed = true;
     const cal = calendar(state.minute, state.startDoy);
     const html = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
-    expect(html).toContain(`left:${COLLAPSE_RECOVERED_AT.toFixed(1)}%`);
+    expect(html).toContain(`left:${RESTED_AT.toFixed(1)}%`);
     expect(html).toContain("work resumes here after collapse");
     expect(html).toContain("Stamina");
-    expect(html).toContain("recovering from collapse, work resumes at 100 Stamina");
+    expect(html).toContain(`recovering from collapse, work resumes at ${RESTED_AT} Stamina`);
   });
 
   it("does not round Stamina up across its active recovery line", () => {
     const { state, world } = newGame(17);
-    state.player.energy = COLLAPSE_RECOVERED_AT - 0.1;
-    state.player.sleeping = { collapsed: true };
+    state.player.energy = RESTED_AT - 0.1;
+    state.player.collapsed = true;
     const cal = calendar(state.minute, state.startDoy);
     document.body.innerHTML = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
     updateBars(state, world);
-    expect(document.querySelector('[data-val="energy"]')?.textContent).toBe("99");
+    expect(document.querySelector('[data-val="energy"]')?.textContent).toBe(String(Math.floor(RESTED_AT - 0.1)));
   });
 
   it("shows Sleepiness separately with its live value and decision lines", () => {
@@ -162,6 +165,28 @@ describe("the mood on the screen", () => {
     state.player.sleepDebt = 100;
     updateBars(state, world);
     expect(sleepiness?.querySelector('[data-val="sleepiness"]')?.textContent).toBe("100");
+  });
+
+  it("shows the practical sleep clock beside the Sleepiness bar", () => {
+    const { state, world } = newGame(17);
+    state.minute = 5 * 60;
+    state.player.sleepDebt = 10;
+    const cal = calendar(state.minute, state.startDoy);
+    document.body.innerHTML = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
+    updateBars(state, world);
+    expect(document.querySelector("[data-sleep-forecast]")?.textContent).toBe("Sleep about 00:20");
+
+    state.player.sleeping = { collapsed: false };
+    state.player.sleepDebt = 64;
+    updateBars(state, world);
+    expect(document.querySelector("[data-sleep-forecast]")?.textContent).toMatch(/^Wake about \d\d:\d\d$/);
+
+    state.survivors.at(-1)!.person.quirks = ["sleepsLight"];
+    testAtmosphere({ precipMmPerHour: 10, rainMmPerHour: 10, precip: "rain", windKmh: 40 });
+    updateBars(state, world);
+    expect(document.querySelector("[data-sleep-forecast]")?.textContent).toMatch(
+      /^Wake about \d\d:\d\d - storm reduces sleep quality$/,
+    );
   });
 
   it("never animates a map cell with a positional transform", () => {

@@ -31,7 +31,7 @@ import {
   masteryKey, masteryProgress, oddsFactor, RECOMMENDED, skillLevel, SKILL_NAMES,
   skillOf, spoiledNeeds, train, trainTask, wearFactor, yieldFactor,
 } from "./skills";
-import { sleepMinutes } from "./sleep";
+import { debtFallHalved, minutesUntilWake, sleepMinutes } from "./sleep";
 import {
   atCamp, campCellOf, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
@@ -1135,7 +1135,6 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "hone"));
   out.push(check(state, world, cal, "repair"));
   out.push(check(state, world, cal, "rest"));
-  out.push(check(state, world, cal, "sleep"));
   for (const m of FILL_METHODS) out.push(check(state, world, cal, "fill", m));
   out.push(check(state, world, cal, "iceHole"));
   out.push(check(state, world, cal, "makeCamp"));
@@ -1446,6 +1445,16 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   }
   if (t.id === "searchHome") {
     stepSearchHome(state, world, cal, rng, dt);
+    return;
+  }
+  // Automatic sleep is one body-owned activity. Its displayed end follows
+  // the live wake crossing as weather changes, but the task itself is never
+  // completed and restarted in estimate-sized buckets. serveBodyRow ends it
+  // when the sleep model clears the sleeping latch.
+  if (t.id === "sleep" && state.intent?.mode === "care" && state.intent.care === "body") {
+    t.progress += dt;
+    const remaining = minutesUntilWake(state.player.sleepDebt, cal.hour, debtFallHalved(state, world));
+    t.duration = t.progress + Math.max(1, remaining);
     return;
   }
   if ((t.id === "cook" || t.id === "crack" || t.id === "grindBark") && !fireAt(state, world)) {

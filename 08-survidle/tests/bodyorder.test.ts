@@ -130,18 +130,18 @@ describe("the body row", () => {
     expect(qty(pile(state, st.campCell!), "firewood")).toBe(5);
   });
 
-  it("a dry read never lays the body down: the sleep latch is the serving read's to move", () => {
+  it("a dry read never records collapse: the serving read owns physical recovery memory", () => {
     const { state, world } = newGame(3);
     const p = state.player;
     expect(p.sleeping).toBeNull();
-    // Under the collapse line, which is the one sleep clause no clock and no
-    // stickiness has a say in: the next serving read puts this body down.
+    // Under the collapse line, the next serving read records forced Rest.
     p.energy = SLEEP_AT;
     for (let i = 0; i < 20; i++) expect(judgeBodyRow(state, world, cal, new Rng(1)).v).not.toBe("met");
+    expect(p.collapsed).toBe(false);
+    // The minute, and only the minute, records it without starting sleep.
+    expect(currentNeed(state, world, cal)).toBe("spent");
+    expect(p.collapsed).toBe(true);
     expect(p.sleeping).toBeNull();
-    // The minute, and only the minute, moves it.
-    expect(currentNeed(state, world, cal)).toBe("sleep");
-    expect(p.sleeping).toEqual({ collapsed: true });
   });
 
   it("a dry read never writes bodyNeed: the one minute a finished sleep or rest opens for the scheduler stays open", () => {
@@ -332,7 +332,8 @@ describe("the body row takes its turn by rank", () => {
     state.player.energy = SLEEP_AT;
     advance(state, world, 1);
 
-    expect(state.player.sleeping).toEqual({ collapsed: true });
+    expect(state.player.collapsed).toBe(true);
+    expect(state.player.sleeping).toBeNull();
     expect(state.intent?.orderId).not.toBe(grind.id);
     expect(state.task?.id).not.toBe("sticks");
   });

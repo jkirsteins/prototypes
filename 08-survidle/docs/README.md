@@ -201,8 +201,10 @@ waiting, and everything done while you are away run at the one scale.
   berries, about 1.2 kg, among them. Warmth settles toward what
   your felt temperature can hold: ambient, plus clothing, fire and shelter
   at camp, plus activity, minus wetness. Below 20 warmth you lose health
-  fast. Energy drains awake and faster working; below 20 you work at half
-  speed, and if you idle while spent you fall asleep where you stand.
+  fast. Stamina drains through physical work. At 20 Stamina the survivor
+  collapses and must Rest to 55 before working again. Sleepiness is separate:
+  its pressure and the time of day determine when the survivor falls asleep
+  and wakes. Sleep is automatic; Rest remains an explicit action.
 - **The elements.** Water is a reserve like food: drink at a shore, carry it
   in a bark bucket or a waterskin, melt snow at the fire in winter for a kilo
   of wood a litre. Lakes freeze; thin ice is a shortcut that can take you,

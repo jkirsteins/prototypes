@@ -576,10 +576,12 @@ export interface Player {
    * The night under way, or null while the body is up. It is set when the
    * sleep need first fires and cleared only when the model ends the sleep, so
    * a night broken to feed the fire or by an order changing under the sleeper
-   * is resumed rather than abandoned. `collapsed` marks a sleep begun on the
-   * fatigue line, which holds until fatigue is full again.
+   * is resumed rather than abandoned. Physical exhaustion is represented by
+   * the separate `spent` Rest need and never sets this field.
    */
-  sleeping: { collapsed: boolean } | null;
+  sleeping: { collapsed: false } | null;
+  /** Physical collapse from depleted Stamina. Rest clears it at the recovery line; it never starts or extends sleep. */
+  collapsed: boolean;
   /** The body need being served, or null. Sticky: a need's exit line is not its entry line. */
   bodyNeed: BodyNeed | null;
   /** A rest has already failed to raise warmth: cold does not hold again until warmth recovers on its own. */
