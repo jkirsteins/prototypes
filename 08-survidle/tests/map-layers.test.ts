@@ -9,7 +9,7 @@ import { visibleCells } from "../src/sim/sight";
 import { ensureGround } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
 import { activateWildlife } from "../src/sim/wildlife-agents";
-import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml, WATER_JITTER_MS, WATER_SHIMMER_MS, WATER_WAVE_MS, waterGlint, waterPhaseMs } from "../src/ui/map";
+import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml, WATER_GLINT_PERIODS_MS, waterPhaseMs } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState } from "../src/ui/render";
 import { cellAt, neighbours, regionPeek } from "../src/world/gen";
 import { passable } from "../src/world/route";
@@ -293,54 +293,38 @@ describe("the map's compositing layers", () => {
 
   it("lets seen liquid water shimmer on the wall clock, out of step per cell, and nothing else", () => {
     // The shimmer is a presentation cycle like fog's and clouds': real
-    // seconds, never simulation minutes, with a per-cell phase from the seed
-    // so the sheet moves and a re-render writes the same attribute again.
+    // seconds, never simulation minutes, with per-cell phases from the seed
+    // so a re-render writes the same attributes again.
+    //
+    // It is faked for the eye, not modelled. Three small waves at periods
+    // that do not divide into each other, summed: no cell rests, none is in
+    // step with its neighbour, and the sheet has no beat to lock onto.
     const live = rule(".grid .c.water-live");
-    expect(live).toContain("animation: water-shimmer 3.5s ease-in-out infinite");
-    expect(live).toContain("animation-delay: var(--water-phase)");
+    const [a, b, c] = WATER_GLINT_PERIODS_MS.map((ms) => `${ms / 1000}s`);
+    expect(live).toContain(`animation: water-glint-a ${a} ease-in-out infinite, water-glint-b ${b} ease-in-out infinite, water-glint-c ${c} ease-in-out infinite`);
+    expect(live).toContain("animation-delay: var(--water-phase-a), var(--water-phase-b), var(--water-phase-c)");
     // A test aid: ?shimmer= scales the speed through one root property and nothing else.
-    expect(live).toContain("animation-duration: calc(3.5s / var(--water-shimmer-speed, 1))");
+    expect(live).toContain(`animation-duration: calc(${a} / var(--water-shimmer-speed, 1)), calc(${b} / var(--water-shimmer-speed, 1)), calc(${c} / var(--water-shimmer-speed, 1))`);
     expect(readFileSync("src/main.ts", "utf8")).toContain('params.get("shimmer")');
-    // A glint, not a breath: the cell rests for most of the cycle and lights
-    // briefly, so the eye has no symmetric swell to lock onto.
-    const shimmer = css.match(/@keyframes water-shimmer[\s\S]*?\n}/)?.[0] ?? "";
-    expect(shimmer).toContain("0%, 64% { background-color: var(--water-rest); }");
-    // Each cell glints at its own strength, so the front is scattered flecks and not a stripe.
-    expect(shimmer).toContain("80% { background-color: color-mix(in srgb, var(--water-lit) calc(var(--water-glint, 1) * 100%), var(--water-rest)); }");
-    expect(shimmer).toContain("100% { background-color: var(--water-rest); }");
-    expect(shimmer).not.toContain("transform:");
-    expect(shimmer).not.toContain("opacity:");
-    const strengths = new Set([12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].flatMap((x) => [34, 35, 36, 37].map((y) => waterGlint(17, x, y))));
-    expect(strengths.size).toBeGreaterThanOrEqual(3);
-    for (const s of strengths) { expect(s).toBeGreaterThan(0); expect(s).toBeLessThanOrEqual(1); }
-    expect(waterGlint(17, 12, 34)).toBe(waterGlint(17, 12, 34));
-    // The phase follows position along the wind, so the light travels
-    // downwind across the sheet: in a westerly the eastern neighbour lights
-    // one step later, in an easterly one step earlier, give or take the
-    // jitter, and a block at a coarser zoom keeps the same step per drawn cell.
-    // Signed difference on the cycle, in (-half, half]: how much later b lights than a.
-    const later = (a: number, b: number) => { const d = ((b - a) % WATER_SHIMMER_MS + WATER_SHIMMER_MS) % WATER_SHIMMER_MS; return d > WATER_SHIMMER_MS / 2 ? d - WATER_SHIMMER_MS : d; };
-    const meanEastStep = (wind: { windXKmh: number; windYKmh: number }, zoom: number) => {
-      const steps: number[] = [];
-      for (const y of [34, 50, 950]) for (let x = 100; x < 160; x += zoom) steps.push(later(waterPhaseMs(17, x, y, zoom, wind), waterPhaseMs(17, x + zoom, y, zoom, wind)));
-      return steps.reduce((a, b) => a + b, 0) / steps.length;
-    };
-    const westerly = { windXKmh: 20, windYKmh: 0 };
-    const easterly = { windXKmh: -20, windYKmh: 0 };
-    expect(meanEastStep(westerly, 1)).toBeGreaterThan(WATER_WAVE_MS - 150);
-    expect(meanEastStep(westerly, 1)).toBeLessThan(WATER_WAVE_MS + 150);
-    expect(meanEastStep(easterly, 1)).toBeLessThan(-WATER_WAVE_MS + 150);
-    expect(meanEastStep(easterly, 1)).toBeGreaterThan(-WATER_WAVE_MS - 150);
-    expect(Math.abs(meanEastStep(westerly, 4) - meanEastStep(westerly, 1))).toBeLessThan(150);
-    // Every step is the wave plus jitter and nothing wilder.
-    for (let x = 100; x < 140; x++) {
-      const d = later(waterPhaseMs(17, x, 34, 1, westerly), waterPhaseMs(17, x + 1, 34, 1, westerly));
-      expect(Math.abs(d - WATER_WAVE_MS)).toBeLessThanOrEqual(WATER_JITTER_MS);
+    // The colour carries the depth rules' own weight and comes after them, or a deep cell would keep its flat blue.
+    expect(rule(".grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.water-live"))
+      .toContain("background-color: color-mix(in srgb, var(--water-lit) calc((var(--water-glint-a) + var(--water-glint-b) + var(--water-glint-c)) * 33.3%), var(--water-rest))");
+    expect(css.indexOf(".t-water.water-live {")).toBeGreaterThan(css.indexOf(".t-water.deep-2 {"));
+    for (const wave of ["a", "b", "c"]) {
+      // Registered so the browser interpolates it; the keyframes move only this number.
+      expect(css).toContain(`@property --water-glint-${wave} { syntax: "<number>"; inherits: false; initial-value: 0; }`);
+      const frames = css.match(new RegExp(`@keyframes water-glint-${wave}[\\s\\S]*?\\n}`))?.[0] ?? "";
+      expect(frames).toContain(`0%, 100% { --water-glint-${wave}: 0; }`);
+      expect(frames).toContain(`50% { --water-glint-${wave}: 1; }`);
+      expect(frames).not.toContain("background");
+      expect(frames).not.toContain("transform");
     }
-    // A calm has a direction too, so the sheet never freezes into a stripe pattern that depends on rounding.
-    expect(waterPhaseMs(17, 12, 34, 1, { windXKmh: 0, windYKmh: 0 })).toBe(waterPhaseMs(17, 12, 34, 1, { windXKmh: 0, windYKmh: 0 }));
-    // The direction is quantized to compass sectors so a drifting wind does not rewrite every water cell each render.
-    expect(waterPhaseMs(17, 12, 34, 1, { windXKmh: 20, windYKmh: 1 })).toBe(waterPhaseMs(17, 12, 34, 1, { windXKmh: 20, windYKmh: 2 }));
+    for (let i = 0; i < 3; i++) {
+      expect(waterPhaseMs(17, 12, 34, i)).toBe(waterPhaseMs(17, 12, 34, i));
+      expect(waterPhaseMs(17, 12, 34, i)).toBeLessThan(WATER_GLINT_PERIODS_MS[i]);
+    }
+    // Three waves, three independent phases: no two are the same function of the cell.
+    expect(new Set([0, 1, 2].map((i) => waterPhaseMs(17, 12, 34, i) / WATER_GLINT_PERIODS_MS[i])).size).toBe(3);
     expect(rule("@media (prefers-reduced-motion: reduce)")).toContain(".water-live");
     // Each depth band shimmers within its own palette.
     expect(rule(".grid .c.t-water")).toContain("--water-rest: #0a1633");
@@ -369,10 +353,12 @@ describe("the map's compositing layers", () => {
     root.innerHTML = first;
     const liveCells = [...root.querySelectorAll<HTMLElement>(".c.water-live")];
     expect(liveCells.length).toBeGreaterThan(20);
-    const phases = liveCells.map((el) => Number(el.style.getPropertyValue("--water-phase").match(/^-(\d+)ms$/)?.[1]));
-    for (const phase of phases) expect(phase).toBeGreaterThanOrEqual(0);
-    for (const phase of phases) expect(phase).toBeLessThan(WATER_SHIMMER_MS);
-    expect(new Set(phases).size).toBeGreaterThan(5);
+    for (const [i, wave] of ["a", "b", "c"].entries()) {
+      const phases = liveCells.map((el) => Number(el.style.getPropertyValue(`--water-phase-${wave}`).match(/^-(\d+)ms$/)?.[1]));
+      for (const phase of phases) expect(phase).toBeGreaterThanOrEqual(0);
+      for (const phase of phases) expect(phase).toBeLessThan(WATER_GLINT_PERIODS_MS[i]);
+      expect(new Set(phases).size).toBeGreaterThan(5);
+    }
     for (const el of liveCells) {
       expect(el.classList.contains("t-water")).toBe(true);
       for (const still of ["mk", "memory", "dim", "ice-thin", "ice-safe"]) expect(el.classList.contains(still)).toBe(false);

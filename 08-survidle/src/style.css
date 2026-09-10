@@ -1465,30 +1465,46 @@ button.act small.gives, span.act small.gives,
    colour. */
 .grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; --water-rest: #102047; --water-lit: #182d60; }
 .grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; --water-rest: #060d20; --water-lit: #0b1532; }
-/* Light on open water. A liquid surface in sight rests in its own blue and
-   lights a shade brighter for a moment, on the wall clock like fog and
-   clouds, never on the simulation's, and only where the survivor can see it
-   now. Remembered water lies still, like remembered ground shows no current
-   weather. Each depth band lifts within its own palette through the two
-   custom properties above.
+/* Light on open water. A liquid surface in sight flickers between its own
+   blue and a shade lighter, on the wall clock like fog and clouds, never on
+   the simulation's, and only where the survivor can see it now. Remembered
+   water lies still, like remembered ground shows no current weather. Each
+   depth band lifts within its own palette through the two custom properties
+   above.
 
-   Three things keep it from pulsing or ruling a stripe. The glint is brief:
-   the cell rests for most of the cycle and a symmetric swell is exactly the
-   breath the eye locks onto. The phase follows position along the wind, so
-   the light runs downwind across the sheet instead of cells blinking where
-   they stand. And each cell has its own strength, most of them faint and a
-   few bright, so the front is scattered flecks moving together and not a
-   line. */
-.grid .c.water-live {
-  animation: water-shimmer 3.5s ease-in-out infinite;
-  /* ?shimmer= on the page sets the speed factor on the root; unset, the period stays 3.5 s. */
-  animation-duration: calc(3.5s / var(--water-shimmer-speed, 1));
-  animation-delay: var(--water-phase);
+   It is faked for the eye, not modelled. Three small waves at periods that
+   do not divide into each other, each on the cell's own seeded phase, and
+   the background is their sum. No cell ever rests, none is in step with its
+   neighbour, and the sum never visibly repeats, so there is no beat for the
+   eye to lock onto - which is what a single wave gave, however scattered
+   its cells were. The waves move registered numbers, so the browser
+   interpolates them and one colour-mix turns the sum into the colour. */
+@property --water-glint-a { syntax: "<number>"; inherits: false; initial-value: 0; }
+@property --water-glint-b { syntax: "<number>"; inherits: false; initial-value: 0; }
+@property --water-glint-c { syntax: "<number>"; inherits: false; initial-value: 0; }
+/* The same weight as the depth rules above, and after them, so the mixed
+   colour wins on shallow and deep cells alike; water-live already implies
+   every :not() here. */
+.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.water-live {
+  background-color: color-mix(in srgb, var(--water-lit) calc((var(--water-glint-a) + var(--water-glint-b) + var(--water-glint-c)) * 33.3%), var(--water-rest));
 }
-@keyframes water-shimmer {
-  0%, 64% { background-color: var(--water-rest); }
-  80% { background-color: color-mix(in srgb, var(--water-lit) calc(var(--water-glint, 1) * 100%), var(--water-rest)); }
-  100% { background-color: var(--water-rest); }
+.grid .c.water-live {
+  animation: water-glint-a 2.3s ease-in-out infinite, water-glint-b 3.7s ease-in-out infinite, water-glint-c 5.9s ease-in-out infinite;
+  /* ?shimmer= on the page sets the speed factor on the root; unset, the periods stay as written. */
+  animation-duration: calc(2.3s / var(--water-shimmer-speed, 1)), calc(3.7s / var(--water-shimmer-speed, 1)), calc(5.9s / var(--water-shimmer-speed, 1));
+  animation-delay: var(--water-phase-a), var(--water-phase-b), var(--water-phase-c);
+}
+@keyframes water-glint-a {
+  0%, 100% { --water-glint-a: 0; }
+  50% { --water-glint-a: 1; }
+}
+@keyframes water-glint-b {
+  0%, 100% { --water-glint-b: 0; }
+  50% { --water-glint-b: 1; }
+}
+@keyframes water-glint-c {
+  0%, 100% { --water-glint-c: 0; }
+  50% { --water-glint-c: 1; }
 }
 /* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
    depth palette. Thin ice remains dark and uncertain; safe ice forms the
