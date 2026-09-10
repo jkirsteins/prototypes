@@ -579,18 +579,18 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "split": {
       const sheltered = splitSheltered(state, world, at);
-      const o = opt({ group: "camp", label: "Split a log", detail: `one log into 20 kg of firewood${sheltered ? ", under the roof" : ""}`, duration: 15 * edgeFactor(state), repeatable: true });
+      const wet = !sheltered && splitIsWet(state, world, at);
+      const o = opt({ group: "camp", label: "Split a log", detail: `one log into 20 kg of ${wet ? "wet " : ""}firewood${sheltered ? ", under the roof" : ""}`, duration: 15 * edgeFactor(state), repeatable: true });
       if (!axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs an axe" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
-      if (!sheltered && splitIsWet(state, world, at)) return { ...o, ok: false, why: "waiting for dry weather" };
       return o;
     }
     case "splitWedges": {
       const sheltered = splitSheltered(state, world, at);
-      const o = opt({ group: "camp", label: "Split a log with wedges", detail: `one log into 20 kg of firewood, driven with a stick; a third the axe's pace${sheltered ? ", under the roof" : ""}`, duration: 45, repeatable: true });
+      const wet = !sheltered && splitIsWet(state, world, at);
+      const o = opt({ group: "camp", label: "Split a log with wedges", detail: `one log into 20 kg of ${wet ? "wet " : ""}firewood, driven with a stick; a third the axe's pace${sheltered ? ", under the roof" : ""}`, duration: 45, repeatable: true });
       if (totalQty(invs, "wedge") < 2) return { ...o, ok: false, why: "needs two wedges" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
-      if (!sheltered && splitIsWet(state, world, at)) return { ...o, ok: false, why: "waiting for dry weather" };
       return o;
     }
     case "hang": {

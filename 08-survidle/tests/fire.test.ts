@@ -177,20 +177,19 @@ describe("fuel by the cold", () => {
   });
 });
 
-describe("splitting waits for dry weather", () => {
-  it("is blocked in rain and for six hours after, then allowed", () => {
+describe("splitting wet logs", () => {
+  it("allows exposed splitting in rain and produces wet firewood", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
-    addItem(pile(state, st.campCell!), "log", 2);
+    addItem(pile(state, st.campCell!), "log", 1);
     testRain(1);
-    expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: false, why: "waiting for dry weather" });
-    testRain(0);
-    st.logsWet = 60;
-    expect(check(state, world, calendar(0), "split").ok).toBe(false);
-    st.logsWet = 6 * 60;
-    expect(check(state, world, calendar(0), "split").ok).toBe(true);
+    expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: true, detail: "one log into 20 kg of wet firewood" });
+    startTask(state, world, cal, "split");
+    advance(state, world, 15);
+    expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell!), "wetFirewood")).toBeCloseTo(20, 1);
+    expect(qty(state.player.pack, "firewood") + qty(pile(state, st.campCell!), "firewood")).toBe(0);
   });
 
   it("is allowed in the rain at a camp with a lean-to, and the wood comes out dry", () => {
@@ -208,14 +207,29 @@ describe("splitting waits for dry weather", () => {
     expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell!), "wetFirewood")).toBe(0);
   });
 
-  it("still waits for dry weather at the same camp with no roof", () => {
+  it("allows splitting for six hours after rain and warns that the output is wet", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
     addItem(pile(state, st.campCell!), "log", 1);
-    testRain(10);
-    expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: false, why: "waiting for dry weather" });
+    testRain(0);
+    st.logsWet = 60;
+    expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: true, detail: "one log into 20 kg of wet firewood" });
+  });
+
+  it("allows wet splitting with wedges and identifies the wet output", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell!);
+    addItem(pile(state, st.campCell!), "log", 1);
+    addItem(pile(state, st.campCell!), "wedge", 2);
+    testRain(1);
+    expect(check(state, world, calendar(0), "splitWedges")).toMatchObject({
+      ok: true,
+      detail: "one log into 20 kg of wet firewood, driven with a stick; a third the axe's pace",
+    });
   });
 
   it("judges the split at the camp cell, not wherever the player is standing", () => {

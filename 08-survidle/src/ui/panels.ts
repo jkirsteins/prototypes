@@ -22,7 +22,7 @@ import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
 import { liveFaceHtml, livePortraitState } from "./portrait";
 import { fmtName } from "../sim/names";
-import { sleepiness, SLEEPY_AT, SPENT_AT } from "../sim/sleep";
+import { sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
 import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation, walkManner } from "../sim/player";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
@@ -151,6 +151,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   else if (p.warmth < 40) tags.push(`<span class="tag bad">cold</span>`);
   if (p.energy < 20) tags.push(`<span class="tag bad">exhausted</span>`);
   if (sleepiness(p.sleepDebt, cal.hour) >= SLEEPY_AT) tags.push(`<span class="tag bad">sleepy</span>`);
+  if (resumeAt !== null) tags.push(`<span class="tag bad">recovering from collapse, work resumes at ${resumeAt} Stamina</span>`);
   if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
   const portrait = livePortraitState(state, world, cal, ambient);
   return `<h2>${liveFaceHtml(current(state).person, 24, portrait)}${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
@@ -159,10 +160,15 @@ ${bar("kcal", "kcal", "Food", [{ at: "hunger", title: "eats below here" }])}
 ${bar("fat", "fat", "Fat", [{ at: marks.floor / marks.upper, title: "dies here" }, { at: marks.lower / marks.upper, title: "thin below here" }, { at: marks.upper / marks.upper, title: "well fed above here" }])}
 ${bar("water", "water", "Water", [{ at: THIRSTY_L / WATER_FULL, title: "thirsty below here" }])}
 ${bar("warmth", "warmth", "Warmth", [{ at: COLD_UNDER / 100, title: "goes to the fire below here" }, { at: 0.2, title: "hypothermia below here" }])}
-${bar("energy", "energy", "Energy", [
+${bar("energy", "energy", "Stamina", [
   { at: SPENT_AT / 100, title: "stops work below here" },
   { at: SLEEP_AT / 100, title: "collapses below here" },
   ...(resumeAt === null ? [] : [{ at: resumeAt / 100, title: "work resumes here after collapse" }]),
+])}
+${bar("sleepiness", "sleepiness", "Sleepiness", [
+  { at: WAKE_AT / 100, title: "wakes below here" },
+  { at: SLEEPY_AT / 100, title: "sleepy above here" },
+  { at: SLEEP_ONSET / 100, title: "falls asleep above here" },
 ])}
 ${bar("wet", "wet", "Wet", [{ at: SOAKED_WETNESS / 100, title: "soaked above here" }])}
 <div class="statuses">${tags.join("")}</div>

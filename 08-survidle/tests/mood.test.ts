@@ -7,7 +7,7 @@ import { statsHtml } from "../src/ui/panels";
 import { updateBars } from "../src/ui/bars";
 import { newUiState } from "../src/ui/render";
 import { ambientTemperature } from "../src/sim/weather";
-import { COLLAPSE_RECOVERED_AT } from "../src/sim/sleep";
+import { COLLAPSE_RECOVERED_AT, SLEEP_ONSET, SLEEPY_AT, WAKE_AT } from "../src/sim/sleep";
 import { regionState } from "../src/sim/regionstate";
 import type { GameState, TaskId } from "../src/sim/types";
 import { css } from "./css";
@@ -119,7 +119,7 @@ describe("the mood on the screen", () => {
     expect(reduced).toContain(".portrait.is-firelit::before");
   });
 
-  it("shows the active collapse recovery line on the Energy bar", () => {
+  it("names the physical reserve Stamina and shows why collapse still blocks work", () => {
     const { state, world } = newGame(17);
     state.player.energy = 55;
     state.player.sleeping = { collapsed: true };
@@ -127,9 +127,11 @@ describe("the mood on the screen", () => {
     const html = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
     expect(html).toContain(`left:${COLLAPSE_RECOVERED_AT.toFixed(1)}%`);
     expect(html).toContain("work resumes here after collapse");
+    expect(html).toContain("Stamina");
+    expect(html).toContain("recovering from collapse, work resumes at 100 Stamina");
   });
 
-  it("does not round Energy up across its active recovery line", () => {
+  it("does not round Stamina up across its active recovery line", () => {
     const { state, world } = newGame(17);
     state.player.energy = COLLAPSE_RECOVERED_AT - 0.1;
     state.player.sleeping = { collapsed: true };
@@ -137,6 +139,29 @@ describe("the mood on the screen", () => {
     document.body.innerHTML = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
     updateBars(state, world);
     expect(document.querySelector('[data-val="energy"]')?.textContent).toBe("99");
+  });
+
+  it("shows Sleepiness separately with its live value and decision lines", () => {
+    const { state, world } = newGame(17);
+    state.player.energy = 100;
+    state.player.sleepDebt = 40;
+    const cal = calendar(state.minute, state.startDoy);
+    document.body.innerHTML = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
+    updateBars(state, world);
+    const sleepiness = document.querySelector('[data-bar="sleepiness"]')?.parentElement;
+    expect(sleepiness?.textContent).toContain("Sleepiness");
+    expect(sleepiness?.querySelector('[data-val="sleepiness"]')?.textContent).toBe("50");
+    expect((sleepiness?.querySelector('[data-bar="sleepiness"]') as HTMLElement | null)?.style.width).toBe("49.5%");
+    expect(sleepiness?.innerHTML).toContain(`left:${WAKE_AT.toFixed(1)}%`);
+    expect(sleepiness?.innerHTML).toContain(`left:${SLEEPY_AT.toFixed(1)}%`);
+    expect(sleepiness?.innerHTML).toContain(`left:${SLEEP_ONSET.toFixed(1)}%`);
+    expect(sleepiness?.innerHTML).toContain("wakes below here");
+    expect(sleepiness?.innerHTML).toContain("falls asleep above here");
+    expect(document.querySelector('[data-val="energy"]')?.textContent).toBe("100");
+
+    state.player.sleepDebt = 100;
+    updateBars(state, world);
+    expect(sleepiness?.querySelector('[data-val="sleepiness"]')?.textContent).toBe("100");
   });
 
   it("never animates a map cell with a positional transform", () => {

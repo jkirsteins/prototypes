@@ -10,6 +10,7 @@ import { garmentWet } from "../sim/clothing";
 import type { GameState, SkillId } from "../sim/types";
 import { WATER_FULL } from "../sim/water";
 import { ambientTemperature, localWeather } from "../sim/weather";
+import { sleepiness } from "../sim/sleep";
 import { fmtDuration, fmtReal } from "../units";
 import type { World } from "../world/gen";
 
@@ -48,6 +49,7 @@ function flash(el: HTMLElement | null | undefined): void {
 /** Every frame: the moving parts that the keyed panels leave alone. */
 export function updateBars(state: GameState, world: World, root: ParentNode = document): void {
   const p = state.player;
+  const cal = calendar(state.minute, state.startDoy);
   setBar("health", p.health / 100, `${Math.round(p.health)}`, root);
   setBar("kcal", p.kcal / KCAL_FULL, `${Math.round(p.kcal)} kcal`, root);
   // Under the meal line the bar reads as harm: the meal was due and did not
@@ -75,13 +77,15 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   // body at 99.9 is still recovering, so the bar must not claim 100 while
   // the queue truthfully refuses work.
   setBar("energy", p.energy / 100, `${Math.floor(p.energy + 1e-9)}`, root);
+  const sleepy = sleepiness(p.sleepDebt, cal.hour);
+  setBar("sleepiness", sleepy / 100, `${Math.max(0, Math.min(100, Math.round(sleepy)))}`, root);
   setBar("wet", p.wetness / 100, `${Math.round(p.wetness)}`, root);
   setBar("water", p.water / WATER_FULL, `${p.water.toFixed(1)} l`, root);
 
   const st = regionState(state, world, p.region);
   const total = fuelTotal(st.fire);
   const weather = localWeather(state, world);
-  const ambient = ambientTemperature(calendar(state.minute, state.startDoy), weather);
+  const ambient = ambientTemperature(cal, weather);
   const burnsFor = fmtDuration((total / burnPerHour(weather, ambient, st)) * 60);
   // Fuel is spent to zero the moment a fire falls to coals, so the plain
   // "0.0 kg" text below would read exactly like a dead fire. This is the one

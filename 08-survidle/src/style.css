@@ -11,6 +11,7 @@
   --kcal: #d9a441;
   --warmth: #e0743a;
   --energy: #5aa9e6;
+  --sleepiness: #8f75c9;
   --wet: #4a8fd9;
   --water: #3b7dd8;
   --fire: #ff8c3a;
@@ -225,6 +226,7 @@ small, .dim { color: var(--dim); }
 .bar.kcal .fill { background: var(--kcal); }
 .bar.warmth .fill { background: var(--warmth); }
 .bar.energy .fill { background: var(--energy); }
+.bar.sleepiness .fill { background: var(--sleepiness); }
 .bar.wet .fill { background: var(--wet); }
 .bar.water .fill { background: var(--water); }
 .bar.fire .fill { background: var(--fire); }
