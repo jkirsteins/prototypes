@@ -28,8 +28,10 @@ const rawArgs = process.argv.slice(2);
 const flag = (name: string) => rawArgs.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const fresh = rawArgs.includes("--fresh");
 const winter = rawArgs.includes("--winter");
+const huntAudit = rawArgs.includes("--hunt-audit");
 const level = flag("level") ? Number(flag("level")) : undefined;
 const startDoy = flag("start") ? Number(flag("start")) : undefined;
+const days = flag("days") ? Number(flag("days")) : undefined;
 if (level !== undefined && !(Number.isInteger(level) && level >= 1 && level <= 50)) {
   console.error("--level takes a whole number, 1 to 50");
   process.exit(2);
@@ -63,6 +65,16 @@ function print(r: YearReport): void {
   console.log(`  surplus: first hang ${r.surplus.hang === null ? "never" : `day ${r.surplus.hang}`}, first large game ${r.surplus.largeGame === null ? "never" : `day ${r.surplus.largeGame}`}`);
   const daysRun = r.outcome.day;
   console.log(`  kills: ${Object.entries(r.kills).map(([s, n]) => `${s} ${n}`).join(", ") || "none"}; large game ${Math.round(r.killsKcal / daysRun)} kcal a day (${verdict(r.killsKcal / daysRun, APRIL.rows.largeGame!.experienced)})`);
+  if (huntAudit) {
+    const a = r.huntAudit;
+    console.log(`  hunt audit: ${a.attempts.length} attempts, ${(a.huntMinutes / 60).toFixed(1)} h; recovered ${Math.round(a.fieldRecoveredKcal)} kcal, hauled ${Math.round(a.hauledKcal)}, spoiled ${Math.round(a.spoiledKcal)}, preserved ${Math.round(a.preservedKcal)}, eaten ${Math.round(a.eatenKcal)}, stored ${Math.round(a.endingStoredKcal)}`);
+    for (const h of a.attempts) {
+      console.log(`    ${fmtDate(calendar(h.minute, r.startDoy))}: ${h.species} at ${h.region}:${h.cell} (${h.x},${h.y}), ${h.success ? "kill" : "failed"}, ${(h.minutes / 60).toFixed(1)} h, pop ${h.populationBefore.toFixed(2)}/${h.capacity.toFixed(2)}, odds ${(h.odds * 100).toFixed(0)}%, pressure ${(h.pressureFactor * 100).toFixed(0)}%, runway food ${h.foodRunwayDays.toFixed(1)} d, fat ${h.fatRunwayDays.toFixed(1)} d`);
+    }
+    for (const p of a.populations) {
+      console.log(`    ${p.regionName} ${p.region}, ${p.areaKm2.toFixed(2)} km2, ${p.species}: start ${p.starting.toFixed(2)}, births ${p.births.toFixed(2)}, growth ${p.growth.toFixed(2)}, in ${p.immigration.toFixed(2)}, out ${p.emigration.toFixed(2)}, natural deaths ${p.naturalDeaths.toFixed(2)}, predation ${p.predationDeaths.toFixed(2)}, hunts ${p.huntDeaths}, end ${p.ending.toFixed(2)}`);
+    }
+  }
   for (const line of weekLines(r.lastWeek, r.lastDayOfYear)) console.log(`    ${line}`);
   console.log(`  ${r.outcome.kind === "died" ? `died day ${r.outcome.day}, ${r.outcome.cause}` : `alive at day ${r.outcome.day}`}; attention: ${r.attention.mornings} mornings of ${r.attention.days}`);
   if (r.unexploited) console.log(`  ${r.unexploited}`);
@@ -70,7 +82,7 @@ function print(r: YearReport): void {
 
 let passed = 0;
 for (const seed of runSeeds) {
-  const r = winter ? runWinter(seed) : runYear(seed, { level, fresh, startDoy });
+  const r = winter ? runWinter(seed, days) : runYear(seed, { level, fresh, startDoy, days });
   print(r);
   if (r.outcome.kind === "reached") passed++;
 }

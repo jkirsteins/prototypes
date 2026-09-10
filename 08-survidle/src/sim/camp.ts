@@ -20,6 +20,7 @@ import { growRoots, nestsFor, rootStockFor } from "./stocks";
 import { type DecayingId, type GameState, type Site, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { seasonalMean } from "./weather";
+import { noteHuntFoodLost, noteHuntFoodTransformed } from "./hunt-audit";
 
 /** Re-exported so every caller that wants the figure (tests included) reaches it through camp.ts, beside dailyCamp's own use of it. */
 export { rootStockFor };
@@ -123,6 +124,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
       if (st.rack.dried >= RACK_DRY_MINUTES && st.campCell !== null) {
         const dried = st.rack.kg / MEAT_DRY_RATIO;
         addItem(pile(state, st.campCell), "driedMeat", dried);
+        noteHuntFoodTransformed(state, "rack", "driedMeat", st.rack.kg, dried, true);
         log(state, `${st.rack.kg.toFixed(1)} kg of meat has dried to ${dried.toFixed(1)} kg at ${name()}.`, "good");
         st.rack.kg = 0;
         st.rack.dried = 0;
@@ -158,7 +160,10 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
 function reportSpoil(state: GameState, lost: ReturnType<typeof ageStacks>, where: string) {
   for (const k of PERISHABLES) {
     const kg = lost[k];
-    if (kg) log(state, `${kg.toFixed(1)} kg of ${ITEM_NAMES[k]} has gone off${where}.`, "bad");
+    if (kg) {
+      noteHuntFoodLost(state, k, kg);
+      log(state, `${kg.toFixed(1)} kg of ${ITEM_NAMES[k]} has gone off${where}.`, "bad");
+    }
   }
 }
 

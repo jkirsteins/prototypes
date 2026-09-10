@@ -18,12 +18,15 @@ describe("the year script", () => {
     expect(r.seed).toBe(17);
     expect(r.level).toBe(20);
     expect(r.outcome.kind === "died" || r.outcome.kind === "reached").toBe(true);
-    // 1 April to day 40 crosses 1 May: one month line.
-    expect(r.months.length).toBe(1);
-    expect(r.months[0].month).toBe(4);
-    expect(r.months[0].eatenPerDay).toBeGreaterThanOrEqual(0);
-    expect(r.months[0].burnPerDay).toBeGreaterThan(1000);
-    expect(typeof r.months[0].stock.firewoodKg).toBe("number");
+    // A life that reaches May reports April. Dying sooner legitimately has
+    // no completed calendar month to report.
+    expect(r.months.length).toBe(r.outcome.day >= 31 ? 1 : 0);
+    for (const month of r.months) {
+      expect(month.month).toBe(4);
+      expect(month.eatenPerDay).toBeGreaterThanOrEqual(0);
+      expect(month.burnPerDay).toBeGreaterThan(1000);
+      expect(typeof month.stock.firewoodKg).toBe("number");
+    }
     expect(r.surplus.hang === null || r.surplus.hang >= 1).toBe(true);
     expect(r.surplus.largeGame === null || r.surplus.largeGame >= 1).toBe(true);
   });

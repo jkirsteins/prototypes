@@ -57,6 +57,7 @@ import { ambientTemperature, DEEP_SNOW_CM, forecastKnowledge, forecastText, ICE_
 import { plain } from "./voice";
 import { claimHuntableAnimal, knownBearDen, unknownBearDen } from "./wildlife-agents";
 import { carcassMinutes, createCarcass, disturbHuntingGround, hasRecentHuntSign, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteFailedHunt, noteHuntSign, processCarcass } from "./hunting";
+import { noteFieldRecovery, noteHauledHuntFood, noteHuntAttempt, noteHuntFoodTransformed, noteHuntPursuit, pendingHuntMinutes } from "./hunt-audit";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
 
@@ -1464,6 +1465,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
     t.progress = minutes * (t.duration / EMERGENCY_MINUTES[3]);
   }
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state, world) : 1;
+  if (t.id === "hunt" && t.huntPhase !== "field") noteHuntPursuit(state, dt);
   // Older saves may hold a search started before levels were recorded.
   if (t.id === "findShelter") t.shelterLevel ??= skillLevel(state, "naturalShelter");
   train(state, world, dt);
@@ -1562,14 +1564,20 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
     const recovered = t.carcassId === undefined ? null : processCarcass(state, world, t.carcassId);
     if (recovered) {
       const kcal = recovered.meatKg * FOODS.rawMeat.kcalPerKg + (recovered.fatKg ?? 0) * FOODS.fat.kcalPerKg;
+      noteFieldRecovery(state, recovered.meatKg, recovered.fatKg ?? 0);
       creditYield(state, "hunt", kcal);
       goalDeed(state, { kind: "foodAcquired", method: "hunt" });
       if (LARGE_GAME.includes(arg as Species) || arg === "bear") state.stats.killsKcal += kcal;
       const camp = campCellOf(state, world);
-      if (camp !== null && camp === cellOf(state, world)) goalDeed(state, { kind: "recoveredAtCamp" });
+      if (camp !== null && camp === cellOf(state, world)) {
+        noteHauledHuntFood(state, recovered.meatKg, recovered.fatKg ?? 0);
+        goalDeed(state, { kind: "recoveredAtCamp" });
+      }
       else if (isWorkIntent(it) && it.task === "hunt" && it.deliver === "camp") {
         if (recovered.meatDestination === "pack") it.recoveredMeatPackedKg = recovered.meatKg;
         else it.recoveredMeatAtSourceKg = recovered.meatKg;
+        if (recovered.meatDestination === "pack") it.recoveredFatPackedKg = recovered.fatKg ?? 0;
+        else it.recoveredFatAtSourceKg = recovered.fatKg ?? 0;
       }
       log(state, `${Math.round(recovered.meatKg * 10) / 10} kg of meat dressed from the carcass.`, "good");
     }
@@ -2132,6 +2140,7 @@ function resolveHuntPursuit(state: GameState, world: World, cal: Calendar, rng: 
   if (!def?.hunt || isFish(s)) return false;
   const here = cellOf(state, world);
   const d = regionDensity(state, world, p.region, s, cal);
+  const populationBefore = popOf(regionState(state, world, p.region), s);
   disturbHuntingGround(state, world, here, false);
   if (wearTool(state, "bow", wearFactor(state, world, "hunt", s))) {
     record(state, { kind: "toolWorn", tool: "bow" });
@@ -2143,6 +2152,11 @@ function resolveHuntPursuit(state: GameState, world: World, cal: Calendar, rng: 
   const odds = den ? Math.min(0.9, 0.55 * oddsFactor(state, "bear")) : huntOdds(state, world, cal, d, s);
   const struck = rng.chance(odds);
   const killed = struck && claimHuntableAnimal(state, world, s, here, den?.id ?? task.wildlifeSubject);
+  noteHuntAttempt(state, world, {
+    species: s, region: p.region, cell: here, populationBefore, odds,
+    pressureFactor: huntPressureFactor(state, world, here), success: killed,
+    minutes: pendingHuntMinutes(state),
+  });
   const signOdds = huntSignOdds(state, d);
   if (d > 0 && (killed || rng.chance(signOdds))) {
     if (noteHuntSign(state, here, s)) log(state, `Fresh sign: ${anAnimal(s)}.`);
@@ -2375,6 +2389,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       consume(invs, [{ item: food, qty: kg }]);
       const out = food === "rawMeat" ? "cookedMeat" : food === "fish" ? "cookedFish" : food === "oilyFish" ? "cookedOilyFish" : food === "roots" ? "cookedRoots" : "fat";
       produce(state, world, out, kg);
+      if (food === "rawMeat" || food === "rawFat") noteHuntFoodTransformed(state, food, out, kg, kg, food === "rawFat");
       if (kg > 0) goalDeed(state, { kind: "cooked", kg, item: out });
       return kg > 0;
     }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { bestHuntCell, carcassMinutes, createCarcass, disturbHuntingGround, huntEstimate, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteFailedHunt, noteHuntSign, processCarcass, stepCarcasses } from "../src/sim/hunting";
+import { bestHuntCell, carcassMinutes, createCarcass, disturbHuntingGround, huntAbsenceEvidenceNeeded, huntEstimate, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteFailedHunt, noteHuntSign, processCarcass, stepCarcasses } from "../src/sim/hunting";
 import { addItem, herePile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt, placeAtSpot, straightKm } from "../src/sim/position";
@@ -105,6 +105,44 @@ describe("hunting knowledge", () => {
     const st = regionState(state, world, state.player.region);
     st.pop.deer = 0;
     expect(huntEstimate(state, world, cal, cell).kgPerHour).toBeLessThan(before);
+  });
+
+  it("rules out prey after repeated region-wide failures until evidence changes", () => {
+    const { state, world } = armedGame();
+    const region = regionAt(world, state.player.region);
+    const forests = region.cells.filter((cell) => /spruce|pine|birch/.test(cellAt(world, cell).terrain));
+    expect(huntSpeciesWeights(state, world, cal, forests[0]).some((row) => row.species === "bear")).toBe(true);
+
+    for (const cell of forests.slice(0, 3)) noteFailedHunt(state, cell, "bear");
+    expect(huntSpeciesWeights(state, world, cal, forests[0]).some((row) => row.species === "bear")).toBe(true);
+
+    setSkillLevel(state, "hunting", 20);
+    expect(huntSpeciesWeights(state, world, cal, forests[0]).some((row) => row.species === "bear")).toBe(false);
+
+    noteHuntSign(state, forests[1], "bear");
+    expect(huntSpeciesWeights(state, world, cal, forests[0]).some((row) => row.species === "bear")).toBe(true);
+  });
+
+  it("scales the evidence threshold continuously with hunting skill", () => {
+    const { state } = armedGame();
+    setSkillLevel(state, "hunting", 1);
+    expect(huntAbsenceEvidenceNeeded(state)).toBe(7);
+    setSkillLevel(state, "hunting", 10);
+    expect(huntAbsenceEvidenceNeeded(state)).toBeCloseTo(5.105263, 5);
+    setSkillLevel(state, "hunting", 20);
+    expect(huntAbsenceEvidenceNeeded(state)).toBe(3);
+  });
+
+  it("lets old negative evidence fade instead of expiring at a hard instant", () => {
+    const { state, world } = armedGame();
+    setSkillLevel(state, "hunting", 20);
+    const forest = spotOf(regionAt(world, state.player.region), "forest")!.cell;
+    for (let i = 0; i < 3; i++) noteFailedHunt(state, forest, "bear");
+    expect(huntSpeciesWeights(state, world, cal, forest).some((row) => row.species === "bear")).toBe(false);
+
+    state.minute += 50 * 1440;
+    expect(huntSpeciesWeights(state, world, calendar(state.minute, state.startDoy), forest).some((row) => row.species === "bear")).toBe(true);
+    expect(state.player.huntSigns[forest].failures?.bear?.count).toBe(3);
   });
 
   it("lets an expert range onto mapped neighboring ground after local failures", () => {

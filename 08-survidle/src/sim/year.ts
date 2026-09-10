@@ -18,6 +18,7 @@ import { regionState } from "./regionstate";
 import { SKILL_IDS } from "./skills";
 import { LARGE_GAME } from "./species";
 import type { GameState, Species } from "./types";
+import { enableHuntAudit, finishHuntAudit, type HuntAuditReport } from "./hunt-audit";
 
 /**
  * 1 December: the winter gate's start, a fortnight before the dark and a
@@ -63,6 +64,7 @@ export interface YearReport {
   unexploited: string | null;
   /** Mornings the list changed over the whole run, of the days it ran (order ladder spec section 4-5). */
   attention: { mornings: number; days: number };
+  huntAudit: HuntAuditReport;
 }
 
 export interface YearOptions {
@@ -101,8 +103,9 @@ function stockAt(state: GameState, world: World): MonthLine["stock"] {
 }
 
 /** Runs one life a day at a time, writing a month line on the first of each month and the surplus days as they happen. */
-function runLife(ref: { state: GameState; world: World; player: ReferencePlayer }, days: number): Pick<YearReport, "months" | "surplus" | "outcome" | "lastWeek" | "lastDayOfYear" | "kills" | "killsKcal" | "unexploited" | "attention"> {
+function runLife(ref: { state: GameState; world: World; player: ReferencePlayer }, days: number): Pick<YearReport, "months" | "surplus" | "outcome" | "lastWeek" | "lastDayOfYear" | "kills" | "killsKcal" | "unexploited" | "attention" | "huntAudit"> {
   const { state, world, player } = ref;
+  enableHuntAudit(state, world);
   const months: MonthLine[] = [];
   const surplus: YearReport["surplus"] = { hang: null, largeGame: null };
   let lastLineDay = 1;
@@ -128,6 +131,7 @@ function runLife(ref: { state: GameState; world: World; player: ReferencePlayer 
   return {
     months, surplus, outcome, lastWeek: weekBefore(state.ledger, day), lastDayOfYear: calendar(state.minute, state.startDoy).dayOfYear,
     kills, killsKcal: state.stats.killsKcal, unexploited: unexploitedLine, attention: player.attention(player.startDay, day),
+    huntAudit: finishHuntAudit(state, world),
   };
 }
 

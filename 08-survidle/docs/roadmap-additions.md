@@ -530,6 +530,172 @@ gross recovery rather than preserved usable food. Rebuild it around kill windows
 hunted area, recovered and preserved calories, ending stock, and explicit food
 and fat runway before recalibrating bands.
 
+### Hunting audit classification, 2026-09-10
+
+The rebuilt diagnostic now records every attempt and kill with its date, cell,
+region, local abundance and capacity, odds, pressure, work time, and food and fat
+runway. It also accounts for regional population growth and movement, field
+recovery, hauling, spoilage, preservation, consumption, and ending hunt-derived
+stock. This is diagnostic instrumentation only and does not alter simulation
+decisions.
+
+The suspicious expert runs are not isolated jackpots. Seed 42 made 170 attempts
+and spent 505 hours hunting from 5 April through 30 June, killing six elk and
+three deer in one 17.10 km2 region. Seed 19 made 118 attempts and spent 362 hours
+through 30 August, killing eight elk and two deer in one 18.54 km2 region. Seed
+79 made 140 attempts and spent 429 hours through 31 August, killing seven elk,
+five deer and one capercaillie in one 21.42 km2 region. The large-game kills in
+the latter two runs were spread over five months rather than concentrated in a
+short lucky window.
+
+Population conservation holds across the connected ranges. Seed 42 removed six
+of 29.57 starting elk from 123.84 km2 by the end of June; growth added 0.48 and
+24.05 remained. Seed 19 removed eight of 25.63 starting elk from 117.36 km2 by
+the end of August; growth added 0.76 and 18.37 remained. Seed 79 removed seven
+of 14.42 starting elk from 115.74 km2; growth added 0.34 and 7.75 remained.
+Local movement did funnel 2.92 elk into seed 42's hunted region and 4.90 into
+seed 19's, while seed 79 received only 0.44. Resupply can amplify extraction,
+but it does not explain the high result by itself and does not create animals.
+Its directional cadence remains a P2 ecological calibration question.
+
+The two P1 automation defects found by this audit were addressed on 2026-09-10.
+The reference hunter now uses the same shared food-and-fat runway calculation as
+the audit, and stops hunting once it has 30 food days and 14 fat days. Repeated
+empty searches become learned negative evidence. The evidence requirement scales
+continuously from seven searches at Hunting 1 to three at Hunting 20, remains
+firm for half its skill-scaled memory, then fades continuously. Fresh sign
+invalidates the inference. This remains player knowledge rather than hidden
+population access. Generic target selection reads mapped habitat, signs,
+remembered failures and disturbance; a named prey choice requires fresh local
+sign.
+
+On the final 153-day rerun after continuous negative-evidence scaling, seed 79
+fell from 140 attempts and 13 kills to nine attempts and three kills. Seed 42
+made 33 attempts and killed two elk and two roe deer. Seed 19 made eight attempts
+and killed two elk. Hunting is limited to one attempt per day while either
+runway is low, so it cannot monopolize the plan; later attempts begin only after
+food runway falls back below the 30-day target. These are no longer hunts
+continuing through a 50-to-129-day surplus. All three survivors lived through
+the 153-day probe and their population ledgers balanced. The old gross kcal/day
+verdict still labels all three "over" and remains an evaluator defect, not a
+game-mechanics failure.
+
+### Persistent-locality ecology stress, 2026-09-10
+
+A separate `npm run hunt-stress` probe deliberately ignores food, fatigue and
+negative evidence and makes three elk attempts every day on one cell. Before an
+ecological response, 153 days reduced seed 79's local elk from 7.15 to 0.25 and
+removed seven animals. Hunting pressure lowered the roll but did not move the
+aggregate herd, so enough repeated rolls could still grind through almost the
+whole local population.
+
+Sustained disturbance now adds explicit, population-conserving emigration for
+large game toward quieter neighboring habitat with room. It changes local
+availability rather than creating or deleting animals. After the change, seed
+79 records 2.42 elk emigrating and 1.80 remaining after 153 days. Continued for
+three years, the irrational hunter gets eight kills from 3,285 attempts, mean
+encounter odds fall to 1.0%, and 0.93 elk remain locally. This closes the endless
+same-cell extraction issue without a hard stop or a stronger arbitrary roll
+penalty.
+
+The diagnostic's `spoiled kcal` includes losses from an exposed carcass before
+field recovery as well as spoilage after hauling. It can therefore exceed
+`field-recovered kcal`; those fields are not additive. A later evaluator cleanup
+should report potential carcass kcal and split pre-recovery scavenging from
+post-recovery food spoilage. This is a measurement clarity issue, not a known
+population or inventory conservation failure.
+
+The former headline is also a confirmed evaluator defect. It annualizes gross
+field-recovered calories, not usable food. The carcass pipeline discarded or
+failed to haul a material share: the three runs recovered about 956,000,
+1,248,000 and 1,414,000 kcal in the field, while only about 762,000, 510,000 and
+979,000 kcal reached camp. Preserved calories overlap later consumption and
+ending stock and must not be added as a separate yield. Calibration should use
+a declared net measure and report gross recovery alongside it.
+
+### Deferred hunting evaluator rebuild
+
+**Priority:** P1 measurement work. It does not block the corrected hunting
+mechanics, but it blocks numeric recalibration.
+
+Replace the current gross-kcal verdict with a lifecycle report that separately
+shows potential carcass calories, field recovery, hauling, pre-recovery loss,
+post-recovery spoilage, preservation, consumption and ending stock. Keep hunt
+dates, cells, area, attempts, hours, kills, population flows and food/fat runway
+at the next hunt. Evaluate long-run usable yield while retaining jackpot-year
+distributions. Until this is complete, the current kcal/day verdict is
+diagnostic and non-gating; do not tune hunting odds, carcass yields, food ecology
+or survival bands against it.
+
+### Local-weather hunting integration
+
+**Raised** 2026-09-10, after reviewing the complete
+`codex/survidle-local-weather` branch before its planned merge.
+
+The local-weather branch makes snow, ice, precipitation, storms, light, route
+costs, wildlife capacity and ground-item spoilage depend on place. Its current
+hunting changes correctly read local ice for seasonal presence and local snow,
+precipitation, light and storms when an encounter resolves. After that branch
+lands, run one explicit hunting integration pass rather than assuming the two
+features compose because their unit suites pass separately.
+
+- Prove that search, encounter, field recovery, exposed-carcass loss and hauled
+  food spoilage use conditions at the actual cell, including across a weather
+  boundary and after save/load.
+- Let automatic ground ranking use only weather the survivor can reasonably
+  observe or forecast. It must not inspect a better hidden weather cell and
+  thereby become an oracle.
+- Decide how fresh snow helps tracking before deep snow hinders travel, how rain
+  erases sign, and how fog or precipitation changes identification. Express
+  these through the existing sign/evidence and encounter inputs, not a second
+  weather-only hunting rule.
+- Add wind and scent through the metric encounter context already reserved under
+  Wildlife calibration and deferred senses. Wind direction should affect
+  approach and animal alarm, while skill improves how the player reads and uses
+  it rather than revealing the hidden animal.
+- Extend the hunting audit with encounter-cell weather and route exposure. Keep
+  these fields diagnostic until the lifecycle evaluator is rebuilt, then test
+  whether weather changes usable yield rather than merely gross kill odds.
+
+This is P1 integration and calibration work, not a blocker for either feature
+branch by itself. Promote it to a mechanics defect only if the post-merge tests
+show global weather leaking into a local hunt, hidden-cell weather informing a
+choice, or carcass accounting using the wrong cell's conditions.
+
+#### Merge guidance
+
+Merge the completed hunting work first, then bring main into
+`codex/survidle-local-weather`. Do not resolve overlapping simulation files by
+taking either side wholesale. In particular, `animals.ts`, `camp.ts`,
+`hunting.ts`, `reference.ts`, `tasks.ts`, `types.ts` and their tests contain
+independent state and accounting changes from both branches.
+
+Preserve these hunting invariants while replacing global weather reads with the
+local-weather APIs:
+
+- A successful hunt atomically removes one whole animal and creates exactly one
+  carcass. Failed or fractional claims create none.
+- Population flows remain conserved and resident mammals are replenished only
+  by recorded births and movement.
+- Hunting pressure, learned negative evidence, fresh signs and neighboring-ground
+  selection remain player knowledge inputs. Local weather must not provide
+  hidden-cell knowledge to target selection.
+- The shared food/fat runway still limits reference hunting to one attempt per
+  day while stores are low. Do not restore forever hunts or old kcal thresholds.
+- Carcass field recovery, hauling, pre-recovery loss, post-recovery spoilage,
+  preservation and consumption remain distinct audit stages. Temperature and
+  precipitation should become local inputs without collapsing those stages.
+- Explicit disturbance emigration remains a population-conserving response to
+  sustained same-locality hunting.
+
+After resolving conflicts, run the fast and slow suites plus the hunting audit
+and persistent-locality stress probe. Add focused crossings where two adjacent
+cells have materially different precipitation, snow, visibility or temperature.
+The merge is not complete if deterministic seeds change without an explained
+mechanics cause, if a hunt succeeds against fewer than one available animal, if
+the audit no longer balances population flows, or if carcass loss is attributed
+to the survivor's weather instead of the carcass cell's weather.
+
 ## Fog edge translucency
 
 **Raised** 2026-09-10, while repairing hunting and exploration feedback.

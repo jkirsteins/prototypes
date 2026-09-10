@@ -17,6 +17,7 @@ import { current } from "./record";
 import { campSite, regionState } from "./regionstate";
 import { log, warn } from "./log";
 import type { GameState, ItemId } from "./types";
+import { noteHuntFoodEaten, noteHuntFoodTransformed } from "./hunt-audit";
 
 /** The gut's own word for a capped food, for its refusal message; later capped foods add their word here. */
 const GUT_WORD: Partial<Record<FoodId, string>> = { berries: "berry", barkFlour: "bark", seaweed: "mouthful of seaweed" };
@@ -71,6 +72,7 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): num
   p.kcal = Math.min(KCAL_FULL, p.kcal + gain);
   p.fat += gain;
   creditEaten(state, gain, leanPart);
+  noteHuntFoodEaten(state, food, kg, gain);
   goalDeed(state, { kind: "ate", item: food });
   if (def.leanShare < 1) goalDeed(state, { kind: "ateFat" });
   if (def.sickChance && p.sick === 0 && rng.chance(def.sickChance)) {
@@ -259,6 +261,7 @@ export function loadRack(state: GameState, world: World): number {
     left -= removeItem(inv, "rawMeat", left);
   }
   st.rack.kg += kg;
+  noteHuntFoodTransformed(state, "rawMeat", "rack", kg, kg, false);
   return kg;
 }
 

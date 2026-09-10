@@ -29,6 +29,7 @@ import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water"
 import { check, isShortAtCamp, loadPack, setAside, type InitialWalk, type TaskOption, whereIs } from "./tasks";
 import { bestHuntCell, hasRecentHuntSign, huntEstimate } from "./hunting";
 import { knownBearDen } from "./wildlife-agents";
+import { noteHauledHuntFood } from "./hunt-audit";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, UntilChoice, Where, WorkIntent,
 } from "./types";
@@ -469,6 +470,7 @@ function dropEverything(state: GameState, world: World): boolean {
   const atHome = isWorkIntent(state.intent) && state.intent.campCell === here;
   let moved = false;
   let recoveredMeat = 0;
+  let recoveredFat = 0;
   for (const { item, qty: q } of listItems(from)) {
     if (keep.has(item)) continue;
     const kg = transfer(from, to, item, q);
@@ -476,13 +478,17 @@ function dropEverything(state: GameState, world: World): boolean {
       moved = true;
       if (item === "rawMeat" && isWorkIntent(state.intent)) {
         recoveredMeat = Math.min(kg, state.intent.recoveredMeatPackedKg ?? 0);
+      } else if (item === "rawFat" && isWorkIntent(state.intent)) {
+        recoveredFat = Math.min(kg, state.intent.recoveredFatPackedKg ?? 0);
       }
     }
   }
   // Unloading at the home camp empties the vessels too, as far as the vessels and trough at camp have room.
   if (atHome) moved = pourVessels(state.player, to, campSite(regionState(state, world, state.player.region))) > 1e-9 || moved;
-  if (recoveredMeat > 0 && isWorkIntent(state.intent)) {
+  if ((recoveredMeat > 0 || recoveredFat > 0) && isWorkIntent(state.intent)) {
     state.intent.recoveredMeatPackedKg = Math.max(0, (state.intent.recoveredMeatPackedKg ?? 0) - recoveredMeat);
+    state.intent.recoveredFatPackedKg = Math.max(0, (state.intent.recoveredFatPackedKg ?? 0) - recoveredFat);
+    noteHauledHuntFood(state, recoveredMeat, recoveredFat);
     goalDeed(state, { kind: "recoveredAtCamp" });
   }
   return moved;
@@ -527,9 +533,14 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, rng: Rng, i
     const before = weight(pack);
     const loaded = loadPack(state, world);
     const recovered = Math.min(loaded.rawMeat ?? 0, it.recoveredMeatAtSourceKg ?? 0);
+    const recoveredFat = Math.min(loaded.rawFat ?? 0, it.recoveredFatAtSourceKg ?? 0);
     if (recovered > 0) {
       it.recoveredMeatAtSourceKg = Math.max(0, (it.recoveredMeatAtSourceKg ?? 0) - recovered);
       it.recoveredMeatPackedKg = (it.recoveredMeatPackedKg ?? 0) + recovered;
+    }
+    if (recoveredFat > 0) {
+      it.recoveredFatAtSourceKg = Math.max(0, (it.recoveredFatAtSourceKg ?? 0) - recoveredFat);
+      it.recoveredFatPackedKg = (it.recoveredFatPackedKg ?? 0) + recoveredFat;
     }
     if (weight(pack) > before + 1e-9) {
       it.step = "loading up";

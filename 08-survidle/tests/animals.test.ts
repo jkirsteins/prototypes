@@ -10,6 +10,7 @@ import { generateWorld, regionAt, type World } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { ICE_THIN_CM } from "../src/sim/weather";
 import type { GameState } from "../src/sim/types";
+import { disturbHuntingGround } from "../src/sim/hunting";
 
 describe("animals", () => {
   it("labels density in words", () => {
@@ -152,6 +153,25 @@ describe("seasons", () => {
     expect(BIG_GAME).toEqual(["deer", "reindeer", "elk", "bear"]);
     expect(BIG_GAME_MIGRATION).toBeCloseTo(0.003, 9);
     expect(BIG_GAME_MIGRATION * 10).toBeCloseTo(0.03, 9);
+  });
+
+  it("moves big game out of repeatedly disturbed ground without losing animals", () => {
+    const { state, world } = newGame(79);
+    const id = state.player.region;
+    const source = regionState(state, world, id);
+    const neighbour = regionAt(world, id).neighbours.find((candidate) => (regionAt(world, candidate.id).capacity.elk ?? 0) > 0);
+    expect(neighbour).toBeDefined();
+    const destination = regionState(state, world, neighbour!.id);
+    source.pop.elk = 6;
+    destination.pop.elk = 0;
+    for (const cell of regionAt(world, id).cells) disturbHuntingGround(state, world, cell, false);
+    const totalBefore = popOf(source, "elk") + popOf(destination, "elk");
+
+    dailyAnimals(state, world, calendar(1440 * 220), new Rng(4), null);
+
+    const moved = 6 - popOf(source, "elk");
+    expect(moved).toBeGreaterThan(6 * BIG_GAME_MIGRATION * 2);
+    expect(popOf(source, "elk") + popOf(destination, "elk")).toBeCloseTo(totalBefore, 9);
   });
 });
 

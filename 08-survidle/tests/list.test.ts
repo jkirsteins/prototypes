@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, pile, qty, removeItem, TRACE_KG } from "../src/sim/inventory";
 import {
-  AUTO_EAT_ORDER, EGG_FROM_DOY, EGG_TO_DOY, FOODS, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, ROOT_FROM_DOY, ROOT_TO_DOY,
+  AUTO_EAT_ORDER, EGG_FROM_DOY, EGG_TO_DOY, FOODS, LEAN_KCAL_PER_DAY, ROOT_FROM_DOY, ROOT_TO_DOY,
   SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS,
 } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
@@ -193,12 +193,11 @@ describe("the list after the axe", () => {
     const eggs = want("eggs::job");
     expect(eggs.req.until).toEqual({ kind: "daily", n: PLANT_HOURS_WINDOW_ROW });
     expect(eggs.req.when).toEqual({ season: { from: EGG_FROM_DOY, to: EGG_TO_DOY } });
-    // The hunt keep's figure is the winter stock's dried meat in the raw kilos it dried from,
-    // which is the unit the keep counts its forms in, and it restarts at four fifths of that -
-    // the fifth the stock carries as spare. It is the larder gate, said on the row itself.
-    const hunt = want("hunt:any:keep");
-    expect(hunt.req.until).toEqual({ kind: "campHas", qty: WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO });
-    expect(hunt.req.when).toEqual({ restart: (WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO * 4) / 5 });
+    // One generic hunt a day is bounded by the reference player's food and fat
+    // runway, rather than monopolizing the list until one named stock is met.
+    const hunt = want("hunt:any:job");
+    expect(hunt.req.until).toEqual({ kind: "daily", n: 1 });
+    expect(hunt.req.when).toBeUndefined();
     const fish = want("fish:any:keep");
     expect(fish.req.when).toEqual({ stock: { item: "driedMeat", under: WINTER_STOCK.driedMeatKg } });
     // All four rise to their figures by 1 December; what the spending says is what
@@ -219,19 +218,20 @@ describe("the list after the axe", () => {
     expect(want("crack::grind").req.when).toEqual({ stock: { item: "bone", atLeast: 1 } });
     expect(want("build:dryingRack:job").req.when).toEqual({ stock: { item: "rawMeat", atLeast: TRACE_KG } });
     const tasks = REFERENCE_ORDERS.map(key);
-    expect(tasks.indexOf("hunt:any:keep")).toBeLessThan(REFERENCE_ORDERS.indexOf(reserve));
+    expect(tasks.indexOf("hunt:any:job")).toBeLessThan(REFERENCE_ORDERS.indexOf(reserve));
     // A winter's dried meat at camp is the two food rows' own business, read off their
     // band and their stock line by whoever holds the order, and no rule in the runner.
     const { state, world } = newGame(17);
     siteCamp(state, world);
     addItem(pile(state, regionState(state, world, state.player.region).campCell!), "driedMeat", WINTER_STOCK.driedMeatKg);
-    for (const w of [hunt, fish]) expect(wantOpen(state, world, w)).toBe(true);
+    expect(wantOpen(state, world, hunt)).toBe(false);
+    expect(wantOpen(state, world, fish)).toBe(true);
   });
 
   it("counts meat drying on the rack toward a hunting keep", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
-    const hunt = want("hunt:any:keep");
+    const hunt = { req: { task: "hunt" as const, arg: "any", until: { kind: "campHas" as const, qty: 240 }, deliver: "camp" as const, where: "nearest" as const }, kind: "keep" as const };
     regionState(state, world, state.player.region).rack.kg = 40;
     expect(keepStock(state, world, { ...hunt, id: 1, done: 0, minutes: 0, skipped: "" })).toBe(40);
   });
@@ -267,10 +267,10 @@ describe("the list after the axe", () => {
     // it is not the treadmill a fish keep is. Under the block it got nine minutes to an hour and
     // twenty a day and three of four level-20 seeds killed nothing all summer. The bow and the
     const tasks = REFERENCE_ORDERS.map(key);
-    expect(tasks.indexOf("craft:bow:keep")).toBeLessThan(tasks.indexOf("hunt:any:keep"));
+    expect(tasks.indexOf("craft:bow:keep")).toBeLessThan(tasks.indexOf("hunt:any:job"));
     expect(tasks.indexOf("craft:arrows:keep")).toBe(tasks.indexOf("craft:bow:keep") + 1);
-    expect(tasks.indexOf("hunt:any:keep")).toBeLessThan(tasks.indexOf("roots::job"));
-    expect(tasks.indexOf("hunt:any:keep")).toBeLessThan(tasks.indexOf("fish:any:keep"));
+    expect(tasks.indexOf("hunt:any:job")).toBeLessThan(tasks.indexOf("roots::job"));
+    expect(tasks.indexOf("hunt:any:job")).toBeLessThan(tasks.indexOf("fish:any:keep"));
   });
 
   it("renders raw fat as a grind while any is at camp, above the cook keeps", () => {

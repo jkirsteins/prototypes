@@ -23,7 +23,7 @@ import { calendar, dayNumber, START_DOY, type Calendar } from "./calendar";
 import { addItem, AXES, axeInHand, freshTool, listItems, pile, pileAt, qty, TRACE_KG } from "./inventory";
 import { nearestCell } from "./intent";
 import {
-  BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, RECIPES,
+  BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, RECIPES,
   ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS, TOOLS,
 } from "./items";
 import { shoreFish } from "./knowledge";
@@ -37,6 +37,7 @@ import { fatLandmarks, medianPerson } from "./person";
 import { heathCell, watersideCell } from "./position";
 import { current } from "./record";
 import { campSite, regionState, siteFor } from "./regionstate";
+import { survivalRunway } from "./runway";
 import { RECOMMENDED, skillLevel } from "./skills";
 import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
 import { nestsFor, rootKgLeft } from "./stocks";
@@ -171,13 +172,13 @@ export const PLANT_HOURS_ROOTS = PLANT_HOURS_PER_DAY - PLANT_HOURS_WINDOW_ROW;
  * the hut group below it; without it every garment on every year seed was
  * a ghost at durability 0 by autumn, with 168 kg of hide lying at camp on
  * one of them. The hide set opens at Crafting 8 (wantOpen), the hat and
- * mittens at once. The food runway is one bounded generic hunt keep. Skill
+ * mittens at once. The food runway is one generic hunt per day while low. Skill
  * decides which plausible ground is worth the trip; no policy names hidden
  * species or hunts forever. It sits above future winter wood so a starving
  * survivor does not keep cutting a reserve for next season.
  *
  * The winter stock's own four keeps - the split pile in its three methods
- * and the logs that are the stock's unsplit half - follow that food keep.
+ * and the logs that are the stock's unsplit half - follow that food row.
  * All four carry the window
  * they are stocked against, midsummer to the thaw, and the same date, so a
  * list that reaches these rows in April or May asks for nothing at all. Only
@@ -282,6 +283,14 @@ export const WOOD_DUE_DOY = 334;
  * stock the wood half of it.
  */
 export const WINTER_STOCK = { driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs: 300 };
+export const HUNT_FOOD_RUNWAY_DAYS = 30;
+export const HUNT_FAT_RUNWAY_DAYS = 14;
+
+/** A competent hunter stops once both calories and essential fat have a safe near-term runway. */
+export function huntRunwayOpen(state: GameState, world: World): boolean {
+  const runway = survivalRunway(state, world);
+  return runway.foodDays < HUNT_FOOD_RUNWAY_DAYS || runway.fatDays < HUNT_FAT_RUNWAY_DAYS;
+}
 
 /**
  * The window the winter pile is stocked in, said once for the four rows that
@@ -371,10 +380,9 @@ export const REFERENCE_ORDERS: Want[] = [
   { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest", when: { stock: { item: "rawMeat", atLeast: HANG_ABOVE_KG } } }, kind: "grind" },
   keep("craft", 1, "bow"),
   keep("craft", 10, "arrows"),
-  // Immediate food runway outranks stores promised for winter. This keep closes
-  // at its target; named forever hunts below it once made surplus game dominate
-  // the whole food economy while a starving survivor still cut wood.
-  keep("hunt", WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO, "any", "camp", { restart: (WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO * 4) / 5 }),
+  // Immediate food runway outranks stores promised for winter. One attempt a
+  // day leaves room for the rest of the list; the shared runway closes it.
+  job("hunt", { kind: "daily", n: 1 }, "any", "camp"),
   keep("split", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_BUFFER_WHEN),
   keep("splitWedges", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_BUFFER_WHEN),
   keep("deadwood", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_BUFFER_WHEN),
@@ -456,7 +464,8 @@ export function wantOpen(state: GameState, world: World, w: Want): boolean {
     const site = campSite(regionState(state, world, state.player.region));
     return !(site?.structures.turfHut || site?.structures.cabin);
   }
-  if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
+  if (w.req.task === "hunt" && w.req.arg === "any") return huntRunwayOpen(state, world);
+  if (w.req.task === "hunt" && w.req.arg) {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
   }

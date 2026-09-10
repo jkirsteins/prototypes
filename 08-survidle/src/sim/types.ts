@@ -417,6 +417,10 @@ interface WorkIntentBase extends IntentBase {
   recoveredMeatAtSourceKg?: number;
   /** This hunt's dressed meat currently carried in the pack. */
   recoveredMeatPackedKg?: number;
+  /** This hunt's dressed fat still on its source cell. */
+  recoveredFatAtSourceKg?: number;
+  /** This hunt's dressed fat currently carried in the pack. */
+  recoveredFatPackedKg?: number;
 }
 
 /**

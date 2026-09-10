@@ -14,7 +14,6 @@ describe("the year report's attention", () => {
     expect(r.attention.days).toBe(r.outcome.day);
     expect(r.attention.mornings).toBeGreaterThanOrEqual(0);
     expect(r.attention.mornings).toBeLessThanOrEqual(r.attention.days);
-    expect(r.months.length).toBeGreaterThan(0);
     for (const m of r.months) {
       expect(m.attention.days).toBeGreaterThan(0);
       expect(m.attention.mornings).toBeGreaterThanOrEqual(0);

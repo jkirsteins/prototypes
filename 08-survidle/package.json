@@ -15,6 +15,7 @@
     "reference": "vite-node scripts/reference.ts",
     "horizon": "vite-node scripts/horizon.ts",
     "year": "vite-node scripts/year.ts",
+    "hunt-stress": "vite-node scripts/hunt-stress.ts",
     "december": "vite-node scripts/december.ts",
     "startle-seeds": "vite-node scripts/startle-seeds.ts",
     "startle-shots": "node scripts/startle-shots.mjs",

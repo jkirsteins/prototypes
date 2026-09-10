@@ -8,6 +8,8 @@ import { FOODS } from "../src/sim/items";
 import { ARRIVAL_DRIED_MEAT_KG, newGame, START_KCAL } from "../src/sim/newgame";
 import { conditionOpen, inSeason, ordersHere } from "../src/sim/orders";
 import { fatLandmarks, medianPerson } from "../src/sim/person";
+import { current } from "../src/sim/record";
+import { RUNWAY_DEFAULT_DAILY_KCAL } from "../src/sim/runway";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import {
   campFoodKcal,
@@ -30,6 +32,9 @@ import {
   weekLines,
   winterStockWant,
   WINTER_STOCK,
+  HUNT_FAT_RUNWAY_DAYS,
+  HUNT_FOOD_RUNWAY_DAYS,
+  huntRunwayOpen,
   WINTER_WOOD_FROM_DOY,
   WINTER_WOOD_TO_DOY,
   WOOD_DUE_DOY,
@@ -570,7 +575,7 @@ describe("wants by level", () => {
     expect(REFERENCE_ORDERS.filter((w) => w.req.task === "hunt")).toEqual([any]);
   });
 
-  it("the list hangs as a grind, keeps eight cordage, and pins bounded food and wood reserves", () => {
+  it("the list hangs as a grind, hunts daily while runway is low, keeps eight cordage, and pins wood reserves", () => {
     const hang = REFERENCE_ORDERS.find((w) => w.req.task === "hang")!;
     expect(hang.kind).toBe("grind");
     expect(hang.req.until.kind).toBe("forever");
@@ -581,12 +586,14 @@ describe("wants by level", () => {
     const woodpile = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg)!;
     expect(woodpile.req.until).toEqual({ kind: "campHas", qty: WINTER_STOCK.firewoodKg });
     const hunt = REFERENCE_ORDERS.find((w) => w.req.task === "hunt")!;
-    expect(hunt.kind).toBe("keep");
-    expect(hunt.req.until.kind).toBe("campHas");
+    expect(hunt.kind).toBe("job");
+    expect(hunt.req.until).toEqual({ kind: "daily", n: 1 });
   });
 
-  it("has no unbounded hunt order", () => {
-    expect(REFERENCE_ORDERS.some((w) => w.req.task === "hunt" && w.req.until.kind === "forever")).toBe(false);
+  it("has no fixed-species or unconditional hunt order", () => {
+    const hunts = REFERENCE_ORDERS.filter((w) => w.req.task === "hunt");
+    expect(hunts).toHaveLength(1);
+    expect(hunts[0].req.arg).toBe("any");
   });
 
   it("stands in for the pace by hand at woodcraft 10: a plain keep at today's target, withdrawn when the thaw closes the window", () => {
@@ -701,6 +708,19 @@ describe("wants by level", () => {
     expect(summer.req.when).toBeUndefined();
   });
 
+  it("stops generic hunting only when both food and fat runway are safe", () => {
+    const { state, world } = setUpReference(17, true);
+    const camp = pile(state, regionState(state, world, state.player.region).campCell!);
+    const floor = fatLandmarks(current(state).person).floor;
+    state.player.fat = floor;
+
+    expect(huntRunwayOpen(state, world)).toBe(true);
+    addItem(camp, "driedMeat", (HUNT_FOOD_RUNWAY_DAYS * RUNWAY_DEFAULT_DAILY_KCAL) / FOODS.driedMeat.kcalPerKg);
+    expect(huntRunwayOpen(state, world)).toBe(true);
+    addItem(camp, "fat", (HUNT_FAT_RUNWAY_DAYS * RUNWAY_DEFAULT_DAILY_KCAL) / FOODS.fat.kcalPerKg);
+    expect(huntRunwayOpen(state, world)).toBe(false);
+  });
+
   it("winterStockWant tells the two winter keeps from the summer keeps of the same tasks by their targets", () => {
     const find = (task: string, q: number) => REFERENCE_ORDERS.find((w) => w.req.task === task && w.req.until.kind === "campHas" && w.req.until.qty === q)!;
     expect(winterStockWant(find("split", WINTER_STOCK.firewoodKg))).toBe(true);
@@ -733,10 +753,15 @@ describe("wants by level", () => {
   it("a kitted level-20 list makes one spare spear and stops", () => {
     const ref = setUpReference(17, true);
     for (const s of SKILL_IDS) setSkillLevel(ref.state, s, 20);
-    stepReference(ref, 20 * 1440);
     const st = regionState(ref.state, ref.world, ref.state.player.region);
+    const camp = pile(ref.state, st.campCell!);
+    // Isolate tool replacement from the food strategy: this test is about
+    // the spear keep, not whether seed 17 finds game before a cold snap.
+    addItem(camp, "driedMeat", (HUNT_FOOD_RUNWAY_DAYS * RUNWAY_DEFAULT_DAILY_KCAL) / FOODS.driedMeat.kcalPerKg);
+    addItem(camp, "fat", (HUNT_FAT_RUNWAY_DAYS * RUNWAY_DEFAULT_DAILY_KCAL) / FOODS.fat.kcalPerKg);
+    stepReference(ref, 20 * 1440);
     expect(hasTool(ref.state.player, "fishingSpear")).toBe(true);
-    expect(qty(pile(ref.state, st.campCell!), "fishingSpear")).toBe(1);
+    expect(qty(camp, "fishingSpear")).toBe(1);
   });
 });
 

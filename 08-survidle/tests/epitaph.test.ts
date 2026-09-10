@@ -65,8 +65,8 @@ describe("the epitaph", () => {
   it("is deterministic for the reference seeds; trap yields more with larger capacities", () => {
     // These are measured deterministic outcomes, not survival targets: wetness,
     // warmth and the work they interrupt can move the day substantially.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 29. Starved at camp, with nothing in the pack and no firewood at camp."`);
-    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 30. Starved at camp, with nothing in the pack and 60 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 30. Starved at camp, with nothing in the pack and 68 kg of firewood at camp."`);
+    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 35. Starved at camp, with nothing in the pack and 18 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

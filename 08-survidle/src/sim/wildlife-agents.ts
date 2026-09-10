@@ -21,6 +21,7 @@ import { illuminance } from "./light";
 import { cellForMetricPoint, encounterGeometry, metricAreaForCell, metricPointForPlayer, metricPointForWildlife, resolveSpatialEstimate, type MetricPoint } from "./wildlife-space";
 import { escapeDistanceM, evaluateUngulateEncounter, neutralMovementProfile, startleLogText, type UngulateEncounterInput, type WildlifeStartleEvent } from "./wildlife-encounter";
 import { emitWildlifeEvent } from "./wildlife-events";
+import { notePopulationChange } from "./hunt-audit";
 
 export const AGENT_SPECIES: AgentSpecies[] = ["deer", "reindeer", "elk", "wolf", "wolverine", "bear"];
 export const MAX_ACTIVE_SUBJECTS = 12;
@@ -546,6 +547,7 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
     if (prey && removeMember(prey)) {
       const preyState = regionState(state, world, prey.region);
       preyState.pop[prey.species] = Math.max(0, popOf(preyState, prey.species) - 1);
+      notePopulationChange(state, world, prey.region, prey.species, "predation", 1);
       subject.condition = Math.min(100, subject.condition + 4);
       active.hunger = Math.max(0, active.hunger - 60);
       if (prey.active) {
@@ -766,6 +768,7 @@ export function dailyWildlife(state: GameState, world: World, cal: Calendar, rng
       const born = profile.litter[0] + rng.int(profile.litter[1] - profile.litter[0] + 1);
       subject.cohorts.push({ sex: rng.chance(0.5) ? "f" : "m", bornYear: year, count: born });
       st.pop[subject.species] = popOf(st, subject.species) + born;
+      notePopulationChange(state, world, subject.region, subject.species, "birth", born);
       subject.reproductive = "dependent";
       subject.dependentUntilYear = year + profile.independentYears;
     } else if (subject.reproductive === "dependent" && year >= subject.dependentUntilYear) {
@@ -786,6 +789,7 @@ export function dailyWildlife(state: GameState, world: World, cal: Calendar, rng
     }
     while (deaths > 0 && removeMember(subject)) {
       st.pop[subject.species] = Math.max(0, popOf(st, subject.species) - 1);
+      notePopulationChange(state, world, subject.region, subject.species, "naturalDeath", 1);
       deaths--;
     }
     if (wildlifeMembers(subject) === 0) removeSubject(state, subject);

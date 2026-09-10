@@ -3,11 +3,16 @@ import { absence } from "./animals";
 import { body } from "./person";
 import { hasTool, produce } from "./inventory";
 import { goalDeed } from "./goals";
-import { campCellOf, cellOf, forestCell, heathCell, kmBetween, rockCell, straightKm, watersideCell } from "./position";
+import { campCellOf, cellOf, forestCell, heathCell, kmBetween, rockCell, watersideCell } from "./position";
 import { skillLevel, oddsFactor } from "./skills";
 import { huntedLand, SPECIES_DEFS, type Species } from "./species";
 import type { Carcass, CarcassYields, GameState } from "./types";
 import { cellAt, regionAt, type World } from "../world/gen";
+import { noteHuntSpoiledKcal } from "./hunt-audit";
+import { FOODS } from "./items";
+import { ageHuntPressure, huntPressureFactor } from "./hunt-pressure";
+
+export { disturbHuntingGround, huntPressureFactor } from "./hunt-pressure";
 
 export const HUNT_SIGN_DAYS = 14;
 
@@ -26,9 +31,11 @@ export interface HuntSpeciesWeight {
 
 const CARCASS_SCAVENGE_AFTER = 12 * 60;
 const CARCASS_GONE_AFTER = 36 * 60;
-const PRESSURE_DAYS = 7;
-const PRESSURE_RADIUS_KM = 2;
 const NEGATIVE_EVIDENCE_DAYS = 14;
+const LEARNED_ABSENCE_MIN_DAYS = 14;
+const LEARNED_ABSENCE_MAX_DAYS = 60;
+const LEARNED_ABSENCE_NOVICE_EVIDENCE = 7;
+const LEARNED_ABSENCE_EXPERT_EVIDENCE = 3;
 
 export function createCarcass(state: GameState, world: World, species: Species, yields: CarcassYields): Carcass {
   const stored: CarcassYields = {
@@ -47,39 +54,14 @@ export function createCarcass(state: GameState, world: World, species: Species, 
   return carcass;
 }
 
-export function huntPressureFactor(state: GameState, world: World, cell: number): number {
-  let local = 0;
-  for (const [key, pressure] of Object.entries(state.huntPressure)) {
-    const km = straightKm(world, Number(key), cell);
-    if (km >= PRESSURE_RADIUS_KM) continue;
-    local += pressure * (1 - km / PRESSURE_RADIUS_KM);
-  }
-  return 1 - 0.75 * Math.min(1, local);
-}
-
-export function disturbHuntingGround(state: GameState, world: World, cell: number, killed: boolean): void {
-  state.huntPressure[cell] = Math.min(1, (state.huntPressure[cell] ?? 0) + (killed ? 0.45 : 0.12));
-  for (const subject of state.wildlife.subjects) {
-    if (!subject.active || straightKm(world, subject.active.cell, cell) >= PRESSURE_RADIUS_KM) continue;
-    subject.active.alarm = 100;
-    subject.active.intent = "flee";
-    subject.active.target = null;
-    subject.active.route = [];
-  }
-}
-
 /** Ages carcasses and lets disturbed ground become useful again. */
 export function stepCarcasses(state: GameState, dt: number, ambient: number): void {
-  const pressureDrop = dt / (PRESSURE_DAYS * 1440);
-  for (const key of Object.keys(state.huntPressure)) {
-    const cell = Number(key);
-    const next = (state.huntPressure[cell] ?? 0) - pressureDrop;
-    if (next <= 1e-9) delete state.huntPressure[cell];
-    else state.huntPressure[cell] = next;
-  }
+  ageHuntPressure(state, dt);
   const decayRate = ambient < -10 ? 0 : ambient <= 0 ? 0.5 : 1;
   if (decayRate <= 0) return;
   for (const carcass of state.carcasses) {
+    const meatBefore = carcass.yields.meatKg;
+    const fatBefore = carcass.yields.fatKg ?? 0;
     const before = carcass.warmAge;
     carcass.warmAge += dt * decayRate;
     const exposed = Math.max(0, carcass.warmAge - Math.max(before, CARCASS_SCAVENGE_AFTER));
@@ -87,6 +69,9 @@ export function stepCarcasses(state: GameState, dt: number, ambient: number): vo
     const share = 0.98 ** (exposed / 60);
     carcass.yields.meatKg *= share;
     if (carcass.yields.fatKg) carcass.yields.fatKg *= share;
+    noteHuntSpoiledKcal(state,
+      (meatBefore - carcass.yields.meatKg) * FOODS.rawMeat.kcalPerKg
+      + (fatBefore - (carcass.yields.fatKg ?? 0)) * FOODS.fat.kcalPerKg);
   }
   state.carcasses = state.carcasses.filter((carcass) => carcass.warmAge < CARCASS_GONE_AFTER && carcass.yields.meatKg > 0.05);
   const live = new Set(state.carcasses.map((carcass) => carcass.id));
@@ -153,19 +138,70 @@ export function noteHuntSign(state: GameState, cell: number, species: Species): 
 export function noteFailedHunt(state: GameState, cell: number, species: Species): void {
   const existing = state.player.huntSigns[cell] ?? { species: {} };
   const previous = existing.failures?.[species];
-  const recent = previous && state.minute - previous.at < NEGATIVE_EVIDENCE_DAYS * 1440;
+  const carried = previous ? previous.count * failureMemoryFactor(state, state.minute - previous.at) : 0;
   state.player.huntSigns[cell] = {
     ...existing,
     failures: {
       ...existing.failures,
-      [species]: { at: state.minute, count: recent ? previous.count + 1 : 1 },
+      [species]: { at: state.minute, count: carried + 1 },
     },
   };
 }
 
-function negativeEvidenceFactor(state: GameState, cell: number, species: Species): number {
+function learnedScale(state: GameState): number {
+  return Math.min(1, Math.max(0, (skillLevel(state, "hunting") - 1) / 19));
+}
+
+function failureMemoryDays(state: GameState): number {
+  return LEARNED_ABSENCE_MIN_DAYS
+    + learnedScale(state) * (LEARNED_ABSENCE_MAX_DAYS - LEARNED_ABSENCE_MIN_DAYS);
+}
+
+/** Evidence stays firm for half its memory, then fades continuously to zero. */
+function failureMemoryFactor(state: GameState, ageMinutes: number): number {
+  const ageDays = Math.max(0, ageMinutes / 1440);
+  const memoryDays = failureMemoryDays(state);
+  if (ageDays <= memoryDays / 2) return 1;
+  return Math.max(0, 2 * (1 - ageDays / memoryDays));
+}
+
+/** Evidence required before treating a species as absent, continuously scaled by skill. */
+export function huntAbsenceEvidenceNeeded(state: GameState): number {
+  return LEARNED_ABSENCE_NOVICE_EVIDENCE
+    - learnedScale(state) * (LEARNED_ABSENCE_NOVICE_EVIDENCE - LEARNED_ABSENCE_EXPERT_EVIDENCE);
+}
+
+function latestRegionSign(state: GameState, world: World, region: number, species: Species): number | null {
+  let latest: number | null = null;
+  for (const [key, sign] of Object.entries(state.player.huntSigns)) {
+    if (cellAt(world, Number(key)).region !== region) continue;
+    const seenAt = sign.species[species];
+    if (seenAt !== undefined && (latest === null || seenAt > latest)) latest = seenAt;
+  }
+  return latest;
+}
+
+function learnedAbsent(state: GameState, world: World, cell: number, species: Species): boolean {
+  const region = cellAt(world, cell).region;
+  const latestSign = latestRegionSign(state, world, region, species);
+  if (latestSign !== null && state.minute - latestSign < HUNT_SIGN_DAYS * 1440) return false;
+  let evidence = 0;
+  for (const [key, sign] of Object.entries(state.player.huntSigns)) {
+    if (cellAt(world, Number(key)).region !== region) continue;
+    const failure = sign.failures?.[species];
+    if (failure && failure.at > (latestSign ?? -1)) {
+      evidence += failure.count * failureMemoryFactor(state, state.minute - failure.at);
+    }
+  }
+  return evidence + 1e-9 >= huntAbsenceEvidenceNeeded(state);
+}
+
+function negativeEvidenceFactor(state: GameState, world: World, cell: number, species: Species): number {
+  if (learnedAbsent(state, world, cell, species)) return 0;
   const failure = state.player.huntSigns[cell]?.failures?.[species];
   if (!failure) return 1;
+  const sign = latestRegionSign(state, world, cellAt(world, cell).region, species);
+  if (sign !== null && sign >= failure.at) return 1;
   const age = state.minute - failure.at;
   if (age >= NEGATIVE_EVIDENCE_DAYS * 1440) return 1;
   const remaining = 1 - age / (NEGATIVE_EVIDENCE_DAYS * 1440);
@@ -241,13 +277,14 @@ export function huntSpeciesWeights(state: GameState, world: World, cal: Calendar
   const rows = huntedLand()
     .filter((species) => !absence(SPECIES_DEFS[species], cal, state.weather.iceCm) && suits(world, cell, species) && habitatPrior(world, cell, species) > 0)
     .map((species) => {
-      const evidence = negativeEvidenceFactor(state, cell, species);
+      const evidence = negativeEvidenceFactor(state, world, cell, species);
       return {
         species,
         encounter: habitatPrior(world, cell, species) * SPECIES_DEFS[species].hunt!.odds * (signs.includes(species) ? 1.5 : 1) * evidence,
         value: speciesValue(state, world, cell, species, signs.includes(species), evidence),
       };
-    });
+    })
+    .filter((row) => row.encounter > 0);
   const maxEncounter = Math.max(...rows.map((row) => row.encounter), 0.001);
   const maxValue = Math.max(...rows.map((row) => row.value), 0.001);
   const skill = Math.min(1, (skillLevel(state, "hunting") - 1) / 19);

@@ -7,6 +7,8 @@ import { regionState, startingPop, touchedRegions } from "./regionstate";
 import { awayWord, isVoiceOnly, seasonFactor, type Species, SPECIES_DEFS, type SpeciesDef } from "./species";
 import type { GameState, RegionState } from "./types";
 import { ICE_THIN_CM } from "./weather";
+import { notePopulationChange } from "./hunt-audit";
+import { regionHuntDisturbance } from "./hunt-pressure";
 
 const MIGRATION = 0.03;
 /**
@@ -17,6 +19,8 @@ const MIGRATION = 0.03;
  */
 export const BIG_GAME: Species[] = ["deer", "reindeer", "elk", "bear"];
 export const BIG_GAME_MIGRATION = 0.003;
+/** Extra daily range-shift rate at maximum sustained local disturbance. */
+export const BIG_GAME_DISTURBANCE_EMIGRATION = 0.04;
 /**
  * Small game refills a hunted range from the country around it: hares
  * disperse kilometres and a vacated range is full again within weeks. Each
@@ -108,15 +112,21 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
         // A flock arrives over a few weeks and leaves the same way; next year's replaces what was taken.
         next = pop + (residualK - pop) * 0.1;
         st.pop[s] = represented + next;
+        const delta = next - pop;
+        if (delta > 0) notePopulationChange(state, world, id, s, "immigration", delta);
+        else notePopulationChange(state, world, id, s, "emigration", -delta);
       } else if (residualK <= 0) {
         st.pop[s] = represented;
+        notePopulationChange(state, world, id, s, "naturalDeath", pop);
       } else if (growing) {
         next = Math.max(0, pop + def.growth * pop * (1 - pop / residualK));
         st.pop[s] = represented + next;
+        notePopulationChange(state, world, id, s, "growth", Math.max(0, next - pop));
       } else if (pop > residualK) {
         // Winter thins a herd the land cannot feed.
         next = pop - (pop - residualK) * 0.05;
         st.pop[s] = represented + next;
+        notePopulationChange(state, world, id, s, "naturalDeath", pop - next);
       } else if (represented > 0) {
         st.pop[s] = represented + pop;
       }
@@ -157,9 +167,11 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
         if (give < 0.001) continue;
         const nst = regionState(state, world, nb.id);
         nst.pop[s] = popOf(nst, s) - give;
+        notePopulationChange(state, world, nb.id, s, "emigration", give);
         got += give;
       }
       st.pop[s] = pop + got;
+      notePopulationChange(state, world, id, s, "immigration", got);
     }
   }
 
@@ -167,6 +179,14 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
   // with room. Untouched country sits at its starting numbers, so nothing
   // moves in or out of it. Birds and fish do not shuffle.
   const moves: { from: number; to: number; s: Species; n: number }[] = [];
+  const disturbanceByRegion = new Map<number, number>();
+  const disturbance = (region: number): number => {
+    const cached = disturbanceByRegion.get(region);
+    if (cached !== undefined) return cached;
+    const value = regionHuntDisturbance(state, world, region);
+    disturbanceByRegion.set(region, value);
+    return value;
+  };
   for (const id of touched) {
     const r = regionAt(world, id);
     const nbs = r.neighbours.filter((nb) => touchedSet.has(nb.id));
@@ -174,11 +194,19 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
     const st = state.regions[id];
     for (const s of speciesHere(r)) {
       if (SPECIES_DEFS[s].kind !== "mammal" || SMALL_GAME.includes(s)) continue;
-      const n = popOf(st, s) * (BIG_GAME.includes(s) ? BIG_GAME_MIGRATION : MIGRATION);
+      const bigGame = BIG_GAME.includes(s);
+      const sourceDisturbance = bigGame ? disturbance(id) : 0;
+      const n = popOf(st, s) * (bigGame
+        ? BIG_GAME_MIGRATION + BIG_GAME_DISTURBANCE_EMIGRATION * sourceDisturbance
+        : MIGRATION);
       if (n < 0.01) continue;
       // Only neighbours with room; a region that never holds the species has weight 0 and must not be a fallback.
       const candidates = nbs
-        .map((nb) => ({ id: nb.id, weight: Math.max(0, seasonalCapacity(world, nb.id, s, cal, state.weather.iceCm) - popOf(state.regions[nb.id], s)) }))
+        .map((nb) => {
+          const room = Math.max(0, seasonalCapacity(world, nb.id, s, cal, state.weather.iceCm) - popOf(state.regions[nb.id], s));
+          const quiet = bigGame ? 1 - disturbance(nb.id) : 1;
+          return { id: nb.id, weight: room * quiet };
+        })
         .filter((c) => c.weight > 0);
       if (!candidates.length) continue;
       const total = candidates.reduce((a, c) => a + c.weight, 0);
@@ -197,6 +225,8 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
   for (const m of moves) {
     state.regions[m.from].pop[m.s] = popOf(state.regions[m.from], m.s) - m.n;
     state.regions[m.to].pop[m.s] = popOf(state.regions[m.to], m.s) + m.n;
+    notePopulationChange(state, world, m.from, m.s, "emigration", m.n);
+    notePopulationChange(state, world, m.to, m.s, "immigration", m.n);
   }
 
   NOTABLE.forEach((s, i) => {
