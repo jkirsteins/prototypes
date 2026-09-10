@@ -1,0 +1,49 @@
+{
+  "capturedAt": "2026-09-10T21:28:25.787Z",
+  "sourceCommit": "56942580",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "deviceScale": 2
+  },
+  "captures": {
+    "before100m": {
+      "seed": 21,
+      "minute": 10,
+      "startDoy": 90,
+      "player": {
+        "x": 1068.5,
+        "y": 312.5,
+        "region": 2914
+      },
+      "zoom": "100 m per detail, 7 by 4 km",
+      "renderedCells": 288,
+      "cosmeticDetails": 1449,
+      "box": {
+        "x": 320,
+        "y": 10,
+        "width": 840,
+        "height": 406.5
+      }
+    },
+    "before50m": {
+      "seed": 21,
+      "minute": 10,
+      "startDoy": 90,
+      "player": {
+        "x": 1068.5,
+        "y": 312.5,
+        "region": 2914
+      },
+      "zoom": "50 m per detail, 4 by 2 km",
+      "renderedCells": 72,
+      "cosmeticDetails": 2304,
+      "box": {
+        "x": 320,
+        "y": 10,
+        "width": 840,
+        "height": 406.5
+      }
+    }
+  }
+}
