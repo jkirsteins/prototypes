@@ -84,11 +84,19 @@ function animalsAt(state: GameState, world: World, cal: Calendar, cell: number):
     });
 }
 
-/** The named place this cell is, if it is one. */
-function spotAt(world: World, cell: number): string | null {
-  const r = regionAt(world, cellAt(world, cell).region);
+/**
+ * The named place this cell is, if it is one. The generated "camp" spot is
+ * the ground a region offers for a camp, not a camp: it reads as one only
+ * once somebody has made theirs there. Read straight off the spot list it
+ * told a tester who had never made camp that his landing was one.
+ */
+function spotAt(state: GameState, world: World, cell: number): string | null {
+  const region = cellAt(world, cell).region;
+  const r = regionAt(world, region);
   const spot = r.spots.find((s) => s.cell === cell);
-  return spot ? SPOT_WORDS[spot.id] : null;
+  if (!spot) return null;
+  if (spot.id === "camp" && state.regions[region]?.campCell !== cell) return null;
+  return SPOT_WORDS[spot.id];
 }
 
 /** A heading is a heading wherever it came from: a region's name, a spot's, or a terrain's. */
@@ -162,7 +170,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   // controlled by the map and surveying lives under Explore.
   if (region !== state.player.region) {
     if (presentation.knowledge === "unknown") return `${heading("Unknown ground")}<div class="dim">You have never been here.</div>`;
-    const spot = spotAt(world, cell);
+    const spot = spotAt(state, world, cell);
     return `${heading(spot ?? presentation.heading)}${spot ? `<div>${esc(head(presentation.heading))}</div>` : ""}`;
   }
 
@@ -177,7 +185,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   const st = regionState(state, world, state.player.region);
 
   const terrain = presentation.terrain;
-  const spot = spotAt(world, cell);
+  const spot = spotAt(state, world, cell);
   const name = spot ?? presentation.heading;
 
   const lines: string[] = [];

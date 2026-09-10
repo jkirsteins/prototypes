@@ -78,6 +78,11 @@ body { display: flex; flex-direction: column; height: 100vh; }
    three panes that are hidden would paint on top of the one that is not.
    The DOM says hidden and the screen said otherwise. */
 .pane[hidden] { display: none; }
+/* A pane's content scrolls inside the pane. The tab box clips at its own
+   height and the Do pane scrolls its rows itself; the other five drew their
+   content straight into the clip, so a Gear list longer than the box had a
+   bottom nobody could reach. */
+#camp, #inventory, #gear, #log, #journal { min-height: 0; overflow-y: auto; }
 
 .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
 .tabs .tab {

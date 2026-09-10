@@ -30,6 +30,18 @@ export function fmtDuration(minutes: number): string {
   return rest === 0 ? `${h} h` : `${h} h ${rest} min`;
 }
 
+/**
+ * A span of days as a player reads one: exact inside a fortnight, weeks
+ * inside a season, months beyond. "Expected in 105 days" read as false
+ * precision to a tester; "about 3 months" is what he asked for.
+ */
+export function fmtDaysAbout(days: number): string {
+  const d = Math.max(0, Math.round(days));
+  if (d <= 14) return `${d} day${d === 1 ? "" : "s"}`;
+  if (d < 60) return `about ${Math.round(d / 7)} weeks`;
+  return `about ${Math.round(d / 30.44)} months`;
+}
+
 /** "90 s" or "2 min 30 s" of wall clock for a game duration at the one scale. */
 export function fmtReal(gameMinutes: number): string {
   return fmtRealSeconds(realSecondsFor(gameMinutes));

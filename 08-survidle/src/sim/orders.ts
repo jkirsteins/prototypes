@@ -364,7 +364,18 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
   if (o.req.task === "build" && o.req.arg !== "snare") {
     return campSite(st)?.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
   }
-  if (o.req.task === "light" || o.req.task === "lightIndoors") return st.fire.lit;
+  // A fire kept is read off the camp's own fire. A fire asked for once or a
+  // few times is read off the tally, because a field fire lives on the
+  // survivor and not on the region: read off the camp fire alone, a once
+  // field fire was never met, and the row lit a fresh one every time the
+  // last had burned down. A once given at camp while the fire already burns
+  // is still met by the fire, since there is nothing left to do for it.
+  if (o.req.task === "light" || o.req.task === "lightIndoors") {
+    const u = o.req.until;
+    if (u.kind === "once" && o.done >= 1) return true;
+    if (u.kind === "times" && o.done >= u.n) return true;
+    return st.fire.lit;
+  }
   if (o.req.task === "walk" && typeof o.req.where === "object") {
     return o.done >= 1 || cellOf(state, world) === o.req.where.cell;
   }

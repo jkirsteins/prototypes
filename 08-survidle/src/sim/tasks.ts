@@ -1142,7 +1142,12 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   for (const id of STRUCTURE_IDS) out.push(check(state, world, cal, "build", id));
   for (const sid of DECAYING) out.push(check(state, world, cal, "mend", sid));
   out.push(check(state, world, cal, "mend", "seep"));
-  for (const s of r.spots) if (s.cell !== here) out.push(check(state, world, cal, "walk", `spot:${s.id}`));
+  // The generated camp spot is ground until somebody makes camp on it: with
+  // no camp, its row read "Walk to ?" and offered a home that was not there.
+  for (const s of r.spots) {
+    if (s.id === "camp" && campCellOf(state, world) === null) continue;
+    if (s.cell !== here) out.push(check(state, world, cal, "walk", `spot:${s.id}`));
+  }
   out.push(check(state, world, cal, "haul"));
   for (const nb of r.neighbours) out.push(check(state, world, cal, "travel", `region:${nb.id}`));
   out.push(check(state, world, cal, "explore", `region:${r.id}`));

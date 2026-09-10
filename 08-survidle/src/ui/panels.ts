@@ -39,7 +39,7 @@ import {
 import { isWorkIntent, type AtmosphereSample, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { atmosphereAt, forecastText, groundAt, iceMode, type LocalConditions, localStorm, localWeather, stormComing, stormNow } from "../sim/weather";
-import { fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
+import { fmtDaysAbout, fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { cellAt, regionAt, speciesHere, type World } from "../world/gen";
 import { routeKm } from "../world/route";
 import { hurryKind, type HurryState } from "./hurry";
@@ -702,11 +702,23 @@ function activityStep(state: GameState, world: World, cal: Calendar): string {
     .replace("laying out materials at camp", "laying out materials");
 }
 
+/**
+ * The need a care row is serving, said beside its name: "Self-care" over
+ * "opening an ice hole" left a tester asking why he was opening one, and
+ * the answer was that he was thirsty.
+ */
+const CARE_NEED_WORD = {
+  sleep: "sleepy", storm: "storm coming", cold: "cold", hungry: "hungry",
+  thirsty: "thirsty", spent: "exhausted", home: "going home", fire: "the fire", snares: "the snares",
+} as const;
+
 export function activity(state: GameState, world: World, cal: Calendar): Activity | null {
   const it = state.intent;
   if (it) {
     return {
-      title: isWorkIntent(it) ? plain(check(state, world, cal, it.task, it.arg, it.cell).label) : it.care === "camp" ? "Camp maintenance" : "Self-care",
+      title: isWorkIntent(it)
+        ? plain(check(state, world, cal, it.task, it.arg, it.cell).label)
+        : `${it.care === "camp" ? "Camp maintenance" : "Self-care"}: ${CARE_NEED_WORD[it.need]}`,
       step: activityStep(state, world, cal),
       progress: !!state.task && state.task.duration > 0,
     };
@@ -1044,7 +1056,7 @@ ${rows.length ? rows.join("") : `<p class="dim">No one has died here yet.</p>`}
 
 export function journalHtml(state: GameState, cal: Calendar, _ui: UiState): string {
   const n = nextThreshold(state, cal);
-  const when = n.inDays > 0 ? `expected in ${n.inDays} days` : "any day now";
+  const when = n.inDays > 0 ? `expected in ${fmtDaysAbout(n.inDays)}` : "any day now";
   const season = `<div class="season"><b>Next: ${esc(NAMES[n.id])}</b>, ${when}. ${esc(ASKS_FOR[n.id])}</div>`;
   const rec = current(state);
   const card = `<div class="card">${cardHtml(rec.person, rec.name, livingExtras(state), { px: 48 })}</div>`;
