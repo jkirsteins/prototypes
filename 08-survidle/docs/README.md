@@ -116,7 +116,8 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   the fog is per cell, not per region: what you have walked is a thread
   through the black, and what the eye reaches from where you stand is a
   blot around it. Closed spruce shows you the ground underfoot and no
-  more; open bog and a fell top show you the horizon; the dark shows you
+  more, but trees at the water's edge show you the water and the far
+  shore; open bog and a fell top show you the horizon; the dark shows you
   nothing at all.
 - **You cannot walk where you do not know the way.** A route may not cross
   ground you have never seen, so "walk to camp" can say there is no way
