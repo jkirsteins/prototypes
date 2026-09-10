@@ -152,7 +152,12 @@ export function lakeComponents(height: Float32Array, filled: Float32Array, w: nu
   return lake;
 }
 
-/** Sea is what lies at or below zero and is 4-connected to an edge cell at or below zero; a drowned hollow inland is not sea. */
+/**
+ * Sea is what lies at or below zero and touches, across any of its eight
+ * neighbours, sea that reaches an edge cell at or below zero: the same
+ * neighbourhood the flood uses, so no drowned cell is left between the two.
+ * A drowned hollow inland is not sea.
+ */
 export function connectedSea(height: Float32Array, w: number, h: number): Uint8Array {
   const n = w * h;
   const sea = new Uint8Array(n);
@@ -169,11 +174,14 @@ export function connectedSea(height: Float32Array, w: number, h: number): Uint8A
   }
   while (head < tail) {
     const c = queue[head++];
-    const x = c % w;
-    const y = (c - x) / w;
-    const around = [x > 0 ? c - 1 : -1, x < w - 1 ? c + 1 : -1, y > 0 ? c - w : -1, y < h - 1 ? c + w : -1];
-    for (const nb of around) {
-      if (nb < 0 || sea[nb] || height[nb] > 0) continue;
+    const cx = c % w;
+    const cy = (c - cx) / w;
+    for (let k = 0; k < 8; k++) {
+      const nx = cx + DX8[k];
+      const ny = cy + DY8[k];
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const nb = ny * w + nx;
+      if (sea[nb] || height[nb] > 0) continue;
       sea[nb] = 1;
       queue[tail++] = nb;
     }

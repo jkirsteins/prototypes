@@ -42,12 +42,16 @@ const TROUGH_MIN_KM2 = 5;
 export function carveGlacial(height: Float32Array, w: number, h: number, dir: Uint8Array, count: Uint32Array, order: Int32Array, seaBefore: Uint8Array): void {
   const n = w * h;
   // A cell drains west if its receiver does, or it is Atlantic sea itself.
+  // The actual shoreline sits inland of the template coast line (the coastal
+  // flank starts below sea level and the relief noise pushes it further), so
+  // coastKm below 0 alone matches nothing; 100 catches the real Atlantic
+  // shore while staying short of the Bothnian bay, which lies beyond 200 km.
   const drainsWest = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     if (!seaBefore[i]) continue;
     const x = i % w;
     const y = (i - x) / w;
-    if (coastKmOfCell(x, y, w, h) < 0) drainsWest[i] = 1;
+    if (coastKmOfCell(x, y, w, h) < 100) drainsWest[i] = 1;
   }
   for (let k = n - 1; k >= 0; k--) {
     const c = order[k];

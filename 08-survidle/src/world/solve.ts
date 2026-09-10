@@ -22,16 +22,17 @@ export interface HydrologyResult {
   dir: Uint8Array;
   count: Uint32Array;
   flow: Float32Array;
+  drowned: Uint8Array;
 }
 
-export function hydrologyPass(height: Float32Array, w: number, h: number, sea: Uint8Array) {
+export function hydrologyPass(height: Float32Array, w: number, h: number, sea: Uint8Array, weights: Float32Array) {
   const filled = priorityFlood(height, w, h, sea);
   const dir = flowDirections(filled, w, h, sea);
-  const { count, flow, order } = accumulate(dir, w, h, runoffWeights(w, h));
+  const { count, flow, order } = accumulate(dir, w, h, weights);
   return { filled, dir, count, flow, order };
 }
 
-/** Stages 1 to 5: template, erosion, upsample, drainage, carving and the sea re-read, then drainage again with the lakes. */
+/** Stages one to five of the six; classification joins in classify.ts: template, erosion, upsample, drainage, carving and the sea re-read, then drainage again with the lakes. */
 export function solveHydrology(seed: number, w: number, h: number, onProgress: SolveProgress = () => {}): HydrologyResult {
   onProgress(STAGES[0], 0);
   const { cw, ch } = coarseSize(w, h);
@@ -40,14 +41,18 @@ export function solveHydrology(seed: number, w: number, h: number, onProgress: S
   erode(coarse.height, cw, ch, coarse.uplift, coarse.sea, ERODE_ITERATIONS, (i) => onProgress(STAGES[1], (i + 1) / ERODE_ITERATIONS));
   const height = upsample(coarse.height, cw, ch, w, h, seed);
   onProgress(STAGES[2], 0);
+  const weights = runoffWeights(w, h);
   const seaBefore = connectedSea(height, w, h);
-  const first = hydrologyPass(height, w, h, seaBefore);
+  const first = hydrologyPass(height, w, h, seaBefore, weights);
   onProgress(STAGES[3], 0);
   carveGlacial(height, w, h, first.dir, first.count, first.order, seaBefore);
   const sea = connectedSea(height, w, h);
+  const n = w * h;
+  const drowned = new Uint8Array(n);
+  for (let i = 0; i < n; i++) if (sea[i] && !seaBefore[i]) drowned[i] = 1;
   onProgress(STAGES[3], 0.5);
-  const second = hydrologyPass(height, w, h, sea);
+  const second = hydrologyPass(height, w, h, sea, weights);
   const lake = lakeComponents(height, second.filled, w, h, sea, LAKE_MIN_DEPTH_M);
   onProgress(STAGES[3], 1);
-  return { height, sea, lake, dir: second.dir, count: second.count, flow: second.flow };
+  return { height, sea, lake, dir: second.dir, count: second.count, flow: second.flow, drowned };
 }

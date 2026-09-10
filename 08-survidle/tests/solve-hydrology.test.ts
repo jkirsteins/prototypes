@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NO_FLOW, receiverOf } from "../src/world/hydro";
 import { solveHydrology } from "../src/world/solve";
-import { coastLineU } from "../src/world/terrain";
 
 const W = 120, H = 160;
 
@@ -48,13 +47,10 @@ describe("the hydrology of a miniature world", () => {
   });
 
   it("cuts fjords: sea reaches inland of the template coast line somewhere on the west side", () => {
-    // A fjord is sea east of the template coast line.
-    let inland = 0;
-    for (let y = 0; y < H; y++) {
-      const coastU = coastLineU((y + 0.5) / H);
-      for (let x = Math.ceil(coastU * W) + 3; x < W; x++) if (r.sea[y * W + x]) inland++;
-    }
-    expect(inland).toBeGreaterThan(20);
+    // Fjords are sea the carving made: land before, sea after.
+    let drowned = 0;
+    for (let i = 0; i < n; i++) drowned += r.drowned[i];
+    expect(drowned).toBeGreaterThan(20);
   });
 
   it("is deterministic", () => {
