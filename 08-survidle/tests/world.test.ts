@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { fishSpecies } from "../src/sim/species";
+import { newWorld, terrainOfPatch, terrainPeek } from "../src/world/cells";
+import { terrainAtPatch } from "../src/world/fine-terrain";
 import { cellAt, generateWorld, hasSpot, neighbours, regionAt, regionOf, speciesHere, terrainOf, WORLD_H, WORLD_W } from "../src/world/gen";
+import { patchId } from "../src/world/spatial";
 import { LATTICE_W } from "../src/world/terrain";
 import { findRoute, routeKm } from "../src/world/route";
 
@@ -16,6 +19,16 @@ describe("world generation", () => {
     expect(regionAt(again, again.start).name).toBe(start.name);
     for (const idx of start.cells.slice(0, 50)) expect(cellAt(again, idx).terrain).toBe(cellAt(world, idx).terrain);
     expect(generateWorld(43).start === world.start && regionAt(generateWorld(43), world.start).name === start.name).toBe(false);
+  });
+
+  it("allocates only touched 96 by 96 fine chunks while peeks remain pure", () => {
+    const fine = newWorld(21);
+    const patch = patchId(6411, 1875);
+    expect(fine.fineChunks.size).toBe(0);
+    expect(terrainPeek(fine, patch)).toBe(terrainAtPatch(21, patch));
+    expect(fine.fineChunks.size).toBe(0);
+    expect(terrainOfPatch(fine, patch)).toBe(terrainAtPatch(21, patch));
+    expect(fine.fineChunks.size).toBe(1);
   });
 
   it("is the size of the far north", () => {
