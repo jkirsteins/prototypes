@@ -30,9 +30,14 @@ export function fmtDuration(minutes: number): string {
   return rest === 0 ? `${h} h` : `${h} h ${rest} min`;
 }
 
-/** "90 s" or "2 min 30 s" of wall clock for a game duration. */
+/** "90 s" or "2 min 30 s" of wall clock for a game duration at the one scale. */
 export function fmtReal(gameMinutes: number): string {
-  const s = Math.round(realSecondsFor(gameMinutes));
+  return fmtRealSeconds(realSecondsFor(gameMinutes));
+}
+
+/** "90 s" or "2 min 30 s" for a count of real seconds. */
+export function fmtRealSeconds(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
   if (s < 60) return `${s} s`;
   const m = Math.floor(s / 60);
   const rest = s % 60;

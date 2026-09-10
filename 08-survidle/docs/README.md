@@ -26,6 +26,9 @@ or a single advanced action runs at up to 6x from start to end, and a
 standing or counted order goes 3 minutes ahead each time you click its
 row, one click per two-thirds of a second. Body needs, the runner's
 waiting, and everything done while you are away run at the one scale.
+The seconds in brackets on the task bar and on an option row are the wall
+clock under all of that - the hurry and the body's pace - not the one
+scale, so a once action's "40 min (10 s)" is what you will actually wait.
 
 ## How it plays
 
