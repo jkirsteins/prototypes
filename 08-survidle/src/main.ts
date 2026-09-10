@@ -31,7 +31,7 @@ import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
-import type { GameState, ItemId, TaskId } from "./sim/types";
+import type { GameState, ItemId, OpportunityKey, TaskId } from "./sim/types";
 import { insertWalkAtTop } from "./sim/walkorders";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature, localWeather } from "./sim/weather";
@@ -44,6 +44,7 @@ import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
 import { catalogPage, opportunityCatalogAction, opportunityCatalogHtml, opportunityCatalogKeyboard } from "./ui/opportunity-catalog";
 import { opportunityPanelHtml } from "./ui/opportunity-panel";
+import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
 import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, mapViewportBounds, viewOrigin } from "./ui/map";
@@ -54,7 +55,7 @@ import {
   manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
-import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
+import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, simulationPaused, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
 import { advanceHurry, hurryClick, hurryKind, newHurry } from "./ui/hurry";
 import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
@@ -275,6 +276,7 @@ function render(nowMs = performance.now()) {
   if (cloudShadows && cloudShadows.checked !== ui.cloudShadows) cloudShadows.checked = ui.cloudShadows;
 
   const overlay = document.getElementById("overlay")!;
+  if (!ui.opportunityPresentation) ui.opportunityPresentation = nextOpportunityPresentation(state, ui);
   if (ui.manual) {
     setPanel("overlay", manualHtml());
     overlay.hidden = false;
@@ -299,6 +301,15 @@ function render(nowMs = performance.now()) {
   } else if (ui.recognition !== null) {
     setPanel("overlay", recognitionHtml(state, ui.recognition));
     overlay.hidden = false;
+  } else if (ui.opportunityPresentation) {
+    const newBatch = overlay.querySelector<HTMLElement>(".opportunity-modal")?.dataset.notice !== ui.opportunityPresentation.id;
+    setPanel("overlay", opportunityModalHtml(state, ui.opportunityPresentation));
+    overlay.hidden = false;
+    if (newBatch || !overlay.contains(document.activeElement)) {
+      // Start long batches at their heading, not at an OK below the fold.
+      overlay.scrollTop = 0;
+      overlay.querySelector<HTMLElement>("#opportunity-modal-heading")?.focus({ preventScroll: true });
+    }
   } else if (ui.opportunityCatalog.open) {
     ui.opportunityCatalog.page = catalogPage(state, ui.opportunityCatalog.category, ui.opportunityCatalog.page, opportunityPageSize()).page;
     setPanel("overlay", opportunityCatalogHtml(state, ui.opportunityCatalog, opportunityPageSize()));
@@ -319,7 +330,7 @@ function frame(now: number) {
     requestAnimationFrame(frame);
     return;
   }
-  if (!weatherShotName && !state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.opportunityPresentation && ui.recognition === null) {
+  if (!weatherShotName && !simulationPaused(state, ui)) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
@@ -348,7 +359,7 @@ function frame(now: number) {
     // crossed inside an offline catch-up waits behind that catch-up's own away
     // report; momentToOpen owns the whole rule.
     if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
-    // Opportunity facts stay queued for the separate presentation surface.
+    // Wildlife recognition waits behind an already open opportunity presentation.
     if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.opportunityPresentation && ui.recognition === null) {
       ui.recognition = state.wildlife.recognitionQueue[0] ?? null;
     }
@@ -573,6 +584,12 @@ function onClick(ev: Event) {
     case "opportunity-current":
       opportunityCatalogAction(state, ui, act, target.dataset.opportunity ?? target.dataset.category ?? target.dataset.page ?? "", opportunityPageSize());
       break;
+    case "opportunity-set-current":
+    case "opportunity-modal-ok":
+      if (opportunityModalAction(state, ui, act, target.dataset.notice ?? "", target.dataset.opportunity as OpportunityKey | undefined ?? null)) {
+        lastReal = performance.now();
+      }
+      break;
     case "shopping-track": {
       const id = target.dataset.id;
       if (id === "craft" || id === "build") trackShopping(state, id, target.dataset.arg ?? "");
@@ -696,7 +713,7 @@ function onClick(ev: Event) {
   if (FORECAST_ACTS.includes(target.dataset.act!)) requestForecast();
   persistGame();
   render();
-  if (act === "opportunity-close") {
+  if ((act === "opportunity-close" || act === "opportunity-modal-ok" || act === "opportunity-set-current") && !ui.opportunityPresentation) {
     const opener = opportunityOpener?.isConnected ? opportunityOpener : document.querySelector<HTMLElement>('#opportunities [data-act="opportunity-open"]');
     opener?.focus();
   } else if (act === "opportunity-detail" || act === "opportunity-current") {
@@ -766,6 +783,11 @@ document.addEventListener("visibilitychange", () => {
 });
 document.addEventListener("click", onClick);
 document.addEventListener("keydown", (ev) => {
+  const presentation = document.querySelector<HTMLElement>('#overlay:not([hidden]) .opportunity-modal');
+  if (presentation) {
+    opportunityModalKeyboard(presentation, ev);
+    return;
+  }
   const catalog = document.querySelector<HTMLElement>('#overlay:not([hidden]) .opportunity-catalog');
   if (catalog) {
     opportunityCatalogKeyboard(catalog, ev);

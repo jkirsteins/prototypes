@@ -10,8 +10,6 @@ export interface OpportunityCatalogUi {
   detail: OpportunityKey | null;
 }
 
-export interface OpportunityPresentationUi { noticeIds: string[] }
-
 // Authored leaves have no model group. These anonymous slot namespaces are UI only.
 type CatalogGroupId = OpportunityGroupId | `authored-${OpportunityCategory}`;
 export interface CatalogRowView {

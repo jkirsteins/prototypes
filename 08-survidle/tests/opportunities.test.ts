@@ -8,11 +8,40 @@ import {
   opportunityEligible,
   setCurrentOpportunity,
   recordOpportunityEvent,
+  OPPORTUNITY_GROUPS,
 } from "../src/sim/opportunities";
 import { newGame } from "../src/sim/newgame";
 import type { OpportunityDef } from "../src/sim/types";
 
 describe("opportunity focus", () => {
+  it("clears completed current before selecting its single discovered successor", () => {
+    const { state } = newGame(3);
+    discoverOpportunity(state.opportunities, "track:deer", 0, false);
+    setCurrentOpportunity(state.opportunities, "track:deer");
+    recordOpportunityEvent(state, { kind: "signFound", species: "deer" });
+    expect(state.opportunities.current).toBe("hunt:deer");
+  });
+
+  it("batches the last child, group completion, and successor exactly once", () => {
+    const opportunities = newOpportunities("spring");
+    opportunities.notices = [];
+    const group = OPPORTUNITY_GROUPS.find((entry) => entry.id === "track-animals")!;
+    for (const key of group.keys) {
+      discoverOpportunity(opportunities, key, 0, false);
+      if (key !== "track:deer") opportunities.completedAt[key] = 0;
+    }
+    // Discover the earlier children's successors before the event under test.
+    applyOpportunityEvent(opportunities, { kind: "drank" }, 1);
+    opportunities.notices = [];
+    applyOpportunityEvent(opportunities, { kind: "signFound", species: "deer" }, 2);
+    expect(opportunities.notices).toHaveLength(1);
+    expect(opportunities.notices[0]).toMatchObject({ completed: ["track:deer"], completedGroups: ["track-animals"], discovered: ["hunt:deer"], messages: [] });
+    const before = structuredClone(opportunities.notices);
+    applyOpportunityEvent(opportunities, { kind: "signFound", species: "deer" }, 2);
+    applyOpportunityEvent(opportunities, { kind: "speciesSeen", species: "deer" }, 2);
+    expect(opportunities.notices).toEqual(before);
+  });
+
   it("discovers authored parallel leaves only after their prerequisite chain", () => {
     const { state } = newGame(3);
     expect(state.opportunities.discoveredAt.site).toBeDefined();

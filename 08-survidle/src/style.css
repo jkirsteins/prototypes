@@ -1376,6 +1376,18 @@ button.act small.gives, span.act small.gives,
 .opportunity-detail { padding-top: 8px; }
 .opportunity-detail h2 { color: var(--text); text-transform: none; font-size: 15px; letter-spacing: normal; }
 .opportunity-detail-actions { display: flex; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+/* A batch shares the field index's ink and paper. Only the outer sheet scrolls. */
+#overlay:has(.opportunity-modal) { overflow-y: auto; align-items: flex-start; padding: 18px; }
+.opportunity-modal {
+  width: min(560px, 100%); margin: auto; padding: 20px 24px;
+  background: var(--panel); border: 1px solid var(--line); text-align: left;
+}
+.opportunity-modal-label { color: var(--dim); font-size: 11px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 1px; }
+.opportunity-completed { color: var(--good); }
+.opportunity-discovery { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.opportunity-discovery h2 { color: var(--text); font-size: 15px; text-transform: none; letter-spacing: normal; overflow-wrap: anywhere; }
+.opportunity-modal-actions { display: flex; justify-content: end; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.opportunity-modal button:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .cards { display: flex; gap: 12px; margin: 10px 0; align-items: stretch; }
 .card {
   flex: 1 1 0; min-width: 0; text-align: left;
@@ -1435,6 +1447,8 @@ button.act small.gives, span.act small.gives,
   .col { display: contents; }
   #opportunities { order: 0; }
   #overlay:has(.opportunity-catalog) { padding: 10px; }
+  #overlay:has(.opportunity-modal) { padding: 10px; }
+  .opportunity-modal { padding: 16px; }
   #overlay .box.opportunity-catalog { --opportunity-page-size: 6; --opportunity-row-height: 96px; padding: 14px; }
   #shopping { order: 0; }
   #task { order: 1; }

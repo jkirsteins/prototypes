@@ -191,6 +191,17 @@ export function setCurrentOpportunity(state: OpportunityState, key: OpportunityK
   return true;
 }
 
+/** Consume only this presentation; stale clicks cannot select or dismiss another batch. */
+export function dismissOpportunityPresentation(state: GameState, noticeId: string, selected: OpportunityKey | null): boolean {
+  const opportunities = state.opportunities;
+  const index = opportunities.notices.findIndex((notice) => notice.id === noticeId);
+  if (index < 0) return false;
+  if (selected !== null && (!opportunities.notices[index].discovered.includes(selected)
+    || !opportunityDef(selected) || !setCurrentOpportunity(opportunities, selected))) return false;
+  opportunities.notices.splice(index, 1);
+  return true;
+}
+
 export function isOpportunityDiscovered(state: OpportunityState, key: OpportunityKey): boolean {
   return state.discoveredAt[key] !== undefined;
 }

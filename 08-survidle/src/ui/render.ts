@@ -8,8 +8,8 @@ import { defaultPanes, type Panes } from "./panes";
 import { DEFAULT_TRAVEL_DISPLAY, type TravelDisplay } from "./travel";
 import type { AwaySummary } from "../sim/save";
 import type { WildlifeStartleEvent } from "../sim/wildlife-encounter";
-import type { IntentRequest, ItemId, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
-import type { OpportunityCatalogUi, OpportunityPresentationUi } from "./opportunity-catalog";
+import type { GameState, IntentRequest, ItemId, OpportunityNotice, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
+import type { OpportunityCatalogUi } from "./opportunity-catalog";
 
 /** What the screen remembers that the game does not. */
 export interface UiState {
@@ -37,7 +37,7 @@ export interface UiState {
   /** Manual browsing never pauses the simulation. */
   opportunityCatalog: OpportunityCatalogUi;
   /** Queued facts for the separate paused presentation surface. */
-  opportunityPresentation: OpportunityPresentationUi | null;
+  opportunityPresentation: OpportunityNotice | null;
   /** The recognized wildlife subject whose naming moment is open. */
   recognition: number | null;
   /** Perceived live reactions only; neither the queue nor its deduplication history is saved. */
@@ -143,6 +143,11 @@ export function setWhenField(when: OrderWhen, field: WhenField, value: string): 
 /** A row's plain-click choice: a fetch or a melt brings its water to camp, everything else leaves its yield where it is. */
 export function defaultChoiceFor(id: TaskId): RowChoice {
   return { ...defaultChoice(), deliver: id === "fill" || id === "melt" ? "camp" : "leave" };
+}
+
+/** Catalog browsing is live; the presentation surfaces hold the world clock. */
+export function simulationPaused(state: GameState, ui: UiState): boolean {
+  return Boolean(state.dead || state.landing || ui.away || ui.teach || ui.welcome || ui.opportunityPresentation || ui.recognition !== null);
 }
 
 export function newUiState(): UiState {
