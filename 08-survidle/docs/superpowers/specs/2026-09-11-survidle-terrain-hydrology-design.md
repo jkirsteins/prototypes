@@ -140,7 +140,8 @@ function directly. Six stages:
    8 km wide and 700 m deep, the shape of a real fjord valley. Within 40 km of the coast an extra
    `300 * (1 - coastKm / 40)` m is taken off the floor so the trough
    drowns. Then sea is re-read: a cell at or below 0 that is
-   4-connected to the ocean edge is sea; a cell at or below 0 that is
+   8-connected to the ocean edge is sea, the same neighbourhood the
+   flood uses so no drowned cell is left between the two; a cell at or below 0 that is
    not connected stays land or lake. Stage 4 is re-run on the carved
    surface so the drainage, lakes and discharge agree with the final
    ground.
@@ -192,7 +193,7 @@ Water first, in this order, then land.
 
 | Class | Rule |
 |---|---|
-| sea | height at or below 0 and 4-connected to the ocean edge |
+| sea | height at or below 0 and 8-connected to the ocean edge |
 | lake | a filled depression with a fill depth of 2 m or more somewhere in it; the surface is the fill height |
 | river | land with discharge above 40 cubic metres a second, about 50 m wide at bankfull; its own terrain, impassable except on ice or at a ford |
 | ford | a river cell whose gradient to its receiver is above 0.5 percent, a riffle; passable at bog's walking cost |
