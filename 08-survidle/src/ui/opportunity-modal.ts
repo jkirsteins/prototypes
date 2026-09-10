@@ -50,7 +50,7 @@ export function opportunityModalKeyboard(dialog: HTMLElement, event: KeyboardEve
     const first = buttons[0];
     const last = buttons[buttons.length - 1];
     const active = dialog.ownerDocument.activeElement;
-    if (!dialog.contains(active) || (event.shiftKey ? active === first : active === last)) {
+    if (!buttons.some((button) => button === active) || (event.shiftKey ? active === first : active === last)) {
       event.preventDefault();
       (event.shiftKey ? last : first)?.focus();
     }

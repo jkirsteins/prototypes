@@ -152,6 +152,30 @@ it("ignores stale UI actions after another presentation has opened", () => {
   expect(ui.opportunityPresentation).toBeNull();
 });
 
+it("rejects a stale selection of a discovery that is already current without dismissing it", () => {
+  const { state, notice } = discovery();
+  const ui = newUiState();
+  ui.opportunityPresentation = notice;
+  setCurrentOpportunity(state.opportunities, "track:deer");
+  expect(opportunityModalAction(state, ui, "opportunity-set-current", notice.id, "track:deer")).toBe(false);
+  expect(state.opportunities.current).toBe("track:deer");
+  expect(state.opportunities.notices).toEqual([notice]);
+  expect(ui.opportunityPresentation).toBe(notice);
+});
+
+it("wraps initial Shift+Tab from the focused heading to the last modal button", () => {
+  const { state, notice } = discovery();
+  document.body.innerHTML = `<button>Background</button>${opportunityModalHtml(state, notice)}`;
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+  const heading = dialog.querySelector<HTMLElement>("#opportunity-modal-heading")!;
+  const last = dialog.querySelector<HTMLButtonElement>('[data-act="opportunity-modal-ok"]')!;
+  heading.focus();
+  const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true });
+  opportunityModalKeyboard(dialog, event);
+  expect(event.defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(last);
+});
+
 it("keeps keyboard focus inside the presentation and Escape uses OK", () => {
   const { state, notice } = discovery();
   document.body.innerHTML = opportunityModalHtml(state, notice);

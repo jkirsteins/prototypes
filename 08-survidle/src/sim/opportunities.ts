@@ -196,7 +196,7 @@ export function dismissOpportunityPresentation(state: GameState, noticeId: strin
   const opportunities = state.opportunities;
   const index = opportunities.notices.findIndex((notice) => notice.id === noticeId);
   if (index < 0) return false;
-  if (selected !== null && (!opportunities.notices[index].discovered.includes(selected)
+  if (selected !== null && (selected === opportunities.current || !opportunities.notices[index].discovered.includes(selected)
     || !opportunityDef(selected) || !setCurrentOpportunity(opportunities, selected))) return false;
   opportunities.notices.splice(index, 1);
   return true;
