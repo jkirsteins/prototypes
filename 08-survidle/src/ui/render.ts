@@ -8,7 +8,8 @@ import { defaultPanes, type Panes } from "./panes";
 import { DEFAULT_TRAVEL_DISPLAY, type TravelDisplay } from "./travel";
 import type { AwaySummary } from "../sim/save";
 import type { WildlifeStartleEvent } from "../sim/wildlife-encounter";
-import type { OpportunityKey, IntentRequest, ItemId, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
+import type { IntentRequest, ItemId, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
+import type { OpportunityCatalogUi, OpportunityPresentationUi } from "./opportunity-catalog";
 
 /** What the screen remembers that the game does not. */
 export interface UiState {
@@ -33,8 +34,10 @@ export interface UiState {
   manual: boolean;
   /** The rung whose moment is open, drained one at a time from state.teachQueue. */
   teach: Rung | null;
-  /** Goal guidance open now, whether automatic or reopened from a pinned row. */
-  goalGuide: { ids: OpportunityKey[]; done: OpportunityKey[]; notices?: string[]; automatic: boolean } | null;
+  /** Manual browsing never pauses the simulation. */
+  opportunityCatalog: OpportunityCatalogUi;
+  /** Queued facts for the separate paused presentation surface. */
+  opportunityPresentation: OpportunityPresentationUi | null;
   /** The recognized wildlife subject whose naming moment is open. */
   recognition: number | null;
   /** Perceived live reactions only; neither the queue nor its deduplication history is saved. */
@@ -145,7 +148,7 @@ export function defaultChoiceFor(id: TaskId): RowChoice {
 export function newUiState(): UiState {
   return {
     panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, cloudShadows: DEFAULT_CLOUD_SHADOWS, selected: null, hover: null, away: null, confirmAbandon: false, confirmCamp: false,
-    cemetery: false, manual: false, teach: null, goalGuide: null, recognition: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
+    cemetery: false, manual: false, teach: null, opportunityCatalog: { open: false, category: "survival", page: 0, detail: null }, opportunityPresentation: null, recognition: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false, regions: false },
     hurry: newHurry(), speedHistory: newSpeedHistory(), wildlifeStartles: [], wildlifeStartleIds: new Set(), mapViewport: null,
   };

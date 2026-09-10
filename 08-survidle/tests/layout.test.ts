@@ -38,6 +38,17 @@ describe("the map's own surface", () => {
 describe("the layout", () => {
   const page = () => readFileSync("index.html", "utf8");
 
+  it("keeps catalog pages and their controls outside nested vertical scrollers", () => {
+    expect(rule("#overlay .box.opportunity-catalog")).toContain("overflow: visible");
+    expect(rule("#overlay .box.opportunity-catalog")).toContain("max-height: none");
+    expect(rule("#overlay:has(.opportunity-catalog)")).toContain("overflow-y: auto");
+    expect(rule(".opportunity-pages")).toContain("grid-template-columns: 1fr auto 1fr");
+    const rules = css.split("}").filter((block) => /\.[a-z-]*opportunity/.test(block.split("{")[0]));
+    for (const block of rules.filter((block) => !block.includes("#overlay:has"))) {
+      expect(block).not.toMatch(/overflow(?:-y)?:\s*(?:auto|scroll)/);
+    }
+  });
+
   it("gives the speed history the whole weather footer without a dead strip below it", () => {
     expect(rule(".wx")).toContain("display: flex");
     expect(rule(".wx")).toContain("flex-direction: column");
@@ -65,8 +76,8 @@ describe("the layout", () => {
     const mid = html.slice(html.indexOf('id="center"'), html.indexOf('id="right"'));
     const right = html.slice(html.indexOf('id="right"'), html.indexOf('id="build"'));
 
-    for (const id of ["goals", "shopping", "stats", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
-    expect(left.indexOf('id="goals"')).toBeLessThan(left.indexOf('id="shopping"'));
+    for (const id of ["opportunities", "shopping", "stats", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
+    expect(left.indexOf('id="opportunities"')).toBeLessThan(left.indexOf('id="shopping"'));
     expect(left.indexOf('id="shopping"')).toBeLessThan(left.indexOf('id="stats"'));
     // The clock is gone: the day and the hour are three lines in the weather
     // widget, and the row it took is map now.
