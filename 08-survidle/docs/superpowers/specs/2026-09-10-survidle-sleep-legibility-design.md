@@ -33,7 +33,8 @@ circadian and ultradian alertness curves in `src/sim/sleep.ts`.
 Stamina remains the reserve spent by physical work. At or below `SLEEP_AT`, the
 survivor is too exhausted to work and must Rest. This is an exhaustion recovery,
 not sleep. The existing sticky `spent` need holds Rest until `RESTED_AT`, which
-prevents immediate stop-start work without adding another recovery latch. If
+also keeps the work gate closed until that same threshold and prevents immediate
+stop-start work without adding another recovery latch. If
 Sleepiness reaches `SLEEP_ONSET` during that Rest, the body changes once from
 Rest to Sleep through the ordinary sleep rule.
 
@@ -46,8 +47,8 @@ No second sleep-pressure value or collapse-specific sleep duration is added.
 Sleep is automatic. Remove the player-facing `Sleep` and `Camp for the night`
 actions from the Do panel and from new orders. Keep `Rest` as the explicit
 recovery action. Internal `sleep` and `night` task IDs remain loadable so old
-saves do not break, but a loaded `night` intent is normalized to automatic body
-care rather than offered again.
+saves do not break. A loaded `night` intent may finish its current automatic
+sleep, then ends instead of requesting another one.
 
 A body-owned sleep is one continuous activity:
 
@@ -126,8 +127,10 @@ Tests must establish the behavior before production changes.
 - Save compatibility: an old collapsed-sleep save loads into exhausted Rest,
   and legacy internal sleep/night state does not restore a player-facing action.
 
-Run the focused tests during each TDD cycle, then `npm test`, `npm run test:slow`,
-`npm run build`, and the root `npm run lint` before completion.
+Run only the focused tests needed by each TDD cycle, including individual tests
+from the slow partition when they directly cover changed behavior. Do not run
+the full slow suite. Before completion, run `npm test`, `npm run build`, and the
+root `npm run lint`.
 
 ## Playtest gate
 
