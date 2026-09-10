@@ -1,16 +1,14 @@
 import type { Terrain } from "../sim/types";
 import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, patchAt, type World } from "./cells";
 import { fieldsAtPatch, regionAtPatch } from "./fine-terrain";
+import type { FineGrid } from "./fine-route";
 import { FINE_PER_PARENT, type PatchId, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
 import { TERRAINS } from "./terrain";
 
 const CANOPY_HEIGHT_M: Partial<Record<Terrain, number>> = { spruce: 22, pine: 17, birch: 14 };
 const FINE_CHUNKS_W = Math.ceil(WORLD_FINE_W / FINE_CHUNK);
 
-export interface AggregateSource {
-  w: number;
-  h: number;
-  terrainAt(patch: PatchId): Terrain;
+export interface AggregateSource extends FineGrid {
   elevationAt?(patch: PatchId): number;
   regionAt?(patch: PatchId): number;
 }
