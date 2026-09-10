@@ -493,14 +493,20 @@ jackpot; routine production of several annual diets by one hunter is the defect.
 
 ### Mechanics-complete diagnostic, 2026-09-10
 
-The structural mechanics are ready for evaluation: 1,651 fast tests, 10 slow
-simulation tests and the production build pass. The five-seed expert year probe
-passes 2 of 5. Seeds 19 and 79 survive the year with about 430,000 and 220,000
-kcal at camp. Seed 19 takes eight elk and six deer in one 18.54 square km region
-between days 7 and 134; the region began with 6.10 elk and 53.30 deer, and every
-additional animal now comes through explicit conserved growth or movement.
-That is an aggressive local harvest and remains a calibration question, but it
-is no longer evidence of animals or carcasses being created from nothing.
+The structural mechanics are ready for evaluation. After integration with main,
+720 fast tests, 1,321 slow tests and the production build pass. The five-seed
+expert year probe passes 3 of 5. Seeds 19, 79 and 45 survive the year with about
+324,000, 278,000 and 2,600 kcal at camp. Seed 19 takes nine elk and four deer;
+seed 79 takes seven elk and six deer; seed 42 takes six elk and three deer in
+99 days before freezing. Every kill now consumes a conserved whole animal and
+creates a carcass that must be dressed, carried, preserved and stored.
+
+The remaining player-facing issue is cadence and stopping policy, not missing
+recovery machinery. Thirteen large animals per year for one survivor is too
+routine, and nine in 99 days is implausibly dense. Automatic hunting should stop
+against food and fat runway, and selection/encounter cadence/local avoidance
+must be calibrated together. Do not shrink carcasses or break conservation to
+fit the old band.
 
 The existing large-game kcal/day verdict is not ready to gate calibration. It
 divides recovered kill calories by days lived, so seed 42's single elk in a
@@ -509,11 +515,20 @@ what survives hauling, spoilage, preservation and consumption. Rebuild it around
 whole kill windows, hunted area, recovered calories, preserved calories and
 ending stock before changing the 300-1,500 band.
 
-The late-August first-snow probe also passes 2 of 5. The three failures starve
-on days 27, 38 and 27 while reporting large reachable root stands and known fish
-that the reference policy barely or never uses. This is unhealthy automation,
-but it does not show a player-facing food-source shortage. Repair the reference
-policy and paired source probes before tuning food production.
+The integrated late-August first-snow probe passes 4 of 5, up from 2 of 5. Seed
+17 still dies on day 29 while reporting about 9,179 kg of reachable roots and
+known oily/spawning fish but taking almost none. The other four reach first snow;
+three later starve on days 36, 51 and 37. Seed 45 receives about 204,000 kcal of
+large-game recovery in one measured week and later starves on day 137. This is
+unhealthy automatic policy at both extremes: it ignores available fallback food
+on poor starts and can over-hunt after a jackpot. Repair the policy and paired
+source probes before tuning food production.
+
+Evaluator status: safe to run for diagnosis, not safe to use as a numeric gate.
+The old large-game kcal/day denominator still inflates short lives and reports
+gross recovery rather than preserved usable food. Rebuild it around kill windows,
+hunted area, recovered and preserved calories, ending stock, and explicit food
+and fat runway before recalibrating bands.
 
 ## Fog edge translucency
 
