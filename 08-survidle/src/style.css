@@ -1465,36 +1465,28 @@ button.act small.gives, span.act small.gives,
    colour. */
 .grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; --water-rest: #102047; --water-lit: #182d60; }
 .grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; --water-rest: #060d20; --water-lit: #0b1532; }
-/* Light on open water: a random shimmer, faked for the eye. Each cell in
-   sight steps through sixteen irregular shades between its depth band's
-   blue and a shade lighter, holding each about a quarter second, from its
-   own seeded starting point. Steps and no pattern, so nothing breathes and
-   nothing lines up. Wall clock, never the simulation's; remembered water
-   and ice lie still. */
-.grid .c.water-live {
-  animation: water-shimmer 4.1s step-end infinite;
-  /* ?shimmer= on the page sets the speed factor on the root; unset, the period stays as written. */
-  animation-duration: calc(4.1s / var(--water-shimmer-speed, 1));
-  animation-delay: var(--water-phase);
+/* Light on open water: rippling, faked for the eye. Three smooth sine
+   waves cross the sheet in different directions, with different
+   wavelengths and speeds, and each cell's colour is their sum. A cell's
+   phase in each wave comes from its position, so neighbours move together
+   and the light travels and spreads rather than blinking in place; three
+   directions crossing means no stripe. One clock ticks per cell as a
+   registered number, and the colour is computed from it in place, so the
+   only per-frame work is the water cells' own style. Wall clock, never the
+   simulation's; remembered water and ice lie still. The clock's cycle is a
+   whole number of every wave's period, so the wrap is seamless. */
+@property --water-t { syntax: "<number>"; inherits: false; initial-value: 0; }
+.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.water-live {
+  background-color: color-mix(in srgb, var(--water-lit) calc((0.5 + (sin(var(--water-t) * 1.2566 + var(--water-p1)) + sin(var(--water-t) * 1.6755 + var(--water-p2)) + sin(var(--water-t) * 0.7854 + var(--water-p3))) / 6) * 100%), var(--water-rest));
 }
-@keyframes water-shimmer {
-  0% { background-color: color-mix(in srgb, var(--water-lit) 20%, var(--water-rest)); }
-  6.25% { background-color: color-mix(in srgb, var(--water-lit) 75%, var(--water-rest)); }
-  12.5% { background-color: color-mix(in srgb, var(--water-lit) 40%, var(--water-rest)); }
-  18.75% { background-color: color-mix(in srgb, var(--water-lit) 100%, var(--water-rest)); }
-  25% { background-color: color-mix(in srgb, var(--water-lit) 10%, var(--water-rest)); }
-  31.25% { background-color: color-mix(in srgb, var(--water-lit) 85%, var(--water-rest)); }
-  37.5% { background-color: color-mix(in srgb, var(--water-lit) 30%, var(--water-rest)); }
-  43.75% { background-color: color-mix(in srgb, var(--water-lit) 55%, var(--water-rest)); }
-  50% { background-color: color-mix(in srgb, var(--water-lit) 0%, var(--water-rest)); }
-  56.25% { background-color: color-mix(in srgb, var(--water-lit) 65%, var(--water-rest)); }
-  62.5% { background-color: color-mix(in srgb, var(--water-lit) 45%, var(--water-rest)); }
-  68.75% { background-color: color-mix(in srgb, var(--water-lit) 90%, var(--water-rest)); }
-  75% { background-color: color-mix(in srgb, var(--water-lit) 25%, var(--water-rest)); }
-  81.25% { background-color: color-mix(in srgb, var(--water-lit) 70%, var(--water-rest)); }
-  87.5% { background-color: color-mix(in srgb, var(--water-lit) 5%, var(--water-rest)); }
-  93.75% { background-color: color-mix(in srgb, var(--water-lit) 50%, var(--water-rest)); }
-  100% { background-color: color-mix(in srgb, var(--water-lit) 20%, var(--water-rest)); }
+.grid .c.water-live {
+  animation: water-clock 600s linear infinite;
+  /* ?shimmer= on the page sets the speed factor on the root; unset, the ripples run as written. */
+  animation-duration: calc(600s / var(--water-shimmer-speed, 1));
+}
+@keyframes water-clock {
+  from { --water-t: 0; }
+  to { --water-t: 600; }
 }
 /* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
    depth palette. Thin ice remains dark and uncertain; safe ice forms the

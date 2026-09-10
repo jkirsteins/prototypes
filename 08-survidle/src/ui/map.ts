@@ -233,12 +233,32 @@ function detailHash(seed: number, x: number, y: number, n: number): number {
   return h >>> 0;
 }
 
-/** The wall-clock period of the water shimmer's sixteen-shade sequence. */
-export const WATER_SHIMMER_MS = 4100;
+/**
+ * The three ripples that light open water: a direction in radians and a
+ * wavelength in drawn cells each. Their periods live in the stylesheet
+ * beside the clock. Presentation only.
+ */
+export const WATER_RIPPLES = [
+  { direction: 0.35, wavelength: 5 },
+  { direction: 2.27, wavelength: 3.5 },
+  { direction: 4.54, wavelength: 8 },
+] as const;
 
-/** Where in the sequence a water cell starts, in ms, texture from the seed. Presentation only: the timing is the wall clock's. */
-export function waterPhaseMs(seed: number, x: number, y: number): number {
-  return detailHash(seed, x, y, 149) % WATER_SHIMMER_MS;
+/**
+ * A water cell's phase in each ripple, in radians within one turn: the
+ * cell's position projected on the ripple's direction, divided by the zoom
+ * so a coarse block keeps the same step per drawn cell, plus a little
+ * seeded jitter so the fronts are not ruled. Neighbours land near each
+ * other, which is what makes the light travel instead of blink.
+ */
+export function waterRipplePhases(seed: number, x: number, y: number, zoom: number): [number, number, number] {
+  const turn = 2 * Math.PI;
+  return WATER_RIPPLES.map((ripple, i) => {
+    const along = x * Math.cos(ripple.direction) + y * Math.sin(ripple.direction);
+    const jitter = (detailHash(seed, x, y, 149 + 2 * i) % 1000) / 1000 * 0.5 - 0.25;
+    const phase = (along / zoom / ripple.wavelength) * turn + jitter;
+    return Math.round(((phase % turn) + turn) % turn * 1000) / 1000;
+  }) as [number, number, number];
 }
 
 /** Presentation-only fog motion. Density and location still come exclusively from the atmosphere sample. */
@@ -987,7 +1007,8 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // render and the morph has nothing to change.
     if (cls.includes("t-water") && seen === 2 && !cls.includes("memory") && !cls.includes("mk") && !cls.includes("ice-thin") && !cls.includes("ice-safe")) {
       cls.push("water-live");
-      styles.push(`--water-phase:-${waterPhaseMs(world.seed, cx, cy)}ms`);
+      const [p1, p2, p3] = waterRipplePhases(world.seed, cx, cy, z);
+      styles.push(`--water-p1:${p1}`, `--water-p2:${p2}`, `--water-p3:${p3}`);
     }
     const style = styles.length ? ` style="${styles.join(";")}"` : "";
     parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${style}>${content}</span>`);
