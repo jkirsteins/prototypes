@@ -36,7 +36,9 @@ describe("the purposes and the filter", () => {
     const time = paneHtml(state, world, cal, "chop", undefined, { travelDisplay: "time" });
     expect(distance).toMatch(/will walk to nearest forest - \d+\.\d km/);
     expect(time).toMatch(/will walk to nearest forest - (?:\d+ h )?\d+ min/);
-    expect(distance).toMatch(/Fell any tree.*\d+ min/s);
+    // The bracket is the wall clock under the hurry, not the one scale: an hour
+    // of felling as a once action is seconds of the player's, not a minute.
+    expect(distance).toMatch(/Fell any tree.*\d+ h \(\d+ s\)/s);
   });
 
   it("the filter narrows by label, case-insensitive, and an empty filter keeps everything", () => {

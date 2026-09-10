@@ -11,7 +11,8 @@ import { fishSpecies, huntedLand, type Species } from "../sim/species";
 import { plain } from "../sim/voice";
 import { check, leftBehind, type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
-import { fmtDuration, fmtReal } from "../units";
+import { fmtDuration, fmtRealSeconds } from "../units";
+import { realSecondsForOrder } from "./hurry";
 import { regionState } from "../sim/regionstate";
 import { shoppingTarget } from "../sim/shopping";
 import { regionAt, type RegionDef, type World } from "../world/gen";
@@ -442,7 +443,12 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   // reader has to parse mid-scan, and the scan is what this panel is for, so
   // it moves under `more` rather than going away: still there for whoever
   // wants it, out of the way of whoever is looking for something else.
-  const line = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
+  // The bracket is the wall clock the bar will then show: a once action runs
+  // hurried from start to end, anything else at the one scale, and the body's
+  // pace stretches both. The row's own kind choice decides which it will be.
+  const once = rowRequest(ui.choice, o.id, arg).req.until.kind === "once";
+  const secs = fmtRealSeconds(realSecondsForOrder(state, world, o.id, o.arg, o.duration, once));
+  const line = o.duration > 0 ? `${fmtDuration(o.duration)} (${secs})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
   const initial = o.initialWalk;
   const walk = initial
     ? `<small class="initial-walk">will walk to ${initial.nearest ? "nearest " : ""}${esc(initial.destination)} - ${esc(formatTravel(initial.km, initial.minutes, ui.travelDisplay))}</small>`
