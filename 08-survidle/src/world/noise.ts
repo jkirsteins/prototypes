@@ -25,6 +25,12 @@ export function valueNoise(x: number, y: number, seed: number): number {
   return top + (bottom - top) * fy;
 }
 
+/** Value noise sampled at an explicitly physical wavelength in metres. */
+export function valueNoiseMetres(xM: number, yM: number, seed: number, wavelengthM: number, yWavelengthM = wavelengthM): number {
+  if (!(wavelengthM > 0) || !(yWavelengthM > 0)) throw new RangeError("noise wavelengths must be positive");
+  return valueNoise(xM / wavelengthM, yM / yWavelengthM, seed);
+}
+
 export function fbm(x: number, y: number, seed: number, octaves = 4): number {
   let sum = 0;
   let amp = 1;
@@ -35,6 +41,20 @@ export function fbm(x: number, y: number, seed: number, octaves = 4): number {
     norm += amp;
     amp *= 0.5;
     freq *= 2;
+  }
+  return sum / norm;
+}
+
+/** Fractal value noise whose base wavelengths are expressed in metres. */
+export function fbmMetres(xM: number, yM: number, seed: number, wavelengthM: number, octaves = 4, yWavelengthM = wavelengthM): number {
+  let sum = 0;
+  let amp = 1;
+  let norm = 0;
+  for (let i = 0; i < octaves; i++) {
+    const scale = 2 ** i;
+    sum += amp * valueNoiseMetres(xM, yM, seed + i * 101, wavelengthM / scale, yWavelengthM / scale);
+    norm += amp;
+    amp *= 0.5;
   }
   return sum / norm;
 }
