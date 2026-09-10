@@ -23,7 +23,7 @@ const roof = (d: OpportunityEvent) => d.kind === "protectionChanged"
     ? (d.protection >= 2 ? 1 : 0)
     : built("leanTo", "turfHut", "snowShelter", "cabin")(d);
 
-/** The kilos of firewood a gather actually produced, wet or dry: the goal is the gathering. */
+/** The kilos of firewood a gather actually produced, wet or dry: the opportunity is the gathering. */
 const firewoodKg = (d: OpportunityEvent) => (d.kind === "gathered" && (d.item === "firewood" || d.item === "wetFirewood") ? d.kg : 0);
 const awaitingContext = (_d: OpportunityEvent) => 0;
 
@@ -39,7 +39,7 @@ const gatheredMeal = ate("berries", "cookedRoots", "seaweed", "eggs", "barkFlour
 const cookedMeat = ate("cookedMeat");
 const cookedFish = ate("cookedFish", "cookedOilyFish");
 
-/** The firewood goal's target, in kilos: named once so the title can never drift from the number the bar checks. */
+/** The firewood opportunity's target, in kilos: named once so the title can never drift from the number the bar checks. */
 const FIREWOOD_KG = 10;
 
 export const WINTER_DRIED_MEAT_KG = 80;
@@ -60,7 +60,7 @@ export function checkWinterStores(state: GameState): void {
   if (progress.food && progress.fuel) recordOpportunityEvent(state, { kind: "winterStocked" });
 }
 
-/** The keeping goal's target, in days: named once so the title can never drift from the number the credit checks. */
+/** The keeping opportunity's target, in days: named once so the title can never drift from the number the credit checks. */
 export const KEPT_DAYS = 3;
 
 const NOTES: Partial<Record<StaticOpportunityId, string>> = {
@@ -440,9 +440,4 @@ export function opportunitySteps(state: GameState, key: OpportunityKey): { id: s
     const at = Math.min(step.target, progress[step.id] ?? (state.opportunities.completedAt[key] !== undefined ? step.target : 0));
     return { id: step.id, label: step.label, at, target: step.target, unit: step.unit, done: at + 1e-9 >= step.target };
   });
-}
-
-export function legacyStaticOpportunityKey(id: string): OpportunityKey | undefined {
-  if (SEASONS.includes(id as Season)) return `season:${id as Season}`;
-  return OPPORTUNITIES.find((def) => def.key === id && !def.group)?.key;
 }

@@ -2185,7 +2185,7 @@ export function leftBehind(state: GameState, world: World): string {
 }
 
 /**
- * Every finished task, and the one place goals hear about it. The switch
+ * Every finished task, and the one place opportunities hear about it. The switch
  * below is untouched: a deed is what happened, not a special case inside
  * whatever happened.
  */

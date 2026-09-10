@@ -87,7 +87,7 @@ ${shown}
 
 /**
  * The welcome a landing opens to, fresh survivor or heir alike. The first
- * welcome says who arrived and what they know. Goals say what to do next.
+ * welcome says who arrived and what they know. Opportunities say what to do next.
  */
 export function welcomeHtml(state: GameState, cal: Calendar): string {
   const rec = current(state);

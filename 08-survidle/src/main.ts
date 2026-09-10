@@ -526,7 +526,7 @@ function onClick(ev: Event) {
       // land() no-ops without a landing or a name; only a real heir's landing is a begin-again.
       if (wasLanding && heir && state.landing === null) beacon.beganAgain(state, Date.now());
       // Every landing gets its welcome, fresh survivor or heir. The first
-      // goal follows it; the manual remains available on demand.
+      // opportunity follows it; the manual remains available on demand.
       if (wasLanding && state.landing === null) ui.welcome = true;
       ui.confirmAbandon = false;
       resetForecastAt();

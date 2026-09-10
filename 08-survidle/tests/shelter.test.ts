@@ -387,7 +387,7 @@ describe("emergency shelter", () => {
     expect(sheltered(g.state, g.world)).toBe(true);
     expect(g.state.opportunities.completedAt.roof).toBeDefined();
     // A second emission would credit a newly empty ledger, even though the
-    // ordinary goal ledger also protects against repeating completed goals.
+    // ordinary opportunity ledger also protects against repeating completed opportunities.
     delete g.state.opportunities.completedAt.roof;
     delete g.state.opportunities.stepProgress.roof;
     work(150);

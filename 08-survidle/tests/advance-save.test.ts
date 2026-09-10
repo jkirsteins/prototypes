@@ -224,7 +224,7 @@ describe("save", () => {
     delete raw.state.opportunities.context.weather.plan;
     raw.state.opportunities.context.weather.goal = raw.state.opportunities.context.weather.opportunity;
     delete raw.state.opportunities.context.weather.opportunity;
-    raw.state.goals = { opportunity: raw.state.opportunities.context.weather };
+    raw.state["goals"] = { opportunity: raw.state.opportunities.context.weather };
     delete raw.state.opportunities;
 
     expect(deserialize(JSON.stringify(raw))!.state.opportunities.context.weather).toMatchObject({
@@ -245,7 +245,7 @@ describe("save", () => {
     const raw = JSON.parse(serialize(state));
     raw.state.opportunities.context.weather.goal = raw.state.opportunities.context.weather.opportunity;
     delete raw.state.opportunities.context.weather.opportunity;
-    raw.state.goals = { opportunity: raw.state.opportunities.context.weather };
+    raw.state["goals"] = { opportunity: raw.state.opportunities.context.weather };
     delete raw.state.opportunities;
     expect(deserialize(JSON.stringify(raw))!.state.opportunities.context.weather).toMatchObject({
       opportunity: "remoteStorm", status: "reserved", attempts: 2,

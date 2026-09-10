@@ -67,7 +67,7 @@ describe("a fire where you stand", () => {
     testRain(10);
     expect(check(state, world, calendar(90 * 1440), "light").why).toContain("too wet");
   });
-  it("cooks away from camp and credits the existing cook goal", () => {
+  it("cooks away from camp and credits the existing cook opportunity", () => {
     const game = lightField();
     reveal(game.state, ["cook"]);
     addItem(game.state.player.pack, "rawMeat", 1);
@@ -81,7 +81,7 @@ describe("a fire where you stand", () => {
   it("credits the introduced field lessons only after a successful field light and productive cook", () => {
     const game = field();
     const { state, world } = game;
-    for (const goal of OPPORTUNITIES) state.opportunities.completedAt[goal.key] = 0;
+    for (const opportunity of OPPORTUNITIES) state.opportunities.completedAt[opportunity.key] = 0;
     delete state.opportunities.completedAt.fieldFire;
     delete state.opportunities.completedAt.fieldMeal;
     delete state.opportunities.completedAt.remoteStorm;
@@ -106,7 +106,7 @@ describe("a fire where you stand", () => {
   it("does not credit a failed field light or an empty cook completion", () => {
     const game = field();
     const { state, world } = game;
-    for (const goal of OPPORTUNITIES) state.opportunities.completedAt[goal.key] = 0;
+    for (const opportunity of OPPORTUNITIES) state.opportunities.completedAt[opportunity.key] = 0;
     delete state.opportunities.completedAt.fieldFire;
     delete state.opportunities.completedAt.fieldMeal;
     delete state.opportunities.completedAt.remoteStorm;
@@ -134,10 +134,10 @@ describe("a fire where you stand", () => {
     for (let n = 0; state.task && n < 60; n++) stepTask(state, world, cal, new Rng(1), 1);
     expect(state.opportunities.completedAt.fieldMeal).toBeUndefined();
   });
-  it("stops field cooking without output or goal credit when rain extinguishes the fire in progress", () => {
+  it("stops field cooking without output or opportunity credit when rain extinguishes the fire in progress", () => {
     const game = lightField();
     const { state, world } = game;
-    for (const goal of OPPORTUNITIES) state.opportunities.completedAt[goal.key] = 0;
+    for (const opportunity of OPPORTUNITIES) state.opportunities.completedAt[opportunity.key] = 0;
     delete state.opportunities.completedAt.fieldMeal;
     delete state.opportunities.completedAt.remoteStorm;
     reveal(state, ["fieldMeal"]);
@@ -235,7 +235,7 @@ describe("a fire where you stand", () => {
     stepCamp(state, world, 0, 1, { region: state.player.region, atCamp: false });
     expect(qty(state.player.pack, "firewood")).toBeGreaterThan(dryBefore);
   });
-  it("burns down without automatic feeding or embers, and credits no hearth goals", () => {
+  it("burns down without automatic feeding or embers, and credits no hearth opportunities", () => {
     const { state, world } = lightField();
     const before = qty(state.player.pack, "firewood");
     stepCamp(state, world, 0, 60, { region: state.player.region, atCamp: false });
@@ -315,7 +315,7 @@ describe("a fire where you stand", () => {
     finish(game, "lightTorch");
     expect(state.player.torch.lit).toBe(true);
   });
-  it("credits no hearth goals after three days of hand-fed field fire in rain", () => {
+  it("credits no hearth opportunities after three days of hand-fed field fire in rain", () => {
     const { state, world } = lightField();
     testRain(2);
     for (let m = 0; m < 3 * 1440; m += 60) {

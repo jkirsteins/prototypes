@@ -3,7 +3,7 @@ import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
 import { ensureCareRows, isCareRow } from "./bodyorder";
 import { calendar, dayNumber, START_DOY } from "./calendar";
-import { legacyStaticOpportunityKey, newOpportunities, opportunityDef } from "./opportunities";
+import { newOpportunities, opportunityDef, OPPORTUNITIES, SEASONS } from "./opportunities";
 import type { OpportunityContextState, OpportunityKey, OpportunityNotice, OpportunityState, Season, WeatherOpportunityContext } from "./types";
 import { addItem } from "./inventory";
 import { TOOLS } from "./items";
@@ -31,7 +31,10 @@ export function awaySeconds(state: GameState): number {
 export interface SaveFile { version: 10; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  const file: SaveFile = { version: 10, savedAt: now, state };
+  // Keep the output boundary one-way even if a caller still holds old JSON.
+  const current = { ...state };
+  delete (current as unknown as Record<string, unknown>)["goals"];
+  const file: SaveFile = { version: 10, savedAt: now, state: current };
   return JSON.stringify(file);
 }
 
@@ -68,7 +71,7 @@ export function migrate(state: GameState, version = 10): void {
   state.landing ??= null;
   state.spine ??= { fired: {}, announced: {} };
   state.manualSeen ??= false;
-  migrateGoalsToOpportunities(state, state as unknown as Record<string, unknown>);
+  migrateLegacyOpportunities(state, state as unknown as Record<string, unknown>);
   state.shopping ??= null;
   if (state.task?.id === "explore" && state.task.originRegion === undefined) {
     const target = state.task.arg?.startsWith("region:") ? Number(state.task.arg.slice(7)) : Number.NaN;
@@ -423,6 +426,11 @@ interface LegacyProgressState {
   lastSeason?: Season;
 }
 
+function legacyStaticOpportunityKey(id: string): OpportunityKey | undefined {
+  if (SEASONS.includes(id as Season)) return `season:${id as Season}`;
+  return OPPORTUNITIES.find((def) => def.key === id && !def.group)?.key;
+}
+
 // Historical ordering belongs only to the save boundary.
 const LEGACY_STAGES: string[][] = [
   ["site"],
@@ -457,12 +465,16 @@ function copyKnownLegacyProgress(next: OpportunityState, legacy: LegacyProgressS
     const key = legacyStaticOpportunityKey(id);
     if (!key) continue;
     const def = opportunityDef(key)!;
-    if (legacy.introduced?.[id] || legacy.done?.[id]) next.discoveredAt[key] = 0;
-    if (legacy.done?.[id]) next.completedAt[key] = 0;
-    const compatible = Object.fromEntries(def.steps.filter((step) => legacy.stepProgress?.[id]?.[step.id] !== undefined).map((step) => [step.id, legacy.stepProgress![id][step.id]]));
+    if (legacy.introduced?.[id] === true || legacy.done?.[id] === true) next.discoveredAt[key] = 0;
+    if (legacy.done?.[id] === true) next.completedAt[key] = 0;
+    const validProgress = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
+    const compatible = Object.fromEntries(def.steps.flatMap((step) => {
+      const value = legacy.stepProgress?.[id]?.[step.id];
+      return validProgress(value) ? [[step.id, value]] : [];
+    }));
     // Older counted leaves had only an aggregate. One-step definitions have
     // an unambiguous mapping; multi-step outcomes cannot infer missing deeds.
-    if (!legacy.stepProgress?.[id] && def.steps.length === 1 && legacy.progress?.[id] !== undefined) compatible[def.steps[0].id] = legacy.progress[id];
+    if (!legacy.stepProgress?.[id] && def.steps.length === 1 && validProgress(legacy.progress?.[id])) compatible[def.steps[0].id] = legacy.progress![id];
     if (Object.keys(compatible).length) next.stepProgress[key] = compatible;
   }
 }
@@ -478,10 +490,10 @@ function firstUnfinishedLegacyLeaf(legacy: LegacyProgressState, minute: number):
   const eligible = (id: string): boolean => {
     const key = legacyStaticOpportunityKey(id);
     const def = key && opportunityDef(key);
-    if (!def || legacy.done?.[id] || after[id]?.some((prior) => !legacy.done?.[prior])) return false;
+    if (!def || legacy.done?.[id] === true || after[id]?.some((prior) => legacy.done?.[prior] !== true)) return false;
     const inherited = context === "readWeather" && ["readWeather", "prepareWeather", "surviveForecast"].includes(id)
       || context === "remoteStorm" && ["fieldFire", "fieldMeal", "remoteStorm"].includes(id);
-    return def.notBeforeDay === undefined || dayNumber(minute) >= def.notBeforeDay || Boolean(legacy.introduced?.[id]) || inherited;
+    return def.notBeforeDay === undefined || dayNumber(minute) >= def.notBeforeDay || legacy.introduced?.[id] === true || inherited;
   };
   const lesson = LEGACY_STAGES.flat().find((id) => weather.has(id) && eligible(id));
   if (lesson) return legacyStaticOpportunityKey(lesson) ?? null;
@@ -493,15 +505,15 @@ function firstUnfinishedLegacyLeaf(legacy: LegacyProgressState, minute: number):
   const at = seasons.indexOf(legacy.lastSeason ?? "spring");
   for (let i = 1; i <= seasons.length; i++) {
     const season = seasons[(at + i) % seasons.length];
-    if (!legacy.done?.[season]) return legacyStaticOpportunityKey(season) ?? null;
+    if (legacy.done?.[season] !== true) return legacyStaticOpportunityKey(season) ?? null;
   }
   return null;
 }
 
-function migrateLegacyNotices(legacy: LegacyProgressState): OpportunityNotice[] {
+function migrateLegacyNotices(legacy: LegacyProgressState, discovered: OpportunityKey[]): OpportunityNotice[] {
   const completed = [...new Set((legacy.queue ?? []).flatMap((id) => { const key = legacyStaticOpportunityKey(id); return key ? [key] : []; }))];
   const messages = (legacy.noticeQueue ?? []).filter((value): value is string => typeof value === "string");
-  return completed.length || messages.length ? [{ id: "legacy:1", minute: 0, completed, completedGroups: [], discovered: [], messages }] : [];
+  return completed.length || messages.length || discovered.length ? [{ id: "legacy:1", minute: 0, completed, completedGroups: [], discovered, messages }] : [];
 }
 
 function migrateLegacyOpportunityContext(legacy: LegacyProgressState): OpportunityContextState {
@@ -518,8 +530,8 @@ function migrateLegacyOpportunityContext(legacy: LegacyProgressState): Opportuni
   return { weather, chapter3HomeRegion: legacy.chapter3HomeRegion ?? null };
 }
 
-function migrateGoalsToOpportunities(state: GameState, raw: Record<string, unknown>): void {
-  const legacy = raw.goals as LegacyProgressState | undefined;
+function migrateLegacyOpportunities(state: GameState, raw: Record<string, unknown>): void {
+  const legacy = raw["goals"] as LegacyProgressState | undefined;
   if (!state.opportunities) {
     const next = newOpportunities(calendar(state.minute, state.startDoy).season);
     if (legacy) {
@@ -527,13 +539,17 @@ function migrateGoalsToOpportunities(state: GameState, raw: Record<string, unkno
       next.lastSeason = legacy.lastSeason ?? next.lastSeason;
       copyKnownLegacyProgress(next, legacy);
       next.current = firstUnfinishedLegacyLeaf(legacy, state.minute);
+      // The default state already knows site and the seasons. Presentation
+      // must instead follow what this legacy save had actually introduced.
+      const oldId = next.current?.startsWith("season:") ? next.current.slice(7) : next.current;
+      const discovered = next.current && oldId && legacy.introduced?.[oldId] !== true && legacy.done?.[oldId] !== true ? [next.current] : [];
       if (next.current) next.discoveredAt[next.current] ??= 0;
-      next.notices.push(...migrateLegacyNotices(legacy));
+      next.notices.push(...migrateLegacyNotices(legacy, discovered));
       next.context = migrateLegacyOpportunityContext(legacy);
     }
     state.opportunities = next;
   }
-  delete raw.goals;
+  delete raw["goals"];
 }
 
 export function saveGame(state: GameState, storage: Storage = localStorage, now = Date.now()): void {

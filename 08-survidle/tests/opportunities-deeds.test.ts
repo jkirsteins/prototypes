@@ -53,13 +53,13 @@ function announcedGame(seed: number) {
 }
 
 describe("deeds reach the ladder", () => {
-  it("the first goal is choosing where to live, credited by making camp", () => {
+  it("the first opportunity is choosing where to live, credited by making camp", () => {
     const { state } = announcedGame(3);
     expect(OPPORTUNITIES[0].key).toBe("site");
     expect(recordOpportunityEvent(state, { kind: "task", id: "makeCamp" })).toContain("site");
   });
 
-  it("does not infer the roof goal from shelter already standing", () => {
+  it("does not infer the roof opportunity from shelter already standing", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell ?? 0).structures.leanTo = true;
@@ -81,7 +81,7 @@ describe("deeds reach the ladder", () => {
     expect(state.opportunities.completedAt.roof).toBeDefined();
   });
 
-  it("keeps every existing built deed as a route to the roof goal", () => {
+  it("keeps every existing built deed as a route to the roof opportunity", () => {
     for (const structure of ["leanTo", "turfHut", "snowShelter", "cabin"] as const) {
       const { state } = newGame(3);
       reveal(state, ["roof"]);
@@ -176,7 +176,7 @@ describe("deeds reach the ladder", () => {
     expect(startTask(state, world, cal, "light")).toBe(true);
     advance(state, world, o.duration + 1);
     // No rain at landing means lightingInRain's failChance is 0: this light
-    // cannot fail, so the fire goal must be credited outright.
+    // cannot fail, so the fire opportunity must be credited outright.
     expect(st.fire.lit).toBe(true);
     expect(state.opportunities.completedAt.fire).toBeDefined();
   });
@@ -219,7 +219,7 @@ describe("deeds reach the ladder", () => {
     expect(state.opportunities.stepProgress.firewood?.wood ?? 0).toBe(0);
   });
 
-  it("credits goal 1 by the kilos a real gather actually produces", () => {
+  it("credits opportunity 1 by the kilos a real gather actually produces", () => {
     const { state, world } = announcedGame(3);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
@@ -231,7 +231,7 @@ describe("deeds reach the ladder", () => {
     expect(state.opportunities.completedAt.firewood).toBeDefined();
   });
 
-  it("credits goal 1 by the kilos a real split actually produces", () => {
+  it("credits opportunity 1 by the kilos a real split actually produces", () => {
     const { state, world } = announcedGame(3);
     siteCamp(state, world);
     // The landing kit's own axe is what split() needs; no forest cell required.
@@ -243,7 +243,7 @@ describe("deeds reach the ladder", () => {
     expect(state.opportunities.stepProgress.firewood?.wood).toBeCloseTo(Math.min(10, ITEM_KG.log));
   });
 
-  it("credits goal 1 by the kilos a real splitWedges actually produces", () => {
+  it("credits opportunity 1 by the kilos a real splitWedges actually produces", () => {
     const { state, world } = announcedGame(3);
     siteCamp(state, world);
     addItem(state.player.pack, "log", 1);
@@ -283,7 +283,7 @@ describe("deeds reach the ladder", () => {
     expect(state.opportunities.stepProgress.firewood?.wood ?? 0).toBe(0);
   });
 
-  it("credits a season goal when the calendar actually turns the corner", () => {
+  it("credits a season opportunity when the calendar actually turns the corner", () => {
     const { state, world } = announcedGame(3);
     siteCamp(state, world);
     // Backdating lastSeason forces the very next day roll to see a turnover,
@@ -306,7 +306,7 @@ describe("deeds reach the ladder", () => {
     expect(state.opportunities.completedAt[`season:${before}`]).toBeUndefined();
   });
 
-  it("credits the bed goal when the survivor actually builds one", () => {
+  it("credits the bed opportunity when the survivor actually builds one", () => {
     const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
@@ -319,7 +319,7 @@ describe("deeds reach the ladder", () => {
     expect(state.opportunities.completedAt.bed).toBeDefined();
   });
 
-  it("finishes the hot-meal goal when cooked food is eaten", () => {
+  it("finishes the hot-meal opportunity when cooked food is eaten", () => {
     const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
@@ -353,7 +353,7 @@ describe("deeds reach the ladder", () => {
     expect(state.opportunities.completedAt.cook).toBeUndefined();
   });
 
-  it("finishes the preserving goal only after preserved meat is eaten", () => {
+  it("finishes the preserving opportunity only after preserved meat is eaten", () => {
     const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
@@ -702,7 +702,7 @@ describe("an heir inherits the world and not the ladder's credit", () => {
     expect(state.opportunities.stepProgress.firewood?.wood ?? 0).toBe(0);
   });
 
-  it("carries an incomplete goal's progress across a real death", () => {
+  it("carries an incomplete opportunity's progress across a real death", () => {
     const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const region = state.player.region;

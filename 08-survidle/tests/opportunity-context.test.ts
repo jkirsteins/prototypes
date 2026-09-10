@@ -984,7 +984,7 @@ describe("misses and retries", () => {
     expect(state.opportunities.context.weather).toBeNull();
   });
 
-  it("retries the Chapter 2 opportunity while its final storm goal remains open", () => {
+  it("retries the Chapter 2 opportunity while its final storm opportunity remains open", () => {
     const { state, world } = newGame(17);
     activateWeatherReading(state);
     finish(state, ["readWeather", "prepareWeather"]);
@@ -1059,7 +1059,7 @@ describe("misses and retries", () => {
     expect(state.opportunities.context.weather).toMatchObject({ status: "reserved", attempts: 2, createdAt: 2540 });
   });
 
-  it("resolves the active attempt on death without restarting completed goals", () => {
+  it("resolves the active attempt on death without restarting completed opportunities", () => {
     const { state, world } = newGame(17);
     activateShelterTest(state);
     state.weather.offset = 10;

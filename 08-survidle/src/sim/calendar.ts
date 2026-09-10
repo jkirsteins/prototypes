@@ -158,7 +158,7 @@ export function minutesUntilDawn(minute: number, startDoy = START_DOY): number {
 
 /**
  * The run's own minute of the most recent sunset at or before `minute`:
- * what "since dusk" means for a goal that has to read a Norwegian April
+ * what "since dusk" means for an opportunity that has to read a Norwegian April
  * night and a December one as the different spans they are, rather than
  * count backward by a fixed number of hours.
  */

@@ -97,11 +97,11 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     // means nothing, so it is cleared at the two death points above.
     const rainingOnIt = fireAlive && weather.precip !== "none";
     if (rainingOnIt) st.fire.rainHeld += dt;
-    // These three goals are the player's own only: an untended camp fire in
+    // These three opportunities are the player's own only: an untended camp fire in
     // a region the player has left is real, but it is not what the player
     // is being asked to keep. `mine` alone, not `atCampHere`, because being
     // away from the pit within your own camp - out at the snares, asleep -
-    // is exactly the case these goals are meant to reward, not punish.
+    // is exactly the case these opportunities are meant to reward, not punish.
     if (mine) {
       if (rainingOnIt) recordOpportunityEvent(state, { kind: "keptRain", minutes: st.fire.rainHeld });
       if (fireAlive && st.fire.litSince !== null) {
@@ -110,7 +110,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
         // ever samples DAILY_HOUR: a fire lit mid-morning reaches three days mid-morning
         // too, a span the roll does not visit until the next one. Emitting again the
         // instant elapsed crosses KEPT_DAYS lands the credit on the day it is earned;
-        // recordOpportunityEvent already ignores a goal once done, so the daily roll's own emission
+        // recordOpportunityEvent already ignores an opportunity once done, so the daily roll's own emission
         // afterwards costs nothing.
         const crossedKeptDays = elapsed >= KEPT_DAYS * 24 * 60 && elapsed - dt < KEPT_DAYS * 24 * 60;
         if (daily || crossedKeptDays) recordOpportunityEvent(state, { kind: "keptFor", minutes: elapsed });

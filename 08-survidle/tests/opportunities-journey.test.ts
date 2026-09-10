@@ -24,7 +24,7 @@ const INITIAL_COLLECTIONS = [
 const CHAPTER_1 = ["findUsefulCover", "makeUsefulShelter", "testShelter"] as const;
 const CHAPTER_2 = ["readWeather", "prepareWeather", "surviveForecast"] as const;
 const CHAPTER_3 = ["remoteRefuge", "fieldFire", "fieldMeal", "remoteStorm"] as const;
-const WEATHER_GOALS = [...CHAPTER_1, ...CHAPTER_2, ...CHAPTER_3] as readonly OpportunityKey[];
+const WEATHER_OPPORTUNITIES = [...CHAPTER_1, ...CHAPTER_2, ...CHAPTER_3] as readonly OpportunityKey[];
 
 function finish(state: ReturnType<typeof newGame>["state"], ids: readonly OpportunityKey[]): void {
   for (const id of ids) state.opportunities.completedAt[id] = 0;
@@ -42,7 +42,7 @@ const HAND_WORDS = ["drill", "needle", "wedge", "log", "stick"];
  * Crafted intermediates, built structures, carried tools and gathered
  * items - the real vocabulary a route would be spelled in, read straight
  * off the tables that define it rather than typed out by hand, so a
- * goal titled "Knap a scraper" or "Weave a basket" is caught the day its
+ * opportunity titled "Knap a scraper" or "Weave a basket" is caught the day its
  * recipe is.
  */
 const ROUTE_WORDS = [
@@ -54,9 +54,9 @@ const ROUTE_WORDS = [
 ].map((w) => w.toLowerCase());
 
 /**
- * A goal's own object is fair to name - "firewood" is where you are going,
+ * An opportunity's own object is fair to name - "firewood" is where you are going,
  * "cordage" is how you get there - so these are the one exception to the
- * guard below, and only for the goal they belong to.
+ * guard below, and only for the opportunity they belong to.
  */
 const OWN_WORD: Partial<Record<OpportunityKey, string[]>> = {
   firewood: ["firewood"],
@@ -116,10 +116,10 @@ describe("the authored opportunity journey", () => {
   });
 });
 
-describe("goal guards", () => {
-  it("credits every authored goal step by a deed the game actually emits", () => {
+describe("opportunity guards", () => {
+  it("credits every authored opportunity step by a deed the game actually emits", () => {
     for (const g of OPPORTUNITIES) {
-      if (WEATHER_GOALS.includes(g.key)) continue;
+      if (WEATHER_OPPORTUNITIES.includes(g.key)) continue;
       const emitted = [
         ...TASK_IDS.map((id) => ({ kind: "task", id }) as const),
         ...RECIPE_IDS.map((recipe) => ({ kind: "crafted", recipe }) as const),
@@ -180,8 +180,8 @@ describe("goal guards", () => {
   });
 });
 
-describe("goals are the world's, not a life's", () => {
-  it("ignores deeds until the goal has been announced, without replaying them later", () => {
+describe("opportunities are the world's, not a life's", () => {
+  it("ignores deeds until the opportunity has been announced, without replaying them later", () => {
     const { state } = newGame(3);
     expect(recordOpportunityEvent(state, { kind: "drank" })).toEqual([]);
     expect(state.opportunities.completedAt.drink).toBeUndefined();
@@ -217,7 +217,7 @@ describe("goals are the world's, not a life's", () => {
     expect(state.opportunities.completedAt.firewood).toBeDefined();
   });
 
-  it("never hands the same goal out twice", () => {
+  it("never hands the same opportunity out twice", () => {
     const { state } = newGame(3);
     state.opportunities.completedAt.fire = 0;
     expect(recordOpportunityEvent(state, { kind: "lit" })).toEqual([]);
@@ -230,7 +230,7 @@ describe("goals are the world's, not a life's", () => {
     expect(state.opportunities.notices.flatMap((notice) => notice.completed)).toEqual(["firewood"]);
   });
 
-  it("does not credit later building goals before they are announced", () => {
+  it("does not credit later building opportunities before they are announced", () => {
     const { state } = newGame(3);
     expect(recordOpportunityEvent(state, { kind: "built", structure: "turfHut" })).toEqual(["build:turfHut"]);
     expect(state.opportunities.completedAt["build:turfHut"]).toBe(state.minute);
@@ -306,7 +306,7 @@ describe("goals are the world's, not a life's", () => {
     expect(recordOpportunityEvent(state, { kind: "ate", item: food })).toEqual([id]);
   });
 
-  it("lets one matching meal close its method goal and the lasting-source umbrella", () => {
+  it("lets one matching meal close its method opportunity and the lasting-source umbrella", () => {
     const { state } = newGame(3);
     reveal(state, ["trapMeal", "foodSource"]);
     recordOpportunityEvent(state, { kind: "crafted", recipe: "basketTrap" });
@@ -316,9 +316,9 @@ describe("goals are the world's, not a life's", () => {
   });
 
   // Progress surviving a death only means something once a death actually
-  // happens; tests/goals-deeds.test.ts lands a real heir and checks it there.
+  // happens; tests/opportunities-deeds.test.ts lands a real heir and checks it there.
 
-  it("gives every goal a definition", () => {
+  it("gives every opportunity a definition", () => {
     for (const g of OPPORTUNITIES) expect(opportunityDef(g.key)).toBe(g);
   });
 
@@ -341,14 +341,14 @@ describe("goals are the world's, not a life's", () => {
     newPerson(state, world, cell, state.player.region);
     resetTeaching(state);
     // Nothing gets marked done and nothing but the one field set above is
-    // touched: a mutation that credits any goal here would show up as an
+    // touched: a mutation that credits any opportunity here would show up as an
     // extra key in either object, not just a wrong value in one already set.
     expect(state.opportunities.completedAt).toEqual({});
     expect(state.opportunities.stepProgress).toEqual({ firewood: { wood: 6 } });
     expect(state.opportunities.discoveredAt.findUsefulCover).toBeDefined();
   });
 
-  it("migrate gives a save with no goals field an empty ladder standing in today's season", () => {
+  it("migrate gives a save with no opportunities field an empty ladder standing in today's season", () => {
     const { state } = newGame(3);
     const raw = JSON.parse(serialize(state)) as { version: number; state: Record<string, unknown> };
     delete raw.state.opportunities;
@@ -361,7 +361,7 @@ describe("goals are the world's, not a life's", () => {
     const raw = JSON.parse(serialize(state));
     raw.version = 9;
     delete raw.state.opportunities;
-    raw.state.goals = {
+    raw.state["goals"] = {
       done: { site: true, drink: true, spring: true, obsolete: true },
       introduced: { firewood: true, fire: true },
       progress: { firewood: 6 },
@@ -378,7 +378,7 @@ describe("goals are the world's, not a life's", () => {
     expect(loaded.opportunities.notices).toEqual([expect.objectContaining({ completed: ["drink"], messages: ["Weather passed."] })]);
     expect(loaded.opportunities.context.chapter3HomeRegion).toBe(77);
     expect(loaded.opportunities.discoveredAt["hunt:deer"]).toBeUndefined();
-    expect(JSON.parse(serialize(loaded)).state.goals).toBeUndefined();
+    expect(JSON.parse(serialize(loaded)).state["goals"]).toBeUndefined();
   });
 
   it("keeps a legacy missing chapter home unknown rather than inferring one", () => {
@@ -386,7 +386,7 @@ describe("goals are the world's, not a life's", () => {
     state.regions[state.player.region].campCell = cellOf(state, world);
     const raw = JSON.parse(serialize(state));
     delete raw.state.opportunities;
-    raw.state.goals = { introduced: { remoteRefuge: true } };
+    raw.state["goals"] = { introduced: { remoteRefuge: true } };
     const loaded = deserialize(JSON.stringify(raw))!.state;
     expect(loaded.opportunities.context.chapter3HomeRegion).toBeNull();
   });
@@ -399,7 +399,7 @@ describe("goals are the world's, not a life's", () => {
     raw.version = 9;
     raw.state.minute = 42720;
     delete raw.state.opportunities;
-    raw.state.goals = {
+    raw.state["goals"] = {
       done: Object.fromEntries(["site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook", "findUsefulCover", "makeUsefulShelter", "testShelter", "readWeather", "prepareWeather", "surviveForecast"].map((id) => [id, true])),
       introduced: {}, chapter3HomeRegion: null,
     };
@@ -429,7 +429,7 @@ describe("goals are the world's, not a life's", () => {
     const { state } = newGame(3);
     const raw = JSON.parse(serialize(state));
     delete raw.state.opportunities;
-    raw.state.goals = { done: Object.fromEntries(["site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook", "findUsefulCover", "makeUsefulShelter", "testShelter"].map((id) => [id, true])), introduced: {} };
+    raw.state["goals"] = { done: Object.fromEntries(["site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook", "findUsefulCover", "makeUsefulShelter", "testShelter"].map((id) => [id, true])), introduced: {} };
     raw.state.minute = 9599;
     expect(deserialize(JSON.stringify(raw))!.state.opportunities.current).toBe("snareMeal");
     raw.state.minute = 9600;
@@ -444,7 +444,7 @@ describe("goals are the world's, not a life's", () => {
       stormId: 7, source: "natural", area: { region: 9, centre: 72, radiusKm: 1 },
       announcedAt: 300, resolvedAt: null, minutesByProtection: [1, 2, 3, 4],
       atCampMinutes: 5, awayFromCampMinutes: 6, maxWetness: 70, readerIndex: 2, plan: null };
-    raw.state.goals = { opportunity: weather, chapter3HomeRegion: 5 };
+    raw.state["goals"] = { opportunity: weather, chapter3HomeRegion: 5 };
     const loaded = deserialize(JSON.stringify(raw))!.state;
     const { goal: _goal, ...legacyContext } = weather;
     expect(loaded.opportunities.context).toEqual({

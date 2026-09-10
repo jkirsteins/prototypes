@@ -14,7 +14,7 @@ import { testAtmosphere, testRain } from "./weather-helpers";
 afterEach(() => vi.restoreAllMocks());
 
 /**
- * These goals credit on real deeds emitted from stepCamp over real advance()
+ * These opportunities credit on real deeds emitted from stepCamp over real advance()
  * runs, never on a Deed built by hand: a mutation that deletes the emission
  * has to make one of these fail, or it is not pinned.
  *
@@ -175,7 +175,7 @@ describe("tracking rain held by a fire", () => {
   });
 });
 
-describe("the fire goals credit only the player's own region", () => {
+describe("the fire opportunities credit only the player's own region", () => {
   it("gives no credit for a fire kept, rained on and burning overnight in a region the player has left", () => {
     testRain(1, 8);
     const { state, world, st } = litCamp();
@@ -200,7 +200,7 @@ describe("the fire goals credit only the player's own region", () => {
 });
 
 describe("leaving a camp kills its fire outright", () => {
-  it("does not keep crediting a fire-keeping goal once the camp is left behind", () => {
+  it("does not keep crediting a fire-keeping opportunity once the camp is left behind", () => {
     const { state, world, st } = litCamp();
     run(state, world, 2 * 24 * 60); // short of the three days keptDays asks for
     leaveCamp(state, world);
@@ -213,7 +213,7 @@ describe("leaving a camp kills its fire outright", () => {
 });
 
 describe("a catch-up with nobody home", () => {
-  it("credits none of the three fire goals, however long the camp's fire burns on unattended", () => {
+  it("credits none of the three fire opportunities, however long the camp's fire burns on unattended", () => {
     testRain(1, 8);
     const { state, world, st } = litCamp();
     advance(state, world, 5 * 24 * 60, { nobody: true });
