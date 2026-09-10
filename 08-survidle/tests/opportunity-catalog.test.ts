@@ -59,13 +59,16 @@ it("discovers fish from a water reading and credits only the caught species", ()
   expect(state.opportunities.completedAt["catch:pike"]).toBeUndefined();
 });
 
-it("reveals trap leaves only once the basket-trap capability is known", () => {
-  const state = newState();
+it("reveals a known-water trap leaf at Fishing 5 without another water read", () => {
+  const { state, world } = newGame(3);
+  state.player.known[123] = { minute: state.minute, fish: ["perch"] };
   recordOpportunityEvent(state, { kind: "waterRead", species: ["perch"] });
   expect(state.opportunities.discoveredAt["trap:perch"]).toBeUndefined();
-  state.skills.fishing.xp = 120 * 4 ** 2;
-  recordOpportunityEvent(state, { kind: "waterRead", species: ["perch"] });
+  trainTask(state, world, { id: "fish", arg: "perch" }, 120 * 4 ** 2);
   expect(state.opportunities.discoveredAt["trap:perch"]).toBe(state.minute);
+  expect(state.opportunities.completedAt["trap:perch"]).toBeUndefined();
+  recordOpportunityEvent(state, { kind: "fishCaught", species: "perch", method: "trap" });
+  expect(state.opportunities.completedAt["trap:perch"]).toBe(state.minute);
 });
 
 it("completes no collection group while an unknown leaf remains", () => {
@@ -113,11 +116,15 @@ it("refresh discovers known possibilities but never infers completion from posse
   expect(state.opportunities.completedAt["build:leanTo"]).toBeUndefined();
 });
 
-it("refreshes newly reached capability tiers at the skill level crossing", () => {
+it("discovers supported Do-list entries below their recommended levels", () => {
   const { state, world } = newGame(3);
-  expect(state.opportunities.discoveredAt["make:bow"]).toBeUndefined();
-  trainTask(state, world, { id: "craft", arg: "knife" }, 120 * 4 ** 2);
+  expect(state.skills.crafting.xp).toBe(0);
+  expect(state.skills.building.xp).toBe(0);
+  discoverAvailableOpportunities(state, world, calendar(state.minute, state.startDoy));
   expect(state.opportunities.discoveredAt["make:bow"]).toBe(state.minute);
+  expect(state.opportunities.discoveredAt["make:stoneAxe"]).toBe(state.minute);
+  expect(state.opportunities.discoveredAt["build:cabin"]).toBe(state.minute);
+  expect(state.opportunities.discoveredAt["build:turfHut"]).toBe(state.minute);
   expect(state.opportunities.completedAt["make:bow"]).toBeUndefined();
 });
 

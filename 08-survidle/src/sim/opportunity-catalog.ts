@@ -110,25 +110,22 @@ export function discoverMany(state: OpportunityState, keys: readonly Opportunity
 }
 
 const capabilityLevel = (state: GameState, skill: SkillId): number => Math.min(50, 1 + Math.floor(Math.sqrt(Math.max(0, state.skills[skill].xp) / 120)));
-const TOOL_TIER: Partial<Record<ToolId, { skill: SkillId; level: number }>> = {
-  bow: { skill: "crafting", level: 5 }, stoneAxe: { skill: "crafting", level: 5 }, flakedAxe: { skill: "crafting", level: 5 },
-};
-const STRUCTURE_TIER: Partial<Record<StructureId, { skill: SkillId; level: number }>> = {
-  cabin: { skill: "building", level: 10 }, turfHut: { skill: "building", level: 5 },
-};
 
-export function availableToolOpportunityKeys(state: GameState, _world: World, _cal: Calendar): OpportunityKey[] {
-  return SUPPORTED_TOOL_RECIPES.map((recipe) => TOOL_RECIPE[recipe]).filter((tool) => {
-    const tier = TOOL_TIER[tool];
-    return !tier || capabilityLevel(state, tier.skill) >= tier.level;
-  }).map((tool) => `make:${tool}` as OpportunityKey);
+export function availableToolOpportunityKeys(_state: GameState, _world: World, _cal: Calendar): OpportunityKey[] {
+  return SUPPORTED_TOOL_RECIPES.map((recipe) => `make:${TOOL_RECIPE[recipe]}` as OpportunityKey);
 }
 
-export function availableStructureOpportunityKeys(state: GameState, _world: World, _cal: Calendar): OpportunityKey[] {
-  return SUPPORTED_SHELTER_STRUCTURES.filter((structure) => {
-    const tier = STRUCTURE_TIER[structure];
-    return !tier || capabilityLevel(state, tier.skill) >= tier.level;
-  }).map((structure) => `build:${structure}` as OpportunityKey);
+export function availableStructureOpportunityKeys(_state: GameState, _world: World, _cal: Calendar): OpportunityKey[] {
+  return SUPPORTED_SHELTER_STRUCTURES.map((structure) => `build:${structure}` as OpportunityKey);
+}
+
+export function knownTrapOpportunityKeys(state: GameState): OpportunityKey[] {
+  if (capabilityLevel(state, "fishing") < 5) return [];
+  const named = new Set<Species>();
+  for (const observation of Object.values(state.player.known)) {
+    for (const species of observation.fish) if (SUPPORTED_FISH_SET.has(species)) named.add(species);
+  }
+  return SUPPORTED_FISH_SPECIES.filter((species) => named.has(species)).map((species) => `trap:${species}` as OpportunityKey);
 }
 
 export function knownForageOpportunityKeys(state: GameState, world: World, _cal: Calendar): OpportunityKey[] {
@@ -149,6 +146,7 @@ export function discoverAvailableOpportunities(state: GameState, world: World, c
     ...availableToolOpportunityKeys(state, world, cal),
     ...availableStructureOpportunityKeys(state, world, cal),
     ...knownForageOpportunityKeys(state, world, cal),
+    ...knownTrapOpportunityKeys(state),
   ];
   return discoverMany(state.opportunities, keys, state.minute);
 }
