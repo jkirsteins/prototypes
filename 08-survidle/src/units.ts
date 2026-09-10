@@ -8,6 +8,7 @@ export const GAME_MINUTES_PER_REAL_SECOND = 1;
 export const AWAY_HOURS_DEFAULT = 8;
 export const AWAY_HOURS_MAX = 24;
 
+/** @deprecated Legacy 300 m world cells remain in use until the world cutover. */
 export const CELL_KM = 0.3;
 /** Real paths wander; straight-line distance times this. */
 export const PATH_FACTOR = 1.25;
