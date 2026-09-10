@@ -20,7 +20,7 @@ import { campSite, touchedRegions } from "./regionstate";
 import { fallChance, fallThrough } from "./tasks";
 import type { GameState } from "./types";
 import { campWaterCapacity, FREEZE_C } from "./water";
-import { ICE_THIN_CM } from "./weather";
+import { ICE_THIN_CM, localWeather } from "./weather";
 
 export function hourlyHazards(state: GameState, world: World, ambient: number, felt: number, rng: Rng): void {
   freezeVessels(state, world, ambient, rng);
@@ -40,13 +40,17 @@ export function hourlyWorld(state: GameState, world: World, cal: Calendar, ambie
  * catches a fire left burning by hand.
  */
 function spread(state: GameState, world: World, cal: Calendar, rng: Rng, who: Presence | null): void {
-  if (!groundDry(state.weather, cal)) return;
-  if (!state.weather.dryWarned) {
-    state.weather.dryWarned = true;
-    log(state, "The ground is tinder dry.", "bad");
+  if (who) {
+    const playerDry = groundDry(localWeather(state, world), cal);
+    if (playerDry && !state.weather.dryWarned) {
+      state.weather.dryWarned = true;
+      log(state, "The ground is tinder dry.", "bad");
+    }
+    if (!playerDry) state.weather.dryWarned = false;
   }
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
+    if (st.campCell === null || !groundDry(localWeather(state, world, st.campCell), cal)) continue;
     if (!st.fire.lit || fuelTotal(st.fire) <= SPREAD_FUEL_KG || st.fire.unattended <= SPREAD_UNATTENDED_MINUTES) continue;
     if (!rng.chance(SPREAD_PER_HOUR)) continue;
     st.wood = Math.max(0, st.wood - (10 + rng.int(21)));
@@ -105,11 +109,11 @@ function frostbite(state: GameState, felt: number, rng: Rng): void {
  */
 export function iceUnderFoot(state: GameState, world: World, rng: Rng): void {
   if (state.dead) return;
-  if (state.weather.iceCm >= ICE_THIN_CM) return;
+  if (localWeather(state, world).iceCm >= ICE_THIN_CM) return;
   if (activityOf(state.task) === "walk") return;
   const cell = cellOf(state, world);
   if (cellAt(world, cell).terrain !== "water") return;
-  if (!rng.chance(fallChance(state.weather.iceCm))) return;
+  if (!rng.chance(fallChance(localWeather(state, world).iceCm))) return;
   const land = neighbours(world, cell).find((n) => cellAt(world, n).terrain !== "water") ?? cell;
   fallThrough(state, world, rng, land);
 }
@@ -133,11 +137,11 @@ function freezeVessels(state: GameState, world: World, ambient: number, rng: Rng
 }
 
 /** Water left at camp in frost with no fire: it freezes, and a full bucket may split. */
-function freezeCamps(state: GameState, world: World, ambient: number, rng: Rng, who: Presence | null): void {
-  if (ambient >= FREEZE_C) return;
+function freezeCamps(state: GameState, world: World, _ambient: number, rng: Rng, who: Presence | null): void {
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
     if (st.fire.lit || st.campCell === null) continue;
+    if (localWeather(state, world, st.campCell).temperatureC >= FREEZE_C) continue;
     const camp = state.piles[st.campCell];
     if (!camp) continue;
     const litres = qty(camp, "water");

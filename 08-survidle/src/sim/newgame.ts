@@ -16,7 +16,7 @@ import { seeFrom } from "./sight";
 import { newSkills } from "./skills";
 import { resetTeaching } from "./teach";
 import type { GameState, LifeRecord, Person, Player } from "./types";
-import { seasonalMean } from "./weather";
+import { ensureGround, localWeather, newWeather } from "./weather";
 import { emptyWildlife, resetWildlifeKnowledge } from "./wildlife-agents";
 
 /**
@@ -118,8 +118,6 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
   const world = generateWorld(seed);
   const start = regionAt(world, world.start);
   const first = firstRecord(seed, startDoy, person);
-  // The weather opens for the season: past the thaw there is no ice and no snow.
-  const warm = seasonalMean(startDoy) > 0;
   const state: GameState = {
     seed,
     startDoy,
@@ -131,7 +129,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     regions: {},
     discovered: {},
     mapped: {},
-    weather: { precip: "none", clear: true, offset: 0, snowCm: warm ? 0 : 3, rolledDay: 0, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 },
+    weather: newWeather(startDoy),
     task: null,
     log: [],
     dead: null,
@@ -162,6 +160,12 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
   // The same fresh slate a landing gives, from the one door that gives it.
   resetTeaching(state);
   creditYield(state, "kit", ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg);
+  ensureGround(state, world, world.start);
+  const local = localWeather(state, world);
+  Object.assign(state.weather, {
+    precip: local.precip, clear: local.clear, offset: local.offset, snowCm: local.snowCm,
+    rolledDay: local.rolledDay, dryDays: local.dryDays, wetDay: local.wetDay, iceCm: local.iceCm,
+  });
   seeFrom(state, world, calendar(state.minute, state.startDoy), start.campCell);
   enterRegion(state, world, world.start);
   // A camp is chosen, and a choice needs the ground in front of you.

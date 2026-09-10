@@ -17,7 +17,7 @@
  * This ran red when it was written: the gear panel redrew on 300 frames of
  * 300, because the clothing wear bars carried unrounded percentages.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
@@ -26,14 +26,20 @@ import { Rng } from "../src/rng";
 import { doHtml } from "../src/ui/dopanel";
 import { cellFromPoint, levelAt, mapHtml, mapKey } from "../src/ui/map";
 import { tipHtml, tipKey } from "../src/ui/tip";
-import { campHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, logHtml, skillsHtml, statsHtml, taskHtml, travelHtml, weatherHtml } from "../src/ui/panels";
+import { campHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, logHtml, skillsHtml, statsHtml, taskHtml, travelHtml, weatherHtml, weatherKey } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
 import { fillShare } from "../src/ui/bars";
 import { emptyView } from "../src/sim/forecaster";
 import { feltTemperature } from "../src/sim/player";
+import { placeAt } from "../src/sim/position";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { ambientTemperature } from "../src/sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "../src/units";
 import { PEAK } from "../src/ui/hurry";
+import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 const FRAMES = 300;
 /** Frames a second, so the run below is five seconds of the worst case: work in hand, hurried to the peak. */
@@ -80,7 +86,9 @@ function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<ty
     gear: gearHtml(state, feltTemperature(state, world, ambient)),
     skills: skillsHtml(state),
     camp: campHtml(state, world, cal),
-    weather: weatherHtml(state, world, cal, ambient),
+    // Weather and map own CSS animation inside stable markup. Their render keys,
+    // not continuously sampled presentation values, decide when markup is rebuilt.
+    weather: weatherKey(state, world, cal, 1),
     maptravel: travelHtml(state, world, cal),
     task: taskHtml(state, world, cal),
     forecast: forecastHtml(emptyView(), state),
@@ -88,8 +96,7 @@ function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<ty
     inventory: inventoryHtml(state, world, cal),
     journal: journalHtml(state, cal, ui),
     log: logHtml(state),
-    // The map is guarded by its own key rather than by its markup, so the key is what is measured.
-    map: `${mapKey(state, world, ui, cal)}|${mapHtml(world, state, ui, cal)}`,
+    map: mapKey(state, world, ui, cal),
   };
 }
 
@@ -113,6 +120,66 @@ function churn(seed: number, work: boolean): Record<string, number> {
 }
 
 describe("no panel redraws faster than what it is showing", () => {
+  it("changes the weather key for same-minute changes that alter feels-like", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const idle = weatherKey(state, world, cal, 1);
+
+    state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
+    const working = weatherKey(state, world, cal, 1);
+    expect(working).not.toBe(idle);
+
+    state.player.wetness = 100;
+    expect(weatherKey(state, world, cal, 1)).not.toBe(working);
+  });
+
+  it("holds through fractional rain wetness until the displayed felt degree changes", () => {
+    testAtmosphere({ temperatureC: 5, precipMmPerHour: 2, rainMmPerHour: 2, precip: "rain" });
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const dryFelt = feltTemperature(state, world, 5);
+    const boundary = Math.floor(dryFelt - 0.5) + 0.5;
+    const wetnessFor = (felt: number) => (dryFelt - felt) / 0.15;
+    const shownFelt = () => weatherHtml(state, world, cal, 5).match(/Feels like<\/div><div class="wx-v[^"]*">(-?\d+) C/)?.[1];
+
+    state.player.wetness = wetnessFor(boundary + 0.2);
+    const opening = weatherKey(state, world, cal, 1);
+    const openingShown = shownFelt();
+    state.player.wetness = wetnessFor(boundary + 0.08);
+    const damp = weatherKey(state, world, cal, 1);
+    expect(shownFelt()).toBe(openingShown);
+    expect(damp).toBe(opening);
+
+    state.player.wetness = wetnessFor(boundary - 0.02);
+    expect(shownFelt()).not.toBe(openingShown);
+    expect(weatherKey(state, world, cal, 1)).not.toBe(damp);
+  });
+
+  it("changes the same-minute weather key as shelter, fire, clothing, and fat alter feels-like", () => {
+    const { state, world } = newGame(21);
+    const camp = siteCamp(state, world);
+    placeAt(state, world, camp);
+    const cal = calendar(state.minute, state.startDoy);
+    const st = regionState(state, world, state.player.region);
+    const opening = weatherKey(state, world, cal, 1);
+
+    siteFor(st, camp).structures.leanTo = true;
+    const sheltered = weatherKey(state, world, cal, 1);
+    expect(sheltered).not.toBe(opening);
+
+    st.fire.lit = true;
+    st.fire.fuelKg = 5;
+    const byFire = weatherKey(state, world, cal, 1);
+    expect(byFire).not.toBe(sheltered);
+
+    state.player.clothing[0].durability = 0;
+    const worn = weatherKey(state, world, cal, 1);
+    expect(worn).not.toBe(byFire);
+
+    state.player.fat = 0;
+    expect(weatherKey(state, world, cal, 1)).not.toBe(worn);
+  });
+
   for (const work of [false, true]) {
     it(`${work ? "with work in hand" : "standing idle"}, every panel stays inside its budget`, () => {
       const counts = churn(21, work);

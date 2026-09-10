@@ -9,6 +9,7 @@ import { cellAt, neighbours, type World } from "../world/gen";
 import { straightKm } from "./position";
 import type { GameState, Seep, SeepClass } from "./types";
 import { FREEZE_C, THAW_L_PER_HOUR } from "./water";
+import { localWeather } from "./weather";
 
 /** Pool and sustained yield of a hole half a metre across, knee deep: saturated peat, and damp forest soil. */
 export const SEEP: Record<SeepClass, { poolL: number; refillLPerHour: number }> = {
@@ -39,12 +40,13 @@ function fireOnCell(state: GameState, world: World, cell: number): boolean {
 }
 
 /** Why a seep is not refilling right now, or null when it is. */
-export function seepStopped(state: GameState, world: World, cell: number, ambient: number): "frozen" | "drought" | "silted" | null {
+export function seepStopped(state: GameState, world: World, cell: number, _ambient?: number): "frozen" | "drought" | "silted" | null {
   const s = state.seeps[cell];
   if (!s) return null;
   if (state.minute - s.dug >= SEEP_LIFE_DAYS * 1440) return "silted";
-  if (ambient < FREEZE_C && !fireOnCell(state, world, cell)) return "frozen";
-  if (state.weather.dryDays >= SEEP_DRY_DAYS) return "drought";
+  const weather = localWeather(state, world, cell);
+  if (weather.temperatureC < FREEZE_C && !fireOnCell(state, world, cell)) return "frozen";
+  if (weather.dryHours >= SEEP_DRY_DAYS * 24) return "drought";
   return null;
 }
 
@@ -54,10 +56,11 @@ export function seepNeedsRedig(state: GameState, s: Seep): boolean {
 }
 
 /** Every seep's minute: refill, or freeze in place, or thaw by the fire or the spring air. */
-export function stepSeeps(state: GameState, world: World, ambient: number, dt: number): void {
+export function stepSeeps(state: GameState, world: World, _ambient: number, dt: number): void {
   for (const k of Object.keys(state.seeps)) {
     const cell = Number(k);
     const s = state.seeps[cell];
+    const ambient = localWeather(state, world, cell).temperatureC;
     const why = seepStopped(state, world, cell, ambient);
     if (why === "frozen") {
       s.ice += s.litres;

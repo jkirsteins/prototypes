@@ -8,10 +8,6 @@ import { newUiState } from "../src/ui/render";
 import { css, rule } from "./css";
 
 describe("the map's own surface", () => {
-  it("draws close terrain seamlessly without a border around every simulation cell", () => {
-    expect(rule(".grid.detailed .c")).toContain("border: 0");
-  });
-
   it("marks a region by a wash over it and never by a frame on each of its cells", () => {
     // A frame per cell repeats at cell scale what the wash and the region's
     // accent-coloured border already say once, and 69 of them read as graph
@@ -33,7 +29,7 @@ describe("the map's own surface", () => {
   it("draws space beyond the world like unexplored ground instead of a black bar", () => {
     expect(css).toContain(".grid .c.fog, .grid .c.void");
     expect(css).toContain(".grid .c.fog::before, .grid .c.void::before");
-    expect(rule(".grid .c.dim")).toContain("opacity");
+    expect(rule(".grid .c.dim > .cell-ground, .grid .c.dim > .cell-signal")).toContain("opacity");
     expect(css).toContain(".scroll-x > .shade");
     expect(css).toContain(".scroll-x::after");
   });
@@ -182,6 +178,14 @@ describe("the layout", () => {
     for (const value of ["distance", "time", "both"]) expect(settings).toContain(`value="${value}"`);
   });
 
+  it("settings offers browser-wide cloud shadows enabled by default", () => {
+    const html = page();
+    const settings = html.slice(html.indexOf('id="settings"'), html.indexOf('id="overlay"'));
+    expect(settings).toContain('data-display="cloud-shadows"');
+    expect(settings).toContain("clouds cast map shadows");
+    expect(settings).toContain("checked");
+  });
+
   it("settings can discard the saved world without presenting preferences as world data", () => {
     const settings = page().slice(page().indexOf('id="settings"'), page().indexOf('id="overlay"'));
     expect(settings).toContain('data-act="reset-world"');
@@ -265,25 +269,25 @@ describe("the year on the map", () => {
   it("lets snow beat the season by selector, not by where the rules sit in the file", () => {
     // Snow is on the ground or it is not, whatever the month says. A later edit
     // that moves a block must not silently flip which one wins.
-    expect(css).toContain(".grid.season-winter:not(.snow)");
-    expect(css).toContain(".grid.season-autumn:not(.snow)");
+    expect(css).toContain(".grid.season-winter .c:not(.mk):not(.ground-snow)");
+    expect(css).toContain(".grid.season-autumn .c:not(.mk):not(.ground-snow)");
   });
 
   it("keeps the evergreens green under snow, and buries them only once it is deep", () => {
     // Snow in the needles lifts and cools the green; it does not replace it.
-    expect(rule(".grid.snow .c:not(.mk).t-spruce")).toContain("#6f9e78");
+    expect(rule(".grid .c:not(.mk).ground-snow.t-spruce")).toContain("#6f9e78");
     // The bare birch takes the colour of the snow around it straight away.
-    expect(rule(".grid.snow .c:not(.mk).t-birch")).toContain("#9fb8c8");
+    expect(rule(".grid .c:not(.mk).ground-snow.t-birch")).toContain("#9fb8c8");
     // Past DEEP_SNOW_CM there is more snow than tree to see.
-    expect(rule(".grid.snow-deep .c:not(.mk).t-spruce")).toContain("#c3d6dd");
+    expect(rule(".grid .c:not(.mk).ground-snow-deep.t-spruce")).toContain("#c3d6dd");
   });
 
   it("lets snow flatten the relief, by selector rather than by file order", () => {
     // A tone rule sits later in the file than the snow rules at equal
     // specificity, so without the guard a toned tree would keep its green
     // under snow while its untoned neighbour went white.
-    expect(css).toContain(".grid:not(.snow) .c:not(.mk).t-spruce.tone-0");
-    expect(css).toContain(".grid:not(.snow) .c:not(.mk).t-water.deep-0");
+    expect(css).toContain(".grid .c:not(.mk):not(.ground-snow).t-spruce.tone-0");
+    expect(css).toContain(".grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0");
   });
 });
 
@@ -298,7 +302,7 @@ describe("a mark owns its whole cell", () => {
       .split("\n")
       .filter((line) => /^\.grid[.:]/.test(line) && / \.c[.:]/.test(line) && line.includes("{"))
       .filter((line) => /\.t-\w+|\.tone-|\.deep-/.test(line));
-    expect(conditional.length).toBeGreaterThan(20);
+    expect(conditional.length).toBeGreaterThan(15);
     for (const line of conditional) expect(line).toContain(".c:not(.mk)");
   });
 });

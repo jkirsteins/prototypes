@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { qty } from "../src/sim/inventory";
@@ -9,6 +9,10 @@ import { regionState } from "../src/sim/regionstate";
 import { fishItem, inSpawn, SPECIES_DEFS } from "../src/sim/species";
 import { startTask, stepTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
+import { ensureGround } from "../src/sim/weather";
+import { testAtmosphere } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("lean and oily fish", () => {
   it("the class is defined once and a species carries only the flag and its window", () => {
@@ -28,10 +32,12 @@ describe("lean and oily fish", () => {
   });
 
   it("a perch caught in April brings roe at a tenth of its weight; a char caught brings oily fish", () => {
+    testAtmosphere({ temperatureC: 5 });
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     const r = regionAt(world, state.player.region);
     placeAtSpot(state, world, state.player.region, "shore");
+    ensureGround(state, world, state.player.region).iceCm = 0;
     state.player.tools.push({ id: "fishingSpear", durability: 100 });
     r.capacity.perch = 100000;
     st.pop.perch = 100000;

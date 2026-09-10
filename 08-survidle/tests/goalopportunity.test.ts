@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as climate from "../src/sim/climate";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
@@ -20,6 +21,9 @@ import { skyReadDay, stepWeather } from "../src/sim/weather";
 import { cellAt, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere, testRain } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 const THROUGH_SHELTER: GoalId[] = [
   "site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook",
@@ -60,11 +64,21 @@ function activateRemoteRefuge(state: GameState): void {
   introduceGoals(state, ["remoteRefuge"]);
 }
 
+function testStormWindow(from: number, until: number, temperatureC = 5): void {
+  const clear = testAtmosphere({ temperatureC });
+  vi.mocked(climate.sampleAtmosphere).mockImplementation((_weather, _world, minute) => minute >= from && minute < until
+    ? { ...clear, cloud: 1, precipMmPerHour: 8,
+      rainMmPerHour: temperatureC > 0 ? 8 : 0, snowCmPerHour: temperatureC <= 0 ? 8 : 0,
+      precip: temperatureC > 0 ? "rain" : "snow", windKmh: 40 }
+    : { ...clear });
+}
+
 describe("weather teaching opportunity lifecycle", () => {
+  beforeEach(() => testRain(8, 5, 40));
+
   it("moves one stable natural storm through reserved, announced, running, and resolved at its exact minutes", () => {
     const { state, world } = newGame(17);
     activateShelterTest(state);
-    state.weather.offset = 10;
     state.weather.storm = { id: 7, source: "natural", kind: "rain", from: 120, until: 480, warned: false };
     state.weather.nextStormId = 8;
     const rng = new Rng(12);
@@ -91,9 +105,9 @@ describe("weather teaching opportunity lifecycle", () => {
   });
 
   it("is called from ordinary advance and keeps the storm id from warning through its end", () => {
+    testRain(8, 5, 40);
     const { state, world } = newGame(17);
     activateShelterTest(state);
-    state.weather.offset = 10;
     state.weather.storm = { id: 4, source: "natural", kind: "rain", from: 120, until: 480, warned: false };
     state.weather.nextStormId = 5;
     advance(state, world, 60);
@@ -102,6 +116,39 @@ describe("weather teaching opportunity lifecycle", () => {
     expect(state.goals.opportunity).toMatchObject({ status: "running", stormId: 4 });
     advance(state, world, 360);
     expect(state.goals.opportunity).toMatchObject({ status: "resolved", resolvedAt: 480, stormId: 4 });
+  });
+
+  it("does not announce or credit a scheduled storm while the authoritative air stays clear", () => {
+    testAtmosphere({ temperatureC: 5 });
+    const { state, world } = newGame(17);
+    activateShelterTest(state);
+    state.weather.storm = { id: 4, source: "natural", kind: "rain", from: 120, until: 480, warned: false };
+    state.weather.nextStormId = 5;
+
+    advance(state, world, 480);
+
+    expect(state.goals.opportunity).toMatchObject({ status: "reserved", stormId: null, announcedAt: null });
+    expect(state.goals.done.testShelter).toBeUndefined();
+    expect(state.log.some((entry) => entry.text.includes("sky is closing in"))).toBe(false);
+  });
+
+  it("releases a restored claimed schedule before its warning when local air is clear", () => {
+    testAtmosphere({ temperatureC: 5 });
+    const { state, world } = newGame(17);
+    activateShelterTest(state);
+    state.weather.storm = { id: 4, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
+    state.goals.opportunity = {
+      goal: "testShelter", status: "reserved", createdAt: 0, attempts: 1,
+      stormId: 4, source: "natural", area: null, announcedAt: null, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+      readerIndex: null, plan: null,
+    };
+
+    advance(state, world, 60);
+
+    expect(state.weather.storm).toBeNull();
+    expect(state.goals.opportunity).toMatchObject({ status: "reserved", stormId: null, announcedAt: null });
+    expect(state.log.some((entry) => entry.text.includes("sky is closing in"))).toBe(false);
   });
 
   it("lets a running ordinary storm finish before reserving a teaching attempt", () => {
@@ -222,12 +269,15 @@ describe("weather teaching opportunity lifecycle", () => {
     expect(state.goals.opportunity).toMatchObject({ status: "reserved", stormId: null });
 
     state.player.skyReadDay = null;
+    testStormWindow(state.minute + 180, state.minute + 540);
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.weather.storm).toMatchObject({ source: "synthetic" });
   });
 });
 
 describe("Chapter 1 shelter storm evidence", () => {
+  beforeEach(() => testRain(8, 5, 40));
+
   function shelterAttempt(state: GameState, world: ReturnType<typeof newGame>["world"], stormId = 7): void {
     const centre = cellOf(state, world);
     state.goals.opportunity = {
@@ -373,6 +423,8 @@ describe("Chapter 1 shelter storm evidence", () => {
 });
 
 describe("Chapter 2 forecast evidence", () => {
+  beforeEach(() => testRain(8, 5, 40));
+
   function chapter2Attempt(state: GameState, stormId = 40): void {
     activateWeatherReading(state);
     finish(state, ["readWeather"]);
@@ -485,10 +537,25 @@ describe("Chapter 2 forecast evidence", () => {
 });
 
 describe("natural-first weather", () => {
+  beforeEach(() => testRain(8, 5, 40));
+
+  it("binds a delayed teaching storm to the next real local feature and its exact timing", () => {
+    testStormWindow(4500, 4860);
+    const { state, world } = newGame(17);
+    activateShelterTest(state);
+    const rng = new Rng(41);
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+    state.minute = 4320;
+
+    stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
+
+    expect(state.weather.storm).toMatchObject({ source: "synthetic", kind: "rain", from: 4500, until: 4860 });
+    expect(state.goals.opportunity).toMatchObject({ stormId: state.weather.storm?.id, source: "synthetic" });
+  });
+
   it("claims the first eligible natural rain without changing its event or random state", () => {
     const { state, world } = newGame(17);
     activateShelterTest(state);
-    state.weather.offset = 10;
     const storm = { id: 3, source: "natural" as const, kind: "rain" as const, from: 180, until: 540, warned: false };
     state.weather.storm = storm;
     state.weather.nextStormId = 4;
@@ -505,7 +572,6 @@ describe("natural-first weather", () => {
   it("lets the ordinary dawn roll claim first on the third dawn", () => {
     const { state, world } = newGame(17);
     activateShelterTest(state);
-    state.weather.offset = 10;
     const rng = new Rng(31);
     stepGoalOpportunity(state, world, calendar(0, state.startDoy), rng);
     state.minute = 3 * 1440;
@@ -518,10 +584,9 @@ describe("natural-first weather", () => {
     expect(rng.s).toBe(before);
   });
 
-  it("creates exactly one mild synthetic rain on the third dawn using the factory's two draws", () => {
+  it("selects exactly one later mild rain without consuming the random stream", () => {
     const { state, world } = newGame(17);
     activateShelterTest(state);
-    state.weather.offset = 10;
     const rng = new Rng(41);
     stepGoalOpportunity(state, world, calendar(0, state.startDoy), rng);
     for (const minute of [1440, 2880]) {
@@ -530,20 +595,14 @@ describe("natural-first weather", () => {
       expect(state.weather.storm).toBeNull();
     }
     const beforeSynthesis = rng.s;
-    const expected = new Rng(beforeSynthesis);
-    expected.next();
-    expected.next();
     state.minute = 4320;
+    testStormWindow(4500, 4860);
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
     const storm = state.weather.storm;
-    expect(storm).toMatchObject({ id: 1, source: "synthetic", kind: "rain" });
-    expect(storm!.from).toBeGreaterThanOrEqual(state.minute + 60);
-    expect(storm!.from).toBeLessThanOrEqual(state.minute + 180);
-    expect(storm!.until - storm!.from).toBeGreaterThanOrEqual(360);
-    expect(storm!.until - storm!.from).toBeLessThanOrEqual(600);
+    expect(storm).toMatchObject({ id: 1, source: "synthetic", kind: "rain", from: 4500, until: 4860 });
     expect(state.goals.opportunity).toMatchObject({ stormId: 1, source: "synthetic" });
     expect(state.weather.nextStormId).toBe(2);
-    expect(rng.s).toBe(expected.s);
+    expect(rng.s).toBe(beforeSynthesis);
 
     const exactStorm = structuredClone(storm);
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
@@ -569,6 +628,7 @@ describe("natural-first weather", () => {
   });
 
   it("accepts Chapter 2 weather only while it can be read before the ordinary warning", () => {
+    testRain(8, -5, 40);
     const { state, world } = newGame(17);
     activateWeatherReading(state);
     const rng = new Rng(61);
@@ -585,15 +645,16 @@ describe("natural-first weather", () => {
     expect(rng.s).toBe(before);
   });
 
-  it("keeps the ordinary gale distribution for a synthetic Chapter 2 storm", () => {
+  it("does not invent a Chapter 2 storm when the future local field stays clear", () => {
+    testAtmosphere({ temperatureC: 5 });
     const { state, world } = newGame(17);
     activateWeatherReading(state);
     const rng = new Rng(4);
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
     state.minute += 3 * 1440;
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
-    expect(state.weather.storm).toMatchObject({ source: "synthetic", kind: "gale" });
-    expect(["rain", "snow", "gale"]).toContain(state.weather.storm?.kind);
+    expect(state.weather.storm).toBeNull();
+    expect(state.goals.opportunity).toMatchObject({ status: "reserved", stormId: null, source: null });
   });
 
   it("waits for Chapter 3's contextual refuge area, then requires its known travel time plus 30 minutes", () => {
@@ -710,6 +771,7 @@ describe("natural-first weather", () => {
       from: 1, to: 2, source: "improved",
     }, world);
     state.minute += 3 * 1440;
+    testStormWindow(state.minute + 1440, state.minute + 1800);
 
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(83));
 
@@ -720,6 +782,8 @@ describe("natural-first weather", () => {
 });
 
 describe("Chapter 3 refuge storm evidence", () => {
+  beforeEach(() => testRain(8, 5, 40));
+
   function remoteAttempt(state: GameState, world: ReturnType<typeof newGame>["world"], stormId = 90) {
     siteCamp(state, world);
     activateRemoteStorm(state);
@@ -953,9 +1017,9 @@ describe("misses and retries", () => {
   });
 
   it("resolves a miss with a factual notice and retries after one storm-free day", () => {
+    testRain(8, 5, 40);
     const { state, world } = newGame(17);
     activateShelterTest(state);
-    state.weather.offset = 10;
     const rng = new Rng(81);
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
     state.weather.nextStormId = 2;

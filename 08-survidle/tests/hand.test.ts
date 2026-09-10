@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
@@ -11,6 +11,9 @@ import { cellOf, placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { RESTED_AT, SPENT_AT } from "../src/sim/sleep";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere());
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);

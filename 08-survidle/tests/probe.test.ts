@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { dailyCamp } from "../src/sim/camp";
@@ -13,8 +13,10 @@ import { addItem, pile } from "../src/sim/inventory";
 import { regionState } from "../src/sim/regionstate";
 import { cellIdx, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { ensureGround } from "../src/sim/weather";
+import { testAtmosphere } from "./weather-helpers";
 
-afterEach(() => DISABLED.clear());
+afterEach(() => { DISABLED.clear(); vi.restoreAllMocks(); });
 
 describe("the without probe and the unexploited line", () => {
   it("a disabled source shuts its task and reads oily fish as lean", () => {
@@ -91,12 +93,13 @@ describe("the without probe and the unexploited line", () => {
   // Seed 17's own coastline (the plants test's hand-found cell), not the landing
   // region: a land cell beside a "sea"-kind water cell, stood on directly.
   it("the seaweed bullet reads the shore's ice exactly as the seaweed task does", () => {
+    testAtmosphere({ temperatureC: 5 });
     const { state, world } = newGame(17, 90);
     siteCamp(state, world);
     placeAt(state, world, cellIdx(world, 1224, 12));
-    state.weather.iceCm = 0;
+    ensureGround(state, world, state.player.region).iceCm = 0;
     expect(unexploited(state, world).some((u) => u.name === "seaweed")).toBe(true);
-    state.weather.iceCm = 2;
+    ensureGround(state, world, state.player.region).iceCm = 2;
     expect(unexploited(state, world).some((u) => u.name === "seaweed")).toBe(false);
   });
 });

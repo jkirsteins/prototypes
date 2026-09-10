@@ -12,7 +12,8 @@ import { clamp } from "../units";
 import type { Calendar } from "./calendar";
 import { hasQuirk } from "./fears";
 import type { GameState } from "./types";
-import { stormNow } from "./weather";
+import { localWeather, stormNow } from "./weather";
+import type { World } from "../world/gen";
 
 /**
  * Hours the waking pressure takes to close its gap to the ceiling, and the
@@ -140,11 +141,11 @@ export function minutesToWake(debt: number, hour: number, halfRate = false): num
 }
 
 /** A light sleeper on a storm night clears debt at half the rate: the quirk's rule, on the process that now carries it. */
-export function debtFallHalved(state: GameState): boolean {
-  return hasQuirk(state, "sleepsLight") && stormNow(state.weather, state.minute);
+export function debtFallHalved(state: GameState, world?: World, cell?: number): boolean {
+  return hasQuirk(state, "sleepsLight") && stormNow(world ? localWeather(state, world, cell) : state.weather, state.minute);
 }
 
 /** How long a sleep started now would run: the model's minutes to the wake line for this body. */
-export function sleepMinutes(state: GameState, cal: Calendar): number {
-  return minutesToWake(state.player.sleepDebt, cal.hour, debtFallHalved(state));
+export function sleepMinutes(state: GameState, cal: Calendar, world?: World, cell?: number): number {
+  return minutesToWake(state.player.sleepDebt, cal.hour, debtFallHalved(state, world, cell));
 }

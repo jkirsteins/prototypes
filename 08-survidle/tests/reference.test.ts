@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { advance } from "../src/sim/advance";
 import { isCareRow } from "../src/sim/bodyorder";
 import { calendar, START_DOY } from "../src/sim/calendar";
@@ -46,9 +46,13 @@ import { regionState, siteFor } from "../src/sim/regionstate";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
 import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
 import { ICE_SHORE_CM } from "../src/sim/water";
+import { ensureGround } from "../src/sim/weather";
 import { cellIdx, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
-import { siteCamp } from "./siting-helpers";
 import { isWorkOrder } from "../src/sim/types";
+import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 /**
  * No reference seed's home region has a birch cell (the brief's own
@@ -295,6 +299,7 @@ describe("the reference player", () => {
   });
 
   it("read is finished for good after its one hour, not re-given the next day", () => {
+    testAtmosphere();
     const { state, world } = newGame(17);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "shore");
@@ -363,6 +368,7 @@ describe("the reference player", () => {
   });
 
   it("a times want that reaches its rung mid-count keeps only its remainder, not a fresh n", () => {
+    testAtmosphere();
     const { state, world } = newGame(17);
     siteCamp(state, world);
     const player = new ReferencePlayer([
@@ -479,6 +485,7 @@ describe("the reference player", () => {
   });
 
   it("the gate day's checkpoint fed reads the week it prints, a full week by then", () => {
+    testAtmosphere();
     // Seed 17, not 79: seed 79's body sits in its settling zone, where
     // starvation() correctly reads 0 and no longer throttles workSpeed the
     // way the old 1 - fat/typical did. Her day reshuffles, the fire goes
@@ -560,6 +567,7 @@ describe("the heir", () => {
 // test:slow`); what stays here is the shape of a lineage that never has to.
 describe("the lineage", () => {
   it("stops early when a life reaches the day cap alive", () => {
+    testAtmosphere();
     const r = runLineage(17, 5, 3);
     expect(r.lives.length).toBe(1);
     expect(r.lives[0].report.outcome.kind).toBe("reached");
@@ -767,6 +775,7 @@ describe("wants by level", () => {
 
 describe("wants by method", () => {
   it("names the water method: the shore keep in summer, the hole keep with an axe on ice, the melt keep without one", () => {
+    testAtmosphere();
     const { state, world } = newGame(17);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
@@ -779,7 +788,7 @@ describe("wants by method", () => {
     expect(wantOpen(state, world, shore)).toBe(true);
     expect(wantOpen(state, world, hole)).toBe(false);
     expect(wantOpen(state, world, melt)).toBe(false);
-    state.weather.iceCm = ICE_SHORE_CM;
+    ensureGround(state, world, state.player.region).iceCm = ICE_SHORE_CM;
     expect(wantOpen(state, world, shore)).toBe(false);
     expect(wantOpen(state, world, hole)).toBe(true);
     expect(wantOpen(state, world, melt)).toBe(false);

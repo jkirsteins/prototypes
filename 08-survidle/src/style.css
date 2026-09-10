@@ -336,7 +336,10 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   100% { opacity: 0; transform: translate(-32px, 32px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sky-meteor { animation: none; opacity: 0; }
+  .sky-meteor, .weather-ripple, .fog-ripple, .cloud-ripple, .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
+  .weather-ripple:not(:first-child), .fog-ripple:not(:first-child), .cloud-ripple:not(:first-child) { display: none; }
+  .weather-ripple:first-child, .fog-ripple:first-child, .cloud-ripple:first-child { opacity: var(--wx-glyph-opacity); }
+  .sky-meteor { opacity: 0; }
   .sky-meteor:first-child { opacity: 0.72; }
 }
 
@@ -374,7 +377,12 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 }
 /* A place row points out its destination without making ordinary map hover
    leave a highlight behind. main.ts adds and removes this class directly. */
-.grid .c.target { outline: 1px solid var(--accent); outline-offset: -1px; z-index: var(--map-signal); }
+.grid .c.target {
+  outline: none;
+  color: #fff;
+  text-shadow: 0 0 4px var(--accent), 0 0 2px var(--accent);
+  z-index: var(--map-signal);
+}
 
 /* The ways out, over the map's top right. They sit on the ground they lead
    off rather than at the foot of a panel a player had to find first. */
@@ -498,12 +506,12 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 }
 /* Space beyond the generated world is just as unknown to the player as fog,
    so it continues the map instead of drawing a black frame around it. */
-.grid .c.fog, .grid .c.void { color: #141a26; background: #0a0e17; }
+.grid .c.fog, .grid .c.void { color: #141a26; background-color: #0a0e17; }
 .grid .c.fog::before, .grid .c.void::before { content: "\00b7"; }
 /* Ground seen in this life but outside the current viewshed. A fixed colour
    treatment carries one fact only - remembered, not partly visible. */
-.grid .c.memory { filter: brightness(0.58) saturate(0.45); }
-.grid .c.dim { opacity: 0.45; }
+.grid .c.memory > .cell-ground, .grid .c.memory > .cell-signal { filter: brightness(0.58) saturate(0.45); }
+.grid .c.dim > .cell-ground, .grid .c.dim > .cell-signal { opacity: 0.45; }
 /* Set and forget: the zoom sits in the map's corner as a note rather than a
    panel of its own. It is nice to have and it is not what anybody came to
    the map to read, so it takes no border and no full-sized type. */
@@ -524,7 +532,11 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   background: rgba(5, 7, 12, 0.7);
 }
 .grid:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
-.grid .c:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.grid .c:focus-visible {
+  outline: none;
+  color: #fff;
+  text-shadow: 0 0 4px var(--accent), 0 0 2px var(--accent);
+}
 .legend .fog-key { color: #4a5160; }
 .legend .memory-key { color: #777d86; }
 /* Your walk: a line through the glyph centres, solid ahead, dashed behind. Its
@@ -545,36 +557,80 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   mix-blend-mode: hard-light;
   transition: background 0.5s linear, opacity 0.5s linear;
 }
-/* Falling weather: faint streaks for rain, drifting dots for snow. */
 .scroll-x::before {
-  content: ""; position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none; opacity: 0;
-  transition: opacity 0.5s;
+  content: ""; position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none;
 }
-.scroll-x.rain::before {
-  opacity: 0.35;
-  background: repeating-linear-gradient(115deg, transparent 0 9px, rgba(170, 200, 240, 0.35) 9px 10px, transparent 10px 22px);
-  background-size: 60px 60px;
-  animation: rainfall 0.6s linear infinite;
+/* Local atmosphere. Every glyph carries the simulation sample at its own
+   coordinate. CSS only colours it and switches among its ASCII shapes. */
+.grid .c.wx-cloud, .grid .c.wx-fog, .grid .c.wx-rain, .grid .c.wx-snowing { pointer-events: auto; position: relative; }
+.grid .c .cell-weather {
+  position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none;
 }
-.scroll-x.snowing::before {
-  opacity: 0.6;
-  background-image: radial-gradient(rgba(255,255,255,0.7) 1px, transparent 1.5px), radial-gradient(rgba(255,255,255,0.5) 1px, transparent 1.5px);
-  background-size: 28px 28px, 44px 44px;
-  background-position: 0 0, 14px 20px;
-  animation: snowfall 4s linear infinite;
+.grid .c.wx-glyph:not(.mk) > .cell-ground > .terrain-visual { visibility: hidden; }
+.grid .c.mk > .cell-weather { display: none; }
+.grid .c.has-map-signal > .cell-weather { display: none; }
+.grid .c .cloud-shadow {
+  position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none;
+  background: rgb(0 0 0 / var(--wx-shadow));
+  transition: background 0.5s linear;
 }
-@keyframes rainfall { to { background-position: -30px 60px; } }
-@keyframes snowfall { to { background-position: 10px 28px, 22px 64px; } }
+.grid .c .cell-signal {
+  display: block; position: relative; z-index: var(--map-signal);
+}
+.grid .c .weather-ripple {
+  position: absolute;
+  inset: 0;
+  color: inherit;
+  opacity: 0;
+  animation-timing-function: step-end;
+}
+.grid .c.wx-cloud .cloud-ripple {
+  --wx-glyph-opacity: calc(var(--wx-cloud) * 0.62);
+  color: #8896a5;
+  animation: map-weather-ripple 16s step-end infinite;
+  animation-delay: var(--cloud-phase);
+}
+.grid .c.wx-rain .cell-weather {
+  --wx-glyph-opacity: calc(var(--wx-fall) * 0.82);
+  color: #aac8f0;
+}
+.grid .c.wx-snowing .cell-weather {
+  --wx-glyph-opacity: calc(var(--wx-fall) * 0.9);
+  color: #f4f7fb;
+}
+.grid .c.wx-rain .precip-ripple {
+  animation: map-weather-ripple 6s step-end infinite;
+  animation-delay: var(--weather-phase);
+}
+.grid .c.wx-snowing .precip-ripple {
+  animation: map-weather-ripple 10s step-end infinite;
+  animation-delay: var(--weather-phase);
+}
+.grid .c.wx-fog .cell-weather {
+  --fog-glyph: #c6cfd6;
+  --wx-glyph-opacity: calc(var(--wx-fog) * 0.7);
+  color: var(--fog-glyph);
+}
+.grid .c.wx-fog .fog-ripple {
+  color: inherit;
+  animation: map-weather-ripple 12s step-end infinite;
+  animation-delay: var(--fog-phase);
+}
+@keyframes map-weather-ripple {
+  0%, 24.999% { opacity: var(--wx-glyph-opacity); }
+  25%, 100% { opacity: 0; }
+}
 .grid .c {
   display: block;
   /* The zoom level's box, not the default rung's: mapHtml writes --px and
      --line onto the grid, and a cell that keeps its own constants paints an
      11 by 14 square inside a 22 by 28 track at the closest rungs - black
      gutters between the ground, glyphs spilling out of their boxes, and
-     region borders drawn away from the letters they enclose. */
+     region borders drawn away from the letters they enclose. Ordinary cells
+     have no border at all; real region edges restore only the side they own. */
   width: var(--px); height: var(--line);
   text-align: center;
-  border: 1px solid transparent;
+  border: 0;
   cursor: pointer;
   color: var(--dim);
 }
@@ -583,7 +639,8 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
    details. The parent remains the one hit target, route step and accessibility
    cell. Its border is gone so neighbouring fields join without a grid seam;
    only genuine region boundaries restore one side below. */
-.grid.detailed .c { position: relative; overflow: hidden; border: 0; }
+.grid.detailed .c { position: relative; overflow: hidden; }
+.grid.detailed .cell-ground { position: absolute; inset: 0; }
 .grid.detailed .detail-ground {
   position: absolute; inset: 0;
   display: grid;
@@ -617,47 +674,25 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   height: calc(var(--line) / var(--detail));
   z-index: var(--map-signal);
 }
-.grid .c.t-water { color: #3a6fd8; background: #0a1633; }
-.grid .c.ice-thin { color: #6d8a9c; }
-.grid .c.ice-safe { color: #cfe6f0; }
-.grid .c.t-spruce { color: #1f8f3a; background: #0b1f11; }
-.grid .c.t-pine { color: #3fbf5a; background: #0e2415; }
-.grid .c.t-birch { color: #9be36a; background: #1a2a12; }
-.grid .c.t-meadow { color: #6f9a3c; background: #171f0f; }
-.grid .c.t-bog { color: #2f9f8f; background: #0b221f; }
-.grid .c.t-rock { color: #7a7f88; background: #1a1c20; }
-.grid .c.t-fell { color: #b9bec8; background: #22252b; }
-/* Fog feathers onto the known side of its boundary. The haze darkens only
-   terrain already drawn, so it softens the cutoff without revealing a single
-   property of the unknown cell. Marks stay crisp above it. */
-.grid .c.fog-edge { position: relative; }
-.grid .c.fog-edge:not(.mk)::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background:
-    linear-gradient(to right, var(--fog-left, transparent), transparent 45%),
-    linear-gradient(to left, var(--fog-right, transparent), transparent 45%),
-    linear-gradient(to bottom, var(--fog-top, transparent), transparent 45%),
-    linear-gradient(to top, var(--fog-bottom, transparent), transparent 45%);
-}
-.grid .c.fog-left { --fog-left: rgba(5, 7, 12, 0.72); }
-.grid .c.fog-right { --fog-right: rgba(5, 7, 12, 0.72); }
-.grid .c.fog-top { --fog-top: rgba(5, 7, 12, 0.72); }
-.grid .c.fog-bottom { --fog-bottom: rgba(5, 7, 12, 0.72); }
+.grid .c.t-water { color: #3a6fd8; background-color: #0a1633; }
+.grid .c.t-spruce { color: #1f8f3a; background-color: #0b1f11; }
+.grid .c.t-pine { color: #3fbf5a; background-color: #0e2415; }
+.grid .c.t-birch { color: #9be36a; background-color: #1a2a12; }
+.grid .c.t-meadow { color: #6f9a3c; background-color: #171f0f; }
+.grid .c.t-bog { color: #2f9f8f; background-color: #0b221f; }
+.grid .c.t-rock { color: #7a7f88; background-color: #1a1c20; }
+.grid .c.t-fell { color: #b9bec8; background-color: #22252b; }
 /* Under snow a spruce is a green tree with white in it, not a white tree: the
    evergreens keep their colour, lifted and cooled by what is caught in the
    needles, while the bare birch goes the colour of the snow around it. Past
    DEEP_SNOW_CM - the depth that already halves a walk and doubles the burn -
    there is more snow than tree to see, and they go white with everything else. */
-.grid.snow .c:not(.mk).t-spruce { color: #6f9e78; }
-.grid.snow .c:not(.mk).t-pine { color: #86b592; }
-.grid.snow .c:not(.mk).t-birch { color: #9fb8c8; }
-.grid.snow-deep .c:not(.mk).t-spruce { color: #c3d6dd; }
-.grid.snow-deep .c:not(.mk).t-pine { color: #d2e2e8; }
-.grid.snow-deep .c:not(.mk).t-birch { color: #e2ecf2; }
+.grid .c:not(.mk).ground-snow.t-spruce { color: #6f9e78; }
+.grid .c:not(.mk).ground-snow.t-pine { color: #86b592; }
+.grid .c:not(.mk).ground-snow.t-birch { color: #9fb8c8; }
+.grid .c:not(.mk).ground-snow-deep.t-spruce { color: #c3d6dd; }
+.grid .c:not(.mk).ground-snow-deep.t-pine { color: #d2e2e8; }
+.grid .c:not(.mk).ground-snow-deep.t-birch { color: #e2ecf2; }
 /*
  * Snow covers the ground; it does not erase it. One flat white over every
  * terrain and one flat background under all of them made a winter map that
@@ -667,21 +702,21 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
  * its three steps in the snow's own range: a drift on a rise catches the light
  * and a hollow holds the shadow.
  */
-.grid.snow .c:not(.mk).t-meadow { color: #dfe6f0; }
-.grid.snow .c:not(.mk).t-bog { color: #c2d4dc; }
-.grid.snow .c:not(.mk).t-rock { color: #d8dee8; }
-.grid.snow .c:not(.mk).t-fell { color: #f2f6fb; }
-.grid.snow .c:not(.mk):not(.t-water) { background: #121a26; }
-.grid.snow .c:not(.mk).t-meadow { background: #141d2a; }
-.grid.snow .c:not(.mk).t-bog { background: #101a24; }
-.grid.snow .c:not(.mk).t-rock { background: #171f2c; }
-.grid.snow .c:not(.mk).t-fell { background: #1d2634; }
-.grid.snow .c:not(.mk).t-spruce, .grid.snow .c:not(.mk).t-pine, .grid.snow .c:not(.mk).t-birch { background: #0f1823; }
+.grid .c:not(.mk).ground-snow.t-meadow { color: #dfe6f0; }
+.grid .c:not(.mk).ground-snow.t-bog { color: #c2d4dc; }
+.grid .c:not(.mk).ground-snow.t-rock { color: #d8dee8; }
+.grid .c:not(.mk).ground-snow.t-fell { color: #f2f6fb; }
+.grid .c:not(.mk).ground-snow:not(.t-water) { background-color: #121a26; }
+.grid .c:not(.mk).ground-snow.t-meadow { background-color: #141d2a; }
+.grid .c:not(.mk).ground-snow.t-bog { background-color: #101a24; }
+.grid .c:not(.mk).ground-snow.t-rock { background-color: #171f2c; }
+.grid .c:not(.mk).ground-snow.t-fell { background-color: #1d2634; }
+.grid .c:not(.mk).ground-snow.t-spruce, .grid .c:not(.mk).ground-snow.t-pine, .grid .c:not(.mk).ground-snow.t-birch { background-color: #0f1823; }
 
 /* The height, in the snow's own range. The hollow is blue-shadowed and the
    rise is nearly white, which is what relief looks like under snow. */
-.grid.snow .c:not(.mk).tone-0 { filter: brightness(0.82); }
-.grid.snow .c:not(.mk).tone-2 { filter: brightness(1.18); }
+.grid .c:not(.mk).ground-snow.tone-0 > .cell-ground > .terrain-visual { filter: brightness(0.82); }
+.grid .c:not(.mk).ground-snow.tone-2 > .cell-ground > .terrain-visual { filter: brightness(1.18); }
 /*
  * The outline through the fog. A region's edge is drawn on ground nobody has
  * walked, for the region stood in and the ones touching it, so the shape of
@@ -708,10 +743,10 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.bb { border-bottom-color: var(--border); }
 /* Border style is restored only on a real region edge. The colour continues
    to come from the existing known, current and fog boundary rules. */
-.grid.detailed .c.bl { border-left-style: solid; border-left-width: 1px; }
-.grid.detailed .c.br { border-right-style: solid; border-right-width: 1px; }
-.grid.detailed .c.bt { border-top-style: solid; border-top-width: 1px; }
-.grid.detailed .c.bb { border-bottom-style: solid; border-bottom-width: 1px; }
+.grid .c.bl { border-left-style: solid; border-left-width: 1px; }
+.grid .c.br { border-right-style: solid; border-right-width: 1px; }
+.grid .c.bt { border-top-style: solid; border-top-width: 1px; }
+.grid .c.bb { border-bottom-style: solid; border-bottom-width: 1px; }
 /* The region you stand in and the region you picked are marked by a wash over
    their whole area, and never by a frame drawn on each of their cells: a frame
    per cell says at cell scale what the wash and the accent-coloured region
@@ -826,6 +861,10 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 #map .legend b.mk-trap { color: #4a5a78; }
 #map .legend b.mk-seep { color: #6fa8dc; }
 #map .legend b.mk-animal { color: #b7ad87; }
+#map .legend b.ice-thin,
+#map .legend b.ice-safe { color: #3a6fd8; padding: 0 2px; }
+#map .legend b.ice-thin { background-color: #142533; }
+#map .legend b.ice-safe { background-color: #243746; }
 .mk-den { color: #d6aa72; }
 
 /*
@@ -1217,21 +1256,18 @@ button.act small, span.act small { display: block; color: var(--dim); }
    falls out of it falls: snow wanders down, rain goes straight and fast,
    and a storm leans both of them over and hurries them along. */
 .sky-cloud rect { opacity: 0.9; }
-.sky-cloud { animation: sky-drift var(--drift, 120s) linear infinite; }
-@keyframes sky-drift { from { transform: translateX(0); } to { transform: translateX(-240px); } }
+.sky-cloud { animation: sky-drift var(--cloud-duration, 120s) linear infinite; }
+@keyframes sky-drift { from { transform: translate(0, 0); } to { transform: translate(var(--cloud-drift-x, -240px), var(--cloud-drift-y, 0)); } }
 
 #sky-fall .sky-drop { transform: translate(var(--x), var(--y)); }
 #sky-fall line { stroke: rgba(255, 255, 255, 0.5); stroke-width: 1.1; opacity: 0; }
 #sky-fall circle { fill: rgba(255, 255, 255, 0.85); opacity: 0; }
-.sky.rain #sky-fall line { opacity: 1; animation: sky-rain 0.9s linear infinite; animation-delay: calc(var(--n) * -0.9s); }
-.sky.snow #sky-fall circle { opacity: 1; animation: sky-snow 6s linear infinite; animation-delay: calc(var(--n) * -6s); }
-.sky.storm #sky-fall line { animation-duration: 0.5s; }
-.sky.storm #sky-fall circle { animation-duration: 3s; }
-.sky.storm .sky-cloud { animation-duration: 26s; }
-@keyframes sky-rain { from { transform: translate(0, -20px); } to { transform: translate(-52px, 220px); } }
+.sky.rain #sky-fall line { opacity: 1; animation: sky-rain var(--fall-duration, 0.9s) linear infinite; animation-delay: calc(var(--n) * -0.9s); }
+.sky.snow #sky-fall circle { opacity: 1; animation: sky-snow var(--snow-duration, 6s) linear infinite; animation-delay: calc(var(--n) * -6s); }
+@keyframes sky-rain { from { transform: translate(0, -20px); } to { transform: translate(var(--fall-drift-x, -52px), 220px); } }
 /* Each flake wanders its own way down: one shared sideways drift made snow
    march in step, which is the one thing snow never does. */
-@keyframes sky-snow { from { transform: translate(0, -20px); } to { transform: translate(var(--sx, 10px), 220px); } }
+@keyframes sky-snow { from { transform: translate(0, -20px); } to { transform: translate(calc(var(--fall-drift-x, 0px) + var(--sx, 10px)), 220px); } }
 
 @media (prefers-reduced-motion: reduce) {
   .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
@@ -1396,12 +1432,12 @@ button.act small.gives, span.act small.gives,
    to show - so every step here is written to lose to it. The step is
    on the letter alone - a filter on the cell drags its background with it and
    the map fills with bright and dark rectangles instead of trees. */
-.grid:not(.snow) .c:not(.mk).t-spruce.tone-0 { color: #16642a; }
-.grid:not(.snow) .c:not(.mk).t-spruce.tone-2 { color: #35c455; }
-.grid:not(.snow) .c:not(.mk).t-pine.tone-0 { color: #2d8640; }
-.grid:not(.snow) .c:not(.mk).t-pine.tone-2 { color: #6ee089; }
-.grid:not(.snow) .c:not(.mk).t-birch.tone-0 { color: #6da548; }
-.grid:not(.snow) .c:not(.mk).t-birch.tone-2 { color: #c2f593; }
+.grid .c:not(.mk):not(.ground-snow).t-spruce.tone-0 { color: #16642a; }
+.grid .c:not(.mk):not(.ground-snow).t-spruce.tone-2 { color: #35c455; }
+.grid .c:not(.mk):not(.ground-snow).t-pine.tone-0 { color: #2d8640; }
+.grid .c:not(.mk):not(.ground-snow).t-pine.tone-2 { color: #6ee089; }
+.grid .c:not(.mk):not(.ground-snow).t-birch.tone-0 { color: #6da548; }
+.grid .c:not(.mk):not(.ground-snow).t-birch.tone-2 { color: #c2f593; }
 
 /* The open ground takes the same step for the same reason: a screen of one
    flat colour per terrain reads as a table, and the relief is already in the
@@ -1412,21 +1448,26 @@ button.act small.gives, span.act small.gives,
    the mark rules do, so without the exclusion an @ standing on toned ground
    lost its amber and got it back on the next cell: a survivor who flickered as
    they walked. A mark owns its whole cell. */
-.grid:not(.snow) .c:not(.mk).t-meadow.tone-0 { color: #5c8032; background: #131a0c; }
-.grid:not(.snow) .c:not(.mk).t-meadow.tone-2 { color: #8ab84a; background: #1c2612; }
-.grid:not(.snow) .c:not(.mk).t-bog.tone-0 { color: #278477; background: #091c1a; }
-.grid:not(.snow) .c:not(.mk).t-bog.tone-2 { color: #3cc2af; background: #0e2b27; }
-.grid:not(.snow) .c:not(.mk).t-rock.tone-0 { color: #666b73; background: #16181c; }
-.grid:not(.snow) .c:not(.mk).t-rock.tone-2 { color: #92979f; background: #202329; }
-.grid:not(.snow) .c:not(.mk).t-fell.tone-0 { color: #9aa0aa; background: #1d2026; }
-.grid:not(.snow) .c:not(.mk).t-fell.tone-2 { color: #d6dbe4; background: #292d35; }
+.grid .c:not(.mk):not(.ground-snow).t-meadow.tone-0 { color: #5c8032; background-color: #131a0c; }
+.grid .c:not(.mk):not(.ground-snow).t-meadow.tone-2 { color: #8ab84a; background-color: #1c2612; }
+.grid .c:not(.mk):not(.ground-snow).t-bog.tone-0 { color: #278477; background-color: #091c1a; }
+.grid .c:not(.mk):not(.ground-snow).t-bog.tone-2 { color: #3cc2af; background-color: #0e2b27; }
+.grid .c:not(.mk):not(.ground-snow).t-rock.tone-0 { color: #666b73; background-color: #16181c; }
+.grid .c:not(.mk):not(.ground-snow).t-rock.tone-2 { color: #92979f; background-color: #202329; }
+.grid .c:not(.mk):not(.ground-snow).t-fell.tone-0 { color: #9aa0aa; background-color: #1d2026; }
+.grid .c:not(.mk):not(.ground-snow).t-fell.tone-2 { color: #d6dbe4; background-color: #292d35; }
 
 /* Depth. `coast` crosses zero at the shore and runs on out to sea, so the
    shallows are the lit end and the open water the dark one - the way water
    reads standing on a beach. A lake has no offshore and keeps the plain
    colour. */
-.grid:not(.snow) .c:not(.mk).t-water.deep-0 { color: #5b9ae8; background: #102047; }
-.grid:not(.snow) .c:not(.mk).t-water.deep-2 { color: #2b53a4; background: #060d20; }
+.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; }
+.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; }
+/* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
+   depth palette. Thin ice remains dark and uncertain; safe ice forms the
+   lighter continuous sheet. Marks still own their whole cell. */
+.grid .c:not(.mk).t-water.ice-thin { background-color: #142533; }
+.grid .c:not(.mk).t-water.ice-safe { background-color: #243746; }
 
 /*
  * The year in colour.
@@ -1444,29 +1485,29 @@ button.act small.gives, span.act small.gives,
  */
 /* Low ground turns first and deepest, the tops stay yellow longest, so the
    height step runs red through orange to gold rather than just light to dark. */
-.grid.season-autumn:not(.snow) .c:not(.mk).t-birch { color: #f0b93f; }
-.grid.season-autumn:not(.snow) .c:not(.mk).t-birch.tone-0 { color: #e07a2a; }
-.grid.season-autumn:not(.snow) .c:not(.mk).t-birch.tone-2 { color: #ffdc72; }
+.grid.season-autumn .c:not(.mk):not(.ground-snow).t-birch { color: #f0b93f; }
+.grid.season-autumn .c:not(.mk):not(.ground-snow).t-birch.tone-0 { color: #e07a2a; }
+.grid.season-autumn .c:not(.mk):not(.ground-snow).t-birch.tone-2 { color: #ffdc72; }
 /* The ground turns in patches, not all over: only the cells the world says are
    dry (ui/ground.ts, turnedGround) go over, and the damp ground beside them
    stays as green as it was in July. The backgrounds warm with the letters on
    those cells only, or a gold letter sits on summer ground. */
-.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-meadow { color: #d09a42; background: #1f1a0c; }
-.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-meadow.tone-0 { color: #c06a2e; background: #1a1409; }
-.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-meadow.tone-2 { color: #e8c15c; background: #292110; }
-.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-bog { color: #c4713c; background: #1e150e; }
-.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-bog.tone-0 { color: #ad5530; }
-.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-bog.tone-2 { color: #dd9455; }
+.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-meadow { color: #d09a42; background-color: #1f1a0c; }
+.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-meadow.tone-0 { color: #c06a2e; background-color: #1a1409; }
+.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-meadow.tone-2 { color: #e8c15c; background-color: #292110; }
+.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-bog { color: #c4713c; background-color: #1e150e; }
+.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-bog.tone-0 { color: #ad5530; }
+.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-bog.tone-2 { color: #dd9455; }
 
 /* Winter without snow on the ground: the birch is bare wood, the field is dead
    grass. Everything else is what it is in any month. */
-.grid.season-winter:not(.snow) .c:not(.mk).t-birch { color: #8a7256; }
-.grid.season-winter:not(.snow) .c:not(.mk).t-birch.tone-0 { color: #6d5943; }
-.grid.season-winter:not(.snow) .c:not(.mk).t-birch.tone-2 { color: #a89078; }
-.grid.season-winter:not(.snow) .c:not(.mk).t-meadow { color: #7c7a63; }
-.grid.season-winter:not(.snow) .c:not(.mk).t-meadow.tone-0 { color: #63614e; }
-.grid.season-winter:not(.snow) .c:not(.mk).t-meadow.tone-2 { color: #9a9880; }
-.grid.season-winter:not(.snow) .c:not(.mk).t-bog { color: #6f7b78; }
+.grid.season-winter .c:not(.mk):not(.ground-snow).t-birch { color: #8a7256; }
+.grid.season-winter .c:not(.mk):not(.ground-snow).t-birch.tone-0 { color: #6d5943; }
+.grid.season-winter .c:not(.mk):not(.ground-snow).t-birch.tone-2 { color: #a89078; }
+.grid.season-winter .c:not(.mk):not(.ground-snow).t-meadow { color: #7c7a63; }
+.grid.season-winter .c:not(.mk):not(.ground-snow).t-meadow.tone-0 { color: #63614e; }
+.grid.season-winter .c:not(.mk):not(.ground-snow).t-meadow.tone-2 { color: #9a9880; }
+.grid.season-winter .c:not(.mk):not(.ground-snow).t-bog { color: #6f7b78; }
 
 /* The sky gallery (sky.html): every condition the weather widget draws, side
    by side, at the size it is drawn at on the board. */

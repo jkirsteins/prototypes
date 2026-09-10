@@ -27,25 +27,15 @@ import { check, whereIs } from "../sim/tasks";
 import type { Carcass, GameState, Inventory } from "../sim/types";
 import { plain } from "../sim/voice";
 import { fmtDuration, fmtKg } from "../units";
-import { ambientTemperature, walkableIce } from "../sim/weather";
+import { localWeather } from "../sim/weather";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
-import { cellAt, regionAt, terrainPeek, type World } from "../world/gen";
+import { cellAt, regionAt, type World } from "../world/gen";
 import { SPECIES_DEFS } from "../sim/species";
 import { esc } from "./render";
 import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
 import { compactEquipmentHtml } from "./equipment";
-
-/** What each terrain is called in a sentence, rather than by its glyph. */
-const GROUND: Record<string, string> = {
-  spruce: "spruce forest",
-  pine: "pine forest",
-  birch: "birch wood",
-  fell: "open fell",
-  rock: "bare rock",
-  bog: "bog",
-  meadow: "meadow",
-  water: "water",
-};
+import { visibleCells } from "../sim/sight";
+import { cellKnowledge, cellPresentation } from "./cellpresentation";
 
 /**
  * Everything the tooltip's text depends on, as one string.
@@ -68,16 +58,18 @@ export function tipKey(state: GameState, world: World, calOrCell: Calendar | num
     .filter((carcass) => carcass.cell === cell)
     .map((carcass) => `${carcass.id}:${carcass.yields.meatKg.toFixed(1)}:${carcass.warmAge.toFixed(0)}`)
     .join(",");
-  const ambient = ambientTemperature(cal, state.weather).toFixed(1);
+  const ambient = localWeather(state, world, cell).temperatureC.toFixed(1);
   const site = cellAt(world, cell).region === state.player.region ? st.sites[cell] : undefined;
   const protection = site ? `P${protectionOf(site)}:${profileOf(site)}` : "";
   const fieldFire = state.player.fieldFire;
   const field = Boolean(fieldFire && fieldFire.cell === cell && fieldFire.fuelKg > 0);
+  const current = visibleCells(state, world, cal, cellOf(state, world)).has(cell);
+  const ground = cellPresentation(state, world, cell, cellKnowledge(state, cell, current)).heading;
   const wildlife = visibleWildlife(state, world, cal)
     .filter((subject) => subject.active?.cell === cell)
     .map((subject) => `${subject.id}:${wildlifeMembers(subject)}:${subject.active?.intent}:${state.wildlife.recognized[subject.id] ? subject.name ?? "" : ""}`)
     .join(",");
-  return `${cell}|${cellOf(state, world)}|${known}|${heap}|${carcasses}|${ambient}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}|${protection}|${field ? "field" : ""}|${wildlife}`;
+  return `${cell}|${cellOf(state, world)}|${known}|${ground}|${heap}|${carcasses}|${ambient}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}|${protection}|${field ? "field" : ""}|${wildlife}`;
 }
 
 function animalsAt(state: GameState, world: World, cal: Calendar, cell: number): string[] {
@@ -129,11 +121,12 @@ function carcassLine(carcass: Carcass, ambient: number): string {
   return `${SPECIES_DEFS[carcass.species].name} carcass: ${fmtKg(carcass.yields.meatKg)}, ${condition}${time}`;
 }
 
-function cellInventoryRow(state: GameState, label: string, cell: number | null, ambient: number): string {
+function cellInventoryRow(state: GameState, world: World, label: string, cell: number | null): string {
   if (cell === null) return "";
   const parts: string[] = [];
   const inv = state.piles[cell];
   if (inv && weight(inv) > 0) parts.push(inventoryItems(inv));
+  const ambient = localWeather(state, world, cell).temperatureC;
   for (const carcass of state.carcasses) if (carcass.cell === cell) parts.push(carcassLine(carcass, ambient));
   return parts.length ? `<div><b>${label}:</b> ${esc(parts.join(", "))}</div>` : "";
 }
@@ -146,13 +139,12 @@ export function mapInventoryHtml(state: GameState, world: World, calOrHighlighte
   const highlighted = typeof calOrHighlighted === "object" && calOrHighlighted !== null ? (highlightedArg ?? null) : calOrHighlighted;
   const camp = campCellOf(state, world);
   const here = cellOf(state, world);
-  const ambient = ambientTemperature(cal, state.weather);
   const rows = [
-    cellInventoryRow(state, "Camp", camp, ambient),
+    cellInventoryRow(state, world, "Camp", camp),
     inventoryRow("Carried", state.player.pack),
-    here !== camp ? cellInventoryRow(state, "Here", here, ambient) : "",
+    here !== camp ? cellInventoryRow(state, world, "Here", here) : "",
     highlighted !== null && highlighted !== camp && highlighted !== here && isKnown(state, highlighted)
-      ? cellInventoryRow(state, "Highlighted", highlighted, ambient)
+      ? cellInventoryRow(state, world, "Highlighted", highlighted)
       : "",
   ].join("");
   const equipment = compactEquipmentHtml(state, world, cal);
@@ -163,41 +155,39 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   const region = cellAt(world, cell).region;
   const regionName = esc(head(regionAt(world, region).name));
   const heading = (name: string, where = "") => `<div class="tiphead"><b>${esc(head(name))}</b><span class="dim">${regionName}${where ? `, ${esc(where)}` : ""}</span></div>`;
+  const current = visibleCells(state, world, cal, cellOf(state, world)).has(cell);
+  const presentation = cellPresentation(state, world, cell, cellKnowledge(state, cell, current));
 
   // Another region first. The hover surface reports facts only; movement is
   // controlled by the map and surveying lives under Explore.
   if (region !== state.player.region) {
-    if (!isKnown(state, cell)) return `${heading("Unknown ground")}<div class="dim">You have never been here.</div>`;
-    const x = cell % world.w;
-    const y = Math.floor(cell / world.w);
-    const terrain = terrainPeek(world, x, y);
-    const name = spotAt(world, cell) ?? GROUND[terrain] ?? terrain;
-    return heading(name);
+    if (presentation.knowledge === "unknown") return `${heading("Unknown ground")}<div class="dim">You have never been here.</div>`;
+    const spot = spotAt(world, cell);
+    return `${heading(spot ?? presentation.heading)}${spot ? `<div>${esc(head(presentation.heading))}</div>` : ""}`;
   }
 
   // Fog next: ground nobody has walked has nothing to report, and saying
   // so is the honest answer rather than describing land out of a survivor's
   // reach who has never seen it.
-  if (!isKnown(state, cell)) {
+  if (presentation.knowledge === "unknown") {
     return `${heading("Unknown ground")}<div class="dim">You have never been here.</div>`;
   }
 
   const here = cellOf(state, world);
   const st = regionState(state, world, state.player.region);
 
-  const x = cell % world.w;
-  const y = Math.floor(cell / world.w);
-  const terrain = terrainPeek(world, x, y);
+  const terrain = presentation.terrain;
   const spot = spotAt(world, cell);
-  const name = spot ?? GROUND[terrain] ?? terrain;
+  const name = spot ?? presentation.heading;
 
   const lines: string[] = [];
+  if (spot) lines.push(`<div>${esc(head(presentation.heading))}</div>`);
 
   // Where it is, and what it costs to stand there.
   if (cell === here) {
     lines.push(`<div>You are here.</div>`);
   } else {
-    const km = kmBetween(state, world, here, cell, walkableIce(state.weather));
+    const km = kmBetween(state, world, here, cell, "safe");
     const walk = check(state, world, cal, "walk", `cell:${cell}`);
     const text = walk.ok && km !== null ? esc(formatTravel(km, walk.duration, display)) : esc(plain(walk.why));
     lines.push(walk.ok
@@ -223,7 +213,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   // firewood, so a heap is worth saying wherever it sits.
   const heap = state.piles[cell] ? weight(state.piles[cell]) : 0;
   if (heap > 0) lines.push(`<div>${esc(fmtKg(heap))} lying here</div>`);
-  const ambient = ambientTemperature(cal, state.weather);
+  const ambient = localWeather(state, world, cell).temperatureC;
   for (const carcass of state.carcasses) {
     if (carcass.cell === cell) lines.push(`<div>${esc(carcassLine(carcass, ambient))}</div>`);
   }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { bodyStep, campNeed, canFeed, currentNeed, SLEEP_AT, snaresWaiting, SOAKED_WETNESS, WET_COLD_C } from "../src/sim/body";
@@ -11,7 +11,7 @@ import { startIntent } from "../src/sim/intent";
 import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
-import { ambientTemperature } from "../src/sim/weather";
+import { ensureGround, localWeather } from "../src/sim/weather";
 import { placeAt, straightKm } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { seepGround } from "../src/sim/seep";
@@ -20,6 +20,9 @@ import { check, startTask } from "../src/sim/tasks";
 import type { Intent, Task } from "../src/sim/types";
 import { regionAt, spotOf } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere());
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
@@ -81,8 +84,7 @@ describe("the need order", () => {
     const { g, state, world, st } = felling();
     const p = state.player;
     placeAt(state, world, st.campCell!);
-    state.weather.iceCm = 10;
-    state.weather.snowCm = 20;
+    Object.assign(ensureGround(state, world, state.player.region), { iceCm: 10, snowCm: 20 });
     // No axe: an iced shore in reach would otherwise be a hole to cut, and
     // this test wants the melt path that runs when a hole is not an option.
     p.tools = p.tools.filter((t) => t.id !== "axe");
@@ -99,7 +101,7 @@ describe("the need order", () => {
   it("thirsty away from camp with camp water at home walks home for it", () => {
     const { g, state, world, st } = felling();
     const p = state.player;
-    state.weather.iceCm = 10;
+    ensureGround(state, world, state.player.region).iceCm = 10;
     addItem(pile(state, st.campCell!), "barkBucket", 1);
     addItem(pile(state, st.campCell!), "water", 2);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
@@ -309,9 +311,9 @@ describe("wet and cold", () => {
     siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 10;
-    state.weather.offset = -10;
+    testAtmosphere({ temperatureC: 4 });
     const cal = calendar(state.minute);
-    expect(ambientTemperature(cal, state.weather)).toBeLessThan(5);
+    expect(localWeather(state, world).temperatureC).toBeLessThan(5);
     state.player.warmth = 40;
     state.player.wetness = 0;
     expect(currentNeed(state, world, cal)).not.toBe("cold");
@@ -336,8 +338,7 @@ describe("thirst and the seep", () => {
     // Dug once the felling is under way, so the pool reads what the test says and not that plus hours of refill.
     state.seeps[wet] = { class: seepGround(world, wet)!, litres, ice: 0, dug: state.minute };
     if (iced) {
-      state.weather.iceCm = 10;
-      state.weather.snowCm = 0;
+      Object.assign(ensureGround(state, world, state.player.region), { iceCm: 10, snowCm: 0 });
       p.tools = p.tools.filter((t) => t.id !== "axe");
       addItem(p.pack, "axe", 1);
     }

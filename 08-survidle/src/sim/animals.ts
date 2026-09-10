@@ -1,3 +1,4 @@
+import { groundAt } from "./weather";
 import type { Rng } from "../rng";
 import { regionAt, speciesHere, type World } from "../world/gen";
 import type { Presence } from "./advance";
@@ -80,10 +81,15 @@ export function seasonalCapacity(world: World, region: number, s: Species, cal: 
 }
 
 export function regionDensity(state: GameState, world: World, region: number, s: Species, cal: Calendar): number {
-  return density(popOf(regionState(state, world, region), s), seasonalCapacity(world, region, s, cal, state.weather.iceCm));
+  return density(popOf(regionState(state, world, region), s), seasonalCapacity(world, region, s, cal, groundAt(state, world, region).iceCm));
 }
 
-/** Runs once per game day at 04:00: growth, then migration. Logs notable movements near the player; nothing to notice with nobody home. */
+/**
+ * Runs once per game day at 04:00: growth, then migration. The caller advances
+ * state.minute and supplies calendar(state.minute, state.startDoy), as advance
+ * does; this subsystem never advances time. Logs notable movements near the
+ * player; nothing to notice with nobody home.
+ */
 export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng: Rng, who: Presence | null): void {
   const growing = cal.month >= 3 && cal.month <= 8;
   const here = who?.region;
@@ -96,7 +102,7 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
     const st = state.regions[id];
     for (const s of speciesHere(r)) {
       const def = SPECIES_DEFS[s];
-      const k = seasonalCapacity(world, r.id, s, cal, state.weather.iceCm);
+      const k = seasonalCapacity(world, r.id, s, cal, groundAt(state, world, r.id).iceCm);
       const represented = def.agent
         ? state.wildlife.subjects.filter((subject) => subject.region === id && subject.species === s).reduce((sum, subject) => sum + subject.cohorts.reduce((n, cohort) => n + cohort.count, 0), 0)
         : 0;
@@ -142,13 +148,13 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
     const st = state.regions[id];
     for (const s of speciesHere(r)) {
       if (!SMALL_GAME.includes(s)) continue;
-      const k = seasonalCapacity(world, r.id, s, cal, state.weather.iceCm);
+      const k = seasonalCapacity(world, r.id, s, cal, groundAt(state, world, r.id).iceCm);
       if (k <= 0) continue;
       const pop = popOf(st, s);
       const gap = k - pop;
       if (gap <= 0.01) continue;
       const nbs = r.neighbours.map((nb) => {
-        const nk = seasonalCapacity(world, nb.id, s, cal, state.weather.iceCm);
+        const nk = seasonalCapacity(world, nb.id, s, cal, groundAt(state, world, nb.id).iceCm);
         const npop = state.regions[nb.id] ? popOf(state.regions[nb.id], s) : (startingPop(world, nb.id)[s] ?? 0);
         return { id: nb.id, k: nk, pop: npop, d: nk > 0 ? Math.min(1, npop / nk) : 0 };
       }).filter((nb) => nb.k > 0);
@@ -203,7 +209,7 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
       // Only neighbours with room; a region that never holds the species has weight 0 and must not be a fallback.
       const candidates = nbs
         .map((nb) => {
-          const room = Math.max(0, seasonalCapacity(world, nb.id, s, cal, state.weather.iceCm) - popOf(state.regions[nb.id], s));
+          const room = Math.max(0, seasonalCapacity(world, nb.id, s, cal, groundAt(state, world, nb.id).iceCm) - popOf(state.regions[nb.id], s));
           const quiet = bigGame ? 1 - disturbance(nb.id) : 1;
           return { id: nb.id, weight: room * quiet };
         })

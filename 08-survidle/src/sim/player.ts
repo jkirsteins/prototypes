@@ -1,3 +1,4 @@
+import { localWeather } from "./weather";
 import { clamp } from "../units";
 import { cellAt, type World } from "../world/gen";
 import { speedOf } from "../world/route";
@@ -171,9 +172,10 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   const a = activityOf(state.task);
   felt += a === "heavy" ? 6 : a === "walk" ? 4 : a === "light" ? 2 : 0;
   felt -= 0.15 * p.wetness;
-  if (stormNow(state.weather, state.minute)) {
-    const snowWindbreak = state.weather.storm?.kind === "snow" && campTask && protectionOf(here) >= 1;
-    if (state.weather.storm?.kind === "gale") {
+  const local = localWeather(state, world);
+  if (stormNow(local, state.minute)) {
+    const snowWindbreak = local.storm?.kind === "snow" && campTask && protectionOf(here) >= 1;
+    if (local.storm?.kind === "gale") {
       // Design scale: each effective level takes a third of the existing
       // six-degree wind loss off. Terrain lee also helps outdoor work;
       // a roof and its profile only count while actually using the shelter.
@@ -223,9 +225,9 @@ export function walkManner(state: GameState, world: World, cal: Calendar): strin
   const terrain = hereTerrain(state, world);
   const loadKg = carried(p);
   const limits = body(state);
-  const lux = skyLux(cal, state.weather.clear, state.weather.snowCm) + (p.torch.lit ? TORCH_LUX : 0);
+  const lux = skyLux(cal, localWeather(state, world).clear, localWeather(state, world).snowCm) + (p.torch.lit ? TORCH_LUX : 0);
   if (p.frostbite.feet > 0 || p.toes) return "limping";
-  if (state.weather.snowCm > DEEP_SNOW_CM) return "struggling through deep snow";
+  if (localWeather(state, world).snowCm > DEEP_SNOW_CM) return "struggling through deep snow";
   if (loadKg > limits.packHardKg) return "struggling under the load";
   if (lightFactor(lux, WALK_LUX, NIGHT_WALK_FACTOR) < 0.8) return "walking carefully in the dark";
   if (loadKg > limits.packComfortableKg) return "walking under a heavy load";
@@ -339,7 +341,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const d = body(state);
   const l = fatLandmarks(personOf(state));
   const r = regionState(state, world, p.region);
-  const w = state.weather;
+  const w = localWeather(state, world);
   const felt = feltTemperature(state, world, ambient);
   const a = activityOf(state.task);
   const camp = atCamp(state, world);
@@ -420,7 +422,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   // an evening by the fire gives none of it back. A light sleeper on a windy
   // night clears it at half the rate.
   const asleep = a === "sleep";
-  p.sleepDebt = debtStep(p.sleepDebt, asleep, dt, asleep && debtFallHalved(state));
+  p.sleepDebt = debtStep(p.sleepDebt, asleep, dt, asleep && debtFallHalved(state, world));
 
   // Fatigue: what the work drains and what rest and sleep give back. The
   // budget balances at eight hours - twelve on a task and four of camp work

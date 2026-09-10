@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { bodyRowOf, campRowOf, isCareRow } from "../src/sim/bodyorder";
@@ -24,9 +24,15 @@ import { WINTER_START_DOY } from "../src/sim/year";
 import { today } from "../src/sim/ledger";
 import { siteCamp } from "./siting-helpers";
 import { isWorkOrder } from "../src/sim/types";
+import { testAtmosphere } from "./weather-helpers";
 
 const cal = calendar(0);
 const chosenTask = (o: ReturnType<typeof chooseOrder>) => o && isWorkOrder(o) ? o.req.task : null;
+
+// This suite isolates order selection and scheduling. Stable dry local air
+// keeps the assertions about darkness, firelight and work budgets independent
+// of whichever weather feature the deterministic climate puts over the camp.
+beforeEach(() => testAtmosphere());
 
 describe("the order record", () => {
   it("a new region's list is the two care rows and nothing else, and the next id is past them", () => {

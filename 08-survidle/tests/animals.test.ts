@@ -8,7 +8,7 @@ import { fillPopulations, regionState, startingPop } from "../src/sim/regionstat
 import { deserialize, serialize } from "../src/sim/save";
 import { generateWorld, regionAt, type World } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
-import { ICE_THIN_CM } from "../src/sim/weather";
+import { ensureGround, groundAt, ICE_THIN_CM } from "../src/sim/weather";
 import type { GameState } from "../src/sim/types";
 import { disturbHuntingGround } from "../src/sim/hunting";
 
@@ -94,17 +94,26 @@ describe("seasons", () => {
     expect(seasonalCapacity(world, perchId, "perch", calendar(1440 * 70), 30)).toBe(regionAt(world, perchId).capacity.perch);
   });
 
-  it("a migrant flock arrives over ten days and is gone a month after it leaves", () => {
+  it("a migrant flock returns after the local thaw and leaves at a tenth per day", () => {
     const { state, world } = newGame(5);
     const id = regionWith(state, world, "mallard");
     const st = regionState(state, world, id);
     const k = regionAt(world, id).capacity.mallard!;
     st.pop.mallard = 0;
     const rng = new Rng(3);
-    for (let d = 0; d < 10; d++) dailyAnimals(state, world, calendar(1440 * (30 + d)), rng, { region: state.player.region, atCamp: true });   // May
-    expect(popOf(st, "mallard")).toBeGreaterThan(k * 0.5);
-    for (let d = 0; d < 30; d++) dailyAnimals(state, world, calendar(1440 * (200 + d)), rng, { region: state.player.region, atCamp: true });  // mid October on
-    expect(popOf(st, "mallard")).toBeLessThan(k * 0.1);
+    expect(groundAt(state, world, id).iceCm).toBeCloseTo(27.395442147, 6);
+    const day = (d: number) => {
+      // Match advance: move the authoritative clock, then catch up touched
+      // ground before the daily population step. Calendar alone moves no time.
+      state.minute = 1440 * d;
+      for (const key of Object.keys(state.regions)) ensureGround(state, world, Number(key));
+      dailyAnimals(state, world, calendar(state.minute, state.startDoy), rng, { region: state.player.region, atCamp: true });
+    };
+    day(30); // May: one day fills a tenth of the gap to capacity.
+    expect(groundAt(state, world, id).iceCm).toBe(0);
+    expect(popOf(st, "mallard")).toBeCloseTo(k * 0.1, 9);
+    day(200); // October: absence removes a tenth of the remaining flock.
+    expect(popOf(st, "mallard")).toBeCloseTo(k * 0.09, 9);
   });
 
   it("keeps a denned resident bear in the population without daily flock replenishment", () => {

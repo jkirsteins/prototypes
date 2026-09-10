@@ -8,9 +8,11 @@ import { skillLevel, oddsFactor } from "./skills";
 import { huntedLand, SPECIES_DEFS, type Species } from "./species";
 import type { Carcass, CarcassYields, GameState } from "./types";
 import { cellAt, regionAt, type World } from "../world/gen";
+import { iceAt, localWeather } from "./weather";
 import { noteHuntSpoiledKcal } from "./hunt-audit";
 import { FOODS } from "./items";
 import { ageHuntPressure, huntPressureFactor } from "./hunt-pressure";
+import { visibleCells } from "./sight";
 
 export { disturbHuntingGround, huntPressureFactor } from "./hunt-pressure";
 
@@ -55,11 +57,12 @@ export function createCarcass(state: GameState, world: World, species: Species, 
 }
 
 /** Ages carcasses and lets disturbed ground become useful again. */
-export function stepCarcasses(state: GameState, dt: number, ambient: number): void {
+export function stepCarcasses(state: GameState, world: World, dt: number): void {
   ageHuntPressure(state, dt);
-  const decayRate = ambient < -10 ? 0 : ambient <= 0 ? 0.5 : 1;
-  if (decayRate <= 0) return;
   for (const carcass of state.carcasses) {
+    const ambient = localWeather(state, world, carcass.cell).temperatureC;
+    const decayRate = ambient < -10 ? 0 : ambient <= 0 ? 0.5 : 1;
+    if (decayRate <= 0) continue;
     const meatBefore = carcass.yields.meatKg;
     const fatBefore = carcass.yields.fatKg ?? 0;
     const before = carcass.warmAge;
@@ -272,10 +275,11 @@ function speciesValue(state: GameState, world: World, cell: number, species: Spe
  * Publicly inferable prey at a cell. Novices follow common sign while skill
  * shifts the draw toward the best expected usable recovery per total hour.
  */
-export function huntSpeciesWeights(state: GameState, world: World, cal: Calendar, cell: number): HuntSpeciesWeight[] {
+export function huntSpeciesWeights(state: GameState, world: World, cal: Calendar, cell: number, observable?: ReadonlySet<number>): HuntSpeciesWeight[] {
   const signs = recentSign(state, cell);
+  const iceCm = cell === cellOf(state, world) || observable?.has(cell) ? iceAt(state, world, cell) : state.weather.iceCm;
   const rows = huntedLand()
-    .filter((species) => !absence(SPECIES_DEFS[species], cal, state.weather.iceCm) && suits(world, cell, species) && habitatPrior(world, cell, species) > 0)
+    .filter((species) => !absence(SPECIES_DEFS[species], cal, iceCm) && suits(world, cell, species) && habitatPrior(world, cell, species) > 0)
     .map((species) => {
       const evidence = negativeEvidenceFactor(state, world, cell, species);
       return {
@@ -300,9 +304,9 @@ export function huntSpeciesWeights(state: GameState, world: World, cal: Calendar
  * evidence; exact density remains world truth used only when an attempt is
  * resolved.
  */
-export function huntEstimate(state: GameState, world: World, cal: Calendar, cell: number): HuntEstimate {
+export function huntEstimate(state: GameState, world: World, cal: Calendar, cell: number, observable?: ReadonlySet<number>): HuntEstimate {
   const signs = recentSign(state, cell);
-  const weights = huntSpeciesWeights(state, world, cal, cell);
+  const weights = huntSpeciesWeights(state, world, cal, cell, observable);
   const species = weights.map((row) => row.species);
   const totalWeight = weights.reduce((sum, row) => sum + row.weight, 0);
   const kgPerHour = totalWeight <= 0 ? 0 : weights.reduce((sum, row) => sum + row.weight * row.value, 0) / totalWeight;
@@ -317,6 +321,7 @@ export function huntEstimate(state: GameState, world: World, cal: Calendar, cell
  */
 export function bestHuntCell(state: GameState, world: World, cal: Calendar): number {
   const here = cellOf(state, world);
+  const observable = visibleCells(state, world, cal, here);
   const r = regionAt(world, state.player.region);
   const hasLocalFailures = r.cells.some((cell) => Object.values(state.player.huntSigns[cell]?.failures ?? {}).some((failure) => failure && state.minute - failure.at < NEGATIVE_EVIDENCE_DAYS * 1440));
   const hasLocalPressure = r.cells.some((cell) => huntPressureFactor(state, world, cell) < 0.8);
@@ -326,7 +331,7 @@ export function bestHuntCell(state: GameState, world: World, cal: Calendar): num
   const choices = regions.flatMap((region) => region.cells)
     .filter((cell) => state.mapped[cell] !== undefined)
     .map((cell) => {
-      const estimate = huntEstimate(state, world, cal, cell);
+      const estimate = huntEstimate(state, world, cal, cell, observable);
       if (!estimate.species.length) return null;
       const km = kmBetween(state, world, here, cell, "none");
       if (km === null) return null;

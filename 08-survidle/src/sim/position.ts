@@ -1,3 +1,4 @@
+import { localWeather } from "./weather";
 /**
  * Where the player is, in cells, and what that means: which region, which
  * named spot if any, what ground is under foot, and how far camp is. The
@@ -7,12 +8,12 @@ import { CELL_KM } from "../units";
 import { type Cell, cellAt, neighbours, regionAt, regionOf, waterKindOf, type World } from "../world/gen";
 import { routeKm } from "../world/route";
 import { calendar } from "./calendar";
-import { fearsFell } from "./fears";
 import { enterRegion, VISITED } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { seeFrom } from "./sight";
 import { walkableIce } from "./weather";
 import type { GameState, IceMode, SpotId, Terrain } from "./types";
+import { cellSurface, surfaceLocation } from "./cellstatus";
 
 export function cellIndex(world: World, x: number, y: number): number {
   const cx = Math.min(world.w - 1, Math.max(0, Math.floor(x)));
@@ -123,7 +124,7 @@ export function byWater(state: GameState, world: World): boolean {
 
 /** Route length in km from the player to a cell, or null if unreachable. */
 export function kmTo(state: GameState, world: World, idx: number, ice: IceMode = "none"): number | null {
-  const route = survivorRoute(state, world, cellOf(state, world), idx, ice, fearsFell(state));
+  const route = survivorRoute(state, world, cellOf(state, world), idx, ice);
   return route ? routeKm(route) : null;
 }
 
@@ -139,11 +140,6 @@ export function straightKm(world: World, a: number, b: number): number {
   return Math.hypot(pa.x - pb.x, pa.y - pb.y) * CELL_KM;
 }
 
-const GROUND: Record<Terrain, string> = {
-  water: "in the water", fell: "up on the fell", rock: "on the rocks", bog: "on the bog",
-  spruce: "in the spruce", pine: "among the pines", birch: "among the birches", meadow: "on open ground",
-};
-
 /** "at camp", "in the spruce, 0.4 km from camp", "on the way to Stensund, 2.1 km to go". */
 export function describeWhere(state: GameState, world: World): string {
   if (state.route?.path.length) {
@@ -151,12 +147,13 @@ export function describeWhere(state: GameState, world: World): string {
   }
   const spot = spotHere(state, world);
   if (spot === "camp") return "at camp";
-  const ice = walkableIce(state.weather);
+  const ice = walkableIce(localWeather(state, world));
   const camp = campCellOf(state, world);
   const km = camp === null ? null : kmBetween(state, world, cellOf(state, world), camp, ice);
   const dist = km === null ? "" : `, ${km.toFixed(1)} km from camp`;
-  if (spot) return `at ${SPOT_WORDS[spot]}${dist}`;
-  return `${GROUND[hereTerrain(state, world)]}${dist}`;
+  const surface = surfaceLocation(cellSurface(state, world, cellOf(state, world)));
+  if (spot) return `at ${SPOT_WORDS[spot]}, ${surface}${dist}`;
+  return `${surface}${dist}`;
 }
 
 export const SPOT_WORDS: Record<SpotId, string> = {

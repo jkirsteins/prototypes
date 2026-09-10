@@ -610,6 +610,54 @@ export interface Player {
   huntSigns: Record<number, HuntSign>;
 }
 
+/** One local atmospheric reading shared by simulation, sight and presentation. */
+export interface AtmosphereSample {
+  temperatureC: number;
+  pressureHpa: number;
+  /** Relative humidity, cloud, fog and blowing snow are fractions in 0..1. */
+  relativeHumidity: number;
+  cloud: number;
+  /** Liquid-equivalent precipitation, including when the phase is snow. */
+  precipMmPerHour: number;
+  /** Liquid fraction only; mixed precipitation may also accumulate snow. */
+  rainMmPerHour: number;
+  precip: "none" | "rain" | "snow";
+  snowCmPerHour: number;
+  windKmh: number;
+  /** Meteorological bearing: direction wind comes FROM, clockwise from north. */
+  windBearingDeg: number;
+  /** Transport components: positive x east, positive y south. */
+  windXKmh: number;
+  windYKmh: number;
+  fog: number;
+  blowingSnow: number;
+  /** Additive optical extinction, in inverse kilometres. */
+  extinctionPerKm: number;
+}
+
+export interface LocalGroundWeather {
+  updatedHour: number;
+  snowCm: number;
+  surfaceWaterMm: number;
+  soilMoisture: number;
+  frost: number;
+  iceCm: number;
+  dryHours: number;
+  /** Partial local day's temperature integral for the daily ice rule. */
+  temperatureSum: number;
+  temperatureHours: number;
+}
+
+export interface WeatherWorld extends Weather {
+  version: 2;
+  startDoy: number;
+  ground: Record<number, LocalGroundWeather>;
+  /** Absolute weather time survives the run clock reset between survivors. */
+  elapsedMinutes: number;
+  observed?: { precip: boolean; storm: boolean; cold: boolean };
+}
+
+/** Derived current-player summary for serialized compatibility and helpers that have no world coordinate. */
 export interface Weather {
   precip: "none" | "light" | "heavy";
   clear: boolean;
@@ -803,6 +851,7 @@ export interface GameState {
   startDoy: number;
   /** Real hours the world runs on without the player before the catch-up caps it: the away dial, 1 to AWAY_HOURS_MAX, set per run. */
   awayHours: number;
+  /** Authoritative survivor-relative clock. Derive Calendar from this and startDoy; weather adds elapsedMinutes across survivor resets. */
   minute: number;
   /** Elapsed game minutes not yet large enough to run the next fixed simulation tick. */
   advanceCarry: number;
@@ -814,7 +863,7 @@ export interface GameState {
   discovered: Record<number, 1 | 2 | 3>;
   /** Ground whose walking is known: 1 this life's, 3 the journal's. Absent means unknown. */
   mapped: Record<number, 1 | 3>;
-  weather: Weather;
+  weather: WeatherWorld;
   task: Task | null;
   log: LogEntry[];
   dead: { cause: DeathCause; minute: number } | null;

@@ -18,6 +18,7 @@ import { regionState } from "./regionstate";
 import { SKILL_IDS } from "./skills";
 import { LARGE_GAME } from "./species";
 import type { GameState, Species } from "./types";
+import { localWeather } from "./weather";
 import { enableHuntAudit, finishHuntAudit, type HuntAuditReport } from "./hunt-audit";
 
 /**
@@ -118,7 +119,7 @@ function runLife(ref: { state: GameState; world: World; player: ReferencePlayer 
     if (cal.dayOfMonth === 1 && cal.day > lastLineDay) {
       const avg = between(state.ledger, lastLineDay, cal.day);
       months.push({
-        month: cal.month, day: cal.day, eatenPerDay: Math.round(avg.eaten), burnPerDay: Math.round(avg.burn), stock: stockAt(state, world), snowCm: Math.round(state.weather.snowCm),
+        month: cal.month, day: cal.day, eatenPerDay: Math.round(avg.eaten), burnPerDay: Math.round(avg.burn), stock: stockAt(state, world), snowCm: Math.round(localWeather(state, world).snowCm),
         attention: player.attention(lastLineDay, cal.day - 1),
       });
       lastLineDay = cal.day;

@@ -44,6 +44,7 @@ import { nestsFor, rootKgLeft } from "./stocks";
 import { APRIL, BURN, coldBand, MIDSUMMER_DOY, PLANT_HOURS_PER_DAY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { check, seaweedAvailable, setAside, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
+import { localWeather } from "./weather";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, OrderWhen, RecipeId, WorkOrder, WorldDate } from "./types";
 
 type Want = { req: IntentRequest; kind: WorkOrder["kind"] };
@@ -422,8 +423,8 @@ export const REFERENCE_ORDERS: Want[] = [
 ];
 
 /** The home shore is under ice: a shore fetch is shut and the winter methods are the question. */
-function shoreIced(state: GameState): boolean {
-  return state.weather.iceCm >= ICE_SHORE_CM;
+function shoreIced(state: GameState, world: World): boolean {
+  return localWeather(state, world).iceCm >= ICE_SHORE_CM;
 }
 
 /** An axe in hand, in the pack or in the camp pile: what a competent player would carry to the shore in winter. */
@@ -450,9 +451,9 @@ export function wantOpen(state: GameState, world: World, w: Want): boolean {
   // Water by method, chosen here in the open rather than by a fallback inside the
   // intent: the shore while it is open, the hole with an axe once it ices, the fire's
   // melt only when no axe is in reach.
-  if (w.req.task === "fill" && w.req.arg === "shore") return !shoreIced(state);
-  if (w.req.task === "fill" && w.req.arg === "hole") return shoreIced(state) && axeInReach(state, world);
-  if (w.req.task === "melt") return shoreIced(state) && !axeInReach(state, world);
+  if (w.req.task === "fill" && w.req.arg === "shore") return !shoreIced(state, world);
+  if (w.req.task === "fill" && w.req.arg === "hole") return shoreIced(state, world) && axeInReach(state, world);
+  if (w.req.task === "melt") return shoreIced(state, world) && !axeInReach(state, world);
   // The fire by method: the pit until a hut or a hearth stands, the fire indoors after.
   if (w.req.task === "light" || w.req.task === "lightIndoors") {
     const site = campSite(regionState(state, world, state.player.region));
@@ -1127,7 +1128,7 @@ export function measure(ref: { state: GameState; world: World; player: Reference
   const gate = gateFor(state.startDoy, kitted);
   // A start late enough to open with snow already lying has no first snow to
   // wait for, and reading the check on day 1 would call the ground the fall.
-  const openedBare = state.weather.snowCm === 0;
+  const openedBare = localWeather(state, world).snowCm === 0;
   const checkpoints: ReferenceReport["checkpoints"] = [];
   const seen = new Set<number>();
   let firstSnowDay: number | null = null;
@@ -1138,7 +1139,7 @@ export function measure(ref: { state: GameState; world: World; player: Reference
     const home = regionState(state, world, state.player.region);
     if (surplus.hang === null && home.rack.kg > 0) surplus.hang = day;
     if (surplus.largeGame === null && current(state).events.some((e) => e.kind === "firstKill" && LARGE_GAME.includes(e.species))) surplus.largeGame = day;
-    if (gate.kind === "firstSnow" && openedBare && firstSnowDay === null && state.weather.snowCm > 0) {
+    if (gate.kind === "firstSnow" && openedBare && firstSnowDay === null && localWeather(state, world).snowCm > 0) {
       firstSnowDay = day;
       seen.add(day);
       checkpoints.push(checkpoint(state, world, day));

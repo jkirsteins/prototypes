@@ -1,8 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { openBurnPerHour } from "../src/sim/fire";
 import { hourlyHazards, hourlyWorld } from "../src/sim/hazards";
 import { addItem, pile, produce, qty, takeUp } from "../src/sim/inventory";
 import { itemLabel, take } from "../src/sim/actions";
@@ -15,11 +14,13 @@ import {
   campWaterCapacity, drink, fillVessels, ICE_SHORE_CM, pourVessels, THIRSTY_L,
   vesselLitres, WATER_FULL, waterLossPerHour, waterSource,
 } from "../src/sim/water";
-import { ambientTemperature } from "../src/sim/weather";
+import { ensureGround } from "../src/sim/weather";
 import { inventoryHtml } from "../src/ui/panels";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
 
 const cal = calendar(0);
+afterEach(() => vi.restoreAllMocks());
 
 describe("water", () => {
   it("loses a tenth of a litre an hour idle and more working, cold or hot", () => {
@@ -62,6 +63,7 @@ describe("water", () => {
     expect(waterSource(state, world)).toBe(false);
     expect(drink(state, world)).toBe(false);
     placeAtSpot(state, world, state.player.region, "shore");
+    ensureGround(state, world, state.player.region).iceCm = 0;
     expect(waterSource(state, world)).toBe(true);
     expect(drink(state, world)).toBe(true);
     expect(state.player.water).toBe(WATER_FULL);
@@ -77,9 +79,10 @@ describe("water", () => {
     const { state, world } = newGame(42);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "shore");
-    state.weather.iceCm = 1.9;
+    const ground = ensureGround(state, world, state.player.region);
+    ground.iceCm = 1.9;
     expect(waterSource(state, world)).toBe(true);
-    state.weather.iceCm = 2;
+    ground.iceCm = 2;
     expect(waterSource(state, world)).toBe(false);
   });
 
@@ -87,7 +90,7 @@ describe("water", () => {
     const { state, world } = newGame(42);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "shore");
-    state.weather.iceCm = ICE_SHORE_CM + 1;
+    ensureGround(state, world, state.player.region).iceCm = ICE_SHORE_CM + 1;
     advance(state, world, 1);
     const lines = state.log.filter((e) => e.text === "The shore is iced over.");
     expect(lines).toHaveLength(1);
@@ -98,6 +101,7 @@ describe("water", () => {
   });
 
   it("a working day without drinking ends thirsty and, left alone, dead of thirst before starvation", () => {
+    testAtmosphere({ temperatureC: 10 });
     const { state, world } = newGame(17);
     // Nobody looking after him: an empty list carries no body row, so no
     // thirst walks him to the water and the two clocks race each other. He
@@ -118,6 +122,7 @@ describe("vessels and snow", () => {
     siteCamp(state, world);
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 0 });
     placeAtSpot(state, world, state.player.region, "shore");
+    ensureGround(state, world, state.player.region).iceCm = 0;
     expect(fillVessels(state, world)).toBe(2);
     placeAtSpot(state, world, state.player.region, "forest");
     state.player.water = 0.5;
@@ -134,27 +139,33 @@ describe("vessels and snow", () => {
     siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 10;
-    state.weather.snowCm = 5;
+    const ground = ensureGround(state, world, state.player.region);
+    ground.snowCm = 5;
     // The shore under the camp is iced, or the reserve would fill from it and not from the melt.
-    state.weather.iceCm = 4;
+    ground.iceCm = 4;
     state.player.water = 1;
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 1, frozen: true });
     expect(check(state, world, cal, "melt").ok).toBe(true);
+    // Use an otherwise identical fire as the moving-weather baseline. A rain
+    // or snow band can pass during these twenty minutes, so extrapolating the
+    // first minute's burn rate is not an honest measure of the melt's fuel.
+    const controlState = structuredClone(state);
+    const controlWorld = structuredClone(world);
+    advance(controlState, controlWorld, 20);
+    const controlFuel = regionState(controlState, controlWorld, controlState.player.region).fire.fuelKg;
     startTask(state, world, cal, "melt");
-    // The open rate rises with the cold: at this start's ~-1.8 C it is a touch over 3 kg/h, not flat 3.
-    const openRate = openBurnPerHour(ambientTemperature(calendar(state.minute, state.startDoy), state.weather));
     advance(state, world, 20);
     // Precision 1, not 6: the fire's warmth pushes felt above the hot threshold
     // for the whole 20 minutes, so the pre-existing thirst drain (waterLossPerHour)
     // also nibbles at the reserve alongside the litre melt adds - the same reason
-    // the fuel check below is a loose match rather than an exact one.
+    // the background fire burn happens alongside the litre melt adds.
     expect(state.player.water).toBeCloseTo(2, 1);
-    expect(st.fire.fuelKg).toBeCloseTo(10 - 1 - (openRate / 60) * 20, 1);
+    expect(st.fire.fuelKg).toBeCloseTo(controlFuel - 1, 6);
     expect(check(state, world, cal, "thaw").ok).toBe(true);
     startTask(state, world, cal, "thaw");
     advance(state, world, 15);
     expect(state.player.tools.find((t) => t.id === "barkBucket")!.frozen).toBe(false);
-    state.weather.snowCm = 0;
+    ensureGround(state, world, state.player.region).snowCm = 0;
     expect(check(state, world, cal, "melt").why).toBe("no snow to melt");
   });
 

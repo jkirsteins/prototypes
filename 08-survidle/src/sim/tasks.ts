@@ -1,14 +1,15 @@
+import { localWeather } from "./weather";
 import { Rng } from "../rng";
-import { fmtDuration, shareWord } from "../units";
+import { CELL_KM, fmtDuration, shareWord } from "../units";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, neighbours, regionAt, spotOf, type World } from "../world/gen";
-import { passable, routeKm, routeMinutes, walkPath } from "../world/route";
+import { passable, routeKm } from "../world/route";
 import { itemLabel, loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { dayNumber, type Calendar } from "./calendar";
 import { cellPossibilities, leaveCamp, needsMending, rackCapacity } from "./camp";
 import { cue } from "./cues";
-import { exploreRoute, frontierRoute, survivorRoute } from "./routing";
+import { exploreRoute, frontierRoute, routeConditions, survivorRoute, survivorRouteMinutes } from "./routing";
 import {
   addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, pileAt, produce, qty, reach,
   removeItem, shortOf, takeUp, toolNear, totalQty, TRACE_KG, transfer, wearTool, weight,
@@ -53,7 +54,7 @@ import {
 import { isWorkIntent } from "./types";
 import { owningOrder } from "./orderowner";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
-import { ambientTemperature, DEEP_SNOW_CM, forecastKnowledge, forecastText, ICE_SAFE_CM, iceMode, sameForecastKnowledge, skyReadDay, stormNow, walkableIce } from "./weather";
+import { ambientTemperature, DEEP_SNOW_CM, forecastKnowledge, forecastText, ICE_SAFE_CM, sameForecastKnowledge, skyReadDay, stormNow, walkableIce } from "./weather";
 import { plain } from "./voice";
 import { claimHuntableAnimal, knownBearDen, unknownBearDen } from "./wildlife-agents";
 import { carcassMinutes, createCarcass, disturbHuntingGround, hasRecentHuntSign, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteFailedHunt, noteHuntSign, processCarcass } from "./hunting";
@@ -171,7 +172,7 @@ export function barkSeason(cal: Calendar): boolean {
 
 /** Whether a cell yields seaweed right now: a sea shore, with the water open. Shared by the seaweed task's check and the unexploited line so the two cannot drift apart. */
 export function seaweedAvailable(state: GameState, world: World, cell: number): boolean {
-  return watersideCell(world, cell, "sea") && state.weather.iceCm < ICE_SHORE_CM;
+  return watersideCell(world, cell, "sea") && localWeather(state, world, cell).iceCm < ICE_SHORE_CM;
 }
 
 /**
@@ -182,7 +183,7 @@ export function seaweedAvailable(state: GameState, world: World, cell: number): 
  */
 export function buildMinutes(state: GameState, world: World, sid: StructureId, at: number): number {
   if (sid !== "firePit") return STRUCTURES[sid].minutes;
-  return fireSiteMinutes(cellAt(world, at).terrain, state.weather.snowCm);
+  return fireSiteMinutes(cellAt(world, at).terrain, localWeather(state, world, at).snowCm);
 }
 
 /**
@@ -256,8 +257,8 @@ export function walkTarget(state: GameState, world: World, arg: string): { cell:
 }
 
 /** The ice a walk crosses water with: thin when asked for and available, safe ice by default, else none. */
-function walkIceMode(state: GameState, thin: boolean): IceMode {
-  return thin ? "thin" : walkableIce(state.weather);
+function walkIceMode(state: GameState, world: World, thin: boolean): IceMode {
+  return thin ? "thin" : walkableIce(localWeather(state, world));
 }
 
 /** "the forest", "camp in Stensund", "a spot 0.4 km east": how a cell is named to the player. */
@@ -415,11 +416,9 @@ const SHORE_TASKS = new Set<TaskId>(["fish", "read", "setTrap", "emptyTrap", "ic
  */
 function feared(state: GameState, world: World, id: TaskId, arg: string | undefined, at: number, o: TaskOption): TaskOption {
   if (!o.ok) return o;
-  if (fearsFell(state)) {
-    const target = id === "walk" || id === "travel" ? walkTarget(state, world, arg ?? "")?.cell : LOCATED.has(id) ? at : undefined;
-    if (target !== undefined && cellAt(world, target).terrain === "fell") return { ...o, ok: false, why: FELL_FEAR_LINE };
-  }
-  if (shunsShore(state) && (SHORE_TASKS.has(id) || (id === "fill" && (arg === "shore" || arg === "hole")))) return { ...o, ok: false, why: SHORE_FEAR_LINE };
+  const target = id === "walk" || id === "travel" ? walkTarget(state, world, arg ?? "")?.cell : LOCATED.has(id) ? at : undefined;
+  if (target !== undefined && fearsFell(state, world, target) && cellAt(world, target).terrain === "fell") return { ...o, ok: false, why: FELL_FEAR_LINE };
+  if (shunsShore(state, world, at) && (SHORE_TASKS.has(id) || (id === "fill" && (arg === "shore" || arg === "hole")))) return { ...o, ok: false, why: SHORE_FEAR_LINE };
   return o;
 }
 
@@ -504,7 +503,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (tree && r.frac[tree] <= 0) return { ...base, ok: false, never: true, why: `no ${tree} in ${r.name}` };
       const o = ground(forestCell(world, at) && (!tree || terrain === tree), "forest", tree ? `${tree} forest` : "forest", base);
       if (!o.ok) return o;
-      if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
+      if (stormNow(localWeather(state, world, at), state.minute)) return { ...o, ok: false, why: "too rough" };
       if (!axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs an axe" };
       if (st.wood < 1) return { ...o, ok: false, why: "nothing left worth felling" };
       return o;
@@ -529,7 +528,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = ground(heathCell(world, at), "heath", "heath", opt({ group: "gather", label, detail, duration: 60, repeatable: true }));
       if (!o.ok) return o;
       if (winter) {
-        if (state.weather.snowCm >= DEEP_SNOW_CM) return { ...o, ok: false, why: "under too much snow" };
+        if (localWeather(state, world, at).snowCm >= DEEP_SNOW_CM) return { ...o, ok: false, why: "under too much snow" };
         return o;
       }
       if (!berrySeason(cal)) return { ...o, ok: false, why: "nothing ripe yet" };
@@ -583,7 +582,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = opt({ group: "camp", label: "Split a log", detail: `one log into 20 kg of firewood${sheltered ? ", under the roof" : ""}`, duration: 15 * edgeFactor(state), repeatable: true });
       if (!axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs an axe" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
-      if (!sheltered && splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
+      if (!sheltered && splitIsWet(state, world, at)) return { ...o, ok: false, why: "waiting for dry weather" };
       return o;
     }
     case "splitWedges": {
@@ -591,7 +590,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = opt({ group: "camp", label: "Split a log with wedges", detail: `one log into 20 kg of firewood, driven with a stick; a third the axe's pace${sheltered ? ", under the roof" : ""}`, duration: 45, repeatable: true });
       if (totalQty(invs, "wedge") < 2) return { ...o, ok: false, why: "needs two wedges" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
-      if (!sheltered && splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
+      if (!sheltered && splitIsWet(state, world, at)) return { ...o, ok: false, why: "waiting for dry weather" };
       return o;
     }
     case "hang": {
@@ -629,9 +628,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = { ...o0, detail: `${tripLitres(state, world).toFixed(1)} l${v ? `, the ${TOOLS[v.id].name}` : ""}` };
       const noRoom = noVesselRoom(state, world);
       if (noRoom) return { ...o, ok: false, why: noRoom };
-      const iced = state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at);
+      const iced = localWeather(state, world, at).iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at);
       if (method === "shore") return iced ? { ...o, ok: false, why: "iced over" } : o;
-      if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open, no hole needed" };
+      if (localWeather(state, world, at).iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open, no hole needed" };
       // The pack and the work cell only: the vessel and the axe for a fill are the fill task's own rule, and provisionKit leaves a fill's kit to it, so a camp-pile axe is never taken up on the way out.
       if (!axeNear(p, invs)) return { ...o, ok: false, why: "needs an axe" };
       return iced ? { ...o, detail: `${o.detail}; cuts the hole first, wearing the axe`, duration: 25 } : o;
@@ -639,7 +638,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "iceHole": {
       const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "camp", label: "Open an ice hole", detail: "20 minutes with the axe; skins over by morning", duration: 20 }));
       if (!o.ok) return o;
-      if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open" };
+      if (localWeather(state, world, at).iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open" };
       if (iceHoleOpen(state, at)) return { ...o, ok: false, why: "already open here" };
       if (!axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs an axe" };
       return o;
@@ -667,7 +666,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!toolNear(p, "bow", toolInvs)) return { ...o, ok: false, why: "needs a bow" };
       if (!kitInReach(state, world, "arrow", [p.pack])) return { ...o, ok: false, why: "needs arrows in the pack" };
       // Away before empty: the last of a flock lingers in the numbers for weeks after it has gone.
-      const gone = absence(def, cal, state.weather.iceCm);
+      const gone = absence(def, cal, localWeather(state, world, at).iceCm);
       if (gone && !den) return { ...o, ok: false, why: gone };
       if (!den && !huntFromAny && !hasRecentHuntSign(state, at, s)) return { ...o, ok: false, why: "no fresh sign" };
       return o;
@@ -685,7 +684,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "fish": {
       if (arg === "any") {
         const c = candidates(state, world, cal, "fish", at);
-        const inRegion = fishSpecies().filter((k) => r.capacity[k] && popOf(st, k) >= 1 && !absence(SPECIES_DEFS[k], cal, state.weather.iceCm));
+        const inRegion = fishSpecies().filter((k) => r.capacity[k] && popOf(st, k) >= 1 && !absence(SPECIES_DEFS[k], cal, localWeather(state, world, at).iceCm));
         // The count is what this water holds: a lake's fish are no comfort at a sea shore.
         const kinds = inRegion.filter((k) => watersideCell(world, at, waterOf(k) ?? "any"));
         const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Fish for anything", duration: 60, repeatable: true, detail: `whatever bites; ${kinds.length} kind${kinds.length === 1 ? "" : "s"} here` }));
@@ -710,9 +709,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         if (watersideCell(world, at) && !watersideCell(world, at, water)) return { ...o, why: water === "lake" ? `no ${def.name} in salt water` : `no ${def.name} in a lake` };
         return o;
       }
-      if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
+      if (stormNow(localWeather(state, world, at), state.minute)) return { ...o, ok: false, why: "too rough" };
       if (!toolNear(p, "fishingSpear", toolInvs)) return { ...o, ok: false, why: "needs a fishing spear" };
-      const away = absence(def, cal, state.weather.iceCm);
+      const away = absence(def, cal, localWeather(state, world, at).iceCm);
       if (away) return { ...o, ok: false, why: away };
       if (popOf(st, s) < 1) return { ...o, ok: false, why: `no ${def.name} here now` };
       return o;
@@ -720,7 +719,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "read": {
       const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Read the water", detail: "an hour watching this shore: what lives in it and where it lies", duration: 60, repeatable: false }));
       if (!o.ok) return o;
-      if (state.weather.iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the water is under ice" };
+      if (localWeather(state, world, at).iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the water is under ice" };
       if (isRead(state, at)) return { ...o, ok: false, why: "{you} {have} read this water" };
       return o;
     }
@@ -829,7 +828,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (sid === "snowShelter") {
         if (site?.structures.turfHut || site?.structures.cabin) return { ...o, ok: false, why: "the hut is warmer" };
         if (site?.structures.snowShelter) return { ...o, ok: false, why: "already built here" };
-        if (state.weather.snowCm < SNOW_SHELTER_CM) return { ...o, ok: false, why: `needs ${SNOW_SHELTER_CM} cm of snow` };
+        if (localWeather(state, world, at).snowCm < SNOW_SHELTER_CM) return { ...o, ok: false, why: `needs ${SNOW_SHELTER_CM} cm of snow` };
         if (done > 0) return { ...o, detail: `${Math.round((done / total) * 100)}% heaped` };
         return o;
       }
@@ -865,7 +864,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "light": {
       const rekindle = camp && hasEmbers(st.fire);
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(siteAt(st, at)), hasQuirk(state, "steadyByTheFire"));
+      const weather = localWeather(state, world, at);
+      const lr = lightingInRain(weather, ambientTemperature(cal, weather), roofed(siteAt(st, at)), hasQuirk(state, "steadyByTheFire"));
       const o = opt({
         group: "camp", label: camp ? "Light the fire at the site" : "Light a field fire",
         detail: rekindle ? "1 kg firewood" : `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
@@ -896,15 +896,18 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (id === "travel" && discovery(state, cellAt(world, target.cell).region) === 0) return { ...o, ok: false, why: "{you} {know} nothing of that country" };
       const from = cellOf(state, world);
       if (target.cell === from) return { ...o, ok: false, why: "{you} {are} here" };
-      if (target.thin && iceMode(state.weather) !== "thin") return { ...o, ok: false, why: "the ice is not thin here" };
-      const ice = walkIceMode(state, target.thin);
-      const route = survivorRoute(state, world, from, target.cell, ice, fearsFell(state))
-        ?? frontierRoute(state, world, from, target.cell, ice, fearsFell(state));
+      const ice = walkIceMode(state, world, target.thin);
+      const route = survivorRoute(state, world, from, target.cell, ice)
+        ?? frontierRoute(state, world, from, target.cell, ice);
       if (!route) return { ...o, ok: false, why: "{you} {know} no way there" };
-      const v = baseWalkSpeed(state, cal, state.weather);
-      const minutes = routeMinutes(world, route, v, ice);
+      const v = baseWalkSpeed(state, cal, localWeather(state, world, at));
+      const minutes = survivorRouteMinutes(state, world, route, v, ice);
       let detail = `${routeKm(route).toFixed(1)} km on foot`;
-      if (ice === "thin") detail += `; thin ice, ${Math.round(fallChance(state.weather.iceCm) * 100)}% per crossing cell`;
+      if (ice === "thin") {
+        const risk = route.reduce((max, cell) => cellAt(world, cell).terrain === "water"
+          ? Math.max(max, fallChance(localWeather(state, world, cell).iceCm)) : max, 0);
+        detail += `; thin ice, up to ${Math.round(risk * 100)}% per crossing cell`;
+      }
       const o2 = { ...o, duration: minutes, detail };
       if (weight(p.pack) > body(state).packHardKg) return { ...o2, ok: false, why: "the pack is too heavy to lift" };
       return o2;
@@ -915,7 +918,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!target) return { ...o, ok: false, why: "no such place" };
       const region = cellAt(world, target.cell).region;
       if (discovery(state, region) === 0) return { ...o, ok: false, why: "{you} {know} nothing of that country" };
-      const water = state.weather.iceCm < ICE_SHORE_CM ? nextSurveyWater(state, world, region, []) : null;
+      const water = localWeather(state, world, at).iceCm < ICE_SHORE_CM ? nextSurveyWater(state, world, region, []) : null;
       if (knownShare(state, world, region) >= 1 && !water) return { ...o, ok: false, why: "{you} {know} that country" };
       if (!pickVantage(state, world, cal, region, [here]) && !water) return { ...o, ok: false, why: "no reachable frontier" };
       // No duration is promised: how long it takes is how long the ground takes.
@@ -931,7 +934,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const home = (arg ? walkTarget(state, world, arg)?.cell : undefined) ?? campCell;
       const o = opt({ group: "move", label: "Search for a way home", detail: "", repeatable: false });
       if (home === null) return { ...o, ok: false, why: NO_CAMP };
-      const route = survivorRoute(state, world, here, home, walkableIce(state.weather), fearsFell(state));
+      const route = survivorRoute(state, world, here, home, walkableIce(localWeather(state, world, at)));
       if (route) return { ...o, ok: false, why: "{you} {know} the way home" };
       // Nobody can say how far the unmapped ground between here and camp actually runs, so no duration is offered.
       return { ...o, duration: 0, detail: "no telling how long; it ends the moment the way opens" };
@@ -976,11 +979,11 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (from === campCell) return { ...o, ok: false, why: "{you} {are} at camp" };
       const kg = weight(pile(state, at));
       if (kg <= TRACE_KG) return { ...o, ok: false, why: "nothing on the ground here" };
-      const ice = walkIceMode(state, false);
-      const route = survivorRoute(state, world, from, campCell, ice, fearsFell(state));
+      const ice = walkIceMode(state, world, false);
+      const route = survivorRoute(state, world, from, campCell, ice);
       if (!route) return { ...o, ok: false, why: "{you} {know} no way there" };
-      const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, body(state).packHardKg + 5), ice);
-      const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5), ice);
+      const loaded = survivorRouteMinutes(state, world, route, baseWalkSpeed(state, cal, localWeather(state, world, at), body(state).packHardKg + 5), ice);
+      const empty = survivorRouteMinutes(state, world, route, baseWalkSpeed(state, cal, localWeather(state, world, at), 5), ice);
       return { ...o, duration: loaded + empty, detail: `${Math.min(body(state).packHardKg, kg).toFixed(0)} kg per trip; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
     }
     case "makeCamp": {
@@ -996,7 +999,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "sleep": {
       // However long the model says this body will lie there: the minutes
       // from now to the wake line, with no dawn under it and no cap over it.
-      const minutes = sleepMinutes(state, cal);
+      const minutes = sleepMinutes(state, cal, world, at);
       return opt({ group: "camp", label: "Sleep", detail: `until rested, about ${Math.round(minutes / 60)} h; ${bedText(state, world)}`, duration: minutes });
     }
     case "melt": {
@@ -1005,7 +1008,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const fire = fireAt(state, world, at);
       if (!fire) return { ...o, ok: false, why: "needs a lit fire" };
       if (fire.fuelKg < 1) return { ...o, ok: false, why: "the fire is too low" };
-      if (state.weather.snowCm < 1) return { ...o, ok: false, why: "no snow to melt" };
+      if (localWeather(state, world, at).snowCm < 1) return { ...o, ok: false, why: "no snow to melt" };
       return o;
     }
     case "thaw": {
@@ -1035,7 +1038,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Set the trap", detail: "stakes and the basket in the shallows; catches while you are elsewhere", duration: 20 }));
       if (!o.ok) return o;
       if (st.trap) return { ...o, ok: false, why: `the trap is set at ${whereIs(state, world, st.trap.cell)} already` };
-      if (state.weather.iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the water is under ice" };
+      if (localWeather(state, world, at).iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the water is under ice" };
       if (!isRead(state, at)) return { ...o, ok: false, why: "read the water first" };
       if (state.player.known[at].fish.length === 0) return { ...o, ok: false, why: "nothing lives in this water" };
       if (!kitInReach(state, world, "basketTrap", invs)) return { ...o, ok: false, why: "needs a basket trap" };
@@ -1075,16 +1078,16 @@ export function findDenOdds(state: GameState): number {
 export function huntOdds(state: GameState, world: World, cal: Calendar, density: number, species: Species): number {
   const def = SPECIES_DEFS[species].hunt!;
   let odds = density * def.odds * oddsFactor(state, species);
-  if (state.weather.snowCm > DEEP_SNOW_CM) odds *= 0.75;
+  if (localWeather(state, world).snowCm > DEEP_SNOW_CM) odds *= 0.75;
   // What a hunter can see, by the light there is rather than by the clock:
   // the species' own night figure is what the pitch dark leaves them, and
   // dusk and a full moon fall where they fall between that and daylight.
   const lux = illuminance(state, world, cal, cellOf(state, world));
   odds *= lightFactor(lux, SPOT_LUX, def.night ?? 0.7);
-  if (state.weather.precip !== "none") odds *= 0.85;
+  if (localWeather(state, world).precip !== "none") odds *= 0.85;
   const st = regionState(state, world, state.player.region);
   if (atCamp(state, world) && st.smoke > SMOKE_COUGH) odds *= 0.5;
-  if (stormNow(state.weather, state.minute)) odds *= 0.5;
+  if (stormNow(localWeather(state, world), state.minute)) odds *= 0.5;
   if (SPECIES_DEFS[species].kind === "fish" && isRead(state, cellOf(state, world))) odds *= READ_ODDS;
   if (state.player.energy < 20) odds *= 0.5;
   else if (state.player.energy < 30) odds *= 0.75;
@@ -1275,10 +1278,10 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   }
   if (id === "walk" || id === "travel") {
     const target = walkTarget(state, world, arg ?? "")!;
-    const ice = walkIceMode(state, target.thin);
+    const ice = walkIceMode(state, world, target.thin);
     const from = cellOf(state, world);
-    const path = survivorRoute(state, world, from, target.cell, ice, fearsFell(state))
-      ?? frontierRoute(state, world, from, target.cell, ice, fearsFell(state)) ?? [];
+    const path = survivorRoute(state, world, from, target.cell, ice)
+      ?? frontierRoute(state, world, from, target.cell, ice) ?? [];
     state.route = { target: target.cell, path, walked: [from], label: target.label, ice, lastLand: from };
     state.task = { id, arg, progress: 0, duration: o.duration, repeat: false };
     return true;
@@ -1288,12 +1291,12 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     const region = cellAt(world, target.cell).region;
     const from = cellOf(state, world);
     const vantage = pickVantage(state, world, cal, region, [from]);
-    const ice = walkIceMode(state, false);
+    const ice = walkIceMode(state, world, false);
     state.task = { id, arg, progress: 0, duration: 0, repeat: false, visited: [from], originRegion: state.player.region, surveyPhase: "walk", surveyedWater: [] };
     if (vantage) {
       state.route = { target: vantage.cell, path: vantage.path, walked: [from], label: target.label, ice, lastLand: from };
       state.task.visited!.push(vantage.cell);
-      state.task.duration = routeMinutes(world, vantage.path, baseWalkSpeed(state, cal, state.weather), ice);
+      if (!refreshRouteDuration(state, world, cal)) return false;
     } else if (!planSurvey(state, world, cal, state.task, region, target.label)) {
       state.task = null;
       return false;
@@ -1306,14 +1309,14 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     if (home === null) return false;
     const leg = nextHomeLeg(state, world, cal, from, home);
     if (!leg) return false;
-    const ice = walkIceMode(state, false);
+    const ice = walkIceMode(state, world, false);
     state.route = { target: leg.vantage.cell, path: leg.vantage.path, walked: [from], label: "the way home", ice, lastLand: from };
     state.task = {
       id, arg: `region:${leg.region}`, progress: 0,
-      duration: routeMinutes(world, leg.vantage.path, baseWalkSpeed(state, cal, state.weather), ice),
+      duration: 0,
       repeat: false, visited: [from, leg.vantage.cell], home,
     };
-    return true;
+    return refreshRouteDuration(state, world, cal);
   }
   // Pick up where this task was left, if it was.
   const key = pausedKey ?? pauseKey(state, world, id, arg);
@@ -1603,6 +1606,12 @@ export function fallChance(iceCm: number): number {
 export function fallThrough(state: GameState, world: World, rng: Rng, land: number): void {
   cue("fallThrough");
   const p = state.player;
+  // The ice crossing and the intent driving it are over whichever outcome
+  // follows. Drowning otherwise returns through die() with the route still
+  // alive after its task is gone.
+  state.route = null;
+  state.task = null;
+  state.intent = null;
   if (rng.chance(0.6)) {
     die(state, "drowned", regionAt(world, state.player.region).name);
     return;
@@ -1612,9 +1621,6 @@ export function fallThrough(state: GameState, world: World, rng: Rng, land: numb
   for (const g of p.clothing) g.wet = 100;
   p.warmth = Math.max(0, p.warmth - 30);
   p.energy = Math.max(0, p.energy - 20);
-  state.route = null;
-  state.task = null;
-  state.intent = null;
   log(state, "Through the ice. {You} {crawl} out soaked and shaking.", "bad");
   // The one way an iron axe ends: one time in two the hand that went under opens.
   const axe = axeInHand(p);
@@ -1638,29 +1644,70 @@ export function fallThrough(state: GameState, world: World, rng: Rng, land: numb
 function walkAlong(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): boolean {
   const route = state.route!;
   const p = state.player;
-  const km = (walkSpeed(state, cal, state.weather, hereTerrain(state, world), undefined, route.ice) / 60) * dt;
-  walkPath(world, p, route.path, km, (cell, movedKm, arrived) => {
-    if (arrived) {
+  const conditions = routeConditions(state, world, route.ice);
+  const here = cellOf(state, world);
+  if (!passable(hereTerrain(state, world), conditions.iceAt(here)) || conditions.blockedAt?.(here)) {
+    state.route = null;
+    state.task = null;
+    log(state, "The way ahead is no longer passable.", "bad");
+    return false;
+  }
+  let km = (walkSpeed(state, cal, localWeather(state, world), hereTerrain(state, world), undefined, conditions.iceAt(cellOf(state, world))) / 60) * dt;
+  while (km > 1e-9 && route.path.length) {
+    const cell = route.path[0];
+    if (!passable(cellAt(world, cell).terrain, conditions.iceAt(cell)) || conditions.blockedAt?.(cell)) {
+      state.route = null;
+      state.task = null;
+      log(state, "The way ahead is no longer passable.", "bad");
+      return false;
+    }
+    const next = cellCenter(world, cell);
+    const dx = next.x - p.x;
+    const dy = next.y - p.y;
+    const distKm = Math.hypot(dx, dy) * CELL_KM;
+    if (km >= distKm) {
+      p.x = next.x;
+      p.y = next.y;
       setRegion(state, world, cellAt(world, cell).region);
       seeFrom(state, world, cal, cell);
-      route.walked.push(cell);
-      state.stats.km += movedKm;
+      route.walked.push(route.path.shift()!);
+      km -= distKm;
+      state.stats.km += distKm;
       const terrain = cellAt(world, cell).terrain;
       if (terrain === "water") {
-        if (state.weather.iceCm < ICE_SAFE_CM) cue("iceCracks");
-        if (state.weather.iceCm < ICE_SAFE_CM && rng.chance(fallChance(state.weather.iceCm))) {
+        if (localWeather(state, world).iceCm < ICE_SAFE_CM) cue("iceCracks");
+        if (localWeather(state, world).iceCm < ICE_SAFE_CM && rng.chance(fallChance(localWeather(state, world).iceCm))) {
           fallThrough(state, world, rng, route.lastLand);
-          return false;
+          return true;
         }
       } else {
         route.lastLand = cell;
       }
     } else {
+      const f = km / distKm;
+      p.x += dx * f;
+      p.y += dy * f;
       setRegion(state, world, cellAt(world, cellIndex(world, p.x, p.y)).region);
-      state.stats.km += movedKm;
+      state.stats.km += km;
+      km = 0;
     }
-  });
-  return !state.route || route.path.length === 0;
+  }
+  return route.path.length === 0;
+}
+
+/** Ends blocked legs without ever storing an unreachable estimate in a save. */
+function refreshRouteDuration(state: GameState, world: World, cal: Calendar): boolean {
+  const t = state.task!;
+  const route = state.route!;
+  const duration = t.progress + survivorRouteMinutes(state, world, route.path, baseWalkSpeed(state, cal, localWeather(state, world)), route.ice);
+  if (!Number.isFinite(duration)) {
+    state.route = null;
+    state.task = null;
+    log(state, "The way ahead is no longer passable.", "bad");
+    return false;
+  }
+  t.duration = duration;
+  return true;
 }
 
 /**
@@ -1680,10 +1727,10 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
     return;
   }
   const finished = walkAlong(state, world, cal, rng, dt);
-  if (!state.route) return; // fell through the ice: the walk is already over
+  if (!state.route || !state.task) return; // fell through the ice: the walk is already over
   const route = state.route;
   t.progress += dt;
-  t.duration = t.progress + routeMinutes(world, route.path, baseWalkSpeed(state, cal, state.weather), route.ice);
+  if (!refreshRouteDuration(state, world, cal)) return;
   if (finished) {
     const label = route.label;
     const wasTravel = t.id === "travel";
@@ -1721,8 +1768,8 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
  */
 function exploreFrontier(state: GameState, world: World, region: number, visited: readonly number[]): { cell: number; path: number[] }[] {
   const from = cellOf(state, world);
-  const ice = walkIceMode(state, false);
-  const avoidFell = fearsFell(state);
+  const ice = walkIceMode(state, world, false);
+  const avoidFell = false;
   const out: { cell: number; path: number[] }[] = [];
   for (const cell of regionAt(world, region).cells) {
     if (cell === from || visited.includes(cell)) continue;
@@ -1751,15 +1798,15 @@ function exploreFrontier(state: GameState, world: World, region: number, visited
  */
 function pickVantage(state: GameState, world: World, cal: Calendar, region: number, visited: readonly number[]): { cell: number; path: number[] } | null {
   const candidates = exploreFrontier(state, world, region, visited);
-  const ice = walkIceMode(state, false);
-  const speed = baseWalkSpeed(state, cal, state.weather);
+  const ice = walkIceMode(state, world, false);
+  const speed = baseWalkSpeed(state, cal, localWeather(state, world));
   let best: { cell: number; path: number[] } | null = null;
   let bestScore = -1;
   for (const c of candidates) {
     // What the vantage opens, not what standing there tells you: the ring every
     // cell gives is not a reason to walk anywhere.
     const opened = sightReachCells(state, world, cal, c.cell) ** 2;
-    const minutes = routeMinutes(world, c.path, speed, ice);
+    const minutes = survivorRouteMinutes(state, world, c.path, speed, ice);
     const score = minutes <= 0 ? Number.POSITIVE_INFINITY : opened / minutes;
     if (score > bestScore) {
       bestScore = score;
@@ -1846,7 +1893,7 @@ function surveyWaters(world: World, region: number): SurveyWater[] {
 
 function nextSurveyWater(state: GameState, world: World, region: number, handled: number[]): { key: number; shore: number; path: number[] } | null {
   const from = cellOf(state, world);
-  const ice = walkIceMode(state, false);
+  const ice = walkIceMode(state, world, false);
   for (const system of surveyWaters(world, region)) {
     if (handled.includes(system.key)) continue;
     if (system.shores.some((shore) => isRead(state, shore))) {
@@ -1855,7 +1902,7 @@ function nextSurveyWater(state: GameState, world: World, region: number, handled
     }
     let best: { shore: number; path: number[] } | null = null;
     for (const shore of system.shores) {
-      const path = exploreRoute(state, world, from, shore, region, ice, fearsFell(state));
+      const path = exploreRoute(state, world, from, shore, region, ice);
       if (path && (!best || path.length < best.path.length)) best = { shore, path };
     }
     if (best) return { key: system.key, ...best };
@@ -1867,32 +1914,30 @@ function nextSurveyWater(state: GameState, world: World, region: number, handled
 function planSurvey(state: GameState, world: World, cal: Calendar, t: NonNullable<GameState["task"]>, region: number, label: string): boolean {
   if (!t.surveyedWater) t.surveyedWater = [];
   const handled = t.surveyedWater;
-  if (state.weather.iceCm < ICE_SHORE_CM) {
+  if (localWeather(state, world).iceCm < ICE_SHORE_CM) {
     const water = nextSurveyWater(state, world, region, handled);
     if (water) {
       const from = cellOf(state, world);
-      const ice = walkIceMode(state, false);
+      const ice = walkIceMode(state, world, false);
       state.route = { target: water.shore, path: water.path, walked: [from], label: "water", ice, lastLand: from };
       t.surveyPhase = "walk";
       t.surveyWater = water.key;
       t.surveyShore = water.shore;
       t.surveyProgress = 0;
-      t.duration = t.progress + routeMinutes(world, water.path, baseWalkSpeed(state, cal, state.weather), ice);
-      return true;
+      return refreshRouteDuration(state, world, cal);
     }
   }
   const next = pickVantage(state, world, cal, region, t.visited ?? []);
   if (!next) return false;
   const from = cellOf(state, world);
-  const ice = walkIceMode(state, false);
+  const ice = walkIceMode(state, world, false);
   state.route = { target: next.cell, path: next.path, walked: [from], label, ice, lastLand: from };
   t.visited = [...(t.visited ?? []), next.cell];
   t.surveyPhase = "walk";
   delete t.surveyWater;
   delete t.surveyShore;
   delete t.surveyProgress;
-  t.duration = t.progress + routeMinutes(world, next.path, baseWalkSpeed(state, cal, state.weather), ice);
-  return true;
+  return refreshRouteDuration(state, world, cal);
 }
 
 /**
@@ -1955,11 +2000,10 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
   const before = t.progress;
   const finished = walkAlong(state, world, cal, rng, dt);
   if (!state.route) return; // fell through the ice: the sweep is already over
-  const route = state.route;
   t.progress += dt;
   exploreInjury(state, world, rng, before, t.progress);
   if (!finished) {
-    t.duration = t.progress + routeMinutes(world, route.path, baseWalkSpeed(state, cal, state.weather), route.ice);
+    refreshRouteDuration(state, world, cal);
     return;
   }
   placeAt(state, world, cellOf(state, world));
@@ -2042,7 +2086,7 @@ function stepSearchHome(state: GameState, world: World, cal: Calendar, rng: Rng,
   t.progress += dt;
   exploreInjury(state, world, rng, before, t.progress);
   if (!finished) {
-    t.duration = t.progress + routeMinutes(world, route.path, baseWalkSpeed(state, cal, state.weather), route.ice);
+    refreshRouteDuration(state, world, cal);
     return;
   }
   placeAt(state, world, cellOf(state, world));
@@ -2061,7 +2105,7 @@ function stepSearchHome(state: GameState, world: World, cal: Calendar, rng: Rng,
   if (next) {
     state.route = { target: next.cell, path: next.path, walked: [from], label: route.label, ice: route.ice, lastLand: from };
     t.visited = [...(t.visited ?? []), next.cell];
-    t.duration = t.progress + routeMinutes(world, next.path, baseWalkSpeed(state, cal, state.weather), route.ice);
+    refreshRouteDuration(state, world, cal);
     return;
   }
   const leg = nextHomeLeg(state, world, cal, from, home);
@@ -2074,7 +2118,7 @@ function stepSearchHome(state: GameState, world: World, cal: Calendar, rng: Rng,
   state.route = { target: leg.vantage.cell, path: leg.vantage.path, walked: [from], label: route.label, ice: route.ice, lastLand: from };
   t.arg = `region:${leg.region}`;
   t.visited = [from, leg.vantage.cell];
-  t.duration = t.progress + routeMinutes(world, leg.vantage.path, baseWalkSpeed(state, cal, state.weather), route.ice);
+  refreshRouteDuration(state, world, cal);
 }
 
 /** Cuts an ice hole here: takes up an axe from the pack or the pile underfoot if none is in hand, wears it, and opens the hole. Both complete("fill") on an iced shore and complete("iceHole") share this so the two never drift. */
@@ -2534,7 +2578,8 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const rekindle = camp && hasEmbers(st.fire);
       consume(invs, [{ item: "firewood", qty: 1 }]);
       if (!rekindle && wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(siteAt(st, cellOf(state, world))), hasQuirk(state, "steadyByTheFire"));
+      const weather = localWeather(state, world);
+      const lr = lightingInRain(weather, ambientTemperature(cal, weather), roofed(siteAt(st, cellOf(state, world))), hasQuirk(state, "steadyByTheFire"));
       if (!rekindle && lr.failChance > 0 && rng.chance(lr.failChance)) {
         log(state, "The tinder will not catch.", "bad");
         return false;
@@ -2599,7 +2644,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       return;
     }
     case "fill": {
-      if (arg === "hole" && !waterSource(state, world) && state.weather.iceCm >= ICE_SHORE_CM) cutIceHole(state, world);
+      if (arg === "hole" && !waterSource(state, world) && localWeather(state, world).iceCm >= ICE_SHORE_CM) cutIceHole(state, world);
       const added = fillVessels(state, world);
       if (added > 1e-9) log(state, `{You} {fill} ${added.toFixed(1)} litres.`);
       return;

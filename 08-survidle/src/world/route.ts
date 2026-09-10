@@ -17,6 +17,16 @@ export const TERRAIN_SPEED: Record<Terrain, number> = {
 /** Walking on ice relative to open forest. */
 export const ICE_SPEED = 0.8;
 
+/** A caller-owned local ice field; key must change whenever its readings change. */
+export interface RouteConditions {
+  key: string;
+  iceAt: (cell: number) => IceMode;
+  blockedAt?: (cell: number) => boolean;
+}
+export type RouteIce = IceMode | RouteConditions;
+const iceAt = (ice: RouteIce, cell: number): IceMode => typeof ice === "string" ? ice : ice.iceAt(cell);
+const iceKey = (ice: RouteIce): string => typeof ice === "string" ? ice : ice.key;
+
 /** Speed on this ground given the ice mode a route is willing to cross water with. */
 export function speedOf(t: Terrain, ice: IceMode): number {
   if (t === "water") return ice === "none" ? 0 : ICE_SPEED;
@@ -37,7 +47,7 @@ const caches = new WeakMap<World, Map<string, number[] | null>>();
  * `to`, or null when no land route exists within the search box. An empty
  * array means already there.
  */
-export function findRoute(world: World, from: number, to: number, ice: IceMode = "none", avoidFell = false): number[] | null {
+export function findRoute(world: World, from: number, to: number, ice: RouteIce = "none", avoidFell = false): number[] | null {
   if (from === to) return [];
   let cache = caches.get(world);
   if (!cache) {
@@ -46,7 +56,7 @@ export function findRoute(world: World, from: number, to: number, ice: IceMode =
   }
   // Callers consume the array they get (a walk shifts cells off it), so the
   // cache hands out copies and keeps its own.
-  const key = `${from}>${to}>${ice}${avoidFell ? ">nofell" : ""}`;
+  const key = `${from}>${to}>${iceKey(ice)}${avoidFell ? ">nofell" : ""}`;
   const hit = cache.get(key);
   if (hit !== undefined) return hit ? hit.slice() : null;
   const route = astar(world, from, to, ice, avoidFell);
@@ -77,7 +87,7 @@ export function knownRoute(
   to: number,
   known: (cell: number) => boolean,
   gen: number | string,
-  ice: IceMode = "none",
+  ice: RouteIce = "none",
   avoidFell = false,
 ): number[] | null {
   if (from === to) return [];
@@ -87,17 +97,19 @@ export function knownRoute(
     cache = new Map();
     knownCaches.set(world, cache);
   }
-  const key = `${from}>${to}>${ice}${avoidFell ? ">nofell" : ""}>${gen}`;
+  const key = `${from}>${to}>${iceKey(ice)}${avoidFell ? ">nofell" : ""}>${gen}`;
   const hit = cache.get(key);
   if (hit !== undefined) return hit ? hit.slice() : null;
   const route = astar(world, from, to, ice, avoidFell, known);
+  // Local weather revisions can create a fresh key every minute while travelling.
+  if (cache.size >= 512) cache.delete(cache.keys().next().value!);
   cache.set(key, route);
   return route ? route.slice() : null;
 }
 
-function astar(world: World, from: number, to: number, ice: IceMode, avoidFell: boolean, known?: (cell: number) => boolean): number[] | null {
+function astar(world: World, from: number, to: number, ice: RouteIce, avoidFell: boolean, known?: (cell: number) => boolean): number[] | null {
   // A walker who will not go up on the fell treats it as water with no ice.
-  const sp = (t: Terrain) => (avoidFell && t === "fell" ? 0 : speedOf(t, ice));
+  const sp = (t: Terrain, cell: number) => ((avoidFell && t === "fell") || (typeof ice !== "string" && ice.blockedAt?.(cell)) ? 0 : speedOf(t, t === "water" ? iceAt(ice, cell) : "none"));
   const W = world.w;
   const fx = from % W;
   const fy = Math.floor(from / W);
@@ -106,7 +118,7 @@ function astar(world: World, from: number, to: number, ice: IceMode, avoidFell: 
   // Impassable ground at either end blocks the whole route: standing on ice
   // that has thinned past the mode asked for is a dead end, not just a wall
   // ahead, since there is no legal first step out of it.
-  if (sp(terrainOf(world, fx, fy)) <= 0 || sp(terrainOf(world, tx, ty)) <= 0) return null;
+  if (sp(terrainOf(world, fx, fy), from) <= 0 || sp(terrainOf(world, tx, ty), to) <= 0) return null;
   // The search box.
   const x0 = Math.max(0, Math.min(fx, tx) - ROUTE_MARGIN);
   const y0 = Math.max(0, Math.min(fy, ty) - ROUTE_MARGIN);
@@ -132,7 +144,7 @@ function astar(world: World, from: number, to: number, ice: IceMode, avoidFell: 
     const y = Math.floor(li / bw) + y0;
     // The standing cell stays enterable-from even when unmapped; every
     // other cell also needs `known` on top of its terrain speed.
-    speed[li] = known && li !== start && !known(y * W + x) ? 0 : sp(terrainOf(world, x, y));
+    speed[li] = known && li !== start && !known(y * W + x) ? 0 : sp(terrainOf(world, x, y), y * W + x);
     return speed[li];
   };
 
@@ -214,10 +226,11 @@ export function routeKm(path: number[]): number {
 }
 
 /** Minutes to walk a route at a given base speed (km/h), terrain of each cell applied. */
-export function routeMinutes(world: World, path: number[], baseKmh: number, ice: IceMode = "none"): number {
+export function routeMinutes(world: World, path: number[], baseKmh: number, ice: RouteIce = "none"): number {
   let minutes = 0;
   for (const c of path) {
-    const v = baseKmh * speedOf(terrainOf(world, c % world.w, Math.floor(c / world.w)), ice);
+    const v = baseKmh * speedOf(terrainOf(world, c % world.w, Math.floor(c / world.w)), iceAt(ice, c));
+    if (v <= 0 || (typeof ice !== "string" && ice.blockedAt?.(c))) return Infinity;
     minutes += (CELL_KM / Math.max(0.05, v)) * 60;
   }
   return minutes;

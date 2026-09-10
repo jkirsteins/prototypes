@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { ARROWS_TO_CARRY, bodyStep, currentNeed, minutesToCamp, SLEEP_AT, stormOptions } from "../src/sim/body";
@@ -12,7 +12,7 @@ import { mapRegion } from "../src/sim/mapped";
 import { orderByHand } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, stepPlayer } from "../src/sim/player";
-import { cellOf, placeAt, watersideCell } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot, watersideCell } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { addOrder, ordersHere } from "../src/sim/orders";
 import { check, startTask } from "../src/sim/tasks";
@@ -21,7 +21,11 @@ import { isWorkOrder } from "../src/sim/types";
 import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
+import { ensureGround, iceMode } from "../src/sim/weather";
+import { testAtmosphere, testRain } from "./weather-helpers";
 import { levelMinutes } from "../src/sim/skills";
+
+beforeEach(() => testAtmosphere());
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
@@ -32,6 +36,15 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
     advance(g.state, g.world, 1);
   }
   return pred();
+}
+
+/** Forecast identity for a storm whose physical rain/snow is supplied through testRain. */
+function stormForecast(state: G["state"], kind: "rain" | "snow" | "gale" = "rain", duration = 600): void {
+  const from = state.minute + 60;
+  state.weather.storm = {
+    id: state.weather.nextStormId++, source: "natural", kind,
+    from, until: from + duration, warned: true,
+  };
 }
 /**
  * A forever felling from camp, with the camp cell to hand. Seed 39: meadow
@@ -204,7 +217,7 @@ describe("the body's row against the work", () => {
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell!).structures.leanTo = true;
     // Far below any target the shelter alone can reach, so the rest that follows cannot gain a point.
-    state.weather.offset = -25;
+    testAtmosphere({ temperatureC: -25 });
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.warmth = 29;
     advance(state, world, 1);
@@ -448,8 +461,7 @@ describe("the runner in the elements", () => {
     // the fire before letting the walk back to the tree finish (rather than forcing
     // thirst again straight away) means the next low reading is judged from the work
     // cell, not caught mid-return, so it is this fallback under test and not the last.
-    state.weather.iceCm = 4;
-    state.weather.snowCm = 5;
+    Object.assign(ensureGround(state, world, state.player.region), { iceCm: 4, snowCm: 5 });
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
@@ -476,7 +488,8 @@ describe("the runner in the elements", () => {
     st.fire.fuelKg = 4;
     addItem(pile(state, camp), "firewood", 20);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
+    stormForecast(state);
+    testRain(8, 5, 40);
     advance(state, world, 1);
     expect(state.player.bodyNeed).toBe("storm");
     expect(state.intent?.step).toBe("walking to camp before the storm");
@@ -486,6 +499,7 @@ describe("the runner in the elements", () => {
     // nibbles a little off again before this reads it back.
     expect(st.fire.fuelKg).toBeGreaterThanOrEqual(11.9);
     expect(state.intent?.step).toBe("waiting out the storm");
+    testAtmosphere();
     expect(until(g, () => state.player.bodyNeed !== "storm", 600)).toBe(true);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
   });
@@ -496,7 +510,8 @@ describe("the runner in the elements", () => {
     addItem(pile(state, camp), "stone", 6);
     addItem(pile(state, camp), "firewood", 20);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
+    stormForecast(state, "snow");
+    testRain(8, -10, 40);
     const steps: string[] = [];
     until(g, () => {
       const s = state.intent?.step ?? "";
@@ -595,7 +610,8 @@ describe("the runner in the elements", () => {
     st.fire.fuelKg = 4;
     addItem(pile(state, camp), "firewood", 20);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
+    stormForecast(state);
+    testRain(8, 5, 40);
     advance(state, world, 1);
     expect(state.player.bodyNeed).toBe("storm");
     expect(until(g, () => state.task?.id === "rest")).toBe(true);
@@ -614,7 +630,7 @@ describe("the runner in the elements", () => {
     const sunset = calendar(320 * 1440).sunset;
     state.minute = 320 * 1440 - START_MINUTE_OF_DAY + Math.round((sunset - 0.1) * 60);
     state.player.water = 0.5;
-    state.weather.iceCm = 3;
+    ensureGround(state, world, state.player.region).iceCm = 3;
     // An axe in hand would otherwise make the iced shore a hole to cut,
     // which is quenchable and would beat the case this test wants.
     state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
@@ -636,7 +652,7 @@ describe("the runner in the elements", () => {
     mapRegion(state, world, state.player.region);
     const st = regionState(state, world, state.player.region);
     st.campCell = campCell;
-    state.weather.iceCm = 20;
+    ensureGround(state, world, state.player.region).iceCm = 20;
     const cal2 = calendar(state.minute);
     const route = findRoute(world, here, campCell, "safe")!;
     const expected = routeMinutes(world, route, baseWalkSpeed(state, cal2, state.weather), "safe");
@@ -653,8 +669,7 @@ describe("the runner in the elements", () => {
     // Overload the pack so no walk can start anywhere; melting needs none once at camp.
     addItem(state.player.pack, "stone", 40);
     state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
-    state.weather.iceCm = 4;
-    state.weather.snowCm = 5;
+    Object.assign(ensureGround(state, world, state.player.region), { iceCm: 4, snowCm: 5 });
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
@@ -670,10 +685,12 @@ describe("the runner in the elements", () => {
     // throughout: every plain walk the body's own needs start must resolve to
     // safe ice or none, sampled every minute across all three needs.
     const { state, world } = felling(10);
-    state.weather.iceCm = 8;
+    ensureGround(state, world, state.player.region).iceCm = 8;
     let sawThin = false;
+    let sawHomeOnThin = false;
     const sample = () => {
       if (state.route?.ice === "thin") sawThin = true;
+      if (state.player.bodyNeed === "home" && iceMode(ensureGround(state, world, state.player.region)) === "thin") sawHomeOnThin = true;
     };
     const run = (minutes: number) => {
       for (let m = 0; m < minutes; m++) {
@@ -687,23 +704,30 @@ describe("the runner in the elements", () => {
     siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
-    state.weather.snowCm = 5;
+    ensureGround(state, world, state.player.region).snowCm = 5;
     state.player.water = 0.5;
     run(200);
     expect(state.dead).toBeNull();
 
     // Storm.
-    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute + 5, until: state.minute + 5 + 4 * 60, warned: false };
+    stormForecast(state);
+    testRain(8, 5, 40);
     run(400);
     expect(state.dead).toBeNull();
+    testAtmosphere();
 
     // Home before dark, deep winter; reserves topped off so the trace runs to night rather than to a death.
     state.minute = 320 * 1440 + 240;
+    placeAtSpot(state, world, state.player.region, "forest");
+    // The time jump catches the old April record through hundreds of warm
+    // days. Put thin ice back into the authoritative ground for this phase.
+    ensureGround(state, world, state.player.region).iceCm = 8;
     state.player.tools.push({ id: "waterskin", durability: 100, litres: 3, frozen: false });
     state.player.water = 3;
     state.player.kcal = KCAL_FULL;
     state.player.health = 100;
     run(900);
+    expect(sawHomeOnThin).toBe(true);
     expect(sawThin).toBe(false);
   });
 

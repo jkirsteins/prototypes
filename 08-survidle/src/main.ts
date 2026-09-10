@@ -34,7 +34,8 @@ import { putOutTorch, startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
 import { insertWalkAtTop } from "./sim/walkorders";
 import { drink, fillVessels } from "./sim/water";
-import { ambientTemperature } from "./sim/weather";
+import { ambientTemperature, localWeather } from "./sim/weather";
+import { WEATHER_SHOTS, weatherShotFixture, type WeatherShotName } from "./sim/weather-scenarios";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars, updateFills } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
@@ -46,10 +47,11 @@ import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalNoticeToOp
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
 import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, mapViewportBounds, viewOrigin } from "./ui/map";
+import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
-  manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml,
+  manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
@@ -70,6 +72,10 @@ const speed = Math.max(0.1, Number(params.get("speed")) || 1);
 const forcedSeed = params.get("seed");
 /** Test aid beside seed: the day of year the run begins on, for a summer or autumn pass. Not a game feature. */
 const forcedDay = params.get("day");
+const requestedWeatherShot = params.get("weather-shot");
+const weatherShotName = requestedWeatherShot && requestedWeatherShot in WEATHER_SHOTS
+  ? requestedWeatherShot as WeatherShotName
+  : null;
 // Anything that is not a day of year is no day of year: a blank or misspelt
 // ?day= leaves the run alone rather than opening it on 1 January in the snow.
 const forcedDayN = forcedDay === null || forcedDay.trim() === "" ? Number.NaN : Number(forcedDay);
@@ -106,6 +112,7 @@ function persistGame(): void {
 }
 const ui = newUiState();
 ui.travelDisplay = loadTravelDisplay(localStorage);
+ui.cloudShadows = loadCloudShadows(localStorage);
 const SPECIFIC_KEY = "survidle.specific";
 try {
   const saved = JSON.parse(localStorage.getItem(SPECIFIC_KEY) ?? "{}") as Partial<UiState["specific"]>;
@@ -183,12 +190,18 @@ function boot() {
 
 let lastTipKey = "";
 let lastMapKey = "";
+let lastWeatherKey = "";
 function render(nowMs = performance.now()) {
   if (ui.wildlifeStartles.length) document.getElementById("mapdyn")!.style.setProperty("--wildlife-now", `${nowMs}ms`);
   // Arriving where you were looking ends the looking.
   if (ui.selected === state.player.region) ui.selected = null;
   const cal = calendar(state.minute, state.startDoy);
-  const ambient = ambientTemperature(cal, state.weather);
+  if (weatherShotName) {
+    setPanel("mapdyn", mapHtml(world, state, ui, cal));
+    document.getElementById("overlay")!.hidden = true;
+    return;
+  }
+  const ambient = ambientTemperature(cal, localWeather(state, world));
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("camp", campHtml(state, world, cal));
   setPanel("maptravel", placesHtml(state, world, cal, ui.travelDisplay));
@@ -197,7 +210,11 @@ function render(nowMs = performance.now()) {
   setPanel("skills", skillsHtml(state));
   setPanel("goals", goalsHtml(state, world, cal));
   setPanel("shopping", shoppingHtml(state, world, cal));
-  setPanel("weather", weatherHtml(state, world, cal, ambient, ui.hurry.rate));
+  const wxKey = weatherKey(state, world, cal, ui.hurry.rate);
+  if (wxKey !== lastWeatherKey) {
+    lastWeatherKey = wxKey;
+    setPanel("weather", weatherHtml(state, world, cal, ambient, ui.hurry.rate));
+  }
   // A zoom changes the grid's dimensions. Measure again after that morph so
   // edge effects use the new visible intersection before the browser paints.
   for (let pass = 0; pass < 2; pass++) {
@@ -250,6 +267,8 @@ function render(nowMs = performance.now()) {
   document.getElementById("settings")!.hidden = !ui.settings;
   const travelSelect = document.querySelector<HTMLSelectElement>("[data-display=travel]");
   if (travelSelect && travelSelect.value !== ui.travelDisplay) travelSelect.value = ui.travelDisplay;
+  const cloudShadows = document.querySelector<HTMLInputElement>("[data-display=cloud-shadows]");
+  if (cloudShadows && cloudShadows.checked !== ui.cloudShadows) cloudShadows.checked = ui.cloudShadows;
 
   const overlay = document.getElementById("overlay")!;
   if (ui.manual) {
@@ -294,7 +313,7 @@ function frame(now: number) {
     requestAnimationFrame(frame);
     return;
   }
-  if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalGuide && ui.recognition === null) {
+  if (!weatherShotName && !state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalGuide && ui.recognition === null) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
@@ -318,22 +337,24 @@ function frame(now: number) {
     // dismisses it into an away report they never earned.
     lastReal = now;
   }
-  // One moment at a time, and never over an overlay that outranks it. A rung
-  // crossed inside an offline catch-up waits behind that catch-up's own away
-  // report; momentToOpen owns the whole rule.
-  if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
-  // The queue itself stays put until the overlay is dismissed: it is what
-  // makes the congratulation survive a reload. goalMomentToOpen already
-  // refuses to reopen while goal guidance is set, so leaving it be here does
-  // not requeue the overlay every frame.
-  const reached = goalMomentToOpen(state, ui);
-  if (reached) ui.goalGuide = { ids: unintroducedGoals(state, calendar(state.minute, state.startDoy)), done: reached, automatic: true };
-  const introduced = goalIntroductionToOpen(state, calendar(state.minute, state.startDoy), ui);
-  if (introduced) ui.goalGuide = { ids: introduced, done: [], automatic: true };
-  const notices = goalNoticeToOpen(state, ui);
-  if (notices) ui.goalGuide = { ids: [], done: [], notices, automatic: true };
-  if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.goalGuide && ui.recognition === null) {
-    ui.recognition = state.wildlife.recognitionQueue[0] ?? null;
+  if (!weatherShotName) {
+    // One moment at a time, and never over an overlay that outranks it. A rung
+    // crossed inside an offline catch-up waits behind that catch-up's own away
+    // report; momentToOpen owns the whole rule.
+    if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
+    // The queue itself stays put until the overlay is dismissed: it is what
+    // makes the congratulation survive a reload. goalMomentToOpen already
+    // refuses to reopen while goal guidance is set, so leaving it be here does
+    // not requeue the overlay every frame.
+    const reached = goalMomentToOpen(state, ui);
+    if (reached) ui.goalGuide = { ids: unintroducedGoals(state, calendar(state.minute, state.startDoy)), done: reached, automatic: true };
+    const introduced = goalIntroductionToOpen(state, calendar(state.minute, state.startDoy), ui);
+    if (introduced) ui.goalGuide = { ids: introduced, done: [], automatic: true };
+    const notices = goalNoticeToOpen(state, ui);
+    if (notices) ui.goalGuide = { ids: [], done: [], notices, automatic: true };
+    if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.goalGuide && ui.recognition === null) {
+      ui.recognition = state.wildlife.recognitionQueue[0] ?? null;
+    }
   }
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
@@ -342,7 +363,7 @@ function frame(now: number) {
   updateSpeedHistory(document, ui.speedHistory, now, GAME_MINUTES_PER_REAL_SECOND * ui.hurry.rate);
   portraitMotion.frame(document, now, document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
   const cal = calendar(state.minute, state.startDoy);
-  sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
+  sounds.frame(state, world, cal, ambientTemperature(cal, localWeather(state, world)), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
   if (now - lastSave > 5000) {
     lastSave = now;
     persistGame();
@@ -689,6 +710,15 @@ function zoomBy(delta: number) {
 }
 
 boot();
+const weatherShot = weatherShotName ? weatherShotFixture(weatherShotName) : null;
+if (weatherShot) {
+  state = weatherShot.state;
+  world = weatherShot.world;
+  ui.zoom = weatherShot.definition.zoom;
+  ui.welcome = false;
+  ui.teach = null;
+  ui.goalGuide = null;
+}
 beacon.opened(state);
 // Built once world is real; the worker keeps its own copy keyed by seed, so a
 // later fresh() with a new world does not leave it stale.
@@ -781,6 +811,12 @@ document.addEventListener("change", (ev) => {
       lastTipKey = "";
       render();
     }
+    return;
+  }
+  if (el.matches("[data-display=cloud-shadows]")) {
+    ui.cloudShadows = el.checked;
+    saveCloudShadows(ui.cloudShadows, localStorage);
+    render();
     return;
   }
   if (el.matches("[data-act=row-where]")) {
@@ -932,6 +968,7 @@ requestAnimationFrame(frame);
 declare global {
   interface Window { survidle: {
     get state(): GameState; get world(): World; advance(minutes: number): void; speed: number;
+    weatherShot: null | { name: WeatherShotName; visibleCells: number };
     startleSetup?(scenario: import("../scripts/startle-seeds").StartleScenario): Promise<void>;
     startleStep?(): void;
     startleAdvance?(minutes: number): void;
@@ -943,6 +980,7 @@ window.survidle = {
   get world() { return world; },
   advance(minutes: number) { advance(state, world, minutes); render(); },
   speed,
+  weatherShot: weatherShot ? { name: weatherShotName!, visibleCells: weatherShot.visible.size } : null,
 };
 if (import.meta.env.DEV) {
   window.survidle.startleSetup = async (scenario) => {

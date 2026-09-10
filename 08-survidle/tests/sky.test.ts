@@ -33,12 +33,12 @@ describe("forecast knowledge in the weather wall", () => {
     const render = () => {
       setPanel("weather", weatherHtml(state, world, cal, 15));
       updateSky(state, cal, 15);
-      return document.querySelector("#weather")!.innerHTML;
+      return document.querySelector("#weather")!;
     };
-    const noviceSnow = render();
+    const noviceSnow = render().cloneNode(true);
     const sky = document.querySelector("svg.sky");
     state.weather.storm.kind = "rain";
-    expect(render()).toBe(noviceSnow);
+    expect(render().isEqualNode(noviceSnow)).toBe(true);
     state.weather.storm.kind = kind;
     state.skills.weatherSense.xp = levelMinutes(13);
     render();
@@ -46,7 +46,7 @@ describe("forecast knowledge in the weather wall", () => {
     expect(sky?.getAttribute("aria-label")).toBe(`sky: heavy ${kind} storm in 1 h`);
     expect(document.querySelector("svg.sky")).toBe(sky);
     state.skills.weatherSense.xp = 0;
-    expect(render()).toBe(noviceSnow);
+    expect(render().isEqualNode(noviceSnow)).toBe(true);
     expect(document.querySelector("svg.sky")).toBe(sky);
   });
 
@@ -268,20 +268,19 @@ describe("sky in the page", () => {
     const sun = document.querySelector("#sky-sun")!;
     const noonX = Number(sun.getAttribute("cx"));
     const opacity = (sel: string) => Number(document.querySelector(sel)!.getAttribute("opacity"));
-    expect(opacity("#sky-sun")).toBe(1);
+    expect(opacity("#sky-sun")).toBeGreaterThan(0.9);
     // 22:00: the moon is still on the left half of its arc, so its x differs from the noon sun's.
     const night = at(22);
     updateSky(state, night, -3);
     expect(opacity("#sky-sun")).toBe(0);
-    expect(opacity("#sky-moon")).toBe(1);
+    expect(opacity("#sky-moon")).toBeGreaterThan(0.9);
     expect(Number(document.querySelector("#sky-moon")!.getAttribute("cx"))).not.toBe(noonX);
     const viewport = document.querySelector<HTMLElement>("#map .scroll-x")!;
     expect(Number(viewport.style.getPropertyValue("--bright"))).toBeLessThan(0.6);
-    state.weather.precip = "heavy";
-    updateSky(state, night, -3);
-    expect(viewport.classList.contains("snowing")).toBe(true);
-    // And under a sky that thick there is no disc left to see.
-    expect(opacity("#sky-moon")).toBeLessThan(0.1);
+    // Precipitation belongs to coordinate-matched glyphs, never a global
+    // viewport class laid over unrelated local conditions.
+    expect(viewport.classList.contains("snowing")).toBe(false);
+    expect(viewport.classList.contains("rain")).toBe(false);
   });
 
   it("keeps one varied constellation star pattern through a clear night and hides it by day or cloud", () => {

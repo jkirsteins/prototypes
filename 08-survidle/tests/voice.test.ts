@@ -1,11 +1,14 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { newGame } from "../src/sim/newgame";
 import { current } from "../src/sim/record";
 import { catchUp } from "../src/sim/save";
 import { third, voice } from "../src/sim/voice";
 import { awayHtml, logHtml } from "../src/ui/panels";
+import { testAtmosphere } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((f) => {
@@ -71,6 +74,7 @@ describe("the voice", () => {
   });
 
   it("marks what the catch-up wrote as away, and the panels render it by name", () => {
+    testAtmosphere();
     const { state, world } = newGame(17);
     const before = state.log.length;
     const away = catchUp(state, world, 6 * 3600);

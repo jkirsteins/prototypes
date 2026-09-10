@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { trapDraws, trapFactor } from "../src/sim/camp";
@@ -14,10 +14,13 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { check, startTask } from "../src/sim/tasks";
 import { ICE_SHORE_CM } from "../src/sim/water";
+import { ensureGround } from "../src/sim/weather";
 import { regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
 
 const cal = calendar(0);
+afterEach(() => vi.restoreAllMocks());
 type G = ReturnType<typeof newGame>;
 function until(g: G, pred: () => boolean, max = 3000): boolean {
   for (let i = 0; i < max; i++) {
@@ -31,13 +34,12 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
  * Seed 4's start region has a lake: the player on its shore, the shore
  * read, a basket in the pack, and the lake full of fish.
  *
- * @param startDoy 20 July (200) for the two tests that drive the trap
- * across real simulated days: open water for months, so a multi-day
- * advance never runs into seed 4's April cold snap (the shore ices over,
- * and an idle player freezes, within the game's first two dawns - both
- * pre-existing weather, unrelated to the trap).
+ * @param startDoy 20 July (200) for tests that drive the trap across real
+ * simulated days, keeping the seasonal fish calendar aligned with summer.
+ * Local air and open water are controlled separately below.
  */
 function readyToSet(startDoy?: number) {
+  testAtmosphere({ temperatureC: 15 });
   const g = newGame(4, startDoy);
   siteCamp(g.state, g.world);
   placeAtSpot(g.state, g.world, g.state.player.region, "shore");
@@ -49,6 +51,7 @@ function readyToSet(startDoy?: number) {
   // to have anything to catch.
   for (const s of obs.fish) st.pop[s] = 2500;
   addItem(g.state.player.pack, "basketTrap", 1);
+  ensureGround(g.state, g.world, g.state.player.region).iceCm = 0;
   return { ...g, cell, st, obs };
 }
 
@@ -71,16 +74,18 @@ describe("the basket trap", () => {
   });
 
   it("refuses an unread shore, an empty water, ice, and no basket, in that order of reasons", () => {
+    testAtmosphere({ temperatureC: 15 });
     const g = newGame(4);
     siteCamp(g.state, g.world);
     placeAtSpot(g.state, g.world, g.state.player.region, "shore");
+    ensureGround(g.state, g.world, g.state.player.region).iceCm = 0;
     expect(check(g.state, g.world, cal, "setTrap")).toMatchObject({ ok: false, why: "read the water first" });
     const cell = cellOf(g.state, g.world);
     readShore(g.state, g.world, cell);
     expect(check(g.state, g.world, cal, "setTrap")).toMatchObject({ ok: false, why: "needs a basket trap" });
     g.state.player.known[cell].fish = [];
     expect(check(g.state, g.world, cal, "setTrap")).toMatchObject({ ok: false, why: "nothing lives in this water" });
-    g.state.weather.iceCm = ICE_SHORE_CM;
+    ensureGround(g.state, g.world, g.state.player.region).iceCm = ICE_SHORE_CM;
     expect(check(g.state, g.world, cal, "setTrap")).toMatchObject({ ok: false, why: "the water is under ice" });
   });
 
@@ -128,7 +133,10 @@ describe("the basket trap", () => {
     setTrap(g);
     g.state.dead = { cause: "starved", minute: g.state.minute };
     advance(g.state, g.world, 10 * 1440, { nobody: true });
-    expect(g.st.trap!.kg).toBeGreaterThan(0);
+    // A catch may have rotted shortly before the final dawn and the next four
+    // base-rate draws may all miss. Either fresh kilos or the rot line proves
+    // that an unattended trap kept drawing.
+    expect(g.st.trap!.kg > 0 || g.state.log.some((e) => /fish in the trap .* have rotted/.test(e.text))).toBe(true);
   });
 
   it("empties at the trap cell into the pack as raw fish and credits the trap source", () => {
@@ -174,7 +182,8 @@ describe("the basket trap", () => {
   it("the ice takes it, and says so", () => {
     const g = readyToSet();
     setTrap(g);
-    g.state.weather.iceCm = ICE_SHORE_CM;
+    testAtmosphere({ temperatureC: -5 });
+    ensureGround(g.state, g.world, g.state.player.region).iceCm = ICE_SHORE_CM;
     advance(g.state, g.world, 1440);
     expect(g.st.trap).toBeNull();
     expect(g.state.log.some((l) => l.text.includes("The ice has taken the trap"))).toBe(true);
@@ -187,9 +196,11 @@ describe("the basket trap", () => {
   });
 
   it("a set-trap order pockets the basket from the camp pile before it leaves, and sets the trap at the read shore", () => {
+    testAtmosphere({ temperatureC: 15 });
     const g = newGame(4);
     siteCamp(g.state, g.world);
     placeAtSpot(g.state, g.world, g.state.player.region, "shore");
+    ensureGround(g.state, g.world, g.state.player.region).iceCm = 0;
     const cell = cellOf(g.state, g.world);
     const obs = readShore(g.state, g.world, cell);
     const st = regionState(g.state, g.world, g.state.player.region);
@@ -204,9 +215,11 @@ describe("the basket trap", () => {
   });
 
   it("an intent to set the trap started away from camp with a basket already in the pack sets it", () => {
+    testAtmosphere({ temperatureC: 15 });
     const g = newGame(4);
     siteCamp(g.state, g.world);
     placeAtSpot(g.state, g.world, g.state.player.region, "shore");
+    ensureGround(g.state, g.world, g.state.player.region).iceCm = 0;
     const cell = cellOf(g.state, g.world);
     const obs = readShore(g.state, g.world, cell);
     const st = regionState(g.state, g.world, g.state.player.region);

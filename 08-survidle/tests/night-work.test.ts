@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { SLEEP_AT } from "../src/sim/body";
@@ -12,6 +12,7 @@ import { regionState } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { cellAt, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
 
 /**
  * 8 December, a long night with a new moon over it: the sky puts nothing at
@@ -21,6 +22,10 @@ const DECEMBER = 342;
 /** The run opens at 08:00, so these are the clock times they are named for. */
 const MIDNIGHT = 16 * 60;
 const MIDDAY = 5 * 60;
+
+// Darkness is the variable under test. Stable dry overcast local air keeps
+// precipitation, cold and a moving cloud edge out of the yield and collapse runs.
+beforeEach(() => testAtmosphere({ cloud: 1 }));
 
 /**
  * A survivor standing in their own woods under an overcast, snowless
@@ -34,8 +39,6 @@ function camp(minute: number) {
   const wood = regionAt(world, state.player.region).cells.find((c) => cellAt(world, c).terrain === "pine" || cellAt(world, c).terrain === "spruce");
   placeAt(state, world, wood ?? st.campCell!);
   state.minute = minute;
-  state.weather.clear = false;
-  state.weather.snowCm = 0;
   return { state, world, st, cal: calendar(minute, state.startDoy) };
 }
 

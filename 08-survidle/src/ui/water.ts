@@ -4,22 +4,21 @@
  * a kilo of wood a litre. Plain text; panels.ts wraps it.
  */
 import { regionAt, type World } from "../world/gen";
-import { routeMinutes } from "../world/route";
 import type { Calendar } from "../sim/calendar";
 import { pile, pileAt, qty } from "../sim/inventory";
 import { baseWalkSpeed } from "../sim/player";
 import { cellOf, watersideCell } from "../sim/position";
 import { campSite, regionState } from "../sim/regionstate";
-import { survivorRoute } from "../sim/routing";
+import { survivorRoute, survivorRouteMinutes } from "../sim/routing";
 import { SEEP, seepGround, seepStopped } from "../sim/seep";
 import type { GameState } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, iceHoleOpen } from "../sim/water";
-import { ambientTemperature, walkableIce } from "../sim/weather";
+import { localWeather, walkableIce } from "../sim/weather";
 
 /** "+3 l/h", or "+0 l/h, frozen" and the like when the seep is stopped. */
-function rateText(state: GameState, world: World, cell: number, cal: Calendar): string {
+function rateText(state: GameState, world: World, cell: number, _cal: Calendar): string {
   const s = state.seeps[cell];
-  const why = seepStopped(state, world, cell, ambientTemperature(cal, state.weather));
+  const why = seepStopped(state, world, cell);
   return why ? `+0 l/h, ${why}` : `+${SEEP[s.class].refillLPerHour} l/h`;
 }
 
@@ -32,6 +31,7 @@ function seepText(state: GameState, world: World, cell: number, cal: Calendar): 
 /** The water line for the cell under foot: what is here, or "none" and whether a seep could be dug. */
 export function waterLine(state: GameState, world: World, cal: Calendar): string {
   const cell = cellOf(state, world);
+  const weather = localWeather(state, world, cell);
   const st = regionState(state, world, state.player.region);
   const parts: string[] = [];
   if (cell === st.campCell && st.campCell !== null) {
@@ -40,7 +40,7 @@ export function waterLine(state: GameState, world: World, cal: Calendar): string
     if (cap > 0 || qty(camp, "water") > 1e-9) parts.push(`${qty(camp, "water").toFixed(1)} of ${cap.toFixed(1)} l at camp`);
   }
   if (watersideCell(world, cell)) {
-    if (state.weather.iceCm < ICE_SHORE_CM) parts.push("shore, endless");
+    if (weather.iceCm < ICE_SHORE_CM) parts.push("shore, endless");
     else if (iceHoleOpen(state, cell)) parts.push("ice hole, open until morning");
     else parts.push("iced over; an axe opens an ice hole");
   } else if (state.seeps[cell]) {
@@ -54,10 +54,11 @@ export function waterLine(state: GameState, world: World, cal: Calendar): string
 
 /** Minutes to walk from here to a cell over the ice a walk button would cross, or null with no way. */
 function walkMinutes(state: GameState, world: World, cal: Calendar, to: number): number | null {
-  const ice = walkableIce(state.weather);
+  const weather = localWeather(state, world);
+  const ice = walkableIce(weather);
   const route = survivorRoute(state, world, cellOf(state, world), to, ice);
   if (!route) return null;
-  return Math.round(routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather), ice));
+  return Math.round(survivorRouteMinutes(state, world, route, baseWalkSpeed(state, cal, weather), ice));
 }
 
 /** The nearest cell of a set by walk, with its minutes; null when none can be walked to. */
@@ -78,7 +79,7 @@ export function waterList(state: GameState, world: World, cal: Calendar): string
   const parts: string[] = [];
   const shore = nearestByWalk(state, world, cal, r.cells.filter((c) => watersideCell(world, c)));
   if (shore) {
-    if (state.weather.iceCm < ICE_SHORE_CM) parts.push(`shore ${shore.minutes} min, endless`);
+    if (localWeather(state, world, shore.cell).iceCm < ICE_SHORE_CM) parts.push(`shore ${shore.minutes} min, endless`);
     else if (st.iceHole) parts.push(`ice hole ${walkMinutes(state, world, cal, st.iceHole.cell) ?? "?"} min, open until morning`);
     else parts.push(`shore ${shore.minutes} min, iced over`);
   }
@@ -89,6 +90,6 @@ export function waterList(state: GameState, world: World, cal: Calendar): string
   }
   const campL = qty(pileAt(state, st.campCell), "water");
   if (campL > 1e-9 && st.campCell !== null) parts.push(`camp water ${campL.toFixed(1)} l, ${here === st.campCell ? 0 : (walkMinutes(state, world, cal, st.campCell) ?? "?")} min`);
-  if (st.fire.lit && st.fire.fuelKg >= 1 && state.weather.snowCm >= 1) parts.push("snow at the fire, 1 l per 15 min and 1 kg wood");
+  if (st.fire.lit && st.fire.fuelKg >= 1 && st.campCell !== null && localWeather(state, world, st.campCell).snowCm >= 1) parts.push("snow at the fire, 1 l per 15 min and 1 kg wood");
   return parts.length ? parts.join("; ") : "no water in this region";
 }

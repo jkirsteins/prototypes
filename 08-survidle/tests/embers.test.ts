@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { EMBER_MINUTES, hasEmbers } from "../src/sim/fire";
@@ -9,6 +9,9 @@ import { placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere, testRain } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 /** A lit fire at camp with a known fuel load and nobody to auto-feed it. */
 function litCamp(seed = 3, fuelKg = 1) {
@@ -50,26 +53,24 @@ describe("a spent fire", () => {
   });
 
   it("loses its embers faster in the rain with nothing over it", () => {
+    testAtmosphere({ temperatureC: 5 });
     const dry = litCamp();
     advance(dry.state, dry.world, 120);
     const dryLeft = dry.st.fire.embers;
 
     const wet = litCamp();
-    wet.state.weather.precip = "light";
+    testRain(1, 5);
     advance(wet.state, wet.world, 120);
     expect(wet.st.fire.embers).toBeLessThan(dryLeft);
   });
 
   it("leaves no embers when heavy rain drowns it", () => {
+    testRain(8, 5);
     const { state, world, st } = litCamp(3, 1.5);
-    state.weather.precip = "heavy";
     // drownedLow wants above-freezing rain, no roof and under 2 kg on the
     // fire. The camp built here has no roof and the fuel load is already
-    // under 2 kg; force the temperature above freezing regardless of season
-    // and freeze the daily reroll so it cannot undo that mid-window, which
-    // is what makes this deterministic rather than a maybe.
-    state.weather.offset = 50;
-    state.weather.rolledDay = calendar(state.minute).dayIndex + 1;
+    // under 2 kg; the controlled local sample keeps above-freezing heavy rain
+    // through the whole window, making this deterministic rather than a maybe.
     advance(state, world, 30);
     expect(st.fire.lit).toBe(false);
     expect(hasEmbers(st.fire)).toBe(false);
@@ -119,7 +120,7 @@ describe("rekindling", () => {
     advance(state, world, 120);
     expect(hasEmbers(st.fire)).toBe(true);
     const before = state.player.tools.find((t) => t.id === "fireDrill")!.durability;
-    state.weather.precip = "heavy";
+    testRain(8, 5);
     addItem(state.player.pack, "firewood", 5);
     const o = check(state, world, calendar(state.minute, state.startDoy), "light");
     expect(o.ok, o.why).toBe(true);

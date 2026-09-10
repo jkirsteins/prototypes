@@ -1,41 +1,51 @@
-# The map in every condition it draws in
+# Simulation-backed local weather references
 
 Regenerate with `npm run dev` in one shell and `npm run shots` in another.
-These are pictures to look at, not tests: nothing here passes or fails.
-The contracts they illustrate are held by `tests/layout.test.ts`.
+Every image is normal simulation and rendering output selected by the deterministic scenario catalog in `src/sim/weather-scenarios.ts`.
+The harness does not assign weather classes, variables, glyphs, or visibility.
 
-The conditions are set by writing the grid's classes directly rather than
-by playing until the calendar says December, so each image is a true
-picture of the stylesheet under that condition and not evidence that the
-condition is reached correctly. The firelight rings are placed by hand.
+- **clear** - 323 cells in the actual current-visibility footprint.
 
-- **spring** (`season-spring`) - the growing season: the ground's own colours
+  ![clear](clear.png)
+- **sunny-clouds** - 936 cells in the actual current-visibility footprint.
 
-  ![spring](spring.png)
-- **summer** (`season-summer`) - as spring; nothing in the stylesheet separates them yet
+  ![sunny-clouds](sunny-clouds.png)
+- **approaching-rain** - 164 cells in the actual current-visibility footprint.
 
-  ![summer](summer.png)
-- **autumn** (`season-autumn`) - birch gold, the meadow and the bog gone over
+  ![approaching-rain](approaching-rain.png)
+- **local-rain** - 84 cells in the actual current-visibility footprint.
 
-  ![autumn](autumn.png)
-- **winter-bare** (`season-winter`) - a winter with no snow down: bare birch, dead grass
+  ![local-rain](local-rain.png)
+- **persisted-snow** - 1 cells in the actual current-visibility footprint.
 
-  ![winter-bare](winter-bare.png)
-- **winter-snow** (`season-winter snow`) - snow on the ground: evergreens hold their green, the birch does not
+  ![persisted-snow](persisted-snow.png)
+- **frozen-water** - 217 cells in the actual current-visibility footprint.
 
-  ![winter-snow](winter-snow.png)
-- **winter-deep** (`season-winter snow snow-deep`) - past DEEP_SNOW_CM: more snow than tree to see
+  ![frozen-water](frozen-water.png)
+- **valley-fog** - 39 cells in the actual current-visibility footprint.
 
-  ![winter-deep](winter-deep.png)
-- **night** (`season-autumn night`) - the sheet down: you, camp, the fire and the walk line stay up
+  ![valley-fog](valley-fog.png)
+- **windward-lee** - 421 cells in the actual current-visibility footprint.
 
-  ![night](night.png)
-- **night-fire** (`season-autumn night +fire`) - firelight over the ground, rings placed by hand
+  ![windward-lee](windward-lee.png)
+- **obscured** - 1 cells in the actual current-visibility footprint.
 
-  ![night-fire](night-fire.png)
-- **rain** (`season-autumn; rain`) - falling weather over the ground
+  ![obscured](obscured.png)
 
-  ![rain](rain.png)
-- **snowing** (`season-winter snow; snowing`) - falling weather over the ground
+The two fog frames hold the same simulation minute and visibility while one deterministic ASCII state hard-switches to the next.
 
-  ![snowing](snowing.png)
+![fog frame A](fog-frame-a.png)
+
+![fog frame B](fog-frame-b.png)
+
+The same approaching-rain simulation is also captured in both persisted display modes. Cloud shadows are the default; ASCII cloud flavor is the optional setting.
+
+![cloud shadows](cloud-shadows.png)
+
+![ASCII cloud flavor](cloud-glyphs.png)
+
+The sunny pair advances the normal simulation by 60 game minutes between frames. The changing cell-owned shadow field comes from the moving simulated cloud field, not screenshot styling.
+
+![sunny cloud shadows A](sunny-cloud-shadows-a.png)
+
+![sunny cloud shadows B](sunny-cloud-shadows-b.png)

@@ -20,11 +20,13 @@ import { intentOption, startIntent } from "../src/sim/intent";
 import { deserialize, serialize } from "../src/sim/save";
 import { siteCamp } from "./siting-helpers";
 import { GOALS, introduceGoals } from "../src/sim/goals";
+import { ensureGround } from "../src/sim/weather";
+import { testRain } from "./weather-helpers";
 
 const cal = calendar(0);
 function field() {
   const game = newGame(3);
-  game.state.weather.precip = "none";
+  testRain(0);
   game.state.player.tools = [];
   return game;
 }
@@ -61,7 +63,7 @@ describe("a fire where you stand", () => {
     addItem(state.player.pack, "wetFirewood", 5);
     expect(check(state, world, cal, "light").why).toContain("1 kg firewood");
     addItem(state.player.pack, "firewood", 2);
-    state.weather.precip = "heavy";
+    testRain(10);
     expect(check(state, world, calendar(90 * 1440), "light").why).toContain("too wet");
   });
   it("cooks away from camp and credits the existing cook goal", () => {
@@ -118,14 +120,14 @@ describe("a fire where you stand", () => {
     };
     addItem(state.player.pack, "fireDrill", 1);
     addItem(state.player.pack, "firewood", 2);
-    state.weather.precip = "light";
+    testRain(2);
     expect(startTask(state, world, cal, "light")).toBe(true);
     for (let n = 0; state.task && n < 60; n++) stepTask(state, world, cal, new Rng(7), 1);
     expect(state.player.fieldFire).toBeNull();
     expect(state.goals.done.fieldFire).toBeUndefined();
 
     state.goals.done.fieldFire = true;
-    state.weather.precip = "none";
+    testRain(0);
     state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 3 };
     addItem(state.player.pack, "rawMeat", 1);
     expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
@@ -149,7 +151,7 @@ describe("a fire where you stand", () => {
     addItem(state.player.pack, "rawMeat", 1);
     expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
     stepTask(state, world, cal, new Rng(1), 1);
-    state.weather.precip = "heavy";
+    testRain(10);
     stepCamp(state, world, 5, 1, { region: state.player.region, atCamp: false });
     expect(state.player.fieldFire).toBeNull();
 
@@ -192,7 +194,7 @@ describe("a fire where you stand", () => {
   it("melts and thaws with a vessel, spending the field fire's fuel", () => {
     const game = lightField();
     const { state, world } = game;
-    state.weather.snowCm = 10;
+    ensureGround(state, world, state.player.region).snowCm = 10;
     expect(check(state, world, cal, "melt").why).toContain("bark bucket");
     expect(check(state, world, cal, "thaw").why).toContain("vessel");
     addItem(state.player.pack, "barkBucket", 1);
@@ -225,12 +227,12 @@ describe("a fire where you stand", () => {
     state.player.fieldFire = null;
     expect(warm - feltTemperature(state, world, 0)).toBeCloseTo(15);
     state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 10 };
-    state.weather.precip = "none";
+    testRain(0);
     state.player.wetness = 50;
     addItem(state.player.pack, "wetFirewood", 1);
     stepPlayer(state, world, cal, 0, 1);
     expect(state.player.wetness).toBeLessThan(50);
-    state.weather.precip = "light";
+    testRain(2);
     const dryBefore = qty(state.player.pack, "firewood");
     stepCamp(state, world, 0, 1, { region: state.player.region, atCamp: false });
     expect(qty(state.player.pack, "firewood")).toBeGreaterThan(dryBefore);
@@ -317,7 +319,7 @@ describe("a fire where you stand", () => {
   });
   it("credits no hearth goals after three days of hand-fed field fire in rain", () => {
     const { state, world } = lightField();
-    state.weather.precip = "light";
+    testRain(2);
     for (let m = 0; m < 3 * 1440; m += 60) {
       state.minute += 60;
       addItem(state.player.pack, "firewood", 6);

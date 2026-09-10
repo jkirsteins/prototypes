@@ -12,6 +12,14 @@ function forbidPlayer(state: ReturnType<typeof newGame>["state"]) {
 }
 
 describe("nobody home", () => {
+  it("crosses a daily boundary without reading the player before any camp exists", () => {
+    const { state, world } = newGame(8);
+    state.dead = { cause: "froze", minute: state.minute };
+    forbidPlayer(state);
+    advance(state, world, 1440, { nobody: true });
+    expect(state.minute).toBe(1440);
+  });
+
   it("runs the world half only and never reads the player", () => {
     const { state, world } = newGame(8);
     siteCamp(state, world);

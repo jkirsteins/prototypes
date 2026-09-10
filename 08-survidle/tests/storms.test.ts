@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
@@ -10,12 +10,14 @@ import type { Protection, Weather } from "../src/sim/types";
 import { ambientTemperature, stepWeather } from "../src/sim/weather";
 import { galeProtection, isLee, profileOf, protectionOf } from "../src/sim/shelter";
 import { cellAt } from "../src/world/gen";
+import { testRain } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 function exposure(protection: Protection, kind: "rain" | "snow", storm = true) {
   const g = newGame(17);
   const { state, world } = g;
   state.task = { id: "rest", progress: 0, duration: 60, repeat: false };
-  state.weather.precip = "heavy";
   state.weather.storm = storm ? { id: 1, source: "natural", kind, from: 0, until: 600, warned: true } : null;
   state.player.wetness = 10;
   for (const garment of state.player.clothing) garment.wet = kind === "snow" ? 10 : 50;
@@ -75,7 +77,11 @@ describe("rain and snow storms", () => {
   it.each([false, true])("gives rain a full protection ladder, including ordinary rain through a windbreak (bare skin: %s)", (bare) => {
     const games = ([0, 1, 2] as const).map((level) => exposure(level, "rain"));
     const ordinary = exposure(0, "rain", false);
-    for (const { state, world } of [...games, ordinary]) {
+    if (bare) ordinary.state.player.clothing = [];
+    testRain(8, 10, 0);
+    stepPlayer(ordinary.state, ordinary.world, calendar(0), 10, 1);
+    testRain(8, 10, 40);
+    for (const { state, world } of games) {
       if (bare) state.player.clothing = [];
       stepPlayer(state, world, calendar(0), 10, 1);
     }
@@ -94,6 +100,7 @@ describe("rain and snow storms", () => {
   });
 
   it("lets a windbreak stop snow dampening and take the snow storm wind off the body", () => {
+    testRain(8, -10, 40);
     const games = ([0, 1, 2] as const).map((level) => exposure(level, "snow"));
     const temperatures = games.map(({ state, world }) => feltTemperature(state, world, -10));
     expect(temperatures[1]).toBeCloseTo(temperatures[0] + 6);
@@ -108,6 +115,7 @@ describe("rain and snow storms", () => {
   });
 
   it("does not carry a site's windbreak onto outdoor work", () => {
+    testRain(8, 10, 40);
     const open = exposure(0, "rain");
     const covered = exposure(1, "rain");
     for (const { state, world } of [open, covered]) {
@@ -134,15 +142,20 @@ function galeSite(cell = OPEN) {
 }
 
 function windLoss(g: ReturnType<typeof galeSite>): number {
+  testRain(8, 10, 40);
   const windy = feltTemperature(g.state, g.world, 10);
   const storm = g.state.weather.storm;
   g.state.weather.storm = null;
+  testRain(8, 10, 0);
   const calm = feltTemperature(g.state, g.world, 10);
   g.state.weather.storm = storm;
+  testRain(8, 10, 40);
   return calm - windy;
 }
 
 describe("gale protection", () => {
+  beforeEach(() => testRain(8, 10, 40));
+
   it("reads lee from existing canopy and depressions, never from exposed rock or fell", () => {
     const { world } = newGame(17);
     expect(isLee).toBeTypeOf("function");

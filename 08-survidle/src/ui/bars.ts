@@ -9,7 +9,7 @@ import { levelShare, masteryMilestone, poolShare } from "../sim/skills";
 import { garmentWet } from "../sim/clothing";
 import type { GameState, SkillId } from "../sim/types";
 import { WATER_FULL } from "../sim/water";
-import { ambientTemperature } from "../sim/weather";
+import { ambientTemperature, localWeather } from "../sim/weather";
 import { fmtDuration, fmtReal } from "../units";
 import type { World } from "../world/gen";
 
@@ -80,8 +80,9 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
 
   const st = regionState(state, world, p.region);
   const total = fuelTotal(st.fire);
-  const ambient = ambientTemperature(calendar(state.minute, state.startDoy), state.weather);
-  const burnsFor = fmtDuration((total / burnPerHour(state.weather, ambient, st)) * 60);
+  const weather = localWeather(state, world);
+  const ambient = ambientTemperature(calendar(state.minute, state.startDoy), weather);
+  const burnsFor = fmtDuration((total / burnPerHour(weather, ambient, st)) * 60);
   // Fuel is spent to zero the moment a fire falls to coals, so the plain
   // "0.0 kg" text below would read exactly like a dead fire. This is the one
   // place a per-minute count is safe to write: it lands on a named element

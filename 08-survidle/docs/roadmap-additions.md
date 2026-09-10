@@ -696,6 +696,20 @@ mechanics cause, if a hunt succeeds against fewer than one available animal, if
 the audit no longer balances population flows, or if carcass loss is attributed
 to the survivor's weather instead of the carcass cell's weather.
 
+#### Integration result, 2026-09-10
+
+The hunting merge retains whole-animal claims, conserved population flows,
+food-and-fat runway limits, learned negative evidence, audit stages and
+disturbance-driven emigration. Seasonal capacity and presence read each
+region's persistent local ice while migration still prefers quieter habitat.
+
+Automatic ground ranking does not inspect hidden candidate weather. It may use
+cell weather for the hunter's current or currently visible ground; other mapped
+ground falls back to the survivor's observed weather facade until approached.
+Exposed carcasses now age from temperature at each carcass cell, independently
+of the survivor's current cell. Focused regressions cover hidden candidate ice,
+cell-local carcass decay, conserved hunts and persistent-locality stress.
+
 ## Fog edge translucency
 
 **Raised** 2026-09-10, while repairing hunting and exploration feedback.

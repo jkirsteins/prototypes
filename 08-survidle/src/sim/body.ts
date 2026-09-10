@@ -1,3 +1,4 @@
+import { localWeather } from "./weather";
 /**
  * The needs read off the player and the camp rather than off whatever is
  * running, and what to do about each. The body wants sleep, shelter from a
@@ -23,7 +24,7 @@ import { log } from "./log";
 import { baseWalkSpeed, workSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
 import { campSite, newSite, regionState, siteAt } from "./regionstate";
-import { survivorRoute } from "./routing";
+import { survivorRoute, survivorRouteMinutes } from "./routing";
 import { seepStopped } from "./seep";
 import { coverCeiling, EMERGENCY_MINUTES, findCover, galeProtection, improveCoverMinutes, protectionOf } from "./shelter";
 import { skillLevel } from "./skills";
@@ -111,7 +112,8 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   const p = state.player;
   // Read once, before the sleep clauses, because both have a say in them.
   const thirsty = p.water < THIRSTY_L && canQuench(state, world, cal);
-  const storming = stormComing(state) || stormNow(state.weather, state.minute);
+  const weather = localWeather(state, world);
+  const storming = stormComing(state) || stormNow(weather, state.minute);
   // Thirst defers a bedtime only when the body would actually get up and go to
   // the water. A storm outranks thirst, so a thirsty body sitting one out is
   // not going to drink first, and the exception would only keep it awake.
@@ -138,7 +140,7 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   if (storming) return "storm";
   // Warm again: whatever a spent rest gave up on is worth trying afresh next time it turns cold.
   if (p.warmth >= WARM_AT) mem.coldSpent = false;
-  const wetCold = p.wetness > SOAKED_WETNESS && ambientTemperature(cal, state.weather) < WET_COLD_C;
+  const wetCold = p.wetness > SOAKED_WETNESS && ambientTemperature(cal, localWeather(state, world)) < WET_COLD_C;
   const coldUnder = wetCold ? WARM_AT : COLD_UNDER;
   const cold = !mem.coldSpent && (p.warmth < coldUnder || (mem.need === "cold" && p.warmth < WARM_AT));
   if (cold && campCanWarm(state, world, cal)) return "cold";
@@ -243,10 +245,10 @@ export function minutesToCamp(state: GameState, world: World, cal: Calendar): nu
   if (camp === null) return null;
   const here = cellOf(state, world);
   if (here === camp) return 0;
-  const ice = walkableIce(state.weather);
-  const route = survivorRoute(state, world, here, camp, ice, fearsFell(state));
+  const ice = walkableIce(localWeather(state, world));
+  const route = survivorRoute(state, world, here, camp, ice);
   if (!route) return null;
-  return routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather), ice);
+  return survivorRouteMinutes(state, world, route, baseWalkSpeed(state, cal, localWeather(state, world)), ice);
 }
 
 /**
@@ -381,7 +383,7 @@ export function answeredOnTheSpot(state: GameState, world: World, cal: Calendar,
 function shoreForWater(state: GameState, world: World, cal: Calendar): number | null {
   const here = cellOf(state, world);
   const st = regionState(state, world, state.player.region);
-  if (state.weather.iceCm >= ICE_SHORE_CM) {
+  if (localWeather(state, world).iceCm >= ICE_SHORE_CM) {
     const hole = st.iceHole?.cell;
     if (hole === undefined || hole === here) return null;
     return check(state, world, cal, "walk", `cell:${hole}`).ok ? hole : null;
@@ -402,7 +404,7 @@ function shoreForWater(state: GameState, world: World, cal: Calendar): number | 
  * can reach, the cell under foot included; null when any of that fails.
  */
 export function iceHoleSite(state: GameState, world: World, cal: Calendar): number | null {
-  if (state.weather.iceCm < ICE_SHORE_CM) return null;
+  if (localWeather(state, world).iceCm < ICE_SHORE_CM) return null;
   const st = regionState(state, world, state.player.region);
   if (st.iceHole) return null;
   if (!axeInHand(state.player)) return null;
@@ -428,7 +430,7 @@ export function campMeltReady(state: GameState, world: World, cal: Calendar): bo
   const st = regionState(state, world, state.player.region);
   const camp = st.campCell;
   if (camp === null) return false;
-  if (state.weather.snowCm < 1) return false;
+  if (localWeather(state, world).snowCm < 1) return false;
   if (!st.fire.lit && fireStep(state, world, cal, camp) === null) return false;
   return cellOf(state, world) === camp
     ? !st.fire.lit || check(state, world, cal, "melt").ok
@@ -499,7 +501,7 @@ function thirstyStep(state: GameState, world: World, cal: Calendar, dry: boolean
     return { id: "iceHole", step: "opening an ice hole" };
   }
   const seepHere = state.seeps[here];
-  if (seepHere && seepStopped(state, world, here, ambientTemperature(cal, state.weather)) !== "frozen") {
+  if (seepHere && seepStopped(state, world, here, ambientTemperature(cal, localWeather(state, world))) !== "frozen") {
     return { id: "rest", step: "waiting at the seep" };
   }
   const seeps = options.filter((o) => o.why === " for the seep" && state.seeps[o.cell].ice <= 1e-9);
@@ -680,20 +682,21 @@ function optionSurvivalScore(
 }
 
 function routeReading(state: GameState, world: World, cal: Calendar, target: number): { route: number[] | null; minutes: number | null } {
+  const weather = localWeather(state, world);
   const ongoing = state.task?.id === "walk" && state.route?.target === target ? state.route : null;
   if (ongoing?.path.length) {
     return {
       route: [...ongoing.path],
-      minutes: remainingWalkMinutes(world, state.player, ongoing.path, baseWalkSpeed(state, cal, state.weather), ongoing.ice),
+      minutes: remainingWalkMinutes(world, state.player, ongoing.path, baseWalkSpeed(state, cal, weather), ongoing.ice),
     };
   }
   const here = cellOf(state, world);
   if (here === target) return { route: [], minutes: 0 };
-  const ice = walkableIce(state.weather);
+  const ice = walkableIce(weather);
   const route = survivorRoute(state, world, here, target, ice, fearsFell(state));
   return {
     route,
-    minutes: route ? routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather), ice) : null,
+    minutes: route ? routeMinutes(world, route, baseWalkSpeed(state, cal, weather), ice) : null,
   };
 }
 

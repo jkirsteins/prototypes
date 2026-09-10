@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { yieldItem } from "../src/sim/intent";
@@ -9,11 +9,14 @@ import { placeAt, watersideCell } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { beginTask, check } from "../src/sim/tasks";
 import { ICE_SHORE_CM, takeUpTripVessel, tripLitres, tripVessel, vesselLitres, vesselLitresCapacity, waterSource } from "../src/sim/water";
+import { ensureGround } from "../src/sim/weather";
 import { regionAt, spotOf } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
+afterEach(() => vi.restoreAllMocks());
 function until(g: G, pred: () => boolean, max = 3000): boolean {
   for (let i = 0; i < max; i++) {
     if (pred()) return true;
@@ -23,6 +26,7 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
 }
 /** Seed 17's start has a shore. Two buckets: one in hand, one at camp. */
 function waterCamp(seed = 17) {
+  testAtmosphere({ temperatureC: 5 });
   const g = newGame(seed);
   siteCamp(g.state, g.world);
   const { state, world } = g;
@@ -33,6 +37,7 @@ function waterCamp(seed = 17) {
   addItem(state.player.pack, "barkBucket", 1);
   takeUp(state, world, "barkBucket");
   addItem(state.player.pack, "driedMeat", 3);
+  ensureGround(state, world, state.player.region).iceCm = 0;
   return { g, state, world, st, camp };
 }
 
@@ -133,11 +138,13 @@ describe("the fill task", () => {
   });
 
   it("a keep with no vessel anywhere reads as needing one, not as already at capacity", () => {
+    testAtmosphere({ temperatureC: 5 });
     const g = newGame(17);
     siteCamp(g.state, g.world);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
+    ensureGround(state, world, state.player.region).iceCm = 0;
     // No barkBucket in the pack, the pile, or in hand: camp capacity is 0
     // litres, same as a camp that is genuinely full. Zero is not full.
     const o = addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
@@ -147,13 +154,12 @@ describe("the fill task", () => {
 
   it("the hole order cuts an ice hole first on a frozen shore, fills, and the hole is gone at dawn", () => {
     const { g, state, world, st, camp } = waterCamp();
-    state.weather.iceCm = 10;
-    state.weather.snowCm = 0;
+    ensureGround(state, world, state.player.region).iceCm = 10;
     const shore = spotOf(regionAt(world, state.player.region), "shore")!;
     expect(check(state, world, cal, "iceHole", undefined, shore.cell).ok).toBe(true);
     const o = addOrder(state, world, { task: "fill", arg: "hole", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
     // The dawn roll melts April ice at 2 cm a degree of mean; pin it so the shore stays shut for the test.
-    expect(until(g, () => { state.weather.iceCm = 10; return st.iceHole !== null; }, 4000)).toBe(true);
+    expect(until(g, () => { ensureGround(state, world, state.player.region).iceCm = 10; return st.iceHole !== null; }, 4000)).toBe(true);
     // The camp is itself a shore cell, so the hole is cut at the nearest water: under the camp.
     expect(watersideCell(world, st.iceHole!.cell)).toBe(true);
     placeAt(state, world, st.iceHole!.cell);
@@ -167,8 +173,7 @@ describe("the fill task", () => {
 
   it("a manual hole fill on a frozen shore cuts the hole itself, then fills the vessel", () => {
     const { state, world } = waterCamp();
-    state.weather.iceCm = 10;
-    state.weather.snowCm = 0;
+    ensureGround(state, world, state.player.region).iceCm = 10;
     const shore = spotOf(regionAt(world, state.player.region), "shore")!;
     placeAt(state, world, shore.cell);
     expect(beginTask(state, world, cal, "fill", "hole")).toBe(true);
@@ -181,8 +186,9 @@ describe("the fill task", () => {
 
   it("the shore order on a frozen shore waits with 'iced over' and never cuts or melts", () => {
     const { state, world, st } = waterCamp();
-    state.weather.iceCm = 10;
-    state.weather.snowCm = 20;
+    const ground = ensureGround(state, world, state.player.region);
+    ground.iceCm = 10;
+    ground.snowCm = 20;
     siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
@@ -202,7 +208,7 @@ describe("the fill task", () => {
     const shore = spotOf(regionAt(world, state.player.region), "shore")!;
     expect(check(state, world, cal, "fill", "hole", shore.cell).why).toBe("the shore is open, no hole needed");
     state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
-    state.weather.iceCm = 10;
+    ensureGround(state, world, state.player.region).iceCm = 10;
     const o = check(state, world, cal, "fill", "hole", shore.cell);
     expect(o.ok).toBe(false);
     expect(o.why).toBe("needs an axe");
@@ -250,6 +256,7 @@ describe("the trip's vessel", () => {
 
 describe("the winter methods", () => {
   it("a melt keep fills the vessel at the fire and pours it at camp, and never cuts a hole", () => {
+    testAtmosphere({ temperatureC: -5 });
     const { state, world } = newGame(17);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
@@ -259,8 +266,9 @@ describe("the winter methods", () => {
     st.fire.fuelKg = 20;
     state.player.tools.push(freshTool("barkBucket"));
     addItem(pile(state, st.campCell!), "barkBucket", 1);
-    state.weather.iceCm = ICE_SHORE_CM;
-    state.weather.snowCm = 20;
+    const ground = ensureGround(state, world, state.player.region);
+    ground.iceCm = ICE_SHORE_CM;
+    ground.snowCm = 20;
     expect(yieldItem("melt")).toBe("water");
     const o = addOrder(state, world, { task: "melt", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
     expect(o.kind).toBe("keep");

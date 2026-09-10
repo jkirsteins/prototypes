@@ -12,7 +12,7 @@ import { survivorRoute } from "./routing";
 import type { Calendar } from "./calendar";
 import { calendar } from "./calendar";
 import type { GameState, GoalId, GoalOpportunity } from "./types";
-import { ambientTemperature, createStorm, skyReadDay, stormNow, type StormKind, walkableIce, warningMinutes } from "./weather";
+import { atmosphereAtMinute, localStorm, scheduledStormMatches, skyReadDay, stormNow, type StormKind, walkableIce, warningMinutes } from "./weather";
 
 const WEATHER_GOALS = new Set<GoalId>(["testShelter", "readWeather", "remoteStorm"]);
 const NATURAL_DAWNS = 3;
@@ -20,6 +20,9 @@ const RETRY_MINUTES = 24 * 60;
 const ORDINARY_WARNING_MINUTES = 60;
 const REMOTE_MARGIN_MINUTES = 30;
 const MILD_RAIN_MAX_MINUTES = 10 * 60;
+const SPATIAL_STORM_SEARCH_MINUTES = 30 * 24 * 60;
+const SPATIAL_STORM_SCAN_STEP = 5;
+const MIN_TEACHING_STORM_MINUTES = 60;
 
 function activeWeatherGoal(state: GameState, cal: Calendar): GoalId | null {
   return activeGoals(state, cal).find((id) => WEATHER_GOALS.has(id)) ?? null;
@@ -107,9 +110,11 @@ function remoteLead(state: GameState, world: World, cal: Calendar, opportunity: 
 function eligible(state: GameState, world: World, cal: Calendar, opportunity: GoalOpportunity): boolean {
   const storm = state.weather.storm;
   if (storm?.source !== "natural" || storm.from <= state.minute) return false;
+  const stormCell = opportunity.area?.centre ?? cellOf(state, world);
+  if (!scheduledStormMatches(state, world, stormCell, storm)) return false;
   if (opportunity.goal === "testShelter") {
     const duration = storm.until - storm.from;
-    const onset = ambientTemperature(calendar(storm.from, state.startDoy), { ...state.weather, precip: "heavy" });
+    const onset = atmosphereAtMinute(state, world, cellOf(state, world), storm.from).temperatureC;
     return storm.kind === "rain" && onset > 0 && duration <= MILD_RAIN_MAX_MINUTES;
   }
   if (opportunity.goal === "readWeather") {
@@ -132,12 +137,90 @@ function announceLead(state: GameState, world: World, cal: Calendar, opportunity
 
 function claim(state: GameState, world: World, cal: Calendar, opportunity: GoalOpportunity): void {
   const storm = state.weather.storm;
-  if (!storm || !eligible(state, world, cal, opportunity)) return;
+  if (!storm) return;
+  const stormCell = opportunity.area?.centre ?? cellOf(state, world);
+  if (!scheduledStormMatches(state, world, stormCell, storm)) {
+    state.weather.storm = null;
+    state.weather.stormFreeSince = state.minute;
+    return;
+  }
+  if (!eligible(state, world, cal, opportunity)) return;
   opportunity.stormId = storm.id;
   opportunity.source = storm.source;
 }
 
-function synthesize(state: GameState, world: World, cal: Calendar, rng: Rng, opportunity: GoalOpportunity): void {
+/** Reject restored or already claimed metadata before it can announce clear air. */
+export function validateScheduledGoalStorm(state: GameState, world: World): void {
+  const storm = state.weather.storm;
+  const opportunity = state.goals.opportunity;
+  if (!storm) return;
+  const stormCell = opportunity?.area?.centre ?? cellOf(state, world);
+  if (scheduledStormMatches(state, world, stormCell, storm)) return;
+  state.weather.storm = null;
+  state.weather.stormFreeSince = state.minute;
+  if (!opportunity || opportunity.stormId !== storm.id) return;
+  opportunity.status = "reserved";
+  opportunity.createdAt = state.minute;
+  opportunity.stormId = null;
+  opportunity.source = null;
+  opportunity.announcedAt = null;
+}
+
+function spatialStormKind(state: GameState, world: World, cell: number, minute: number): "rain" | "snow" | null {
+  const air = atmosphereAtMinute(state, world, cell, minute);
+  return localStorm(air) && air.precip !== "none" ? air.precip : null;
+}
+
+/**
+ * Find a complete future feature in coordinate-owned air. Coarse probes make
+ * the rare teaching search bounded; transitions are then refined minute by
+ * minute so the persisted schedule names the field's real timing.
+ */
+function nextSpatialStorm(
+  state: GameState,
+  world: World,
+  cell: number,
+  from: number,
+  maxDuration: number | undefined,
+  kinds: readonly ("rain" | "snow" | "gale")[],
+): { kind: StormKind; from: number; until: number } | null {
+  const limit = from + SPATIAL_STORM_SEARCH_MINUTES;
+  let previousMinute = from - 1;
+  let previousKind = spatialStormKind(state, world, cell, previousMinute);
+  for (let probe = from; probe <= limit; probe += SPATIAL_STORM_SCAN_STEP) {
+    const probeKind = spatialStormKind(state, world, cell, probe);
+    if (previousKind === null && probeKind !== null) {
+      let onset = previousMinute + 1;
+      while (onset < probe && spatialStormKind(state, world, cell, onset) === null) onset++;
+      const kind = spatialStormKind(state, world, cell, onset);
+      if (kind === null) continue;
+      let endProbe = probe;
+      let endKind: "rain" | "snow" | null = probeKind;
+      while (endKind !== null && endProbe <= limit) {
+        endProbe += SPATIAL_STORM_SCAN_STEP;
+        endKind = spatialStormKind(state, world, cell, endProbe);
+      }
+      if (endKind === null) {
+        let until = Math.max(onset + 1, endProbe - SPATIAL_STORM_SCAN_STEP + 1);
+        while (until < endProbe && spatialStormKind(state, world, cell, until) !== null) until++;
+        const duration = until - onset;
+        if (duration >= MIN_TEACHING_STORM_MINUTES && duration <= (maxDuration ?? Infinity)
+          && (kinds.includes(kind) || kinds.includes("gale"))) {
+          return { kind: kinds.includes(kind) ? kind : "gale", from: onset, until };
+        }
+        previousMinute = endProbe;
+        previousKind = endKind;
+        probe = endProbe;
+        continue;
+      }
+    }
+    previousMinute = probe;
+    previousKind = probeKind;
+  }
+  return null;
+}
+
+function synthesize(state: GameState, world: World, cal: Calendar, opportunity: GoalOpportunity): void {
   if (opportunity.goal === "readWeather" && !canMakeTeachingRead(state)) return;
   let minLead = 60;
   let maxDuration: number | undefined;
@@ -152,11 +235,15 @@ function synthesize(state: GameState, world: World, cal: Calendar, rng: Rng, opp
     if (lead === null) return;
     minLead = lead;
   }
-  const storm = createStorm(state.weather, cal, rng, state.minute, "synthetic", { minLead, maxDuration, kinds });
-  if (!storm) {
+  const cell = opportunity.area?.centre ?? cellOf(state, world);
+  const feature = nextSpatialStorm(state, world, cell, state.minute + Math.ceil(minLead), maxDuration, kinds);
+  if (!feature) {
     opportunity.createdAt = state.minute;
     return;
   }
+  const storm = { id: state.weather.nextStormId++, source: "synthetic" as const,
+    kind: feature.kind, from: feature.from, until: feature.until, warned: false };
+  state.weather.storm = storm;
   opportunity.stormId = storm.id;
   opportunity.source = storm.source;
 }
@@ -226,7 +313,7 @@ function stepClaimed(state: GameState, world: World, cal: Calendar, opportunity:
 }
 
 /** Claims or creates weather for an active lesson. It never starts survivor work. */
-export function stepGoalOpportunity(state: GameState, world: World, cal: Calendar, rng: Rng): void {
+export function stepGoalOpportunity(state: GameState, world: World, cal: Calendar, _rng: Rng): void {
   let opportunity = state.goals.opportunity;
   if (opportunity && opportunity.status !== "resolved" && state.dead) {
     resolve(state, opportunity, true);
@@ -264,7 +351,7 @@ export function stepGoalOpportunity(state: GameState, world: World, cal: Calenda
   claim(state, world, cal, opportunity);
   if (opportunity.stormId === null && !state.weather.storm
     && dawnOrdinal(state.minute, state.startDoy) - dawnOrdinal(opportunity.createdAt, state.startDoy) >= NATURAL_DAWNS) {
-    synthesize(state, world, cal, rng, opportunity);
+    synthesize(state, world, cal, opportunity);
   }
   if (opportunity.stormId !== null) stepClaimed(state, world, cal, opportunity);
 }

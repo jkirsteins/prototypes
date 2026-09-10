@@ -13,7 +13,7 @@ import { atCamp, cellOf } from "./position";
 import { campSite, regionState } from "./regionstate";
 import { type Call, SPECIES_DEFS } from "./species";
 import type { GameState, RecipeId, Terrain } from "./types";
-import { ICE_THIN_CM, stormNow } from "./weather";
+import { ICE_THIN_CM, localWeather, stormNow } from "./weather";
 
 export type Footing = "leaves" | "grass" | "bog" | "rock" | "snow" | "ice";
 
@@ -81,7 +81,7 @@ export function surroundings(state: GameState, world: World, ambient: number): S
   const site = campSite(st);
   const camp = atCamp(state, world);
   const fire: Surroundings["fire"] = camp && st.fire.lit ? (fuelTotal(st.fire) > FIRE_LOW_KG ? "fed" : "low") : state.player.torch.lit ? "torch" : "none";
-  const w = state.weather;
+  const w = localWeather(state, world, here);
   return {
     forest: forest / n, birch: birch / n, open: open / n, bog: bog / n, lake: lake / n, sea: sea / n,
     footing: footingOf(cellAt(world, here).terrain, w.snowCm),

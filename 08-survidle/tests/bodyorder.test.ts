@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { campNeed, currentNeed, NEED_LOG_LINES, NEED_WORDS, SLEEP_AT } from "../src/sim/body";
 import { FIRE_LOW_KG } from "../src/sim/items";
@@ -15,11 +15,16 @@ import { siteCamp } from "./siting-helpers";
 import { Rng } from "../src/rng";
 import { hurryKind } from "../src/ui/hurry";
 import { deserialize, serialize } from "../src/sim/save";
+import { testAtmosphere, testRain } from "./weather-helpers";
 import { cellAt, regionAt } from "../src/world/gen";
 import { runOrders } from "../src/sim/orders";
 import { stepTask } from "../src/sim/tasks";
 
 const cal = calendar(0);
+
+// Body-row tests control needs directly. Start each one in mild dry local air;
+// the storm cases replace this at the same authoritative sampling boundary.
+beforeEach(() => testAtmosphere());
 
 describe("the body row", () => {
   it("does not bypass queue priority with a hidden idle sleep", () => {
@@ -119,7 +124,7 @@ describe("the body row", () => {
     st.fire.lit = true;
     st.fire.fuelKg = 1;
     addItem(pile(state, st.campCell!), "firewood", 5);
-    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute, until: state.minute + 200, warned: true };
+    testRain(8, 5, 40);
     for (let i = 0; i < 20; i++) judgeBodyRow(state, world, cal, new Rng(1));
     expect(st.fire.fuelKg).toBe(1);
     expect(qty(pile(state, st.campCell!), "firewood")).toBe(5);
@@ -185,13 +190,13 @@ describe("the body row", () => {
   });
 
   it("a blocked need reads as the row's own fragment on the row, and the log's own sentence in the log", () => {
+    testRain(8, 5, 40);
     const { state, world } = newGame(3);
     // On water and over the pack limit: neither a shelter in place nor a
     // walk can start. Open land now has the emergency shelter answer.
     const water = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "water")!;
     placeAt(state, world, water);
     addItem(state.player.pack, "log", 2);
-    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute, until: state.minute + 200, warned: true };
     // The row's own reading is the fragment, the same shape every other
     // skip reason takes, since the panel never resolves the log's voice.
     expect(judgeBodyRow(state, world, cal, new Rng(1))).toEqual({ v: "blocked", why: NEED_WORDS.storm });
@@ -205,6 +210,7 @@ describe("the body row", () => {
 
 describe("the body row takes its turn by rank", () => {
   it("sets storm shelter work aside at storm end so ready work resumes with cover progress kept", () => {
+    testRain(8, 5, 40);
     const { state, world } = newGame(17);
     const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
     placeAt(state, world, cell);
@@ -216,6 +222,7 @@ describe("the body row takes its turn by rank", () => {
     advance(state, world, 9);
     const progress = regionState(state, world, state.player.region).sites[cell].emergencyMinutes;
     expect(progress).toBeGreaterThan(0);
+    testAtmosphere();
     advance(state, world, 2);
     expect(state.weather.storm).toBeNull();
     expect(state.intent?.orderId).toBe(work.id);

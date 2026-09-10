@@ -1,3 +1,4 @@
+import { localWeather } from "./weather";
 /**
  * One player-chosen Make or Build outcome, reduced to the direct things it
  * consumes. It never expands a material into its own recipe: finding that
@@ -95,7 +96,7 @@ export function shoppingSourceSpots(state: GameState, world: World, cal: Calenda
   const spots = huntedLand()
     .filter((species) => (region.capacity[species] ?? 0) > 0
       && popOf(st, species) >= 1
-      && !absence(SPECIES_DEFS[species], cal, state.weather.iceCm)
+      && !absence(SPECIES_DEFS[species], cal, localWeather(state, world).iceCm)
       && animalYields(SPECIES_DEFS[species], item))
     .map((species) => SPECIES_DEFS[species].hunt!.spot);
   return [...new Set(spots)];

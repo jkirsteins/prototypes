@@ -19,7 +19,7 @@ import { fishItem, SPECIES_DEFS } from "./species";
 import { growRoots, nestsFor, rootStockFor } from "./stocks";
 import { type DecayingId, type GameState, type Site, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
-import { seasonalMean } from "./weather";
+import { localWeather } from "./weather";
 import { noteHuntFoodLost, noteHuntFoodTransformed } from "./hunt-audit";
 
 /** Re-exported so every caller that wants the figure (tests included) reaches it through camp.ts, beside dailyCamp's own use of it. */
@@ -37,15 +37,17 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
   const dawnThisTick = minutesUntilDawn(state.minute - dt, state.startDoy) <= dt + 1e-9;
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
+    const weather = localWeather(state, world, st.campCell ?? regionAt(world, id).campCell);
+    const ambient = weather.temperatureC;
     const mine = who !== null && id === who.region;
     const atCampHere = mine && who!.atCamp;
     const name = () => regionAt(world, id).name;
 
-    st.logsWet = state.weather.precip !== "none" ? 0 : st.logsWet + dt;
+    st.logsWet = weather.precip !== "none" ? 0 : st.logsWet + dt;
 
     if (st.fire.lit) {
       const roof = roofed(campSite(st));
-      const perMin = burnPerHour(state.weather, ambient, st) / 60;
+      const perMin = burnPerHour(weather, ambient, st) / 60;
       const total = fuelTotal(st.fire);
       if (total > 0) {
         const share = st.fire.wetKg / total;
@@ -53,7 +55,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
         st.fire.fuelKg = Math.max(0, st.fire.fuelKg - perMin * dt * (1 - share));
       }
       const outOfFuel = fuelTotal(st.fire) <= 0;
-      const drownedLow = state.weather.precip === "heavy" && ambient > 0 && !roof && fuelTotal(st.fire) < 2;
+      const drownedLow = weather.precip === "heavy" && ambient > 0 && !roof && fuelTotal(st.fire) < 2;
       if (outOfFuel || drownedLow) {
         st.fire.fuelKg = 0;
         st.fire.wetKg = 0;
@@ -73,7 +75,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     }
 
     if (!st.fire.lit && st.fire.embers > 0) {
-      const wet = state.weather.precip !== "none" && !roofed(campSite(st)) ? EMBER_RAIN_RATE : 1;
+      const wet = weather.precip !== "none" && !roofed(campSite(st)) ? EMBER_RAIN_RATE : 1;
       st.fire.embers = Math.max(0, st.fire.embers - dt * wet);
       if (st.fire.embers === 0) {
         st.fire.litSince = null;
@@ -93,7 +95,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     // Held, not just endured: only while the fire is alive and the rain is
     // actually falling on it does the clock run; a dead fire's held time
     // means nothing, so it is cleared at the two death points above.
-    const rainingOnIt = fireAlive && state.weather.precip !== "none";
+    const rainingOnIt = fireAlive && weather.precip !== "none";
     if (rainingOnIt) st.fire.rainHeld += dt;
     // These three goals are the player's own only: an untended camp fire in
     // a region the player has left is real, but it is not what the player
@@ -120,7 +122,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
 
     if (st.rack.kg > 0) {
       // Dry air dries; rain dries at half the rate, so two dry days become four wet ones.
-      st.rack.dried += state.weather.precip === "none" ? dt : dt * (RACK_DRY_MINUTES / RACK_DRY_RAIN_MINUTES);
+      st.rack.dried += weather.precip === "none" ? dt : dt * (RACK_DRY_MINUTES / RACK_DRY_RAIN_MINUTES);
       if (st.rack.dried >= RACK_DRY_MINUTES && st.campCell !== null) {
         const dried = st.rack.kg / MEAT_DRY_RATIO;
         addItem(pile(state, st.campCell), "driedMeat", dried);
@@ -144,13 +146,13 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     }
 
   }
-  dryWood(state, dt, who);
+  dryWood(state, dt, who, world);
   for (const k of Object.keys(state.piles)) {
     const cell = Number(k);
     const inv = state.piles[cell];
-    if (!inv) continue;
+    if (!inv || !PERISHABLES.some((id) => inv.stacks[id]?.length)) continue;
     const region = cellAt(world, cell).region;
-    reportSpoil(state, ageStacks(inv, dt, ambient), region === who?.region ? "" : ` at ${regionAt(world, region).name}`);
+    reportSpoil(state, ageStacks(inv, dt, localWeather(state, world, cell).temperatureC), region === who?.region ? "" : ` at ${regionAt(world, region).name}`);
   }
   // Nobody is carrying a pack with nobody home.
   if (who) reportSpoil(state, ageStacks(state.player.pack, dt, ambient), " in {your} pack");
@@ -298,14 +300,14 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
       }
     }
     if (st.trap) {
-      if (state.weather.iceCm >= ICE_SHORE_CM) {
+      if (localWeather(state, world, st.campCell ?? regionAt(world, id).campCell).iceCm >= ICE_SHORE_CM) {
         log(state, `The ice has taken the trap at ${r.name}.`, "bad");
         st.trap = null;
       } else if (st.trap.kg < TRAP_HOLD_KG) {
         const draws = who ? trapDraws(skillLevel(state, "fishing")) : 4;
         const factor = who ? trapFactor(masteryOf(state, "fishing", "trap")) : 1;
         const kgFactor = who ? yieldFactor(state, "fishing") : 1;
-        const present = st.trap.fish.filter((s) => popOf(st, s) >= 1 && !absence(SPECIES_DEFS[s], cal, state.weather.iceCm));
+        const present = st.trap.fish.filter((s) => popOf(st, s) >= 1 && !absence(SPECIES_DEFS[s], cal, localWeather(state, world, st.campCell ?? regionAt(world, id).campCell).iceCm));
         for (let i = 0; i < draws && present.length && st.trap.kg < TRAP_HOLD_KG; i++) {
           const s = present[rng.int(present.length)];
           const d = regionDensity(state, world, id, s, cal);
@@ -331,7 +333,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         }
       }
       if (site.structures.snowShelter) {
-        const mean = seasonalMean(cal.dayOfYear) + state.weather.offset;
+        const mean = localWeather(state, world, Number(cell)).temperatureC;
         site.meltDays = mean > 0 ? site.meltDays + 1 : 0;
         if (site.meltDays >= SNOW_MELT_DAYS) {
           site.structures.snowShelter = false;

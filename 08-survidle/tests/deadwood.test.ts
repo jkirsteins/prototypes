@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { addItem, freshTool, pile, qty } from "../src/sim/inventory";
@@ -6,6 +6,9 @@ import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import { beginTask, check, DEADWOOD_KG, DEADWOOD_TREE_SHARE } from "../src/sim/tasks";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere, testRain } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere());
 
 describe("dead wood", () => {
   it("gathers 10 kg of firewood in an hour with no tool and draws the stock an eighth", () => {
@@ -29,7 +32,7 @@ describe("dead wood", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
-    state.weather.precip = "light";
+    testRain(1);
     const cal = calendar(state.minute, state.startDoy);
     beginTask(state, world, cal, "deadwood");
     advance(state, world, 60);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { regionDensity } from "../src/sim/animals";
@@ -16,6 +16,10 @@ import { check } from "../src/sim/tasks";
 import type { QuirkId } from "../src/sim/types";
 import { cellAt, regionAt } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
+import { testAtmosphere, testRain } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere());
+afterEach(() => vi.restoreAllMocks());
 
 function withQuirk(seed: number, q: QuirkId | null) {
   return newGame(seed, undefined, { ...medianPerson("f"), quirks: q ? [q] : [] });
@@ -44,14 +48,13 @@ describe("the quirks", () => {
     const fell = [...Array(w.w * w.h).keys()].find((c) => cellAt(w, c).terrain === "fell")!;
     expect(fell).toBeDefined();
     const cal = calendar(0, START_DOY);
-    coast.state.weather.clear = false;
-    median.state.weather.clear = false;
+    testAtmosphere({ cloud: 1 });
     // The refusal is the row's, not the route's: the walk is offered and the fear says why.
     const refused = check(coast.state, w, cal, "walk", `cell:${fell}`);
     if (refused.ok || refused.why === FELL_FEAR_LINE) expect(refused.why).toBe(FELL_FEAR_LINE);
     const allowed = check(median.state, w, cal, "walk", `cell:${fell}`);
     expect(allowed.why).not.toBe(FELL_FEAR_LINE);
-    coast.state.weather.clear = true;
+    testAtmosphere({ cloud: 0 });
     expect(check(coast.state, w, cal, "walk", `cell:${fell}`).why).not.toBe(FELL_FEAR_LINE);
     // The route itself treats the fell as water with no ice when the fear is on.
     const here = coast.state.regions[coast.state.player.region].campCell!;
@@ -70,11 +73,11 @@ describe("the quirks", () => {
     for (const g of [forest, median]) {
       placeAtSpot(g.state, g.world, g.state.player.region, "shore");
       g.state.player.tools.push(freshTool("fishingSpear"));
-      g.state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 0, until: 600, warned: true };
+      testRain(10, 5, 40);
     }
     expect(check(forest.state, forest.world, cal, "fish", "any").why).toBe(SHORE_FEAR_LINE);
     expect(check(median.state, median.world, cal, "fish", "any").why).not.toBe(SHORE_FEAR_LINE);
-    forest.state.weather.storm = null;
+    testRain(0);
     expect(check(forest.state, forest.world, cal, "fish", "any").why).not.toBe(SHORE_FEAR_LINE);
   });
 
@@ -108,7 +111,7 @@ describe("the quirks", () => {
     for (const g of [stormy, calm]) {
       g.state.player.energy = 20;
       g.state.player.sleepDebt = 60;
-      g.state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 0, until: 10 * 60, warned: true };
+      testRain(10, 5, 40);
       g.state.task = { id: "sleep", progress: 0, duration: 120, repeat: false };
       advance(g.state, g.world, 60);
     }

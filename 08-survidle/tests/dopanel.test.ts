@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
@@ -14,8 +14,10 @@ import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { TASK_IDS } from "../src/sim/types";
 import type { OrderWhen, TaskId } from "../src/sim/types";
+import { testAtmosphere } from "./weather-helpers";
 import { siteCamp } from "./siting-helpers";
 
+afterEach(() => vi.restoreAllMocks());
 
 describe("the purposes and the filter", () => {
   it("does not expose a specific game species until the survivor has fresh local sign", () => {
@@ -112,6 +114,8 @@ describe("the purposes and the filter", () => {
     // game, so nothing is tucked behind a "more" any more.
     const { state, world } = newGame(17);
     placeAtSpot(state, world, state.player.region, "forest");
+    // The task under test is skill ordering, not the local storm field.
+    testAtmosphere();
     const cal = calendar(state.minute, state.startDoy);
     const opts = availableTasks(state, world, cal);
     const chop = opts.find((o) => o.id === "chop")!;

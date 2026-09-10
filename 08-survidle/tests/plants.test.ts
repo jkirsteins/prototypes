@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { qty } from "../src/sim/inventory";
@@ -9,6 +9,10 @@ import { placeAt, placeAtSpot } from "../src/sim/position";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { WATER_FULL } from "../src/sim/water";
 import { cellAt, cellIdx, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
+import { ensureGround } from "../src/sim/weather";
+import { testAtmosphere } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 /**
  * No reference seed's home region has a birch cell (the brief's own
@@ -64,12 +68,13 @@ describe("sap, seaweed and winter berries", () => {
   // region that is not the landing region, adjacent to a "sea"-kind water cell (not a
   // "lake"), stood on directly with placeAt rather than reached by walking.
   it("seaweed loads at the sea shore while it is open, and is turned back once it ices", () => {
+    testAtmosphere({ temperatureC: 5 });
     const { state, world } = newGame(17, 90);
     const idx = cellIdx(world, 1224, 12);
     expect(cellAt(world, idx).terrain).not.toBe("water");
     placeAt(state, world, idx);
     const cal = calendar(0, 90);
-    state.weather.iceCm = 0;
+    ensureGround(state, world, state.player.region).iceCm = 0;
     const open = check(state, world, cal, "seaweed");
     expect(open.ok).toBe(true);
     expect(open.duration).toBe(60);
@@ -77,15 +82,16 @@ describe("sap, seaweed and winter berries", () => {
     for (let m = 0; m < 60 && state.task; m++) stepTask(state, world, cal, new Rng(m), 1);
     expect(qty(state.player.pack, "seaweed")).toBeCloseTo(SEAWEED_KG_PER_HOUR, 6);
     expect(today(state).yield.seaweed).toBeCloseTo(SEAWEED_KG_PER_HOUR * FOODS.seaweed.kcalPerKg, 6);
-    state.weather.iceCm = 2;
+    ensureGround(state, world, state.player.region).iceCm = 2;
     expect(check(state, world, cal, "seaweed").why).toBe("the shore is iced over");
   });
 
   it("berries under the snow pick at a fifth from November to April where the snow is shallow", () => {
+    testAtmosphere({ temperatureC: -5 });
     expect(BERRY_WINTER_SHARE).toBe(0.2);
     const { state, world } = newGame(17, 320);
     placeAtSpot(state, world, state.player.region, "heath");
-    state.weather.snowCm = 10;
+    ensureGround(state, world, state.player.region).snowCm = 10;
     const cal = calendar(0, 320);
     const o = check(state, world, cal, "berries");
     expect(o.ok).toBe(true);
@@ -93,7 +99,7 @@ describe("sap, seaweed and winter berries", () => {
     startTask(state, world, cal, "berries");
     for (let m = 0; m < 60 && state.task; m++) stepTask(state, world, cal, new Rng(m), 1);
     expect(qty(state.player.pack, "berries")).toBeCloseTo(BERRY_PICK_KG * BERRY_WINTER_SHARE, 6);
-    state.weather.snowCm = 40;
+    ensureGround(state, world, state.player.region).snowCm = 40;
     expect(check(state, world, cal, "berries").why).toBe("under too much snow");
   });
 });

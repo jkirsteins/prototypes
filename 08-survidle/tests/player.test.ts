@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import { causeFrom, coldBurnFactor, feltTemperature, KCAL_PER_HOUR_FOR_TEST, LOAD_KCAL_PER_HOUR, NIGHT_WALK_FACTOR, baseWalkSpeed, stepPlayer, walkSpeed } from "../src/sim/player";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { siteCamp } from "./siting-helpers";
+import { testRain } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("player physiology", () => {
   it("regenerates when fed, warm and idle", () => {
@@ -68,16 +71,17 @@ describe("player physiology", () => {
   });
 
   it("gets wet in rain and dries by the fire", () => {
+    testRain(8);
     const { state, world } = newGame(1);
     siteCamp(state, world);
-    state.weather.precip = "heavy";
     for (let m = 0; m < 30; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     // The coat and trousers start dry, so they keep most of the rain off the skin at first.
     expect(state.player.wetness).toBeLessThan(20);
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     // Soaked through by now, the skin catches up with the rain.
     expect(state.player.wetness).toBeGreaterThan(50);
-    state.weather.precip = "none";
+    state.minute++;
+    testRain(0);
     regionState(state, world, state.player.region).fire.lit = true;
     for (let m = 0; m < 70; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     expect(state.player.wetness).toBe(0);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { introduceGoals } from "../src/sim/goals";
@@ -14,8 +14,12 @@ import { newUiState } from "../src/ui/render";
 import { regionAt } from "../src/world/gen";
 import { routeMinutes } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
 
 type G = ReturnType<typeof newGame>;
+
+beforeEach(() => testAtmosphere({ extinctionPerKm: 0.06 }));
+afterEach(() => vi.restoreAllMocks());
 
 /** A neighbouring region already glimpsed a little (a toehold to walk from) but nowhere near fully mapped. */
 function partlyKnownNeighbour(g: G): number {

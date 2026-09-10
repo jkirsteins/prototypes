@@ -7,6 +7,7 @@ import { current } from "../src/sim/record";
 import { regionState } from "../src/sim/regionstate";
 import { expectedDoy, nextThreshold, stepSpine, THRESHOLDS } from "../src/sim/spine";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
 
 describe("the season spine", () => {
   it("expects the thresholds in year order from the curve", () => {
@@ -59,6 +60,7 @@ describe("the season spine", () => {
   });
 
   it("pushes one forecast slot per day of a life", () => {
+    testAtmosphere();
     const { state, world } = newGame(17);
     siteCamp(state, world);
     // A bare arrival kit has no water; stock camp so three idle days are

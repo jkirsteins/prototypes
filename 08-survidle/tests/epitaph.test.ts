@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { entry, epitaph, epitaphTail, since } from "../src/sim/epitaph";
 import { newRecord } from "../src/sim/record";
 import { medianPerson } from "../src/sim/person";
-import { runReference } from "../src/sim/reference";
+import { measure, runReference, setUpReference } from "../src/sim/reference";
+import { regionState } from "../src/sim/regionstate";
 import type { LifeRecord } from "../src/sim/types";
+import { testAtmosphere } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 function rec(): LifeRecord {
   const r = newRecord(1, { first: "Eirik", last: "Kalnins" }, { year: 1, doy: 90 }, 0, medianPerson("m"));
@@ -62,11 +66,41 @@ describe("the epitaph", () => {
     expect(entry(r)[0]).toBe("Eirik Kalnins. Landed 1 April, year 1.");
   });
 
+  it("is deterministic for reference seeds through the larder and camp-fuel loop", () => {
+    testAtmosphere({ temperatureC: -3 });
+    const first = setUpReference(17);
+    const second = setUpReference(79);
+    const firstReport = measure(first, 60);
+    const secondReport = measure(second, 60);
+    for (const report of [firstReport, secondReport]) {
+      expect(report.checkpoints.some((checkpoint) => checkpoint.week.eaten > 0)).toBe(true);
+      expect(report.checkpoints.at(-1)?.food).toBe(0);
+    }
+    expect(epitaph(firstReport.record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 28. Starved at camp, with nothing in the pack and 60 kg of firewood at camp."`);
+    expect(epitaph(secondReport.record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 39. Starved at camp, with nothing in the pack and 31 kg of firewood at camp."`);
+  });
+
+  it("carries a kitted trap into the larder under controlled open-water weather", () => {
+    testAtmosphere({ temperatureC: 5 });
+    const ref = setUpReference(17, true);
+    const report = measure(ref, 10, true);
+    expect(regionState(ref.state, ref.world, ref.state.player.region).trap).not.toBeNull();
+    expect(report.checkpoints.reduce((sum, checkpoint) => sum + checkpoint.week.yield.trap, 0)).toBeGreaterThan(0);
+  });
+
+  it("keeps cold and starvation as distinct deterministic death-cause copy", () => {
+    const cold = rec();
+    const starved = rec();
+    starved.died = { ...starved.died!, cause: "starved" };
+    expect(epitaph(cold)).toContain("Died of cold");
+    expect(epitaph(starved)).toContain("Starved");
+  });
+
   it("is deterministic for the reference seeds; trap yields more with larger capacities", () => {
     // These are measured deterministic outcomes, not survival targets: wetness,
     // warmth and the work they interrupt can move the day substantially.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 30. Starved at camp, with nothing in the pack and 68 kg of firewood at camp."`);
-    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 35. Starved at camp, with nothing in the pack and 18 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 26. Starved at camp, with nothing in the pack and 58 kg of firewood at camp."`);
+    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 49. Starved at camp, with nothing in the pack and 35 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

@@ -38,10 +38,10 @@ describe("a start day", () => {
     expect(calendar(state.minute, state.startDoy).day).toBe(1);
   });
 
-  it("an April game is unchanged: three centimetres of snow in the shade", () => {
+  it("an April game opens with the deterministic local seasonal snow cover", () => {
     const { state } = newGame(17);
     expect(state.startDoy).toBe(START_DOY);
-    expect(state.weather.snowCm).toBe(3);
+    expect(state.weather.snowCm).toBeCloseTo(19.97879175276517, 12);
     expect(state.log.some((e) => e.text.startsWith("1 April."))).toBe(true);
   });
 

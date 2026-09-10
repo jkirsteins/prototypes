@@ -1,3 +1,4 @@
+import { localWeather } from "./weather";
 /**
  * Intents: "Gather wood, forever, bring it to camp". An intent is a small
  * record; the runner below re-reads the world every minute and starts one
@@ -13,7 +14,7 @@ import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { goalDeed } from "./goals";
 import { canConsume, isEmpty, listItems, pile, pileAt, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
-import { body, fearsFell } from "./person";
+import { body } from "./person";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_POOR_SHARE, ROOT_TO_DOY, STRUCTURES } from "./items";
 import { log } from "./log";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, straightKm, watersideCell } from "./position";
@@ -152,7 +153,7 @@ export function nearestCell(state: GameState, world: World, pred: (cell: number)
   const here = cellOf(state, world);
   const r = regionAt(world, state.player.region);
   const cells = r.cells.filter(pred).sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
-  for (const c of cells.slice(0, 8)) if (survivorRoute(state, world, here, c, "none", fearsFell(state))) return c;
+  for (const c of cells.slice(0, 8)) if (survivorRoute(state, world, here, c, "none")) return c;
   return here;
 }
 
@@ -184,7 +185,7 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     const den = knownBearDen(state, cal);
     if (den?.denCell !== null && den?.denCell !== undefined) return { cell: den.denCell, note: "" };
   }
-  if (task === "fill" && st.iceHole && state.weather.iceCm >= ICE_SHORE_CM) return { cell: st.iceHole.cell, note: "" };
+  if (task === "fill" && st.iceHole && localWeather(state, world).iceCm >= ICE_SHORE_CM) return { cell: st.iceHole.cell, note: "" };
   if (task === "emptyTrap" && st.trap) return { cell: st.trap.cell, note: "" };
   if (task === "fill" && arg === "seep") {
     // The nearest seep holding water; failing that the nearest seep, whose row says why it is shut.
@@ -234,7 +235,7 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     return fishSpecies().some((species) => {
       if (seen && !seen.fish.includes(species)) return false;
       if (!r.capacity[species] || popOf(st, species) < 1) return false;
-      if (absence(SPECIES_DEFS[species], cal, state.weather.iceCm)) return false;
+      if (absence(SPECIES_DEFS[species], cal, localWeather(state, world).iceCm)) return false;
       return watersideCell(world, cell, waterOf(species) ?? "any");
     });
   };
@@ -273,7 +274,7 @@ function initialWalk(
   const target = fetchCell ?? workCell;
   if (target === here) return undefined;
   const walk = check(state, world, cal, "walk", `cell:${target}`);
-  const km = kmBetween(state, world, here, target, walkableIce(state.weather));
+  const km = kmBetween(state, world, here, target, walkableIce(localWeather(state, world)));
   if (!walk.ok || km === null) return undefined;
   const campCell = regionState(state, world, state.player.region).campCell;
   const explicit = typeof where === "string" && where !== "nearest";
@@ -590,7 +591,7 @@ function fetchMissing(state: GameState, sid: StructureId, campCell: number): Fet
  */
 function fetchSources(state: GameState, world: World, sid: StructureId, campCell: number, from: number): FetchSources {
   const { missing, wanted } = fetchMissing(state, sid, campCell);
-  const ice = walkableIce(state.weather);
+  const ice = walkableIce(localWeather(state, world));
   const sources = pilesIn(state, world, state.player.region)
     .filter((x) => x.cell !== campCell && wanted(x.inv))
     .map((x) => ({ ...x, km: kmBetween(state, world, from, x.cell, ice) }))

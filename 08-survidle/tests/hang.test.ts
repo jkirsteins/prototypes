@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { advance } from "../src/sim/advance";
 import { loadRack } from "../src/sim/actions";
 import { calendar } from "../src/sim/calendar";
@@ -12,9 +12,11 @@ import { placeAt } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { beginTask, check, startTask } from "../src/sim/tasks";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere, testRain } from "./weather-helpers";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
+afterEach(() => vi.restoreAllMocks());
 function until(g: G, pred: () => boolean, max = 3000): boolean {
   for (let i = 0; i < max; i++) {
     if (pred()) return true;
@@ -62,11 +64,11 @@ describe("hanging meat is a task", () => {
   });
 
   it("a keep on dried meat is met when the rack drops it into the pile", () => {
+    testAtmosphere({ temperatureC: 10, relativeHumidity: 0.2 });
     const { g, state, world, st, camp } = rackCamp();
     expect(yieldItem("hang")).toBe("driedMeat");
     expect(yieldItems("hang")).toEqual([]);
     addItem(camp, "rawMeat", 6);
-    state.weather.precip = "none";
     const o = addOrder(state, world, { task: "hang", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
     expect(o.kind).toBe("keep");
     expect(until(g, () => st.rack.kg === 6, 200)).toBe(true);
@@ -80,6 +82,7 @@ describe("hanging meat is a task", () => {
 
 describe("a real rack", () => {
   it("holds 40 kg, a second one doubles it, and drying takes four days in rain", () => {
+    testRain(1, 10);
     const g = rackCamp();
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
@@ -109,11 +112,14 @@ describe("a real rack", () => {
     const fed = (hours: number) => {
       for (let h = 0; h < hours; h++) {
         state.player.kcal = KCAL_FULL;
+        state.player.water = 3;
+        state.player.health = 100;
+        state.player.energy = 100;
+        state.player.sleepDebt = 0;
         advance(state, world, 60);
       }
     };
     // Rain halves the drying: 48 dry hours, 96 wet.
-    state.weather.precip = "light";
     fed(48);
     expect(st.rack.kg).toBe(80);
     fed(48);

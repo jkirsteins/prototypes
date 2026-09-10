@@ -6,13 +6,14 @@
  * keeps the memory current, so the heir's year starts right.
  */
 import type { Presence } from "./advance";
+import type { World } from "../world/gen";
 import { type Calendar, daylight } from "./calendar";
 import { log } from "./log";
 import { record } from "./record";
 import { BERRY_FROM_DOY, BERRY_TO_DOY, MIDSUMMER_DOY } from "./tables";
 import type { GameState, ThresholdId } from "./types";
 import { ICE_SHORE_CM } from "./water";
-import { seasonalMean } from "./weather";
+import { localWeather, seasonalMean } from "./weather";
 
 export const THRESHOLDS: ThresholdId[] = ["berries", "rut", "firstFrost", "firstSnow", "lakeFreeze", "dark", "coldSnap", "iceOut"];
 export const RUT_DOY = 263;
@@ -63,18 +64,19 @@ export function expectedDoy(id: ThresholdId): number {
   }
 }
 
-function detect(id: ThresholdId, state: GameState, cal: Calendar): boolean {
-  const w = state.weather;
+function detect(id: ThresholdId, state: GameState, cal: Calendar, world?: World, cell?: number): boolean {
+  const w = world ? localWeather(state, world, cell) : state.weather;
+  const temperature = "temperatureC" in w ? w.temperatureC as number : seasonalMean(cal.dayOfYear) + w.offset;
   const doy = cal.dayOfYear;
   const afterMidsummer = doy >= MIDSUMMER_DOY;
   switch (id) {
     case "berries": return doy >= BERRY_FROM_DOY && doy < BERRY_TO_DOY;
     case "rut": return doy >= RUT_DOY && doy < RUT_DOY + 60;
-    case "firstFrost": return afterMidsummer && seasonalMean(doy) + w.offset - 4 < 0;
+    case "firstFrost": return afterMidsummer && temperature < 0;
     case "firstSnow": return afterMidsummer && w.snowCm > 0;
     case "lakeFreeze": return afterMidsummer && w.iceCm >= ICE_SHORE_CM;
     case "dark": return daylight(doy) < DARK_HOURS;
-    case "coldSnap": return cal.season === "winter" && w.offset < -8;
+    case "coldSnap": return cal.season === "winter" && temperature < -20;
     case "iceOut": return state.spine.fired.coldSnap !== undefined && !afterMidsummer && w.iceCm <= 0 && doy > 30;
   }
 }
@@ -90,11 +92,11 @@ function yearOf(state: GameState, cal: Calendar, id: ThresholdId): number {
   return winterKeyed && cal.dayOfYear >= MIDSUMMER_DOY ? y + 1 : y;
 }
 
-export function stepSpine(state: GameState, cal: Calendar, who: Presence | null): void {
+export function stepSpine(state: GameState, cal: Calendar, who: Presence | null, world?: World, cell?: number): void {
   for (const id of THRESHOLDS) {
     const year = yearOf(state, cal, id);
     if (state.spine.fired[id] === year) continue;
-    if (detect(id, state, cal)) {
+    if (detect(id, state, cal, world, cell)) {
       state.spine.fired[id] = year;
       if (who) {
         log(state, `${NAMES[id]}. Day ${cal.day}.`, "good");

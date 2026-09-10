@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { isRead, readCells, readLine, readShore, shoreFish } from "../src/sim/knowledge";
@@ -13,14 +13,19 @@ import { regionAt } from "../src/world/gen";
 import { cellOf, watersideCell } from "../src/sim/position";
 import { regionDensity } from "../src/sim/animals";
 import { siteCamp } from "./siting-helpers";
+import { ensureGround } from "../src/sim/weather";
+import { testAtmosphere } from "./weather-helpers";
 
 const cal = calendar(0);
+afterEach(() => vi.restoreAllMocks());
 
 /** Seed 4's start region has a lake; the player is put on its shore spot. */
 function atShore() {
+  testAtmosphere({ temperatureC: 5 });
   const g = newGame(4);
   siteCamp(g.state, g.world);
   placeAtSpot(g.state, g.world, g.state.player.region, "shore");
+  ensureGround(g.state, g.world, g.state.player.region).iceCm = 0;
   return { ...g, cell: cellOf(g.state, g.world), r: regionAt(g.world, g.state.player.region) };
 }
 
@@ -30,9 +35,9 @@ describe("reading water", () => {
     const o = check(state, world, cal, "read");
     expect(o).toMatchObject({ ok: true, duration: 60, label: "Read the water" });
     expect(availableTasks(state, world, cal).some((t) => t.id === "read")).toBe(true);
-    state.weather.iceCm = ICE_SHORE_CM;
+    ensureGround(state, world, state.player.region).iceCm = ICE_SHORE_CM;
     expect(check(state, world, cal, "read")).toMatchObject({ ok: false, why: "the water is under ice" });
-    state.weather.iceCm = 0;
+    ensureGround(state, world, state.player.region).iceCm = 0;
     expect(startTask(state, world, cal, "read")).toBe(true);
     advance(state, world, 60);
     expect(isRead(state, cell)).toBe(true);

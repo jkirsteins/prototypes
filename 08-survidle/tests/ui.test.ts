@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
@@ -18,7 +18,7 @@ import { current } from "../src/sim/record";
 import { discovery, regionState, SEEN, siteFor } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
-import { ambientTemperature } from "../src/sim/weather";
+import { ambientTemperature, ensureGround } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, playerVisualSlot, viewOrigin, visualGround, ZOOMS } from "../src/ui/map";
@@ -35,6 +35,10 @@ import { findRoute } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
 import { hasLineOfSight, visibleCells } from "../src/sim/sight";
 import { CELL_KM } from "../src/units";
+import { MAX_OPTICAL_DEPTH } from "../src/sim/climate";
+import { testAtmosphere } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 /**
  * Everything the player can reach, from the panels they actually have: the Do
@@ -145,11 +149,16 @@ describe("reachability: everything in the catalogue has a button", () => {
 
 describe("panels", () => {
   it("gives a simulation cell a stable terrain-specific field at the requested subdivision", () => {
-    const first = visualGround(17, 40, 50, "spruce", "A", 6, false, false);
+    const first = visualGround(17, 40, 50, "spruce", "A", 6);
     expect(first).toHaveLength(36);
-    expect(visualGround(17, 40, 50, "spruce", "A", 6, false, false)).toEqual(first);
+    expect(visualGround(17, 40, 50, "spruce", "A", 6)).toEqual(first);
     expect(first.every((glyph) => ["A", "'"].includes(glyph))).toBe(true);
-    expect(visualGround(17, 40, 50, "water", "~", 3, false, true)).toEqual(["=", "-", "=", "=", "-", "=", "=", "-", "="]);
+    const frozenWater = visualGround(17, 40, 50, "water", "~", 3);
+    expect(frozenWater.every((glyph) => glyph === "~" || glyph === "-")).toBe(true);
+    expect(frozenWater).not.toContain("=");
+    const snowyMeadow = visualGround(17, 40, 50, "meadow", ".", 3);
+    expect(snowyMeadow.every((glyph) => ["'", ".", ","].includes(glyph))).toBe(true);
+    expect(snowyMeadow).not.toContain("*");
   });
 
   beforeEach(() => {
@@ -213,12 +222,11 @@ describe("panels", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const cal = calendar(12 * 60);
-    state.weather.precip = "heavy";
-    state.weather.clear = false;
-    const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
     setPanel("map", mapHtml(world, state, newUiState(), cal));
     const viewport = document.querySelector("#map .scroll-x")!;
-    expect(viewport.classList.contains(light.precip === "snow" ? "snowing" : "rain")).toBe(true);
+    expect(viewport.classList.contains("snowing")).toBe(false);
+    expect(viewport.classList.contains("rain")).toBe(false);
+    expect(document.querySelectorAll("#map .c.wx-local").length).toBeGreaterThan(0);
   });
 
   it("the zoom buttons sit in the map's bottom left corner, drawn after the grid", () => {
@@ -332,7 +340,7 @@ describe("panels", () => {
     expect(fire?.classList.contains("memory")).toBe(false);
   });
 
-  it("shows a distant unobstructed night fire as a subdued point without local light rings", () => {
+  it("shows a distant night fire in clear air but hides it behind dense weather", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
@@ -348,11 +356,17 @@ describe("panels", () => {
     state.minute = 15 * 60;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
+    testAtmosphere({ extinctionPerKm: 0.06 });
     setPanel("map", mapHtml(world, state, newUiState(), calendar(state.minute, state.startDoy)));
     const fire = document.querySelector<HTMLElement>(`#map .mk-fire[data-map-cell="${camp}"]`);
     expect(fire).not.toBeNull();
     expect(fire?.classList.contains("fire-far")).toBe(true);
     expect(document.querySelector("#map .lit-0, #map .lit-1, #map .lit-2")).toBeNull();
+
+    testAtmosphere({ extinctionPerKm: MAX_OPTICAL_DEPTH / 0.2 });
+    setPanel("map", mapHtml(world, state, newUiState(), calendar(state.minute, state.startDoy)));
+    expect(document.querySelector(`#map .mk-fire[data-map-cell="${camp}"]`)).toBeNull();
+    expect(document.querySelector("#map .mk-camp, #map .mk-shelter")).not.toBeNull();
   });
 
   it("lets nearby firelight straddle an occlusion boundary without revealing the hidden ground", () => {
@@ -510,7 +524,7 @@ describe("panels", () => {
     expect(html).toContain('data-act="hurry"');
     expect(html).not.toContain("walking to the shore");
 
-    state.weather.snowCm = 31;
+    ensureGround(state, world, state.player.region).snowCm = 31;
     html = taskHtml(state, world, calendar(0), newHurry());
     expect(html).toContain("struggling through deep snow 0.3 km for water");
 
@@ -642,7 +656,7 @@ describe("panels", () => {
     };
     for (const c of thread) expect(glyphAt(c).classList.contains("fog")).toBe(false);
     for (const c of untouched) expect(glyphAt(c).classList.contains("fog")).toBe(true);
-    expect(thread.some((c) => glyphAt(c).classList.contains("fog-edge"))).toBe(true);
+    expect(thread.every((c) => !glyphAt(c).classList.contains("fog-edge"))).toBe(true);
   });
 
   it("names black ground it has heard of without embedding controls in its hover surface", () => {
@@ -1156,7 +1170,9 @@ describe("the kind per row", () => {
     siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const html = paneHtml(state, world, cal, "fish", "any", { open: { id: "fish", arg: "any" } });
-    const open = html.slice(html.indexOf('data-opt="intent:fish:any"'));
+    const root = document.createElement("div");
+    root.innerHTML = html;
+    const open = root.querySelector<HTMLElement>('[data-opt="intent:fish:any"]')!.outerHTML;
     expect(open).toContain('data-act="row-kind"');
     for (const k of ["once", "times", "daily", "campHas", "keep", "forever"]) expect(open).toContain(`data-until="${k}"`);
     // Fishing at level 1 has not earned a keep: the keep is greyed with a concise reason.

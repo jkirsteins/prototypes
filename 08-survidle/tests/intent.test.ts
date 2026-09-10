@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
@@ -20,6 +20,10 @@ import { ICE_SHORE_CM } from "../src/sim/water";
 import type { Intent, TaskId } from "../src/sim/types";
 import { cellAt, cellIdx, regionAt, spotOf, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+import { ensureGround } from "../src/sim/weather";
+
+beforeEach(() => testAtmosphere());
 
 const cal = calendar(0);
 
@@ -270,6 +274,7 @@ describe("the work tier", () => {
     siteCamp(g.state, g.world);
     const { state, world } = g;
     const camp = regionState(state, world, state.player.region).campCell!;
+    state.player.tools.push({ id: "barkBucket", durability: 100, litres: 3 });
     startIntent(state, world, cal, rng(), req("chop", { until: { kind: "times", n: 2 }, deliver: "camp", where: "forest" }));
     expect(until(g, () => state.intent === null, 6000)).toBe(true);
     expect(qty(pile(state, camp), "log")).toBe(8);
@@ -282,6 +287,7 @@ describe("the work tier", () => {
     siteCamp(g.state, g.world);
     const { state, world } = g;
     const camp = regionState(state, world, state.player.region).campCell!;
+    state.player.tools.push({ id: "barkBucket", durability: 100, litres: 3 });
     // deliver defaults to "leave" here, but "until camp has N" forces it to "camp": the promise cannot be kept otherwise.
     startIntent(state, world, cal, rng(), req("chop", { until: { kind: "campHas", qty: 5 }, where: "forest" }));
     expect(state.intent?.until).toEqual({ kind: "campHas", item: "log", qty: 5 });
@@ -627,7 +633,7 @@ describe("a spare tool at camp", () => {
     state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
     addItem(pile(state, forest), "axe", 1);
     addItem(state.player.pack, "barkBucket", 1);
-    state.weather.iceCm = ICE_SHORE_CM;
+    ensureGround(state, world, state.player.region).iceCm = ICE_SHORE_CM;
     const fill = intentOption(state, world, cal, "fill", "hole", "nearest");
     expect(fill.ok).toBe(false);
     expect(fill.why).toBe("needs an axe");

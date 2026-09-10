@@ -32,14 +32,14 @@ describe("the horizon stages", () => {
     const { state, world } = setUpStage(17, stage("manual"));
     const list = ordersHere(state, world).filter(isWorkOrder);
     expect(list.map((o) => `${o.req.task}:${o.req.arg ?? ""}`)).toEqual([
-      "thaw:", "fill:shore", "build:firePit", "stone:", "sticks:", "bark:", "craft:cordage", "craft:fireDrill",
+      "thaw:", "fill:hole", "build:firePit", "stone:", "sticks:", "bark:", "craft:cordage", "craft:fireDrill",
       "light:", "chop:", "split:", "build:leanTo", "build:boughBed", "build:snowShelter", "craft:knife",
       "craft:snare", "build:snare", "craft:barkBucket", "craft:fishingSpear", "read:", "craft:basketTrap",
       "setTrap:", "cook:rawFat", "cook:fish", "cook:oilyFish", "cook:", "crack:", "build:dryingRack",
       "build:snare", "hang:", "craft:bow", "craft:arrows", "hunt:any", "split:", "chop:", "eggs:", "roots:",
       "roots:", "cook:roots", "tapSap:", "fish:any", "berries:", "craft:needle", "repair:", "craft:furHat",
       "craft:furMittens", "stone:", "craft:whetstone", "hone:", "craft:wedges", "sticks:", "bark:",
-      "build:turfHut", "build:waterStore", "build:snare", "fill:shore",
+      "build:turfHut", "build:waterStore", "build:snare", "fill:hole",
     ]);
     for (const o of list) {
       expect(o.kind).toBe("job");
@@ -101,11 +101,13 @@ describe("the horizon stages", () => {
     expect(campSite(regionState(manual.state, manual.world, manual.state.player.region))!.structures.turfHut).toBe(false);
   });
 
-  it("a manual camp dies before the six-day cap on seed 17, and inBand agrees with the band", () => {
+  it("reports the current manual-stage balance miss honestly at the day-four freeze", () => {
     const r = runStage(17, stage("manual"), 6);
     expect(r.capped).toBe(false);
-    expect(r.cause).not.toBeNull();
+    expect(r.days).toBe(4);
+    expect(r.cause).toBe("froze");
     expect(r.inBand).toBe(r.days >= 0 && r.days <= 2);
+    expect(r.inBand).toBe(false);
   });
 
   it("a capped run reads inBand off the cap, not just the lower bound", () => {

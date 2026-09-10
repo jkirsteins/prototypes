@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { autoEat, eat, loadRack } from "../src/sim/actions";
 import { calendar } from "../src/sim/calendar";
@@ -12,6 +12,9 @@ import { regionState, siteFor } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere());
 
 describe("camp", () => {
   it("burns 3 kg of firewood an hour and takes none of camp's own to do it", () => {

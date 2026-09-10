@@ -4,7 +4,8 @@
  * so position.ts and route callers can read it without a cycle.
  */
 import type { GameState, QuirkId } from "./types";
-import { stormNow } from "./weather";
+import { localWeather, stormNow } from "./weather";
+import type { World } from "../world/gen";
 
 export function hasQuirk(state: GameState, q: QuirkId): boolean {
   const rec = state.survivors[state.survivors.length - 1];
@@ -12,13 +13,13 @@ export function hasQuirk(state: GameState, q: QuirkId): boolean {
 }
 
 /** Coast-born, and the sky is not clear: no route crosses the fell and no work is done on it. */
-export function fearsFell(state: GameState): boolean {
-  return hasQuirk(state, "coastBorn") && !state.weather.clear;
+export function fearsFell(state: GameState, world?: World, cell?: number): boolean {
+  return hasQuirk(state, "coastBorn") && !(world ? localWeather(state, world, cell) : state.weather).clear;
 }
 
 /** Forest-born, and a storm is on: the open shore is not worked. */
-export function shunsShore(state: GameState): boolean {
-  return hasQuirk(state, "forestBorn") && stormNow(state.weather, state.minute);
+export function shunsShore(state: GameState, world?: World, cell?: number): boolean {
+  return hasQuirk(state, "forestBorn") && stormNow(world ? localWeather(state, world, cell) : state.weather, state.minute);
 }
 
 export const FELL_FEAR_LINE = "will not go up on the fell in this cloud";

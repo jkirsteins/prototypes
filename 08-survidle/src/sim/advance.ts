@@ -6,7 +6,7 @@ import { stormOptions } from "./body";
 import { calendar, DAILY_HOUR } from "./calendar";
 import { dailyCamp, stepCamp, stepEmergencyShelter, stepFoundCover } from "./camp";
 import { hourlyEvents } from "./events";
-import { recordStormMinute, stepGoalOpportunity, stormMetrics } from "./goalopportunity";
+import { recordStormMinute, stepGoalOpportunity, stormMetrics, validateScheduledGoalStorm } from "./goalopportunity";
 import { checkWinterStores, goalDeed } from "./goals";
 import { hourlyWorld, iceUnderFoot } from "./hazards";
 import { runIntent } from "./intent";
@@ -24,7 +24,7 @@ import { stepSeeps } from "./seep";
 import { advanceWildlifeMotion, dailyWildlife, stepWildlife } from "./wildlife-agents";
 import { autoDrink } from "./water";
 import { stepCarcasses } from "./hunting";
-import { ambientTemperature, forecastKnowledge, forecastStage, forecastText, NO_FORECAST_KNOWLEDGE, sameForecastKnowledge, stepWeather, stormComing } from "./weather";
+import { conditionsAt, ensureGround, forecastKnowledge, forecastStage, forecastText, localStorm, localWeather, NO_FORECAST_KNOWLEDGE, sameForecastKnowledge, stormAirMatches, stormComing } from "./weather";
 
 export const MAX_STEP = 1;
 const CARRY_EPSILON = 1e-9;
@@ -34,6 +34,16 @@ const WILDLIFE_MOTION_STEP = 0.05;
 export interface Presence {
   region: number;
   atCamp: boolean;
+}
+
+/** A stable weather reference for world-only seasonal thresholds, even before anyone made camp. */
+function nobodySpineCell(state: GameState, world: World): number {
+  const regions = Object.keys(state.regions).map(Number).sort((a, b) => a - b);
+  for (const id of regions) {
+    const camp = state.regions[id].campCell;
+    if (camp !== null) return camp;
+  }
+  return regions.length ? regionAt(world, regions[0]).campCell : 0;
 }
 
 /**
@@ -105,16 +115,38 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   stepFoundCover(state, dt);
   stepEmergencyShelter(state, world, dt);
 
+  if (!nobody) validateScheduledGoalStorm(state, world);
   const previousStorm = state.weather.storm;
   const hadStorm = previousStorm !== null;
-  const ev = stepWeather(state.weather, cal, rng, dt, state.minute);
-  const ambient = ambientTemperature(cal, state.weather);
+  const beforeKnowledge = previousStorm ? forecastKnowledge(state, previousStorm, previousMinute) : null;
+  if (previousStorm && state.minute >= previousStorm.until) {
+    state.weather.storm = null;
+    state.weather.stormFreeSince = previousStorm.until;
+  }
   const currentStorm = state.weather.storm;
+
+  for (const id of Object.keys(state.regions)) ensureGround(state, world, Number(id));
+  let ambient = 0;
   if (!nobody) {
-    const beforeKnowledge = previousStorm ? forecastKnowledge(state, previousStorm, previousMinute) : null;
-    if (ev.coldSnap) log(state, `A cold snap. ${Math.round(ambient)} C and falling.`, "bad");
-    if (ev.precipStarted) log(state, ambient <= 0 ? "Snow begins to fall." : "Rain sets in.");
-    if (ev.precipStopped) log(state, state.weather.snowCm > 0 && ambient <= 0 ? "The snow stops." : "The rain stops.");
+    const air = conditionsAt(state, world, cal, cellOf(state, world));
+    const previous = state.weather.observed;
+    const observed = {
+      precip: air.precipMmPerHour >= (previous?.precip ? 0.1 : 0.2),
+      storm: previous?.storm ? air.precipMmPerHour >= 6 && air.windKmh >= 30 : localStorm(air),
+      cold: air.temperatureC < (previous?.cold ? -15 : -20),
+    };
+    state.weather.observed = observed;
+    const local = localWeather(state, world);
+    Object.assign(state.weather, {
+      precip: local.precip, clear: local.clear, offset: local.offset, snowCm: local.snowCm,
+      rolledDay: local.rolledDay, dryDays: local.dryDays, wetDay: local.wetDay, iceCm: local.iceCm,
+    });
+    ambient = air.temperatureC;
+    if (previous && observed.cold && !previous.cold) log(state, `A cold snap. ${Math.round(ambient)} C and falling.`, "bad");
+    if (previous && observed.precip && !previous.precip) log(state, air.precip === "snow" ? "Snow begins to fall." : "Rain sets in.");
+    if (previous?.precip && !observed.precip) log(state, ambient <= 0 ? "The snow stops." : "The rain stops.");
+    if (previous?.storm && !observed.storm && !state.dead) record(state, { kind: "storm" });
+    if (previous && observed.storm && !previous.storm) log(state, "The wind rises into a storm.", "bad");
     if (hadStorm && state.weather.storm === null && !state.dead) record(state, { kind: "storm" });
     if (state.weather.storm && !state.weather.storm.warned && stormComing(state)) {
       state.weather.storm.warned = true;
@@ -129,7 +161,6 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
       }
     }
   }
-
   if (!nobody) {
     stepTask(state, world, cal, rng, dt);
     runOrders(state, world, cal, rng);
@@ -148,11 +179,25 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   // the body within this same minute, and the world half should see where
   // it landed, the same place stepCamp used to read state.player itself.
   const who: Presence | null = nobody ? null : { region: state.player.region, atCamp: atCamp(state, world) };
+  let localAirMatchesSchedule = false;
+  if (who) {
+    ensureGround(state, world, who.region);
+    const local = localWeather(state, world);
+    Object.assign(state.weather, {
+      precip: local.precip, clear: local.clear, offset: local.offset, snowCm: local.snowCm,
+      rolledDay: local.rolledDay, dryDays: local.dryDays, wetDay: local.wetDay, iceCm: local.iceCm,
+    });
+    ambient = local.temperatureC;
+    if (previousStorm) {
+      const localAir = conditionsAt(state, world, cal, cellOf(state, world));
+      localAirMatchesSchedule = stormAirMatches(localAir, previousStorm.kind);
+    }
+  }
 
   if (runWildlife) stepWildlife(state, world, cal, rng, wildlifeDt, wildlife, live);
 
   stepCamp(state, world, ambient, dt, who);
-  stepCarcasses(state, dt, ambient);
+  stepCarcasses(state, world, dt);
   stepSeeps(state, world, ambient, dt);
 
   let drains: Drains | null = null;
@@ -163,7 +208,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     iceUnderFoot(state, world, rng);
     // Attribute exactly the overlap of this elapsed interval to where the
     // survivor ended it, after its task or movement has taken effect.
-    if (previousStorm) {
+    if (previousStorm && localAirMatchesSchedule) {
       const stormMinutes = Math.max(0, Math.min(state.minute, previousStorm.until) - Math.max(state.minute - dt, previousStorm.from));
       recordStormMinute(state, world, previousStorm.id, previousStorm.kind, stormMinutes);
     }
@@ -183,7 +228,8 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     dailyWildlife(state, world, cal, rng, wildlife);
     dailyAnimals(state, world, cal, rng, who);
     dailyCamp(state, world, cal, rng, who);
-    stepSpine(state, cal, who);
+    const spineCell = nobody ? nobodySpineCell(state, world) : undefined;
+    stepSpine(state, cal, who, world, spineCell);
     // A season is reached by living into it. Landing inside one is not
     // reaching it, which is why the turnover and not the reading is the deed.
     const season = cal.season;

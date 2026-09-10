@@ -14,7 +14,6 @@ import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
 import { fmtDuration, fmtReal } from "../units";
 import { regionState } from "../sim/regionstate";
 import { shoppingTarget } from "../sim/shopping";
-import { walkableIce } from "../sim/weather";
 import { regionAt, type RegionDef, type World } from "../world/gen";
 import { masteryLine } from "./panels";
 import { purposesHtml } from "./panes";
@@ -336,7 +335,7 @@ function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState,
   const r = regionAt(world, state.player.region);
   const here = cellOf(state, world);
   const opts = r.spots.filter((s) => s.id !== "camp").map((s) => {
-    const km = kmBetween(state, world, here, s.cell, walkableIce(state.weather));
+    const km = kmBetween(state, world, here, s.cell, "safe");
     const walk = check(state, world, calendar(state.minute, state.startDoy), "walk", `cell:${s.cell}`);
     const label = `${SPOT_WORDS[s.id]}${km === null || !walk.ok ? "" : ` ${formatTravel(km, walk.duration, ui.travelDisplay)}`}`;
     return `<option value="${s.id}"${ui.choice.where === s.id ? " selected" : ""}>${esc(label)}</option>`;
@@ -430,7 +429,7 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     const st = regionState(state, world, state.player.region);
     // Where the camp being moved actually is. Not whereIs, which answers "camp"
     // for the camp cell and turns the whole sentence into a tautology.
-    const km = kmBetween(state, world, cellOf(state, world), st.campCell!, walkableIce(state.weather));
+    const km = kmBetween(state, world, cellOf(state, world), st.campCell!, "safe");
     const walk = check(state, world, calendar(state.minute, state.startDoy), "walk", `cell:${st.campCell!}`);
     const held = km === null || !walk.ok
       ? `${esc(regionAt(world, state.player.region).name)}'s camp is somewhere {you} cannot reach from here`

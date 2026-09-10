@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { PRODUCERS } from "../src/sim/capabilities";
@@ -16,6 +16,11 @@ import { drink, fillVessels, FREEZE_C, sourceLitres, waterSource } from "../src/
 import { MARKS } from "../src/ui/map";
 import { cellAt, neighbours, regionAt, type World } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { ensureGround } from "../src/sim/weather";
+import { testAtmosphere } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere({ temperatureC: 10 }));
+afterEach(() => vi.restoreAllMocks());
 
 const cal = calendar(0);
 
@@ -71,10 +76,12 @@ describe("a seep", () => {
   it("freezes in place under the freezing line with no fire on its cell, and thaws by one", () => {
     const { state, world, cell } = dug();
     state.seeps[cell].litres = 4;
+    testAtmosphere({ temperatureC: FREEZE_C - 1 });
     stepSeeps(state, world, FREEZE_C - 1, 60);
     expect(state.seeps[cell].litres).toBe(0);
     expect(state.seeps[cell].ice).toBe(4);
     expect(seepStopped(state, world, cell, FREEZE_C - 1)).toBe("frozen");
+    testAtmosphere({ temperatureC: 2 });
     stepSeeps(state, world, 2, 60);
     expect(state.seeps[cell].ice).toBeCloseTo(2, 5);
     expect(state.seeps[cell].litres).toBeGreaterThan(2);
@@ -82,11 +89,11 @@ describe("a seep", () => {
 
   it("stops refilling after the dry spell and starts again with rain", () => {
     const { state, world, cell } = dug();
-    state.weather.dryDays = SEEP_DRY_DAYS;
+    ensureGround(state, world, state.player.region).dryHours = SEEP_DRY_DAYS * 24;
     stepSeeps(state, world, 10, 60);
     expect(state.seeps[cell].litres).toBe(0);
     expect(seepStopped(state, world, cell, 10)).toBe("drought");
-    state.weather.dryDays = 0;
+    ensureGround(state, world, state.player.region).dryHours = 0;
     stepSeeps(state, world, 10, 60);
     expect(state.seeps[cell].litres).toBeGreaterThan(0);
   });
@@ -94,6 +101,7 @@ describe("a seep", () => {
   it("wants re-digging past two thirds of a year and silts up past a year", () => {
     const { state, world, cell } = dug();
     state.minute = Math.ceil((SEEP_LIFE_DAYS * 1440 * 2) / 3);
+    ensureGround(state, world, state.player.region).dryHours = 0;
     expect(seepNeedsRedig(state, state.seeps[cell])).toBe(true);
     expect(seepStopped(state, world, cell, 10)).toBeNull();
     state.minute = SEEP_LIFE_DAYS * 1440;
@@ -182,7 +190,7 @@ describe("digging a seep", () => {
     const { state, world, cell } = ready();
     expect(startTask(state, world, cal, "build", "seep")).toBe(true);
     expect(state.task?.duration).toBeCloseTo(240, 0);
-    advance(state, world, 240);
+    advance(state, world, 250);
     expect(state.seeps[cell]).toMatchObject({ class: seepGround(world, cell), ice: 0 });
     expect(state.seeps[cell].litres).toBeLessThan(1);
     expect(qty(state.player.pack, "stick")).toBe(0);

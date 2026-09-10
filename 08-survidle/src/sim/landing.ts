@@ -26,6 +26,7 @@ import { campSite, DIM, enterRegion, regionState, touchedRegions } from "./regio
 import { CARRY_SHARE, carrySkills, level, SKILL_IDS, SKILL_NAMES } from "./skills";
 import { resetTeaching } from "./teach";
 import type { GameState, ItemId, LifeEvent, LifeRecord, Person, RegionState, WorldDate } from "./types";
+import { rebaseWeather } from "./weather";
 
 export const GAP_MIN_DAYS = 90;
 export const LANDING_MIN_KM = 3;
@@ -160,6 +161,7 @@ export function beginAgain(state: GameState, world: World): void {
   // Rebase: the heir's life starts at minute 0 on the landing day.
   const landedYear = worldDate(state).year;
   state.year = landedYear;
+  rebaseWeather(state);
   state.startDoy = date.doy;
   state.minute = 0;
   state.advanceCarry = 0;
@@ -233,6 +235,7 @@ export function nextBoat(state: GameState, world: World): void {
   const { date, added } = nextBoatDate(l.date);
   advance(state, world, added * 1440, { nobody: true });
   state.year = worldDate(state).year;
+  rebaseWeather(state);
   state.startDoy = date.doy;
   state.minute = 0;
   state.advanceCarry = 0;

@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as climate from "../src/sim/climate";
 import { calendar } from "../src/sim/calendar";
 import { bestHuntCell, carcassMinutes, createCarcass, disturbHuntingGround, huntAbsenceEvidenceNeeded, huntEstimate, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteFailedHunt, noteHuntSign, processCarcass, stepCarcasses } from "../src/sim/hunting";
 import { addItem, herePile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { cellOf, placeAt, placeAtSpot, straightKm } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot, straightKm, watersideCell } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { setSkillLevel } from "../src/sim/horizon";
 import { check, startTask, stepTask, stopTask } from "../src/sim/tasks";
@@ -14,6 +15,10 @@ import { isWorkIntent } from "../src/sim/types";
 import { mapRegion } from "../src/sim/mapped";
 import { Rng } from "../src/rng";
 import { activateWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
+import { ensureGround, ICE_THIN_CM } from "../src/sim/weather";
+import { testAtmosphere } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 const cal = calendar(0);
 
@@ -235,6 +240,31 @@ describe("hunting knowledge", () => {
     const rock = regionAt(world, state.player.region).cells.find((cell) => /rock|fell/.test(cellAt(world, cell).terrain))!;
     expect(huntSpeciesWeights(state, world, cal, rock).some((row) => row.species === "reindeer")).toBe(true);
   });
+
+  it("does not use hidden candidate-cell ice until the hunter reaches that ground", () => {
+    const { state, world } = armedGame();
+    const visited = new Set<number>();
+    const pending = [state.player.region];
+    let shore: number | undefined;
+    while (pending.length && visited.size < 100 && shore === undefined) {
+      const id = pending.shift()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const region = regionAt(world, id);
+      if (id !== state.player.region) shore = region.cells.find((cell) => watersideCell(world, cell, "lake"));
+      for (const neighbour of region.neighbours) if (!visited.has(neighbour.id)) pending.push(neighbour.id);
+    }
+    expect(shore).toBeDefined();
+    const candidateRegion = cellAt(world, shore!).region;
+
+    ensureGround(state, world, state.player.region).iceCm = ICE_THIN_CM;
+    ensureGround(state, world, candidateRegion).iceCm = 0;
+    state.weather.iceCm = ICE_THIN_CM;
+    expect(huntSpeciesWeights(state, world, cal, shore!).some((row) => row.species === "mallard")).toBe(false);
+
+    placeAt(state, world, shore!);
+    expect(huntSpeciesWeights(state, world, cal, shore!).some((row) => row.species === "mallard")).toBe(true);
+  });
 });
 
 describe("carcass recovery", () => {
@@ -268,10 +298,11 @@ describe("carcass recovery", () => {
   it("loses an old warm carcass to spoilage and scavengers", () => {
     const { state, world } = armedGame();
     const carcass = createCarcass(state, world, "deer", { meatKg: 12, hideKg: 2, fatKg: 1, bone: 1, sinew: 1 });
-    stepCarcasses(state, 18 * 60, 12);
+    testAtmosphere({ temperatureC: 12 });
+    stepCarcasses(state, world, 18 * 60);
     const after = state.carcasses.find((x) => x.id === carcass.id)!;
     expect(after.yields.meatKg).toBeLessThan(12);
-    stepCarcasses(state, 48 * 60, 12);
+    stepCarcasses(state, world, 48 * 60);
     expect(state.carcasses).toHaveLength(0);
   });
 
@@ -285,7 +316,8 @@ describe("carcass recovery", () => {
     };
     stopTask(state, world);
     expect(Object.keys(state.paused)).toHaveLength(1);
-    stepCarcasses(state, 48 * 60, 12);
+    testAtmosphere({ temperatureC: 12 });
+    stepCarcasses(state, world, 48 * 60);
     expect(Object.keys(state.paused)).toHaveLength(0);
     noteHuntSign(state, cellOf(state, world), "deer");
     expect(startTask(state, world, cal, "hunt", "deer")).toBe(true);
@@ -305,6 +337,25 @@ describe("carcass recovery", () => {
     expect(state.task).toBeNull();
     expect(isWorkIntent(state.intent) ? state.intent.done : -1).toBe(0);
   });
+
+  it("ages each exposed carcass in its own weather, not the survivor's weather", () => {
+    const { state, world } = armedGame();
+    const warmCell = cellOf(state, world);
+    const coldCell = regionAt(world, state.player.region).cells.find((cell) => cell !== warmCell)!;
+    const warm = createCarcass(state, world, "deer", { meatKg: 12 });
+    placeAt(state, world, coldCell);
+    const cold = createCarcass(state, world, "deer", { meatKg: 12 });
+    const base = testAtmosphere();
+    vi.mocked(climate.sampleAtmosphere).mockImplementation((_weather, _world, _minute, x, y) => ({
+      ...base,
+      temperatureC: y * world.w + x === warmCell ? 12 : -15,
+    }));
+
+    stepCarcasses(state, world, 18 * 60);
+
+    expect(state.carcasses.find((carcass) => carcass.id === warm.id)?.warmAge).toBe(18 * 60);
+    expect(state.carcasses.find((carcass) => carcass.id === cold.id)?.warmAge).toBe(0);
+  });
 });
 
 describe("local hunting pressure", () => {
@@ -316,7 +367,8 @@ describe("local hunting pressure", () => {
     const attempt = huntPressureFactor(state, world, cell);
     disturbHuntingGround(state, world, cell, true);
     expect(huntPressureFactor(state, world, cell)).toBeLessThan(attempt);
-    stepCarcasses(state, 7 * 24 * 60, 5);
+    testAtmosphere({ temperatureC: 5 });
+    stepCarcasses(state, world, 7 * 24 * 60);
     expect(huntPressureFactor(state, world, cell)).toBeGreaterThan(attempt);
   });
 

@@ -1,10 +1,239 @@
 import type { Rng } from "../rng";
 import { fmtDuration } from "../units";
-import { calendar, type Calendar } from "./calendar";
+import { regionPeek, type World } from "../world/gen";
+import { LATTICE, LATTICE_W } from "../world/terrain";
+import { calendar, START_MINUTE_OF_DAY, type Calendar } from "./calendar";
+import { sampleAtmosphere } from "./climate";
 import { hasQuirk } from "./fears";
 import { survivedStorms } from "./record";
 import { skillLevel } from "./skills";
-import type { GameState, IceMode, Season, Weather } from "./types";
+import type { AtmosphereSample, GameState, IceMode, LocalGroundWeather, Season, Weather, WeatherWorld } from "./types";
+
+export function newWeather(startDoy: number): WeatherWorld {
+  return { version: 2, startDoy, ground: {}, elapsedMinutes: 0, precip: "none", clear: true, offset: 0, snowCm: 0, iceCm: 0,
+    rolledDay: 0, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false };
+}
+
+export function rebaseWeather(state: GameState): void { state.weather.elapsedMinutes += state.minute; }
+
+/** Upgrades only persistent cover. Atmospheric observations are resampled on the next tick. */
+export function migrateWeather(state: GameState): void {
+  state.weather.nextStormId ??= (state.weather.storm?.id ?? 0) + 1;
+  state.weather.stormFreeSince ??= 0;
+  if (state.weather.version === 2) return;
+  const old = state.weather;
+  const weather = newWeather(state.startDoy);
+  for (const id of Object.keys(state.regions)) weather.ground[Number(id)] = {
+    updatedHour: Math.floor(state.minute / 60), snowCm: old.snowCm ?? 0, iceCm: old.iceCm ?? 0,
+    dryHours: (old.dryDays ?? 0) * 24, surfaceWaterMm: old.wetDay ? 1 : 0,
+    soilMoisture: old.wetDay ? 0.5 : 0.1, frost: 0, temperatureSum: 0, temperatureHours: 0,
+  };
+  state.weather = weather;
+}
+
+function groundPosition(region: number): { x: number; y: number } {
+  return { x: (region % LATTICE_W + 0.5) * LATTICE, y: (Math.floor(region / LATTICE_W) + 0.5) * LATTICE };
+}
+
+function initialGround(state: GameState, world: World, region: number): LocalGroundWeather {
+  const { x, y } = groundPosition(region);
+  const temperature = sampleAtmosphere(state.weather, world, 0, x, y).temperatureC;
+  // A seasonal seed at the run's origin, shared by early and late first visits.
+  // Negative degree-days seed winter cover without replaying gameplay or drawing dice.
+  return { updatedHour: 0, snowCm: Math.max(0, -temperature * 2), iceCm: Math.sqrt(7.2 * Math.max(0, -temperature) * 14),
+    surfaceWaterMm: 0, soilMoisture: temperature > 0 ? 0.35 : 0.5, frost: temperature < 0 ? 0.5 : 0,
+    dryHours: 0, temperatureSum: 0, temperatureHours: 0 };
+}
+
+interface GroundReadMemo {
+  sampler: typeof sampleAtmosphere;
+  world: World;
+  seed: number;
+  startDoy: number;
+  values: Map<number, LocalGroundWeather>;
+}
+
+// Untouched neighbouring regions can be read many times by one daily ecology
+// pass. Keep one shadow trajectory per absent region, bounded by the finite
+// world-region count; persisted records below always remain authoritative.
+const groundReadMemo = new WeakMap<GameState, GroundReadMemo>();
+
+/** Read/catch up a copy. Never adds records or changes a stored ground value. */
+export function groundAt(state: GameState, world: World, region: number): LocalGroundWeather {
+  const hour = Math.floor((state.minute + state.weather.elapsedMinutes) / 60);
+  const stored = state.weather.ground[region];
+  let memo: GroundReadMemo | undefined;
+  let shadow: LocalGroundWeather | undefined;
+  if (!stored) {
+    memo = groundReadMemo.get(state);
+    if (!memo || memo.sampler !== sampleAtmosphere || memo.world !== world || memo.seed !== world.seed
+      || memo.startDoy !== state.weather.startDoy) {
+      memo = { sampler: sampleAtmosphere, world, seed: world.seed,
+        startDoy: state.weather.startDoy, values: new Map() };
+      groundReadMemo.set(state, memo);
+    }
+    shadow = memo.values.get(region);
+    if (shadow?.updatedHour === hour) return { ...shadow };
+  }
+  // A state can be inspected at an earlier time after a later query. Recompute
+  // that past view from the origin and keep the newer shadow for future reads.
+  const fromShadow = !stored && shadow && shadow.updatedHour < hour;
+  let ground = stored ?? (fromShadow ? { ...shadow } : initialGround(state, world, region));
+  const { x, y } = groundPosition(region);
+  while (ground.updatedHour < hour) {
+    const air = sampleAtmosphere({ startDoy: state.weather.startDoy, snowCm: ground.snowCm }, world, (ground.updatedHour + 0.5) * 60, x, y);
+    ground = integrateGroundHour(ground, air);
+  }
+  if (!stored && memo && (!shadow || ground.updatedHour >= shadow.updatedHour)) memo.values.set(region, { ...ground });
+  return { ...ground };
+}
+
+/** Simulation path: materialize and persist completed hours for this region. */
+export function ensureGround(state: GameState, world: World, region: number): LocalGroundWeather {
+  const stored = state.weather.ground[region];
+  if (stored && stored.updatedHour === Math.floor((state.minute + state.weather.elapsedMinutes) / 60)) return stored;
+  const ground = groundAt(state, world, region);
+  state.weather.ground[region] = ground;
+  return ground;
+}
+
+export interface LocalConditions extends AtmosphereSample { ground: LocalGroundWeather }
+
+interface AtmosphereMemo {
+  sampler: typeof sampleAtmosphere;
+  world: World;
+  seed: number;
+  minute: number;
+  startDoy: number;
+  values: Map<number, { snowCm: number; value: AtmosphereSample }[]>;
+}
+
+// Current-coordinate atmosphere is requested repeatedly within one simulation
+// minute. Keep only that minute's coordinates per live state so saves remain
+// unchanged and historical ground replay and sight sampling stay exact.
+const atmosphereMemo = new WeakMap<GameState, AtmosphereMemo>();
+
+/** Coordinate atmosphere using an already resolved amount of local snow cover. */
+export function atmosphereAt(state: GameState, world: World, cell: number, snowCm = 0): AtmosphereSample {
+  const minute = state.minute + state.weather.elapsedMinutes;
+  const startDoy = state.weather.startDoy;
+  let memo = atmosphereMemo.get(state);
+  if (!memo || memo.sampler !== sampleAtmosphere || memo.world !== world || memo.seed !== world.seed
+    || memo.minute !== minute || memo.startDoy !== startDoy) {
+    memo = { sampler: sampleAtmosphere, world, seed: world.seed, minute, startDoy, values: new Map() };
+    atmosphereMemo.set(state, memo);
+  }
+  const entries = memo.values.get(cell);
+  const cached = entries?.find((entry) => Object.is(entry.snowCm, snowCm));
+  if (cached) return { ...cached.value };
+  const x = cell % world.w;
+  const y = Math.floor(cell / world.w);
+  const value = sampleAtmosphere({ startDoy, snowCm }, world, minute, x, y);
+  const entry = { snowCm, value: { ...value } };
+  if (entries) entries.push(entry);
+  else memo.values.set(cell, [entry]);
+  return value;
+}
+
+/** Coordinate atmosphere at a future life-clock minute, including the world's inherited elapsed time. */
+export function atmosphereAtMinute(state: GameState, world: World, cell: number, minute: number, snowCm = 0): AtmosphereSample {
+  const x = cell % world.w;
+  const y = Math.floor(cell / world.w);
+  return sampleAtmosphere(
+    { startDoy: state.weather.startDoy, snowCm },
+    world,
+    minute + state.weather.elapsedMinutes,
+    x,
+    y,
+  );
+}
+
+/** Compose coordinate atmosphere with ground a caller has already caught up. */
+export function conditionsWithGround(state: GameState, world: World, cell: number, ground: LocalGroundWeather): LocalConditions {
+  return { ...atmosphereAt(state, world, cell, ground.snowCm), ground };
+}
+
+/**
+ * Current cell-coordinate atmosphere plus stationary region cover; safe for
+ * rendering. Calendar is the caller's state-derived view, not a time override:
+ * both ground and atmosphere use state.minute plus the weather rebase offset.
+ */
+export function conditionsAt(state: GameState, world: World, _cal: Calendar, cell: number): LocalConditions {
+  const x = cell % world.w;
+  const y = Math.floor(cell / world.w);
+  const ground = groundAt(state, world, regionPeek(world, x, y));
+  return conditionsWithGround(state, world, cell, ground);
+}
+
+/** Current-cell adapter for old Weather-shaped calculations. Never drives atmosphere or ground updates. */
+export function localWeather(state: GameState, world: World, cell = Math.floor(state.player.y) * world.w + Math.floor(state.player.x)): Weather & { temperatureC: number; dryHours: number } {
+  const a = conditionsAt(state, world, calendar(state.minute, state.startDoy), cell);
+  const scheduled = state.weather.storm;
+  const scheduledKind = scheduled && state.minute >= scheduled.from && state.minute < scheduled.until ? scheduled.kind : null;
+  const storm = localStorm(a) ? {
+    id: scheduled?.id ?? 0, source: scheduled?.source ?? "natural" as const,
+    kind: scheduledKind ?? (a.precip === "snow" ? "snow" as const : "gale" as const),
+    from: state.minute, until: state.minute + 1, warned: true,
+  } : null;
+  return { precip: a.precipMmPerHour < 0.2 ? "none" : a.precipMmPerHour >= 7.5 ? "heavy" : "light",
+    clear: a.cloud < 0.5, offset: 0, snowCm: a.ground.snowCm, iceCm: a.ground.iceCm,
+    dryDays: a.ground.dryHours / 24, dryHours: a.ground.dryHours, wetDay: a.precipMmPerHour >= 0.2,
+    dryWarned: false, rolledDay: 0, nextStormId: state.weather.nextStormId, stormFreeSince: state.weather.stormFreeSince, storm,
+    temperatureC: a.temperatureC };
+}
+
+export function localStorm(a: AtmosphereSample): boolean { return a.precipMmPerHour >= 7.5 && a.windKmh >= 35; }
+
+/** True only when coordinate-owned air supplies the named scheduled hazard. */
+export function stormAirMatches(a: AtmosphereSample, kind: StormKind): boolean {
+  return localStorm(a) && (kind === "gale" || a.precip === kind);
+}
+
+/** A forecast schedule may name a real feature, but it never makes that feature exist. */
+export function scheduledStormMatches(
+  state: GameState,
+  world: World,
+  cell: number,
+  storm: NonNullable<Weather["storm"]>,
+): boolean {
+  const onset = atmosphereAtMinute(state, world, cell, storm.from);
+  return stormAirMatches(onset, storm.kind);
+}
+export function snowAt(state: GameState, world: World, cell: number): number { return localWeather(state, world, cell).snowCm; }
+export function iceAt(state: GameState, world: World, cell: number): number { return localWeather(state, world, cell).iceCm; }
+export function precipitationAt(state: GameState, world: World, cell: number): number { return conditionsAt(state, world, calendar(state.minute, state.startDoy), cell).precipMmPerHour; }
+export function dryGroundAt(state: GameState, world: World, cell: number, days: number): boolean { return localWeather(state, world, cell).dryHours >= days * 24; }
+
+/** Advance a copy through one complete hour; hour zero starts at 08:00. */
+export function integrateGroundHour(previous: LocalGroundWeather, air: AtmosphereSample): LocalGroundWeather {
+  const g = { ...previous, updatedHour: previous.updatedHour + 1 };
+  g.snowCm += air.snowCmPerHour;
+  const melt = air.temperatureC > 2 ? Math.min(2, g.snowCm) : 0;
+  g.snowCm -= melt;
+  g.surfaceWaterMm += air.rainMmPerHour + melt;
+  const infiltration = Math.min(g.surfaceWaterMm, 2 * (1 - g.soilMoisture));
+  g.surfaceWaterMm -= infiltration;
+  g.soilMoisture = Math.min(1, g.soilMoisture + infiltration / 50);
+  const evaporation = 0.08 * (1 - air.relativeHumidity) * Math.max(0, air.temperatureC + 5) * (1 + air.windKmh / 20);
+  const surfaceLoss = Math.min(g.surfaceWaterMm, evaporation);
+  g.surfaceWaterMm -= surfaceLoss;
+  g.soilMoisture = Math.max(0, g.soilMoisture - (evaporation - surfaceLoss) / 50);
+  if (air.temperatureC < 0 && g.soilMoisture > 0.2) g.frost = Math.min(1, g.frost + Math.min(1, -air.temperatureC / 12) / 24);
+  else if (air.temperatureC > 0) g.frost = Math.max(0, g.frost - air.temperatureC / 12);
+  g.dryHours = air.precipMmPerHour >= 0.2 || g.soilMoisture > 0.2 ? 0 : g.dryHours + 1;
+  g.temperatureSum += air.temperatureC;
+  g.temperatureHours++;
+  if ((g.updatedHour + START_MINUTE_OF_DAY / 60) % 24 === 0) {
+    g.snowCm *= 1 - SNOW_SETTLE_PER_DAY;
+    const mean = g.temperatureSum / g.temperatureHours;
+    // A newly migrated partial day represents only its accumulated degree-hours.
+    const days = g.temperatureHours / 24;
+    g.iceCm = mean < 0 ? Math.sqrt(g.iceCm ** 2 + 7.2 * -mean * days) : Math.max(0, g.iceCm - 2 * mean * days);
+    g.temperatureSum = 0;
+    g.temperatureHours = 0;
+  }
+  return g;
+}
 
 export type StormKind = "rain" | "snow" | "gale";
 
@@ -37,31 +266,18 @@ export function seasonalMean(dayOfYear: number): number {
 }
 
 export function ambientTemperature(cal: Calendar, w: Weather): number {
+  if ("temperatureC" in w) return w.temperatureC as number;
   const amp = w.precip !== "none" ? 1.5 : w.clear ? 4 : 2.5;
   const diurnal = amp * Math.cos((2 * Math.PI * (cal.hour - 15)) / 24);
   const precip = w.precip !== "none" ? -2 : 0;
   return seasonalMean(cal.dayOfYear) + diurnal + w.offset + precip;
 }
 
+export const DEEP_SNOW_CM = 30;
+export const SNOW_SETTLE_PER_DAY = 0.05;
 const START_PER_HOUR: Record<Season, number> = { spring: 0.04, summer: 0.03, autumn: 0.04, winter: 0.05 };
 const STOP_PER_HOUR = 0.25;
-export const DEEP_SNOW_CM = 30;
-
-/**
- * Snow on the ground. Fresh snow lays a quarter of the fall: 0.375 cm an
- * hour in light snow, 0.75 in heavy. The pack settles five percent of its
- * depth at each day roll. Melting above 2 C stays at 2 cm an hour. Fall and
- * settle together aim at a 62 N inland January of 40 to 60 cm.
- *
- * The current reading: January runs 25, 29 and 46 cm on the year probe's
- * three seeds and 32, 28, 31 and 31 on the winter gate's four - one of the
- * seven in the band, mean about 32, under it. The constant stays at 0.05
- * rather than chasing the band, because across this branch's other
- * changes the depth moved with the runner and the reference list, not with
- * the settle rate.
- */
 export const SNOW_CM_PER_MINUTE = { light: 1 / 160, heavy: 1 / 80 } as const;
-export const SNOW_SETTLE_PER_DAY = 0.05;
 
 /** Daily chance of a storm rolling in, by season. */
 const STORM_CHANCE: Record<Season, number> = { spring: 0.04, summer: 0.02, autumn: 0.04, winter: 0.08 };
@@ -232,14 +448,14 @@ export const ICE_SAFE_CM = 15;
 /** Ice above this bears a walker's weight, but each crossed cell risks a fall. */
 export const ICE_THIN_CM = 5;
 
-export function iceMode(w: Weather): IceMode {
+export function iceMode(w: Pick<Weather, "iceCm">): IceMode {
   if (w.iceCm >= ICE_SAFE_CM) return "safe";
   if (w.iceCm >= ICE_THIN_CM) return "thin";
   return "none";
 }
 
 /** The ice a plain walk (never asking for the thin-ice shortcut) may cross: safe ice, or none. */
-export function walkableIce(w: Weather): IceMode {
+export function walkableIce(w: Pick<Weather, "iceCm">): IceMode {
   return iceMode(w) === "safe" ? "safe" : "none";
 }
 

@@ -1,3 +1,4 @@
+import { localWeather } from "./weather";
 /**
  * What a survivor knows about the water. A read is an hour at a shore and
  * writes which fish this water holds and where each lies; it is the
@@ -58,7 +59,7 @@ export function readLine(state: GameState, world: World, cal: Calendar, cell: nu
   const away: string[] = [];
   for (const s of obs.fish) {
     const def = SPECIES_DEFS[s];
-    const gone = absence(def, cal, state.weather.iceCm);
+    const gone = absence(def, cal, localWeather(state, world).iceCm);
     if (gone) away.push(`the ${def.name} are ${def.lie ?? "off the point"}, ${gone}`);
     else here.push(fishLie(s));
   }

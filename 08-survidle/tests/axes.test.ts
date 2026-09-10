@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { addItem, axeInHand, axeNear, freshTool, pile, wearTool } from "../src/sim/inventory";
 import { deserialize, serialize } from "../src/sim/save";
@@ -9,6 +9,9 @@ import { check, fallThrough } from "../src/sim/tasks";
 import { Rng } from "../src/rng";
 import { current } from "../src/sim/record";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere());
 
 describe("three axes", () => {
   it("prefers iron over the celt over the flaked axe in hand", () => {

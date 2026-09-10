@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { campNeed, currentNeed, iceHoleSite, snaresWaiting, WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { calendar, START_MINUTE_OF_DAY } from "../src/sim/calendar";
@@ -17,9 +17,12 @@ import { beginTask, setAside, startTask } from "../src/sim/tasks";
 import type { GameState } from "../src/sim/types";
 import type { World } from "../src/world/gen";
 import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/sim/water";
-import { stormComing, stormNow } from "../src/sim/weather";
+import { ensureGround, stormComing, stormNow } from "../src/sim/weather";
 import { regionAt, spotOf } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere());
 
 /** A kitted camp on seed 17 with one endless felling grind, the survivor fresh at 08:00. */
 function felling() {
@@ -392,7 +395,7 @@ describe("checking the snares", () => {
 describe("cutting the ice hole", () => {
   it("an iced shore, no hole and an axe in hand is a source: the runner walks there, cuts, and drinks", () => {
     const { state, world } = felling();
-    state.weather.iceCm = ICE_SHORE_CM + 1;
+    ensureGround(state, world, state.player.region).iceCm = ICE_SHORE_CM + 1;
     state.player.water = 0.5;
     state.player.energy = 100;
     for (const t of state.player.tools) if (t.id === "barkBucket") t.litres = 0;
@@ -416,7 +419,7 @@ describe("cutting the ice hole", () => {
 
   it("without an axe the iced shore is no source", () => {
     const { state, world } = felling();
-    state.weather.iceCm = ICE_SHORE_CM + 1;
+    ensureGround(state, world, state.player.region).iceCm = ICE_SHORE_CM + 1;
     state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
     expect(iceHoleSite(state, world, calendar(state.minute))).toBeNull();
   });

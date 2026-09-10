@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { cellPossibilities, leaveCamp } from "../src/sim/camp";
 import { calendar } from "../src/sim/calendar";
 import { addItem, pile, qty } from "../src/sim/inventory";
@@ -17,6 +17,9 @@ import { defaultChoice, newUiState, rowRequest } from "../src/ui/render";
 import { regionAt } from "../src/world/gen";
 import { neighbourLandCell, siteCamp } from "./siting-helpers";
 import { paneHtml } from "./pane";
+import { testAtmosphere } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere());
 
 describe("making camp elsewhere is always legal, and leaves what it held", () => {
   it("is legal wherever the survivor stands, a structure, a banked fire and a loose pile at the old camp notwithstanding", () => {

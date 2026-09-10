@@ -15,6 +15,7 @@ import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
 import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type Species, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
 import { emptyWildlife } from "./wildlife-agents";
+import { migrateWeather } from "./weather";
 import { DISTURBANCE_PROFILES } from "./species";
 import { precipitationStormKind } from "./weather";
 import { metricPointForStoredCell } from "./wildlife-space";
@@ -51,6 +52,7 @@ export function deserialize(text: string): SaveFile | null {
  */
 export function migrate(state: GameState, version = 9): void {
   state.startDoy ??= START_DOY;
+  migrateWeather(state);
   state.awayHours ??= AWAY_HOURS_DEFAULT;
   state.advanceCarry = version < 9 ? 0 : (state.advanceCarry ?? 0);
   state.skills ??= newSkills();

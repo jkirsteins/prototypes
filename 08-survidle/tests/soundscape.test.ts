@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { placeAt, placeAtSpot } from "../src/sim/position";
@@ -8,7 +8,9 @@ import { cellAt, regionAt } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { FIRE_LOW_KG } from "../src/sim/items";
 import type { Species } from "../src/sim/species";
+import { ensureGround } from "../src/sim/weather";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
 
 const base: Surroundings = { forest: 0, birch: 0, open: 0, bog: 0, lake: 0, sea: 0, footing: "grass", frozen: false, fire: "none", indoors: false, rain: "none", storm: false };
 /** Minutes for a clock hour on run day d. */
@@ -18,10 +20,30 @@ const AUGUST = 123;   // run day of 1 August
 const OCTOBER = 184;  // run day of 1 October
 const JAN = 276;
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("surroundings", () => {
+  it("derives weather sounds and footing from local air and ground", () => {
+    const { state, world } = newGame(17);
+    testAtmosphere({ temperatureC: 5, precipMmPerHour: 0, rainMmPerHour: 0, snowCmPerHour: 0, precip: "none" });
+    const ground = ensureGround(state, world, state.player.region);
+    ground.snowCm = 0;
+    ground.iceCm = 0;
+    state.weather.precip = "heavy";
+    state.weather.snowCm = 30;
+    state.weather.iceCm = 20;
+    const local = surroundings(state, world, 10);
+    expect(local.rain).toBe("none");
+    expect(local.footing).not.toBe("snow");
+    expect(local.frozen).toBe(false);
+  });
+
   it("reads the footing from the ground, snow and ice", () => {
     const { state, world } = newGame(3);
     siteCamp(state, world);
+    const ground = ensureGround(state, world, state.player.region);
+    ground.snowCm = 0;
+    ground.iceCm = 0;
     const r = regionAt(world, state.player.region);
     const on = (t: string) => r.cells.find((c) => cellAt(world, c).terrain === t);
     const forest = on("spruce") ?? on("pine");
@@ -38,13 +60,13 @@ describe("surroundings", () => {
       placeAt(state, world, bog);
       expect(surroundings(state, world, 10).footing).toBe("bog");
     }
-    state.weather.snowCm = 6;
+    ground.snowCm = 6;
     placeAt(state, world, forest!);
     expect(surroundings(state, world, -3).footing).toBe("snow");
-    state.weather.snowCm = 0;
+    ground.snowCm = 0;
     const water = on("water");
     if (water) {
-      state.weather.iceCm = 20;
+      ground.iceCm = 20;
       placeAt(state, world, water);
       expect(surroundings(state, world, -3).footing).toBe("ice");
       expect(surroundings(state, world, -3).frozen).toBe(true);
@@ -65,7 +87,7 @@ describe("surroundings", () => {
     st.fire.lit = false;
     state.player.torch = { lit: true, minutes: 30 };
     expect(surroundings(state, world, 10).fire).toBe("torch");
-    state.weather.precip = "heavy";
+    testAtmosphere({ temperatureC: 5, precipMmPerHour: 8, rainMmPerHour: 8, snowCmPerHour: 0, precip: "rain", windKmh: 40 });
     expect(surroundings(state, world, 5).rain).toBe("heavy");
     expect(surroundings(state, world, -5).rain).toBe("none");
   });
@@ -136,6 +158,7 @@ describe("open calls", () => {
     siteCamp(state, world);
     const id = regionWith(state, world, "loon");
     placeAt(state, world, regionAt(world, id).campCell);
+    ensureGround(state, world, id).iceCm = 0;
     const st = regionState(state, world, id);
     st.pop.loon = regionAt(world, id).capacity.loon;
     const c = calendar(at(JUNE, 12));

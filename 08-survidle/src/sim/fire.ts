@@ -6,12 +6,13 @@
 import { cellAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
 import type { Calendar } from "./calendar";
-import { addItem, pile, qty, removeItem } from "./inventory";
+import { addItem, pile, qty, removeItem, TRACE_KG } from "./inventory";
 import { BARK_DRY_RATIO, STRUCTURES } from "./items";
 import { campSite, regionState, siteAt, touchedRegions } from "./regionstate";
 import { cellOf } from "./position";
 import { protectionOf } from "./shelter";
 import type { GameState, Inventory, ItemId, RegionState, Site, Terrain, Weather } from "./types";
+import { localWeather } from "./weather";
 
 export const WET_AFTER_RAIN_MINUTES = 6 * 60;
 
@@ -37,8 +38,9 @@ export function stepFieldFire(state: GameState, world: World, ambient: number, d
   if (!fire) return;
   if (fire.cell !== cellOf(state, world) || state.dead) { state.player.fieldFire = null; return; }
   const site = siteAt(regionState(state, world, state.player.region), fire.cell);
-  const exposed = state.weather.precip !== "none" && !roofed(site);
-  const rain = exposed && state.weather.precip === "heavy" && ambient > 0;
+  const weather = localWeather(state, world, fire.cell);
+  const exposed = weather.precip !== "none" && !roofed(site);
+  const rain = exposed && weather.precip === "heavy" && ambient > 0;
   fire.fuelKg = Math.max(0, fire.fuelKg - openBurnPerHour(ambient) * (rain ? 2 : exposed ? 1.5 : 1) * dt / 60);
   if (fire.fuelKg <= 0 || (rain && fire.fuelKg < 2)) {
     state.player.fieldFire = null;
@@ -112,8 +114,8 @@ export function fireSeason(cal: Calendar): boolean {
 }
 
 /** Tinder-dry ground: fire season, and no rain for DRY_DAYS days running. */
-export function groundDry(w: Weather, cal: Calendar): boolean {
-  return fireSeason(cal) && w.dryDays >= DRY_DAYS;
+export function groundDry(w: Pick<Weather, "dryDays"> | { dryHours: number }, cal: Calendar): boolean {
+  return fireSeason(cal) && ("dryHours" in w ? w.dryHours : w.dryDays * 24) >= DRY_DAYS * 24;
 }
 
 /**
@@ -199,9 +201,9 @@ export function lightingInRain(w: Weather, ambient: number, roofOverPit: boolean
 }
 
 /** True when a log split here and now comes out wet: rain, or rain within six hours. */
-export function splitIsWet(state: GameState, world: World): boolean {
-  if (state.weather.precip !== "none") return true;
-  return regionState(state, world, state.player.region).logsWet < WET_AFTER_RAIN_MINUTES;
+export function splitIsWet(state: GameState, world: World, cell = Math.floor(state.player.y) * world.w + Math.floor(state.player.x)): boolean {
+  if (localWeather(state, world, cell).precip !== "none") return true;
+  return regionState(state, world, cellAt(world, cell).region).logsWet < WET_AFTER_RAIN_MINUTES;
 }
 
 /**
@@ -244,15 +246,16 @@ function dryBudget(invs: Inventory[], perHour: number, dt: number, from: ItemId 
  * the same rates to dried bark, at BARK_DRY_RATIO, but only in a camp pile
  * or the pack: it is not left drying in a pile out in the field.
  */
-export function dryWood(state: GameState, dt: number, who: Presence | null): void {
-  const w = state.weather;
-  const dry = w.precip === "none";
+export function dryWood(state: GameState, dt: number, who: Presence | null, world?: World): void {
+  const dryAt = (cell?: number) => (world ? localWeather(state, world, cell) : state.weather).precip === "none";
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
+    if (st.campCell === null) continue;
+    const dry = dryAt(st.campCell);
     const site = campSite(st);
     const sheltered = st.fire.lit || site?.structures.cabin || site?.structures.turfHut;
     const perHour = sheltered ? 2 : site?.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
-    if (perHour <= 0 || st.campCell === null) continue;
+    if (perHour <= 0) continue;
     const campPile = state.piles[st.campCell];
     const atThisCamp = who !== null && id === who.region && who.atCamp && !state.player.fieldFire;
     const invs = [campPile, atThisCamp ? state.player.pack : undefined].filter((x): x is Inventory => x !== undefined);
@@ -264,16 +267,16 @@ export function dryWood(state: GameState, dt: number, who: Presence | null): voi
     dryBudget([state.player.pack], 2, dt);
     dryBudget([state.player.pack], 2, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }
-  if (!dry) return;
   for (const k of Object.keys(state.piles)) {
     const cell = Number(k);
     const inv = state.piles[cell];
-    if (!inv) continue;
+    if (!inv || qty(inv, "wetFirewood") <= TRACE_KG) continue;
+    if (!dryAt(cell)) continue;
     const isCampPile = touchedRegions(state).some((id) => state.regions[id].campCell === cell);
     if (!isCampPile) dryBudget([inv], 0.5, dt);
   }
   // Away from every camp, the pack dries in the open like any other stack; nobody carries one with nobody home.
-  if (who && !who.atCamp && !state.player.fieldFire) {
+  if (who && !who.atCamp && !state.player.fieldFire && dryAt()) {
     dryBudget([state.player.pack], 0.5, dt);
     dryBudget([state.player.pack], 0.5, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }

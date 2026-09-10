@@ -26,19 +26,20 @@ import { sleepiness, SLEEPY_AT, SPENT_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
 import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation, walkManner } from "../sim/player";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
+import { survivorRoute } from "../sim/routing";
 import { current, worldDate } from "../sim/record";
 import { campSite, regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
 import { CARRY_SHARE, keyName, level, levelMinutes, masteryMilestone, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
-  availableTasks, check, fallChance, type TaskOption, whereIs,
+  availableTasks, check, fallChance, type TaskOption, walkTarget, whereIs,
 } from "../sim/tasks";
-import { isWorkIntent, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
+import { isWorkIntent, type AtmosphereSample, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
-import { forecastText, iceMode, stormComing, stormNow, walkableIce, weatherLabel } from "../sim/weather";
+import { atmosphereAt, forecastText, groundAt, iceMode, type LocalConditions, localStorm, localWeather, stormComing, stormNow } from "../sim/weather";
 import { fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
-import { regionAt, speciesHere, type World } from "../world/gen";
+import { cellAt, regionAt, speciesHere, type World } from "../world/gen";
 import { routeKm } from "../world/route";
 import { hurryKind, type HurryState } from "./hurry";
 import { esc, type UiState } from "./render";
@@ -236,10 +237,41 @@ ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : 
  * here in three lines, and the row it was taking is now map, which is what
  * a player is actually looking at.
  */
-export function weatherHtml(state: GameState, world: World, cal: Calendar, ambient: number, rate = 1, uid = ""): string {
-  const snow = state.weather.snowCm >= 1 ? `snow ${Math.round(state.weather.snowCm)} cm` : "";
-  const ice = state.weather.iceCm >= 1 ? `ice ${Math.round(state.weather.iceCm)} cm` : "";
+interface WeatherPanelAirMemo {
+  world: World;
+  seed: number;
+  startDoy: number;
+  minute: number;
+  cell: number;
+  snowCm: number;
+  air: AtmosphereSample;
+}
+
+/** The weather panel renders atmospheric fields once per displayed minute. */
+const weatherPanelAir = new WeakMap<GameState, WeatherPanelAirMemo>();
+
+function weatherPanelConditions(state: GameState, world: World, cell: number): LocalConditions {
+  const ground = groundAt(state, world, cellAt(world, cell).region);
+  const minute = Math.floor(state.minute + state.weather.elapsedMinutes);
+  const previous = weatherPanelAir.get(state);
+  if (previous && previous.world === world && previous.seed === world.seed
+    && previous.startDoy === state.weather.startDoy && previous.minute === minute
+    && previous.cell === cell && Object.is(previous.snowCm, ground.snowCm)) {
+    return { ...previous.air, ground };
+  }
+  const air = atmosphereAt(state, world, cell, ground.snowCm);
+  weatherPanelAir.set(state, { world, seed: world.seed, startDoy: state.weather.startDoy,
+    minute, cell, snowCm: ground.snowCm, air: { ...air } });
+  return { ...air, ground };
+}
+
+export function weatherHtml(state: GameState, world: World, cal: Calendar, _ambient: number, rate = 1, uid = ""): string {
+  const conditions = weatherPanelConditions(state, world, cellOf(state, world));
+  const ambient = conditions.temperatureC;
+  const snow = conditions.ground.snowCm >= 1 ? `snow ${Math.round(conditions.ground.snowCm)} cm` : "";
+  const ice = conditions.ground.iceCm >= 1 ? `ice ${Math.round(conditions.ground.iceCm)} cm` : "";
   const ground = [snow, ice].filter(Boolean).join(", ");
+  const storm = localStorm(conditions) ? `<div class="wx-warn">storm</div>` : "";
   const forecast = forecastText(state);
   const forecastLine = forecast ? `<div class="wx-warn" data-weather-forecast>${esc(forecast)}</div>` : "";
   const plan = forecast && state.weather.storm && (stormComing(state) || stormNow(state.weather, state.minute))
@@ -249,10 +281,17 @@ export function weatherHtml(state: GameState, world: World, cal: Calendar, ambie
     : plan?.recommended === "remoteRefuge" ? "go to the known refuge"
       : plan ? "shelter here" : "";
   const planLine = plan ? `<div class="wx-warn" data-weather-plan="${plan.recommended}">plan: ${planWords}</div>` : "";
-  const dry = groundDry(state.weather, cal) ? `<div class="wx-warn">tinder dry</div>` : "";
+  const dry = groundDry(conditions.ground, cal) ? `<div class="wx-warn">tinder dry</div>` : "";
   const felt = Math.round(feltTemperature(state, world, ambient));
+  const bearing = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(conditions.windBearingDeg / 45) % 8];
+  const precipitation = conditions.precipMmPerHour >= 0.05;
+  const intensity = conditions.precipMmPerHour >= 7.5 ? "heavy " : conditions.precipMmPerHour < 1 ? "light " : "";
+  const weather = precipitation
+    ? `${intensity}${conditions.precip === "snow" ? "snow" : "rain"}`
+    : conditions.cloud >= 0.75 ? "overcast" : conditions.cloud >= 0.35 ? "cloudy" : "clear";
+  const visibility = conditions.fog >= 0.1 ? `fog, ${Math.max(0.2, 3 / conditions.extinctionPerKm).toFixed(1)} km` : `${Math.max(0.2, 3 / conditions.extinctionPerKm).toFixed(0)} km`;
   return `<div class="wx">
-<div class="wx-bg">${skyHtml(WALL, uid, false)}</div>
+<div class="wx-bg">${skyHtml(WALL, uid, false, conditions)}</div>
 <div class="wx-head">
   <div class="wx-day">
     <div class="wx-clock">Day ${cal.day} <span class="hour">${fmtClock(cal.hour)}</span></div>
@@ -261,14 +300,36 @@ export function weatherHtml(state: GameState, world: World, cal: Calendar, ambie
   <div class="wx-sun"><div>&uarr; ${fmtClock(cal.sunrise)}</div><div>&darr; ${fmtClock(cal.sunset)}</div></div>
 </div>
 <div class="wx-temp ${ambient < -10 ? "bad" : ""}">${Math.round(ambient)}<span class="deg">C</span></div>
-<div class="wx-word">${weatherLabel(state.weather, ambient)}</div>
+<div class="wx-word">${weather}</div>
 <div class="wx-rows">
   <div class="wx-k">Feels like</div><div class="wx-v ${felt < 0 ? "bad" : ""}">${felt} C</div>
+  <div class="wx-k">Wind</div><div class="wx-v wx-wind">${bearing} ${Math.round(conditions.windKmh)} km/h</div>
+  <div class="wx-k">Visibility</div><div class="wx-v wx-visibility">${visibility}</div>
   ${ground ? `<div class="wx-k">Ground</div><div class="wx-v">${ground}</div>` : ""}
 </div>
-${forecastLine}${planLine}${dry}
+${storm}${forecastLine}${planLine}${dry}
 <div class="wx-where"><svg class="speed-history" viewBox="0 0 100 22" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="speed-fade-${uid || "live"}"><stop offset="0" stop-opacity="0"/><stop offset="1" stop-opacity="1"/></linearGradient></defs><path data-speed-path fill="url(#speed-fade-${uid || "live"})"></path></svg><span>${esc(regionAt(world, state.player.region).name)}</span><span class="wx-rate ${rate > 1 ? "hurrying" : ""}" data-speed-rate>1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</span></div>
 </div>`;
+}
+
+/**
+ * The weather panel owns continuously animated sky markup. Rebuild that markup
+ * only when the displayed game minute, location, or displayed speed changes;
+ * CSS carries cloud, precipitation, and fog motion between those readings.
+ */
+export function weatherKey(state: GameState, world: World, _cal: Calendar, rate = 1): string {
+  const cell = cellOf(state, world);
+  const conditions = weatherPanelConditions(state, world, cell);
+  const snow = conditions.ground.snowCm >= 1 ? Math.round(conditions.ground.snowCm) : "-";
+  const ice = conditions.ground.iceCm >= 1 ? Math.round(conditions.ground.iceCm) : "-";
+  // Atmosphere moves only on the minute key above. These are the displayed
+  // values that can change within that minute because the survivor acts or
+  // local ground is changed directly: activity, clothing, wetness, fat,
+  // shelter and fire all meet in feltTemperature.
+  const felt = Math.round(feltTemperature(state, world, conditions.temperatureC));
+  const displayed = [felt, snow, ice,
+    groundDry(conditions.ground, _cal) ? 1 : 0].join(":");
+  return `${state.seed}|${state.startDoy}|${Math.floor(state.minute)}|${Math.floor(state.minute + state.weather.elapsedMinutes)}|${cell}|${state.player.region}|${rate > 1 ? 1 : 0}|${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)}|${displayed}`;
 }
 
 /**
@@ -277,12 +338,20 @@ ${forecastLine}${planLine}${dry}
  * to cross) and only when it beats the plain route: shorter, or the plain
  * route does not exist at all.
  */
-function thinIceButton(state: GameState, world: World, cal: Calendar, id: "walk" | "travel", arg: string, plain: TaskOption): string {
-  if (iceMode(state.weather) !== "thin") return "";
+export function thinIceButton(state: GameState, world: World, cal: Calendar, id: "walk" | "travel", arg: string, plain: TaskOption): string {
+  const target = walkTarget(state, world, arg);
+  if (!target) return "";
   const thin = check(state, world, cal, id, `${arg}:thin`);
   if (!thin.ok || (plain.ok && thin.duration >= plain.duration)) return "";
-  const pct = Math.round(fallChance(state.weather.iceCm) * 100);
-  return ` <button class="mini" data-act="task" data-id="${id}" data-arg="${arg}:thin" title="${pct}% chance of falling through, per cell crossed">across the ice (${Math.round(state.weather.iceCm)} cm, thin)</button>`;
+  const route = survivorRoute(state, world, cellOf(state, world), target.cell, "thin");
+  const thinIce = (route ?? [])
+    .filter((cell) => cellAt(world, cell).terrain === "water")
+    .map((cell) => localWeather(state, world, cell))
+    .filter((weather) => iceMode(weather) === "thin");
+  if (!thinIce.length) return "";
+  const weakest = thinIce.reduce((a, b) => a.iceCm < b.iceCm ? a : b);
+  const pct = Math.round(Math.max(...thinIce.map((weather) => fallChance(weather.iceCm))) * 100);
+  return ` <button class="mini" data-act="task" data-id="${id}" data-arg="${arg}:thin" title="${pct}% chance of falling through, per cell crossed">across the ice (${Math.round(weakest.iceCm)} cm, thin)</button>`;
 }
 
 
@@ -337,13 +406,14 @@ export function placesHtml(state: GameState, world: World, cal: Calendar, displa
       if (cell === here) return `<div class="way" data-place="${s.id}"><b>${name}</b> <small class="dim">you are here</small>${shopping}</div>`;
       const at = ` data-at="${cell}"`;
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
-      const km = kmBetween(state, world, here, cell, walkableIce(state.weather));
-      if (!walk.ok) return `<div class="way" data-place="${s.id}"${at}><span class="dim">${name}: ${esc(plain(walk.why))}</span>${shopping}</div>`;
+      const ice = thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk);
+      const km = kmBetween(state, world, here, cell, "safe");
+      if (!walk.ok) return `<div class="way" data-place="${s.id}"${at}><span class="dim">${name}: ${esc(plain(walk.why))}</span>${ice}${shopping}</div>`;
       // The whole row is the button, and what it costs is in its own label:
       // a name in a button beside a sentence saying "from here" spent two
       // thirds of the row on words that never change.
       const cost = km === null ? esc(fmtDuration(walk.duration)) : esc(formatTravel(km, walk.duration, display));
-      return `<div class="way" data-place="${s.id}"${at}><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk)}${shopping}</div>`;
+      return `<div class="way" data-place="${s.id}"${at}><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${ice}${shopping}</div>`;
     })
     .join("");
   // The ways out, under the places and in the same corner - but only those
@@ -373,7 +443,7 @@ export function wayIntoHtml(state: GameState, world: World, cal: Calendar, regio
     const go = check(state, world, cal, "travel", `region:${region}`);
     const ice = thinIceButton(state, world, cal, "travel", `region:${region}`, go);
     if (!go.ok && offersOnly) return "";
-    const km = kmBetween(state, world, cellOf(state, world), regionAt(world, region).campCell, walkableIce(state.weather));
+    const km = kmBetween(state, world, cellOf(state, world), regionAt(world, region).campCell, "safe");
     const estimate = km === null ? fmtDuration(go.duration) : formatTravel(km, go.duration, display);
     return go.ok
       ? `<div class="way" data-way="${region}"${at}><button class="mini go" data-act="task" data-id="travel" data-arg="region:${region}">Go to ${name} <small>${esc(estimate)}</small></button>${ice}</div>`
@@ -401,7 +471,8 @@ export function travelHtml(state: GameState, world: World, cal: Calendar, displa
 function rosterEntry(state: GameState, world: World, id: number, s: Species, cal: Calendar): string {
   const def = SPECIES_DEFS[s];
   // The same predicate the hunt and fish rows use, so the card and the row cannot disagree.
-  const gone = absence(def, cal, state.weather.iceCm);
+  const sampleCell = regionAt(world, id).campCell;
+  const gone = absence(def, cal, localWeather(state, world, sampleCell).iceCm);
   if (gone) {
     if (!isVoiceOnly(s)) return `${def.name} ${gone}`;
     return def.season.kind === "migrant" ? `${def.name} (from ${monthName(def.season.arrive)})` : `${def.name} (${gone})`;
@@ -784,7 +855,7 @@ export function instantHtml(state: GameState, world: World): string {
     : "";
   const atSource = waterSource(state, world);
   const short = p.water < WATER_FULL - 1e-9;
-  const shoreClosed = watersideCell(world, cellOf(state, world)) && state.weather.iceCm >= ICE_SHORE_CM;
+  const shoreClosed = watersideCell(world, cellOf(state, world)) && localWeather(state, world).iceCm >= ICE_SHORE_CM;
   const drink = short && (atSource || vesselLitres(p) > 0)
     ? `<button class="mini" data-act="drink">drink <small>${p.water.toFixed(1)} of ${WATER_FULL.toFixed(1)} l</small></button>`
     : shoreClosed && vesselLitres(p) <= 0
@@ -826,7 +897,7 @@ function haulHtml(state: GameState, world: World, cal: Calendar, display: Travel
   if (camp !== null && camp === cellOf(state, world)) return "";
   const o = check(state, world, cal, "haul");
   if (!o.ok) return o.why ? `<div style="margin-top:4px"><span class="dim">${esc(plain(o.why))}</span></div>` : "";
-  const km = camp === null ? null : kmBetween(state, world, cellOf(state, world), camp, walkableIce(state.weather));
+  const km = camp === null ? null : kmBetween(state, world, cellOf(state, world), camp, "safe");
   const estimate = km === null ? fmtDuration(o.duration) : formatTravel(km * 2, o.duration, display);
   return `<div style="margin-top:4px"><button class="mini" data-act="task" data-id="haul">haul it all to camp <small>${esc(plain(o.detail))}; ${esc(estimate)}</small></button></div>`;
 }

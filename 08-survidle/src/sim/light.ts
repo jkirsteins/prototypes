@@ -12,6 +12,7 @@ import { type Calendar, calendar, LATITUDE_DEG } from "./calendar";
 import { EMBER_LUX, hasEmbers } from "./fire";
 import { discovery, VISITED } from "./regionstate";
 import { cellOf } from "./position";
+import { localWeather } from "./weather";
 import type { GameState, RegionState, TaskId } from "./types";
 
 /** An overcast, starless night: the darkest the outdoors gets, and the reference dark for the odds. */
@@ -132,7 +133,8 @@ export function visitedCamps(state: GameState): { id: number; st: RegionState; c
 
 /** The light to work by at a cell: the sky, plus a lit fire at its own camp and a lit torch wherever it is carried. */
 export function illuminance(state: GameState, world: World, cal: Calendar, cell: number): number {
-  let lux = skyLux(cal, state.weather.clear, state.weather.snowCm);
+  const weather = localWeather(state, world, cell);
+  let lux = skyLux(cal, weather.clear, weather.snowCm);
   for (const c of visitedCamps(state)) {
     if (c.cell !== cell) continue;
     if (c.st.fire.lit) lux += CAMP_FIRE_LUX;
@@ -207,8 +209,8 @@ export const NIGHT_WORK: Partial<Record<TaskId, { needLux: number; darkOdds: num
 };
 
 /** The chance this attempt at this work comes off under the light where the survivor stands; 1 for work the dark does not touch. */
-export function attemptOdds(state: GameState, world: World, cal: Calendar, task: TaskId): number {
+export function attemptOdds(state: GameState, world: World, cal: Calendar, task: TaskId, cell = cellOf(state, world)): number {
   const need = NIGHT_WORK[task];
   if (!need) return 1;
-  return lightFactor(illuminance(state, world, cal, cellOf(state, world)), need.needLux, need.darkOdds);
+  return lightFactor(illuminance(state, world, cal, cell), need.needLux, need.darkOdds);
 }

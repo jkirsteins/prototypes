@@ -5,7 +5,7 @@ import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { NOT_ORDERS } from "../src/sim/ladder";
 import { beginAgain, land } from "../src/sim/landing";
-import { knownShare } from "../src/sim/mapped";
+import { knownShare, markKnown } from "../src/sim/mapped";
 import { isRead } from "../src/sim/knowledge";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
@@ -16,6 +16,7 @@ import {
 } from "../src/sim/skills";
 import { sightRangeCells } from "../src/sim/sight";
 import { exploreInjuryChance, startTask, stepTask } from "../src/sim/tasks";
+import { ensureGround } from "../src/sim/weather";
 import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
 import { cellAt, neighbours, regionAt, type World } from "../src/world/gen";
@@ -32,8 +33,12 @@ function partlyKnownNeighbour(g: G): number {
     const s = knownShare(state, world, n.id);
     return s > 0 && s < 1;
   });
-  if (!nb) throw new Error("reference seed no longer leaves a neighbour partly seen at landing");
-  return nb.id;
+  if (nb) return nb.id;
+  // Weather can make landing sight either fill or miss every neighbour. The
+  // survey contract needs one genuine mapped toehold, not a particular sky.
+  const target = home.neighbours[0].id;
+  markKnown(state, regionAt(world, target).cells[0]);
+  return target;
 }
 
 /** A cell with a real (non-spruce) base sight range: spruce's own base is 0, and 0 times any multiplier is still 0. */
@@ -83,6 +88,7 @@ describe("wayfinding", () => {
   it("runs Read water as real Fishing work inside one survey row", () => {
     const { state, world } = newGame(4);
     const region = state.player.region;
+    ensureGround(state, world, region).iceCm = 0;
     const shore = regionAt(world, region).cells.find((cell) => watersideCell(world, cell));
     expect(shore).toBeDefined();
     placeAt(state, world, shore!);
@@ -105,6 +111,8 @@ describe("wayfinding", () => {
     const g = newGame(4);
     siteCamp(g.state, g.world);
     const { state, world } = g;
+    // The survey UI includes reading open water, not an April ice cover.
+    ensureGround(state, world, state.player.region).iceCm = 0;
     const region = partlyKnownNeighbour(g);
     expect(startTask(state, world, calendar(state.minute), "explore", `region:${region}`)).toBe(true);
     state.skills.wayfinding.xp = levelMinutes(20) - 1;
@@ -125,6 +133,7 @@ describe("wayfinding", () => {
   it("keeps the current survey visible and neighbouring regions behind one chooser", () => {
     const g = newGame(4);
     const { state, world } = g;
+    ensureGround(state, world, state.player.region).iceCm = 0;
     const region = partlyKnownNeighbour(g);
     const name = regionAt(world, region).name;
     const ui = newUiState();

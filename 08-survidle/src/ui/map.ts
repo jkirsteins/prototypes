@@ -16,18 +16,20 @@ import { knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
 import { discovery, siteAt, VISITED } from "../sim/regionstate";
-import type { AgentSpecies, GameState, RegionState, Terrain, WildlifeSubject } from "../sim/types";
-import { ambientTemperature, DEEP_SNOW_CM, iceMode } from "../sim/weather";
+import type { AgentSpecies, AtmosphereSample, GameState, LocalGroundWeather, RegionState, Terrain, WildlifeSubject } from "../sim/types";
+import { atmosphereAt, conditionsAt, conditionsWithGround, DEEP_SNOW_CM, groundAt, iceMode } from "../sim/weather";
 import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
 import { WORLD_H, WORLD_W } from "../world/terrain";
 import { CELL_KM } from "../units";
 import { activeWildlifeStartles, esc, type UiState } from "./render";
-import { elevationAt, groundGlyph, offshoreAt, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
+import { elevationAt, offshoreAt, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
 import { lighting } from "./sky";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
 import { metricPointForWildlife } from "../sim/wildlife-space";
-import { hasLineOfSight, sightRangeCells, visibleCells } from "../sim/sight";
+import { campfireVisible, hasLineOfSight, sightRangeCells, visibleCells } from "../sim/sight";
+import { SNOW_SHOWN_CM, terrainHeading } from "../sim/cellstatus";
+import { cellKnowledge as presentationKnowledge, cellPresentation, TERRAIN_GLYPH } from "./cellpresentation";
 
 const CELL_M = CELL_KM * 1000;
 
@@ -36,14 +38,7 @@ const CAMPFIRE_VISIBLE_KM = 5;
 /** Inside one kilometre the map can resolve firelit ground as well as the point source itself. */
 const CAMPFIRE_LOCAL_LIGHT_KM = 1;
 
-export const GLYPH: Record<Terrain, string> = {
-  water: "~", fell: "^", rock: "n", bog: "\"", spruce: "A", pine: "T", birch: "Y", meadow: ".",
-};
-
-/** What each terrain glyph is called, for the legend. */
-const TERRAIN_NAME: Record<Terrain, string> = {
-  water: "water", fell: "fell", rock: "rock", bog: "bog", spruce: "spruce", pine: "pine", birch: "birch", meadow: "meadow",
-};
+export const GLYPH = TERRAIN_GLYPH;
 
 /**
  * Every mark the map can place on a glyph: what it looks like, its map
@@ -87,7 +82,7 @@ export function legendHtml(): string {
     .map((t) => {
       const v = VARIANTS[t];
       const forms = (v ? v.forms : [GLYPH[t]]).map((g) => `<b>${g === '"' ? "&quot;" : g}</b>`).join(" ");
-      return `<span>${forms} ${TERRAIN_NAME[t]}${v ? `: ${v.reads}` : ""}</span>`;
+      return `<span>${forms} ${terrainHeading(t)}${v ? `: ${v.reads}` : ""}</span>`;
     })
     .join("");
   const marks = Object.values(MARKS)
@@ -95,7 +90,7 @@ export function legendHtml(): string {
     .join("");
   const animals = `<span><b class="mk-animal">d r E w v B</b> large wildlife</span>`;
   return (
-    `${terrain}<span><b>=</b> ice</span>${marks}${animals}` +
+    `${terrain}<span><b class="ice-thin">~</b> thin ice</span><span><b class="ice-safe">~</b> safe ice</span>${marks}${animals}` +
     `<span class="tone-key">brighter ground stands higher; paler water is shallower</span>` +
     `<span class="pl-key">underlined: something lies there</span>` +
     `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +
@@ -103,8 +98,6 @@ export function legendHtml(): string {
     `<span class="fog-key">dark: never been there</span>`
   );
 }
-
-export const SNOW_SHOWN_CM = 5;
 
 /**
  * One rung of the zoom ladder: how much ground a glyph stands for, how many
@@ -240,12 +233,44 @@ function detailHash(seed: number, x: number, y: number, n: number): number {
   return h >>> 0;
 }
 
+/** Presentation-only fog motion. Density and location still come exclusively from the atmosphere sample. */
+export function fogGlyphHtml(seed: number, x: number, y: number): string {
+  const shapes = [".", ":", "~", "="];
+  const phase = detailHash(seed, x, y, 97) % 12000;
+  const order = detailHash(seed, x, y, 101) % shapes.length;
+  return shapes.map((_, i) => {
+    const shape = shapes[(i + order) % shapes.length];
+    return `<span class="weather-ripple fog-ripple fog-ripple-${i}" style="--fog-phase:-${phase + i * 3000}ms">${shape}</span>`;
+  }).join("");
+}
+
+/** Presentation-only cloud motion for players who prefer clouds drawn instead of cast as shadows. */
+export function cloudGlyphHtml(seed: number, x: number, y: number): string {
+  const shapes = ["o", "O", "0", "~"];
+  const phase = detailHash(seed, x, y, 109) % 16000;
+  const order = detailHash(seed, x, y, 113) % shapes.length;
+  return shapes.map((_, i) => {
+    const shape = shapes[(i + order) % shapes.length];
+    return `<span class="weather-ripple cloud-ripple cloud-ripple-${i}" style="--cloud-phase:-${phase + i * 4000}ms">${shape}</span>`;
+  }).join("");
+}
+
+/** Falling weather uses the same single-state-at-a-time animation as fog and clouds. */
+export function precipitationGlyphHtml(seed: number, x: number, y: number, kind: "rain" | "snow"): string {
+  const shapes = kind === "rain" ? ["/", "'", "|", "/"] : ["*", ".", "+", "*"];
+  const period = kind === "rain" ? 6000 : 10000;
+  const phase = detailHash(seed, x, y, kind === "rain" ? 127 : 131) % period;
+  const order = detailHash(seed, x, y, kind === "rain" ? 137 : 139) % shapes.length;
+  return shapes.map((_, i) => {
+    const shape = shapes[(i + order) % shapes.length];
+    return `<span class="weather-ripple precip-ripple precip-${kind}-${i}" style="--weather-phase:-${phase + i * period / 4}ms">${shape}</span>`;
+  }).join("");
+}
+
 /** A deterministic field of cosmetic details inside one 300 m simulation cell. */
-export function visualGround(seed: number, x: number, y: number, terrain: Terrain, base: string, detail: number, snow: boolean, frozen: boolean): string[] {
+export function visualGround(seed: number, x: number, y: number, terrain: Terrain, base: string, detail: number): string[] {
   const forms = DETAIL_FORMS[terrain];
   return Array.from({ length: detail * detail }, (_, i) => {
-    if (frozen && terrain === "water") return i % detail === Math.floor(detail / 2) ? "-" : "=";
-    if (snow && terrain === "meadow") return detailHash(seed, x, y, i) % 4 === 0 ? "." : "*";
     if (terrain === "water" && base === "-") return detailHash(seed, x, y, i) % 4 === 0 ? "~" : "-";
     const pick = detailHash(seed, x, y, i) % forms.length;
     return pick === 0 ? base : forms[pick];
@@ -433,6 +458,42 @@ function markedCells(st: RegionState): number[] {
   return [...cells].sort((a, b) => a - b);
 }
 
+interface ViewshedCache {
+  state: GameState;
+  world: World;
+  key: string;
+  cells: Set<number>;
+  projections: Map<string, string>;
+}
+
+let viewshedCache: ViewshedCache | null = null;
+
+/** One authoritative visibility result per displayed game minute, shared by the key and markup. */
+function currentViewshed(state: GameState, world: World, cal: Calendar, cell: number): ViewshedCache {
+  const minute = Math.floor(state.minute + state.weather.elapsedMinutes);
+  const range = sightRangeCells(state, world, cal, cell);
+  const key = `${cell}:${minute}:${range}`;
+  if (viewshedCache?.state === state && viewshedCache.world === world && viewshedCache.key === key) return viewshedCache;
+  viewshedCache = { state, world, key, cells: visibleCells(state, world, cal, cell), projections: new Map() };
+  return viewshedCache;
+}
+
+function projectedViewshed(cache: ViewshedCache, x0: number, y0: number, cellsPerGlyph: number, width: number, height: number): string {
+  const projectionKey = `${x0}:${y0}:${cellsPerGlyph}:${width}:${height}`;
+  const cached = cache.projections.get(projectionKey);
+  if (cached !== undefined) return cached;
+  const glyphs = new Set<number>();
+  for (const cell of cache.cells) {
+    const c = cellAt(cache.world, cell);
+    const gx = Math.floor((c.x - x0) / cellsPerGlyph);
+    const gy = Math.floor((c.y - y0) / cellsPerGlyph);
+    if (gx >= 0 && gy >= 0 && gx < width && gy < height) glyphs.add(gy * width + gx);
+  }
+  const signature = [...glyphs].sort((a, b) => a - b).join(".");
+  cache.projections.set(projectionKey, signature);
+  return signature;
+}
+
 /** Everything the map's markup depends on, so it is rebuilt only when one of them changes. */
 export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar, nowMs = performance.now()): string {
   const marks = Object.entries(state.regions).map(([id, r]) => {
@@ -455,19 +516,28 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
       return `${s.id}:${s.active?.cell}:${wildlifeMembers(s)}:${state.wildlife.recognized[s.id] ? s.name ?? "" : ""}:${s.active?.intent}:${point ? `${point.xM.toFixed(2)}:${point.yM.toFixed(2)}` : ""}`;
     }).join(",") : "";
   const playerDetail = level.detail > 1 ? playerVisualSlot(state, level.detail) : "";
+  const weatherMinute = Math.floor((state.minute + state.weather.elapsedMinutes) / 10);
+  const weatherCells = [
+    cell,
+    cellIdx(world, Math.max(0, Math.min(world.w - 1, x0)), Math.max(0, Math.min(world.h - 1, y0))),
+    cellIdx(world, Math.max(0, Math.min(world.w - 1, x0 + level.w * level.cells - 1)), Math.max(0, Math.min(world.h - 1, y0 + level.h * level.cells - 1))),
+  ];
+  const localWeather = weatherCells.map((weatherCell, i) => {
+    const local = i === 0 ? conditionsAt(state, world, cal, weatherCell) : null;
+    const a = local ?? atmosphereAt(state, world, weatherCell);
+    const ground = local?.ground ?? null;
+    return `${a.cloud >= 0.15 ? 1 : 0}${a.precip === "rain" ? 1 : 0}${a.precip === "snow" ? 1 : 0}${a.fog >= 0.05 ? 1 : 0}${(ground?.snowCm ?? 0) > SNOW_SHOWN_CM ? 1 : 0}${(ground?.snowCm ?? 0) > DEEP_SNOW_CM ? 1 : 0}${iceMode({ iceCm: ground?.iceCm ?? 0 })}`;
+  }).join(";");
   const viewRange = level.cells === 1 ? sightRangeCells(state, world, cal, cell) : "";
+  const viewshed = projectedViewshed(currentViewshed(state, world, cal, cell), x0, y0, level.cells, level.w, level.h);
   const startles = activeWildlifeStartles(ui, nowMs).map((cue) => cue.key).join(",");
   const viewport = startles && ui.mapViewport ? Object.values(ui.mapViewport).join(",") : "";
-  return `${ui.zoom}|${x0}|${y0}|${cell}:${playerDetail}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${carcasses}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|${animals}|${startles}|${viewport}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}:${playerDetail}|${ui.selected}|cs${ui.cloudShadows ? 1 : 0}|wx${weatherMinute}:${localWeather}|${cal.isNight}|${marks}|${route}|${piles}|${carcasses}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|vis${viewshed}|${animals}|${startles}|${viewport}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs = performance.now()): string {
   const cur = state.player.region;
   const sel = ui.selected;
-  const snow = state.weather.snowCm > SNOW_SHOWN_CM;
-  // Deep enough to bury what it lies on, at the depth this game already uses
-  // for snow that halves a walk and doubles the burn.
-  const deepSnow = state.weather.snowCm > DEEP_SNOW_CM;
   const l = levelAt(ui.zoom);
   const z = l.cells;
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -483,7 +553,8 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   // Current visibility has meaning only while one glyph is one mechanical
   // cell. Coarser blocks remain a map of knowledge rather than pretending a
   // majority-visible block is a precise view.
-  const visibleNow = z === 1 ? visibleCells(state, world, cal, playerCell) : null;
+  const currentVisible = currentViewshed(state, world, cal, playerCell).cells;
+  const visibleNow = z === 1 ? currentVisible : null;
   const toGlyph = (cell: number): number => {
     const c = cellAt(world, cell);
     const gx = Math.floor((c.x - x0) / z);
@@ -491,6 +562,11 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (gx < 0 || gy < 0 || gx >= l.w || gy >= l.h) return -1;
     return gy * l.w + gx;
   };
+  const weatherVisibleGlyphs = new Set<number>();
+  for (const cell of currentVisible) {
+    const glyph = toGlyph(cell);
+    if (glyph >= 0) weatherVisibleGlyphs.add(glyph);
+  }
 
   const markerAt = new Map<number, (typeof MARKS)[keyof typeof MARKS]>();
   const visibleFireDistance = new Map<number, number>();
@@ -510,7 +586,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       // moved away from is read by its roof alone.
       const live = visibleNow === null || visibleNow.has(cell);
       const fireDistanceKm = Math.hypot(cell % world.w - playerCell % world.w, Math.floor(cell / world.w) - Math.floor(playerCell / world.w)) * CELL_KM;
-      const fireVisible = isCamp && st.fire.lit && (live || (fireDistanceKm <= CAMPFIRE_VISIBLE_KM && hasLineOfSight(world, playerCell, cell, 1.5)));
+      const fireVisible = isCamp && st.fire.lit && (live || (fireDistanceKm <= CAMPFIRE_VISIBLE_KM && campfireVisible(state, world, playerCell, cell)));
       if (fireVisible) {
         visibleFireDistance.set(cell, fireDistanceKm);
         m = MARKS.fire;
@@ -582,6 +658,16 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const regions = new Int32Array(l.w * l.h);
   const terrains: Terrain[] = new Array(l.w * l.h);
   const seenAt = new Uint8Array(l.w * l.h);
+  interface GlyphWeather { air: AtmosphereSample; ground: LocalGroundWeather | null }
+  const weatherAt: Array<GlyphWeather | null> = new Array(l.w * l.h).fill(null);
+  const groundByRegion = new Map<number, LocalGroundWeather>();
+  const localGround = (region: number): LocalGroundWeather => {
+    const cached = groundByRegion.get(region);
+    if (cached) return cached;
+    const ground = groundAt(state, world, region);
+    groundByRegion.set(region, ground);
+    return ground;
+  };
   for (let gy = 0; gy < l.h; gy++) {
     for (let gx = 0; gx < l.w; gx++) {
       const cx = x0 + gx * z;
@@ -597,6 +683,17 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       regions[i] = b.region;
       terrains[i] = b.terrain;
       seenAt[i] = b.seen;
+      // Live weather is observable only on known ground inside the actual
+      // viewshed. Remembered and unknown cells retain ground memory without
+      // becoming an omniscient weather radar at any zoom.
+      if (b.seen > 0 && weatherVisibleGlyphs.has(i)) {
+        const sampleX = Math.min(world.w - 1, cx + Math.floor(z / 2));
+        const sampleY = Math.min(world.h - 1, cy + Math.floor(z / 2));
+        const sampleCell = cellIdx(world, sampleX, sampleY);
+        const ground = localGround(b.region);
+        const conditions = conditionsWithGround(state, world, sampleCell, ground);
+        weatherAt[i] = { air: conditions, ground };
+      }
     }
   }
   const drawBorders = z <= 3;
@@ -688,10 +785,11 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   // animate it down to the true light through the half-second transitions on
   // the shade, the tint and the saturation: a fade over the whole map every
   // time it is rebuilt, which is every zoom, every step into a new view.
-  const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
-  const falling = light.precip === "rain" ? " rain" : light.precip === "snow" ? " snowing" : "";
+  const playerGround = localGround(state.player.region);
+  const playerConditions = conditionsWithGround(state, world, playerCell, playerGround);
+  const light = lighting(cal, playerConditions, playerConditions.temperatureC);
   const lit = `--bright:${light.brightness.toFixed(3)};--sat:${light.saturation.toFixed(3)};--tint:${light.tint};--tint-a:${light.alpha.toFixed(3)}`;
-  parts.push(`<div class="scroll-x${cal.isNight ? " night" : ""}${falling}" style="--px:${l.px}px;--line:${l.line}px;${lit}"><div class="grid${l.detail > 1 ? " detailed" : ""} season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}" role="grid" tabindex="0" aria-label="Map. Use arrow keys to inspect cells." style="--cols:${l.w};--detail:${l.detail};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px">`);
+  parts.push(`<div class="scroll-x${cal.isNight ? " night" : ""}" style="--px:${l.px}px;--line:${l.line}px;${lit}"><div class="grid season-${cal.season}${l.detail > 1 ? " detailed" : ""} ${ui.cloudShadows ? "cloud-shadows" : "cloud-glyphs"}${cal.isNight ? " night" : ""}" role="grid" tabindex="0" aria-label="Map. Use arrow keys to inspect cells." style="--cols:${l.w};--detail:${l.detail};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px">`);
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
@@ -702,8 +800,22 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const cls = ["c"];
     let glyph = " ";
     let detailGlyphs: string[] | null = null;
-    let style = "";
+    const styles: string[] = [];
     let animalId: number | null = null;
+    let animalRecoil: number | null = null;
+    let terrainLabel = "unknown ground";
+    const sampledWeather = weatherAt[i];
+    const weather = sampledWeather?.air ?? null;
+    const weatherGround = sampledWeather?.ground ?? null;
+    if (weather) {
+      const fall = Math.min(1, weather.precipMmPerHour / 7.5);
+      cls.push("wx-local");
+      if (weather.cloud >= 0.15) cls.push("wx-cloud");
+      if (weather.fog >= 0.05) cls.push("wx-fog");
+      if (weather.precipMmPerHour >= 0.05 && weather.precip === "rain") cls.push("wx-rain");
+      if (weather.precipMmPerHour >= 0.05 && weather.precip === "snow") cls.push("wx-snowing");
+      styles.push(`--wx-cloud:${weather.cloud.toFixed(3)}`, `--wx-shadow:${(weather.cloud * 0.14).toFixed(3)}`, `--wx-fog:${weather.fog.toFixed(3)}`, `--wx-fall:${fall.toFixed(3)}`);
+    }
     if (reg < 0) {
       cls.push("void");
     } else if (seen === 0) {
@@ -724,20 +836,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       cls.push(`t-${t}`);
       const lightRing = rings.get(i);
       const firelit = lightRing !== undefined && hasLineOfSight(world, playerCell, mechanicalCell, 0.5);
-      const current = visibleNow === null || visibleNow.has(mechanicalCell) || visibleFireDistance.has(mechanicalCell) || firelit;
+      const surfaceCurrent = weatherVisibleGlyphs.has(i);
+      const current = surfaceCurrent || visibleFireDistance.has(mechanicalCell) || firelit;
       if (seen === 1 && !current) cls.push("dim");
       if (seen === 2 && !current) cls.push("memory");
-      const fogLeft = gx > 0 && seenAt[i - 1] === 0;
-      const fogRight = gx < l.w - 1 && seenAt[i + 1] === 0;
-      const fogTop = gy > 0 && seenAt[i - l.w] === 0;
-      const fogBottom = gy < l.h - 1 && seenAt[i + l.w] === 0;
-      if (fogLeft || fogRight || fogTop || fogBottom) {
-        cls.push("fog-edge");
-        if (fogLeft) cls.push("fog-left");
-        if (fogRight) cls.push("fog-right");
-        if (fogTop) cls.push("fog-top");
-        if (fogBottom) cls.push("fog-bottom");
-      }
       if (drawBorders) {
         if (gx > 0 && ownsEdge(reg, regions[i - 1])) cls.push("bl");
         if (gx < l.w - 1 && ownsEdge(reg, regions[i + 1])) cls.push("br");
@@ -747,9 +849,21 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (reg === cur) cls.push("cur");
       if (sel !== null && reg === sel) cls.push("sel");
       glyph = GLYPH[t];
+      terrainLabel = terrainHeading(t);
       // A coarser glyph is a block of mixed ground with no single field to report.
       if (z === 1) {
-        glyph = groundGlyph(world.seed, x0 + gx * z, y0 + gy * z, t, glyph);
+        const presentation = cellPresentation(
+          state,
+          world,
+          mechanicalCell,
+          presentationKnowledge(state, mechanicalCell, surfaceCurrent),
+          weatherGround ? () => weatherGround : undefined,
+        );
+        glyph = presentation.glyph;
+        terrainLabel = presentation.heading;
+        for (const presentationClass of presentation.classes) {
+          if (presentationClass !== `t-${t}` && presentationClass !== "memory" && presentationClass !== "dim" && !cls.includes(presentationClass)) cls.push(presentationClass);
+        }
         const detailBase = glyph;
         // Which ground has gone over. The season decides whether it shows.
         if (turnedGround(world.seed, x0 + gx * z, y0 + gy * z, t)) cls.push("turned");
@@ -764,18 +878,13 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
             if (tone !== 1) cls.push(`tone-${tone}`);
           }
         }
-        if (l.detail > 1) detailGlyphs = visualGround(world.seed, x0 + gx, y0 + gy, t, detailBase, l.detail, snow, t === "water" && iceMode(state.weather) !== "none");
+        if (l.detail > 1) detailGlyphs = visualGround(world.seed, x0 + gx, y0 + gy, t, detailBase, l.detail);
       }
-      if (t === "water" && iceMode(state.weather) !== "none") {
-        glyph = "=";
-        cls.push(iceMode(state.weather) === "safe" ? "ice-safe" : "ice-thin");
-      }
-      if (snow && t === "meadow") glyph = "*";
       if (lyingGlyphs.has(i) && seen === 2) cls.push("pl");
       const ring = current ? lightRing : undefined;
       if (ring !== undefined) {
         cls.push(`lit-${ring}`);
-        style = ` style="--fd:${flickerDelay(i)}"`;
+        styles.push(`--fd:${flickerDelay(i)}`);
       }
     }
     const m = markerAt.get(i);
@@ -803,8 +912,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         animalAnchors.set(animal.id, { x: (gx + 0.5) * l.px, y: (gy + 0.5) * l.line });
         const recoil = recoilAt.get(animal.id);
         if (recoil !== undefined) {
-          cls.push("wildlife-recoil");
-          style = style ? style.replace(/"$/, `;--wildlife-start:${recoil}ms"`) : ` style="--wildlife-start:${recoil}ms"`;
+          animalRecoil = recoil;
         }
       }
     }
@@ -819,10 +927,9 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // flicker on the @ and the camp's x: they are the cells whose names
     // differ enough to be found and moved.
     const act = named ? ` data-act="select" data-i="${i}" data-r="${reg}"` : "";
-    const terrain = reg < 0 ? "beyond the mapped world" : seen === 0 ? "unknown ground" : `${TERRAIN_NAME[terrains[i]]}${z > 1 ? `, ${z * CELL_M} m block` : ""}`;
+    const terrain = reg < 0 ? "beyond the mapped world" : seen === 0 ? "unknown ground" : `${terrainLabel}${z > 1 ? `, ${z * CELL_M} m block` : ""}`;
     const place = reg >= 0 && named ? world.regions.get(reg)?.name : undefined;
     const info = [terrain, place, ...featuresAt.get(i) ?? []].filter(Boolean).join("; ");
-    const wildlife = animalId === null ? "" : ` data-wildlife-id="${animalId}"`;
     const cx = x0 + gx * z;
     const cy = y0 + gy * z;
     const mapCell = cx >= 0 && cy >= 0 && cx < world.w && cy < world.h ? ` data-map-cell="${cellIdx(world, cx, cy)}"` : "";
@@ -830,6 +937,14 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // in the page's own voice, where the browser's tooltip said it after a
     // delay and stood over whatever it was next to.
     let content = glyphHtml(glyph);
+    if (!detailGlyphs && cls.includes("mk")) {
+      const wildlifeClass = animalRecoil === null ? "" : " wildlife-recoil";
+      const wildlifeData = animalId === null ? "" : ` data-wildlife-id="${animalId}"`;
+      const wildlifeStyle = animalRecoil === null ? "" : ` style="--wildlife-start:${animalRecoil}ms"`;
+      content = `<b class="cell-signal${wildlifeClass}"${wildlifeData}${wildlifeStyle}>${content}</b>`;
+    } else if (!detailGlyphs) {
+      content = `<span class="cell-ground"><span class="terrain-visual">${content}</span></span>`;
+    }
     if (detailGlyphs) {
       const overlays: string[] = [];
       const used = new Set<number>();
@@ -842,12 +957,25 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
                 : mid * l.detail + mid;
         used.add(slot);
         const mood = m.cls === "mk-player" ? ` mood-${moodOf(state)}` : "";
-        overlays.push(`<b class="micro-mark ${m.cls}${mood}" data-visual-slot="${slot}" style="${visualSlotStyle(slot, l.detail)}">${glyphHtml(m.glyph)}</b>`);
+        overlays.push(`<b class="micro-mark cell-signal ${m.cls}${mood}" data-visual-slot="${slot}" style="${visualSlotStyle(slot, l.detail)}">${glyphHtml(m.glyph)}</b>`);
       }
       const ground = detailGlyphs.map((g) => `<i class="micro-ground">${glyphHtml(g)}</i>`).join("");
-      content = `<span class="detail-ground" aria-hidden="true">${ground}</span>${overlays.join("")}`;
+      content = `<span class="cell-ground" aria-hidden="true"><span class="detail-ground terrain-visual">${ground}</span></span>${overlays.join("")}`;
     }
-    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${wildlife}${style}>${content}</span>`);
+    if (weather && (weather.cloud >= 0.15 || weather.fog >= 0.05 || weather.rainMmPerHour >= 0.05 || weather.snowCmPerHour >= 0.05)) {
+      let weatherGlyphs = weather.fog >= 0.05 ? fogGlyphHtml(world.seed, cx, cy) : "";
+      if (!weatherGlyphs && weather.precipMmPerHour >= 0.05 && weather.precip !== "none") {
+        weatherGlyphs = precipitationGlyphHtml(world.seed, cx, cy, weather.precip);
+      }
+      if (!weatherGlyphs && !ui.cloudShadows && weather.cloud >= 0.15) {
+        weatherGlyphs = cloudGlyphHtml(world.seed, cx, cy);
+      }
+      if (weatherGlyphs) cls.push("wx-glyph");
+      if (ui.cloudShadows && weather.cloud >= 0.15) content += `<i class="cloud-shadow" aria-hidden="true"></i>`;
+      if (weatherGlyphs) content += `<i class="cell-weather" aria-hidden="true">${weatherGlyphs}</i>`;
+    }
+    const style = styles.length ? ` style="${styles.join(";")}"` : "";
+    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${style}>${content}</span>`);
   }
   const animalMarkup: string[] = [];
   if (l.detail > 1) {

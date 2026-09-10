@@ -4,14 +4,16 @@
  * cuts short; the dark takes it away. Marks cells, never regions.
  */
 import { CELL_KM } from "../units";
-import { terrainOf, type World } from "../world/gen";
+import { regionPeek, terrainOf, type World } from "../world/gen";
 import { fieldsAt } from "../world/terrain";
 import type { Calendar } from "./calendar";
+import { CLEAR_MOR_KM, MAX_OPTICAL_DEPTH, sampleAtmosphere } from "./climate";
 import { lightFactor, skyLux, SPOT_LUX, WALK_LUX } from "./light";
 import { markKnown } from "./mapped";
 import { body } from "./person";
 import { RUNG_LEVEL, skillLevel } from "./skills";
-import type { GameState, Terrain } from "./types";
+import type { GameState, LocalGroundWeather, Terrain } from "./types";
+import { groundAt, localWeather } from "./weather";
 
 /** A standing eye, metres. */
 const EYE_HEIGHT_M = 1.7;
@@ -41,6 +43,9 @@ const FELL_SPINE_M = 1200;
 const EARTH_RADIUS_M = 6_371_000;
 /** Representative mature canopy tops above the generated ground surface. */
 const CANOPY_HEIGHT_M: Partial<Record<Terrain, number>> = { spruce: 22, pine: 17, birch: 14 };
+/** A bright point source remains distinguishable at 2% transmitted contrast, below the 5% daylight terrain threshold. */
+export const CAMPFIRE_CONTRAST_LIMIT = 0.02;
+const CAMPFIRE_MAX_OPTICAL_DEPTH = -Math.log(CAMPFIRE_CONTRAST_LIMIT);
 
 /** Terrain is immutable, so the few daylight ranges repeatedly read from one place can share their expensive results. */
 const VIEWSHED_CACHE_ENTRIES = 32;
@@ -82,7 +87,7 @@ const OPEN_RANGE_CELLS = horizonCells(EYE_HEIGHT_M);
 function vantageBaseCells(world: World, t: Terrain, x: number, y: number): number {
   if (t === "spruce") return SPRUCE_RANGE_CELLS;
   if (t === "pine" || t === "birch") return FOREST_RANGE_CELLS;
-  if (t === "fell" || t === "rock") return horizonCells(fieldsAt(world.seed, x, y).e * FELL_SPINE_M);
+  if (t === "fell" || t === "rock") return horizonCells(Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * FELL_SPINE_M);
   return OPEN_RANGE_CELLS;
 }
 
@@ -116,8 +121,8 @@ function wayfindingSightMult(state: GameState): number {
  * not only while deliberately sweeping a region.
  */
 export function sightRangeCells(state: GameState, world: World, cal: Calendar, cell: number): number {
-  const daylight = skyLux(cal, state.weather.clear, state.weather.snowCm);
-  return Math.max(ringCells(daylight), sightReachCells(state, world, cal, cell));
+  const daylight = sightLux(state, world, cal, cell);
+  return Math.max(ringCells(daylight), sightReachAtLux(state, world, cell, daylight));
 }
 
 /**
@@ -131,10 +136,20 @@ export function sightRangeCells(state: GameState, world: World, cal: Calendar, c
  * cheap. What a vantage opens is this, and what a walk reveals is the other.
  */
 export function sightReachCells(state: GameState, world: World, cal: Calendar, cell: number): number {
+  return sightReachAtLux(state, world, cell, sightLux(state, world, cal, cell));
+}
+
+/** Ambient sky light at this cell. A carried torch lights work, not distant terrain. */
+function sightLux(state: GameState, world: World, cal: Calendar, cell: number): number {
+  const weather = localWeather(state, world, cell);
+  return skyLux(cal, weather.clear, weather.snowCm);
+}
+
+function sightReachAtLux(state: GameState, world: World, cell: number, lux: number): number {
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
   const base = vantageBaseCells(world, terrainOf(world, x, y), x, y);
-  const lf = lightFactor(skyLux(cal, state.weather.clear, state.weather.snowCm), SPOT_LUX, 0);
+  const lf = lightFactor(lux, SPOT_LUX, 0);
   const reach = SIGHT_REACH_MULT[body(state).sightReach];
   return Math.max(0, Math.floor(base * lf * reach * wayfindingSightMult(state)));
 }
@@ -161,7 +176,7 @@ function ringCells(lux: number): number {
 
 /** Height in metres of the surface that can hide ground behind this cell. */
 function obstacleHeightM(world: World, x: number, y: number, distM: number): number {
-  const ground = fieldsAt(world.seed, x, y).e * FELL_SPINE_M;
+  const ground = Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * FELL_SPINE_M;
   const terrain = terrainOf(world, x, y);
   const canopy = terrain === "spruce" || distM > FOREST_VISIBILITY_M ? CANOPY_HEIGHT_M[terrain] ?? 0 : 0;
   return ground + canopy;
@@ -183,8 +198,8 @@ export function hasLineOfSight(world: World, observerCell: number, targetCell: n
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
   const totalCells = Math.hypot(dx, dy);
   const totalM = totalCells * CELL_KM * 1000;
-  const observerM = fieldsAt(world.seed, cx, cy).e * FELL_SPINE_M + EYE_HEIGHT_M;
-  const targetM = fieldsAt(world.seed, tx, ty).e * FELL_SPINE_M + targetHeightM - (totalM * totalM) / (2 * EARTH_RADIUS_M);
+  const observerM = Math.min(1, Math.max(0, fieldsAt(world.seed, cx, cy).e)) * FELL_SPINE_M + EYE_HEIGHT_M;
+  const targetM = Math.min(1, Math.max(0, fieldsAt(world.seed, tx, ty).e)) * FELL_SPINE_M + targetHeightM - (totalM * totalM) / (2 * EARTH_RADIUS_M);
   let previous = observerCell;
   for (let i = 1; i < steps; i++) {
     const x = cx + Math.round((dx * i) / steps);
@@ -204,7 +219,7 @@ export function hasLineOfSight(world: World, observerCell: number, targetCell: n
 /** Marches one sightline, retaining the highest apparent surface angle met so ridges and canopies hide lower ground beyond them. */
 function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, range: number, seen: Set<number>): void {
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
-  const observerM = fieldsAt(world.seed, cx, cy).e * FELL_SPINE_M + EYE_HEIGHT_M;
+  const observerM = Math.min(1, Math.max(0, fieldsAt(world.seed, cx, cy).e)) * FELL_SPINE_M + EYE_HEIGHT_M;
   let horizonSlope = -Infinity;
   let previous = -1;
   for (let i = 1; i <= steps; i++) {
@@ -224,6 +239,86 @@ function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, 
   }
 }
 
+export interface OpticalSampler {
+  extinction(midX: number, midY: number): number;
+}
+
+/** Bilinear midpoint extinction from fixed cell-centre samples; query order cannot change it. */
+export function opticalSampler(state: GameState, world: World): OpticalSampler {
+  const air = new Map<number, number>();
+  const ground = new Map<number, LocalGroundWeather>();
+  const minute = state.minute + state.weather.elapsedMinutes;
+  const at = (x: number, y: number): number => {
+    const cell = y * world.w + x;
+    const cached = air.get(cell);
+    if (cached !== undefined) return cached;
+    const region = regionPeek(world, x, y);
+    let localGround = ground.get(region);
+    if (!localGround) {
+      localGround = groundAt(state, world, region);
+      ground.set(region, localGround);
+    }
+    const extinction = sampleAtmosphere(
+      { startDoy: state.weather.startDoy, snowCm: localGround.snowCm },
+      world, minute, x, y,
+    ).extinctionPerKm;
+    air.set(cell, extinction);
+    return extinction;
+  };
+  return {
+    extinction(midX, midY) {
+      if (midX < 0 || midY < 0 || midX > world.w - 1 || midY > world.h - 1) return Number.POSITIVE_INFINITY;
+      const x0 = Math.floor(midX);
+      const y0 = Math.floor(midY);
+      const x1 = Math.min(world.w - 1, x0 + 1);
+      const y1 = Math.min(world.h - 1, y0 + 1);
+      const tx = midX - x0;
+      const ty = midY - y0;
+      const top = at(x0, y0) * (1 - tx) + at(x1, y0) * tx;
+      const bottom = at(x0, y1) * (1 - tx) + at(x1, y1) * tx;
+      return top * (1 - ty) + bottom * ty;
+    },
+  };
+}
+
+/** Cumulative extinction can only remove contrast. Clear air after a dense band never restores it. */
+function contrastReaches(cx: number, cy: number, dx: number, dy: number, sampler: OpticalSampler, maxOpticalDepth = MAX_OPTICAL_DEPTH): boolean {
+  const distanceCells = Math.hypot(dx, dy);
+  const unitX = dx / distanceCells;
+  const unitY = dy / distanceCells;
+  const segments = Math.ceil(distanceCells);
+  let opticalDepth = 0;
+  for (let i = 0; i < segments; i++) {
+    const lengthCells = Math.min(1, distanceCells - i);
+    const midpointCells = i + lengthCells / 2;
+    opticalDepth += sampler.extinction(cx + unitX * midpointCells, cy + unitY * midpointCells)
+      * lengthCells * CELL_KM;
+    if (opticalDepth > maxOpticalDepth + 1e-12) return false;
+  }
+  return true;
+}
+
+/** A campfire is self-luminous, but terrain and cumulative local extinction can still hide it. */
+export function campfireVisible(state: GameState, world: World, observerCell: number, fireCell: number): boolean {
+  if (!hasLineOfSight(world, observerCell, fireCell, 1.5)) return false;
+  if (observerCell === fireCell) return true;
+  const cx = observerCell % world.w;
+  const cy = Math.floor(observerCell / world.w);
+  return contrastReaches(
+    cx,
+    cy,
+    fireCell % world.w - cx,
+    Math.floor(fireCell / world.w) - cy,
+    opticalSampler(state, world),
+    CAMPFIRE_MAX_OPTICAL_DEPTH,
+  );
+}
+
+/** Includes the first whole-cell centre beyond clear MOR so the ray test owns the exact boundary. */
+export function opticalCandidateRangeCells(terrainRange: number): number {
+  return Math.min(terrainRange, Math.ceil(CLEAR_MOR_KM / CELL_KM));
+}
+
 /**
  * What the eye reaches from `cell` becomes known ground: the cell
  * underfoot always, then a ray to every cell on the vantage's own range,
@@ -234,24 +329,40 @@ export function seeFrom(state: GameState, world: World, cal: Calendar, cell: num
 }
 
 /** Ground in sight now, unlike mapped knowledge which survives after the eye moves on. */
-export function visibleCells(state: GameState, world: World, cal: Calendar, cell: number): ReadonlySet<number> {
-  const r = sightRangeCells(state, world, cal, cell);
+export function visibleCells(state: GameState, world: World, cal: Calendar, cell: number): Set<number> {
+  // Clear air itself reaches the contrast threshold at CLEAR_MOR_KM, so
+  // terrain and eyesight cannot make a farther candidate optically visible.
+  const r = opticalCandidateRangeCells(sightRangeCells(state, world, cal, cell));
   const key = `${world.seed}:${world.w}:${world.h}:${cell}:${r}`;
-  const cached = cachedViewshed(key);
-  if (cached) return cached;
+  let terrainVisible = cachedViewshed(key);
+  if (!terrainVisible) {
+    const terrain = new Set<number>([cell]);
+    if (r > 0) {
+      const cx = cell % world.w;
+      const cy = Math.floor(cell / world.w);
+      // Cast to the enclosing square for dense angular coverage, but stop each
+      // ray at the Euclidean radius. Range is a real distance, not a square.
+      for (let d = -r; d <= r; d++) {
+        marchRay(world, cx, cy, d, -r, r, terrain);
+        marchRay(world, cx, cy, d, r, r, terrain);
+      }
+      for (let d = -r + 1; d <= r - 1; d++) {
+        marchRay(world, cx, cy, -r, d, r, terrain);
+        marchRay(world, cx, cy, r, d, r, terrain);
+      }
+    }
+    terrainVisible = retainViewshed(key, terrain);
+  }
   const seen = new Set<number>([cell]);
-  if (r <= 0) return retainViewshed(key, seen);
+  if (r <= 0) return seen;
   const cx = cell % world.w;
   const cy = Math.floor(cell / world.w);
-  // Cast to the enclosing square for dense angular coverage, but stop each
-  // ray at the Euclidean radius. Range is a real distance, not a square.
-  for (let d = -r; d <= r; d++) {
-    marchRay(world, cx, cy, d, -r, r, seen);
-    marchRay(world, cx, cy, d, r, r, seen);
+  const sampler = opticalSampler(state, world);
+  for (const target of terrainVisible) {
+    if (target === cell) continue;
+    const dx = target % world.w - cx;
+    const dy = Math.floor(target / world.w) - cy;
+    if (contrastReaches(cx, cy, dx, dy, sampler)) seen.add(target);
   }
-  for (let d = -r + 1; d <= r - 1; d++) {
-    marchRay(world, cx, cy, -r, d, r, seen);
-    marchRay(world, cx, cy, r, d, r, seen);
-  }
-  return retainViewshed(key, seen);
+  return seen;
 }

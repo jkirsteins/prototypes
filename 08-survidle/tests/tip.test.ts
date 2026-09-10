@@ -26,6 +26,8 @@ import { cellFromClient, cellFromPoint, levelAt, viewOrigin } from "../src/ui/ma
 import { newUiState } from "../src/ui/render";
 import { mapInventoryHtml, tipHtml, tipKey } from "../src/ui/tip";
 import { cellAt, regionAt } from "../src/world/gen";
+import { ensureGround } from "../src/sim/weather";
+import { testAtmosphere } from "./weather-helpers";
 
 /** The point at the middle of the glyph holding this cell, in the board's own pixels. */
 function pointOf(world: ReturnType<typeof newGame>["world"], state: ReturnType<typeof newGame>["state"], ui: ReturnType<typeof newUiState>, cell: number) {
@@ -163,6 +165,7 @@ describe("what the tooltip says", () => {
     const cal = calendar(state.minute, state.startDoy);
     // Somewhere in the home region the survivor has seen but cannot reach.
     const home = regionAt(world, state.player.region);
+    ensureGround(state, world, state.player.region).iceCm = 0;
     const far = home.cells.find((c) => cellAt(world, c).terrain === "water");
     expect(far).toBeDefined();
     markKnown(state, far!);
@@ -311,7 +314,8 @@ describe("the tooltip's key", () => {
     const here = cellOf(state, world);
     createCarcass(state, world, "hare", { meatKg: 1 });
     const before = tipKey(state, world, cal, here);
-    stepCarcasses(state, 60, 12);
+    testAtmosphere({ temperatureC: 12 });
+    stepCarcasses(state, world, 60);
     expect(tipKey(state, world, cal, here)).not.toBe(before);
   });
 
@@ -388,8 +392,8 @@ describe("the map inventory", () => {
   });
 
   it("shows recoverable carcasses at camp, here, and a highlighted cell", () => {
+    testAtmosphere({ temperatureC: 20 });
     const { state, world } = newGame(21);
-    state.weather.offset = 20;
     siteCamp(state, world);
     const camp = campCellOf(state, world)!;
     const other = regionAt(world, state.player.region).cells.find((cell) => cell !== camp)!;
@@ -403,7 +407,8 @@ describe("the map inventory", () => {
     expect(html).toContain("Here: mountain hare carcass: 1.0 kg, fresh, 36 h left");
     expect(read(tipHtml(state, world, calendar(state.minute, state.startDoy), other))).toContain("mountain hare carcass: 1.0 kg, fresh, 36 h left");
 
-    stepCarcasses(state, 18 * 60, 12);
+    testAtmosphere({ temperatureC: 12 });
+    stepCarcasses(state, world, 18 * 60);
     expect(read(mapInventoryHtml(state, world, calendar(state.minute, state.startDoy), camp))).toContain("scavenged, 18 h left");
   });
 });

@@ -16,6 +16,7 @@ import { campSite, regionState } from "../src/sim/regionstate";
 import { cellAt, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 import { isWorkOrder } from "../src/sim/types";
+import { ensureGround } from "../src/sim/weather";
 import { activateWildlife } from "../src/sim/wildlife-agents";
 
 type G = ReturnType<typeof newGame>;
@@ -507,6 +508,7 @@ describe("away for the season", () => {
     g.state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false }, { id: "fishingSpear", durability: 100, litres: 0, frozen: false });
     addItem(g.state.player.pack, "arrow", 10);
     placeAt(g.state, g.world, cell);
+    ensureGround(g.state, g.world, g.state.player.region).iceCm = 0;
     return g;
   }
   function lakeShore(world: G["world"]): number {
@@ -545,12 +547,12 @@ describe("away for the season", () => {
     const g = armedAt(5, lakeShore(world));
     const { state } = g;
     const june = calendar(1440 * 70);
-    state.weather.iceCm = 10;
+    ensureGround(state, g.world, state.player.region).iceCm = 10;
     const duck = check(state, g.world, june, "hunt", "mallard");
     expect(duck.ok).toBe(false);
     expect(duck.why).toBe("the lake is frozen");
     // Fish are reached through the ice, however thick it is.
-    state.weather.iceCm = 30;
+    ensureGround(state, g.world, state.player.region).iceCm = 30;
     const perch = check(state, g.world, june, "fish", "perch");
     expect(perch.ok).toBe(true);
     expect(perch.why).toBe("");

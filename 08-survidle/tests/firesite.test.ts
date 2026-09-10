@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { fireSiteMinutes } from "../src/sim/fire";
@@ -7,10 +7,13 @@ import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
 import { campSite, regionState } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
+import { ensureGround } from "../src/sim/weather";
 import { cellAt, type World } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
 
 const cal = calendar(0);
+afterEach(() => vi.restoreAllMocks());
 
 /** Nothing anywhere in the region that could stand in for a stone. */
 function stripStone(state: ReturnType<typeof newGame>["state"], world: World): void {
@@ -21,6 +24,7 @@ function stripStone(state: ReturnType<typeof newGame>["state"], world: World): v
 
 describe("the fire site", () => {
   it("is cleared ground, so a camp with no stone within reach can still make one and light a fire", () => {
+    testAtmosphere({ temperatureC: 5 });
     const { state, world } = newGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
@@ -34,7 +38,6 @@ describe("the fire site", () => {
     // And the fire that was gated behind it is now only a drill and a kilo of wood away.
     addItem(state.player.pack, "fireDrill", 1);
     addItem(state.player.pack, "firewood", 2);
-    state.weather.precip = "none";
     expect(check(state, world, cal, "light").ok).toBe(true);
     expect(qty(state.player.pack, "stone")).toBe(0);
   });
@@ -55,9 +58,9 @@ describe("the fire site", () => {
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
     const terrain = cellAt(world, st.campCell!).terrain;
-    state.weather.snowCm = 0;
+    ensureGround(state, world, state.player.region).snowCm = 0;
     expect(check(state, world, cal, "build", "firePit").duration).toBe(fireSiteMinutes(terrain, 0));
-    state.weather.snowCm = 40;
+    ensureGround(state, world, state.player.region).snowCm = 40;
     expect(check(state, world, cal, "build", "firePit").duration).toBe(fireSiteMinutes(terrain, 40));
   });
 });

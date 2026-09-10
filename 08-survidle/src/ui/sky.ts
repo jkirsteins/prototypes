@@ -13,8 +13,8 @@ import {
   projectSouth,
   type ProjectedGalacticPoint,
 } from "../sim/celestial";
-import type { GameState, Weather } from "../sim/types";
-import { forecastText, stormNow } from "../sim/weather";
+import type { AtmosphereSample, GameState, Weather } from "../sim/types";
+import { forecastText, localStorm, stormNow } from "../sim/weather";
 import { clamp } from "../units";
 
 export const SKY_W = 220;
@@ -155,14 +155,22 @@ export function phaseFor(hour: number, sunrise: number, sunset: number): Phase {
   return lerpPhase(P_DUSK, P_NIGHT, 1);
 }
 
-export function lighting(cal: Calendar, w: Weather, ambient: number): Lighting {
+function isAtmosphere(w: Weather | AtmosphereSample): w is AtmosphereSample {
+  return "cloud" in w;
+}
+
+export function lighting(cal: Calendar, w: Weather | AtmosphereSample, ambient: number): Lighting {
   const base = phaseFor(cal.hour, cal.sunrise, cal.sunset);
   let { brightness, saturation, tint, alpha } = base;
   let sky = base.sky;
   let precip: Lighting["precip"] = "none";
-  if (w.precip !== "none") {
-    precip = ambient <= 0 ? "snow" : "rain";
-    const heavy = w.precip === "heavy" ? 1 : 0.6;
+  const atmosphere = isAtmosphere(w);
+  const rain = atmosphere ? w.rainMmPerHour : w.precip !== "none" && ambient > 0 ? (w.precip === "heavy" ? 7.5 : 1) : 0;
+  const snow = atmosphere ? w.snowCmPerHour : w.precip !== "none" && ambient <= 0 ? (w.precip === "heavy" ? 7.5 : 1) : 0;
+  const cloud = atmosphere ? w.cloud : w.clear ? 0 : 0.95;
+  if (rain + snow > 0.05) {
+    precip = atmosphere ? w.precip : snow > rain ? "snow" : "rain";
+    const heavy = atmosphere ? clamp((w.precipMmPerHour + 0.5) / 8, 0.25, 1) : w.precip === "heavy" ? 1 : 0.6;
     brightness *= 1 - 0.15 * heavy;
     saturation *= 1 - 0.25 * heavy;
     const wc = precip === "snow" ? SNOW : RAIN;
@@ -170,12 +178,14 @@ export function lighting(cal: Calendar, w: Weather, ambient: number): Lighting {
     tint = mix(tint, wc, wa / Math.max(0.01, alpha + wa));
     alpha = Math.min(0.75, alpha + wa);
     sky = [mix(sky[0], GREY, 0.6 * heavy), mix(sky[1], GREY, 0.6 * heavy)];
-  } else if (!w.clear) {
-    brightness *= 0.9;
-    saturation *= 0.85;
-    tint = mix(tint, GREY, 0.12 / Math.max(0.01, alpha + 0.12));
-    alpha = Math.min(0.7, alpha + 0.12);
-    sky = [mix(sky[0], GREY, 0.4), mix(sky[1], GREY, 0.4)];
+  } else if (cloud > 0.1) {
+    const cover = smooth(cloud);
+    brightness *= 1 - 0.1 * cover;
+    saturation *= 1 - 0.15 * cover;
+    const wash = 0.12 * cover;
+    tint = mix(tint, GREY, wash / Math.max(0.01, alpha + wash));
+    alpha = Math.min(0.7, alpha + wash);
+    sky = [mix(sky[0], GREY, 0.4 * cover), mix(sky[1], GREY, 0.4 * cover)];
   }
   // Cloud is lit by the same hour as everything else: grey mixed into the
   // sky it hangs in, then taken down by the light there is. Its tops keep
@@ -258,7 +268,7 @@ function ridgePath(g: SkyGeom, seed: number, height: number, samples = 34): stri
  * silently, while its thirteen cards looked plausible. The game draws one
  * sky and needs no suffix; the gallery passes the case name.
  */
-export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true): string {
+export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true, atmosphere?: AtmosphereSample): string {
   const u = uid ? `-${uid}` : "";
   const arc = `M ${g.cx - g.arcR} ${g.groundY} A ${g.arcR} ${g.arcR} 0 0 1 ${g.cx + g.arcR} ${g.groundY}`;
   const rand = (n: number, seed: number) => ((Math.sin(seed * 12.9898) * 43758.5453) % 1 + 1) % 1 * n;
@@ -331,8 +341,9 @@ export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true): string 
     return `<g class="sky-drop" style="--x:${x}px;--y:${y}px;--sx:${sx}px;--n:${((i * 37) % 100) / 100}"><line x1="0" y1="0" x2="-3.4" y2="9"/><circle cx="0" cy="0" r="${r}"/></g>`;
   }).join("");
   const pxPerDegree = g.groundY / 90;
+  const weatherData = atmosphere ? ` data-weather-temperature="${atmosphere.temperatureC}" data-weather-cloud="${atmosphere.cloud}" data-weather-rate="${atmosphere.precipMmPerHour}" data-weather-rain="${atmosphere.rainMmPerHour}" data-weather-snow="${atmosphere.snowCmPerHour}" data-weather-precip="${atmosphere.precip}" data-weather-fog="${atmosphere.fog}" data-weather-wind-x="${atmosphere.windXKmh}" data-weather-wind-y="${atmosphere.windYKmh}" data-weather-wind-speed="${atmosphere.windKmh}"` : "";
   return `<svg class="sky" id="sky" viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}" preserveAspectRatio="xMidYMax slice" aria-label="sky"
- data-sky-w="${g.w}" data-sky-h="${g.h}" data-sky-ground="${g.groundY}" data-sky-arc="${g.arcR}" data-sky-cx="${g.cx}">
+ data-sky-w="${g.w}" data-sky-h="${g.h}" data-sky-ground="${g.groundY}" data-sky-arc="${g.arcR}" data-sky-cx="${g.cx}"${weatherData}>
 <defs>${cloudField}<clipPath id="sky-horizon${u}"><rect x="0" y="0" width="${g.w}" height="${g.groundY}"/></clipPath><filter id="sky-milkysoft${u}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2"/></filter><filter id="sky-milkytexture${u}" x="-30%" y="-30%" width="160%" height="160%"><feTurbulence type="fractalNoise" baseFrequency="0.018 0.09" numOctaves="5" seed="43" result="grain"/><feDisplacementMap in="SourceGraphic" in2="grain" scale="3.2" xChannelSelector="R" yChannelSelector="B"/></filter><linearGradient id="sky-milkygrad${u}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#849bd7" stop-opacity="0.10"/><stop offset="0.42" stop-color="#c8c7ed" stop-opacity="0.50"/><stop offset="0.58" stop-color="#aebde9" stop-opacity="0.38"/><stop offset="1" stop-color="#8299d4" stop-opacity="0.08"/></linearGradient><radialGradient id="sky-glowgrad${u}" class="glowgrad" gradientUnits="userSpaceOnUse" cx="${g.cx}" cy="${g.groundY}" r="${g.arcR * 1.15}">
 <stop id="sky-glow-in" offset="0" stop-color="#ff8a5c" stop-opacity="0.95"/>
 <stop id="sky-glow-mid" offset="0.4" stop-color="#ff8a5c" stop-opacity="0.4"/>
@@ -411,20 +422,38 @@ function projectCoordinateStars(root: ParentNode, siderealDeg: number, g: SkyGeo
   }
 }
 
+function skyAtmosphere(svg: SVGElement): AtmosphereSample | null {
+  const d = (svg as unknown as HTMLElement).dataset;
+  if (d.weatherCloud === undefined) return null;
+  const cloud = Number(d.weatherCloud);
+  const rainMmPerHour = Number(d.weatherRain);
+  const snowCmPerHour = Number(d.weatherSnow);
+  const windXKmh = Number(d.weatherWindX);
+  const windYKmh = Number(d.weatherWindY);
+  return {
+    temperatureC: Number(d.weatherTemperature), pressureHpa: 1013, relativeHumidity: 0.5, cloud,
+    precipMmPerHour: Number(d.weatherRate),
+    rainMmPerHour, snowCmPerHour,
+    precip: d.weatherPrecip === "rain" || d.weatherPrecip === "snow" ? d.weatherPrecip : "none",
+    windKmh: Number(d.weatherWindSpeed), windBearingDeg: 0, windXKmh, windYKmh,
+    fog: Number(d.weatherFog), blowingSnow: 0, extinctionPerKm: 0.06,
+  };
+}
+
 /** Positions sun or moon, colours the strip, and lights the map. */
 export function updateSky(state: GameState, cal: Calendar, ambient: number, root: ParentNode = document): Lighting {
   // Every sky on the page, at whatever shape each was drawn: the strip and
   // the widget's wall are the same picture and must agree.
-  for (const svg of root.querySelectorAll<SVGElement>("svg.sky")) dressSky(svg, state, cal, ambient);
-  const light = lighting(cal, state.weather, ambient);
+  const skies = [...root.querySelectorAll<SVGElement>("svg.sky")];
+  for (const svg of skies) dressSky(svg, state, cal, ambient);
+  const localAir = skies.length ? skyAtmosphere(skies[0]) : null;
+  const light = lighting(cal, localAir ?? state.weather, localAir?.temperatureC ?? ambient);
   const grid = root.querySelector<HTMLElement>("#map .scroll-x");
   if (grid) {
     grid.style.setProperty("--bright", light.brightness.toFixed(3));
     grid.style.setProperty("--sat", light.saturation.toFixed(3));
     grid.style.setProperty("--tint", light.tint);
     grid.style.setProperty("--tint-a", light.alpha.toFixed(3));
-    grid.classList.toggle("rain", light.precip === "rain");
-    grid.classList.toggle("snowing", light.precip === "snow");
   }
   return light;
 }
@@ -440,7 +469,9 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   };
   const root: ParentNode = svg;
   const pos = bodyPosition(cal, g);
-  const light = lighting(cal, state.weather, ambient);
+  const localAir = skyAtmosphere(svg);
+  const visualWeather = localAir ?? state.weather;
+  const light = lighting(cal, visualWeather, localAir?.temperatureC ?? ambient);
   const f = (v: number) => v.toFixed(1);
   // dayOfYear wraps from 364 to 0. Recover the run's starting day and add
   // dayIndex so the sky keeps moving by one sidereal minute at that seam.
@@ -486,9 +517,9 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   setAttr(root, "sky-moon-lit", "cy", f(pos.y));
   setAttr(root, "sky-moon-dark", "cx", f(pos.x + offset));
   setAttr(root, "sky-moon-dark", "cy", f(pos.y));
-  const clearNight = pos.body === "moon" && state.weather.precip === "none" && state.weather.clear;
+  const clearNight = pos.body === "moon" && (localAir ? localAir.precipMmPerHour < 0.05 && localAir.cloud < 0.35 : state.weather.precip === "none" && state.weather.clear);
   setAttr(root, "sky-stars", "opacity", clearNight ? "0.9" : "0");
-  const deepSky = state.weather.precip === "none" && state.weather.clear
+  const deepSky = (localAir ? localAir.precipMmPerHour < 0.05 && localAir.cloud < 0.35 : state.weather.precip === "none" && state.weather.clear)
     ? clamp((0.80 - phaseFor(cal.hour, cal.sunrise, cal.sunset).brightness) / 0.25, 0, 1)
     : 0;
   setAttr(root, "sky-milky-way", "opacity", (deepSky * 0.82).toFixed(2));
@@ -526,14 +557,14 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   // What the air is doing. Cloud thickens as the sky stops being clear and
   // thickens again while something is falling out of it; the fall itself is
   // snow or rain, and a storm leans it over and hurries it along.
-  const w = state.weather;
   const falling = light.precip !== "none";
   // An overcast sky is covered. At half opacity the blue read straight
   // through the cloud and the widget looked like a fair day with a smudge
   // over it, which is not what the word says.
-  const cover = falling ? 1 : w.clear ? 0 : 0.95;
+  const cover = localAir ? clamp(Math.max(localAir.cloud, localAir.fog, falling ? 0.72 : 0), 0, 1) : falling ? 1 : state.weather.clear ? 0 : 0.95;
   setAttr(root, "sky-clouds", "opacity", cover.toFixed(2));
-  setAttr(root, "sky-fall", "opacity", falling ? "1" : "0");
+  const fallOpacity = localAir ? clamp(Math.sqrt(localAir.precipMmPerHour / 7.5), 0, 1) : falling ? 1 : 0;
+  setAttr(root, "sky-fall", "opacity", fallOpacity.toFixed(2));
   // Behind a cloud deck there is no disc to see. A flat grey sun pasted on
   // an overcast card was the one thing in the picture that never happens.
   const through = (1 - 0.92 * cover).toFixed(2);
@@ -541,7 +572,20 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   setAttr(root, "sky-moon", "opacity", pos.body === "moon" ? through : "0");
   svg.classList.toggle("snow", light.precip === "snow");
   svg.classList.toggle("rain", light.precip === "rain");
-  svg.classList.toggle("storm", Boolean(w.storm && stormNow(w, state.minute)));
+  svg.classList.toggle("storm", localAir ? localStorm(localAir) : Boolean(state.weather.storm && stormNow(state.weather, state.minute)));
+  const windX = localAir?.windXKmh ?? 0;
+  const windY = localAir?.windYKmh ?? 0;
+  const windSpeed = localAir?.windKmh ?? 0;
+  svg.style.setProperty("--wind-x", windX.toFixed(2));
+  svg.style.setProperty("--wind-y", windY.toFixed(2));
+  svg.style.setProperty("--wind-speed", windSpeed.toFixed(2));
+  svg.style.setProperty("--cloud-drift-x", `${(windX * 4).toFixed(1)}px`);
+  svg.style.setProperty("--cloud-drift-y", `${(windY * 1.5).toFixed(1)}px`);
+  svg.style.setProperty("--cloud-duration", `${Math.max(16, 180 - windSpeed * 3).toFixed(1)}s`);
+  svg.style.setProperty("--fall-drift-x", `${(windX * 2).toFixed(1)}px`);
+  const fallDuration = Math.max(0.45, 1.3 - windSpeed / 60);
+  svg.style.setProperty("--fall-duration", `${fallDuration.toFixed(2)}s`);
+  svg.style.setProperty("--snow-duration", `${(fallDuration * 5).toFixed(2)}s`);
   // The cloud is coloured by the hour, so it darkens through the evening
   // rather than sitting white over a night sky.
   setAttr(root, "sky-cloudflood", "flood-color", light.cloudLow);

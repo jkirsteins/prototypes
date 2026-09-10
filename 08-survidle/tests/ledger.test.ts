@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { eat } from "../src/sim/actions";
@@ -16,6 +16,10 @@ import { deserialize, serialize } from "../src/sim/save";
 import { beginTask } from "../src/sim/tasks";
 import { cellAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+import { ensureGround } from "../src/sim/weather";
+
+beforeEach(() => testAtmosphere());
 
 describe("the day number", () => {
   it("is 1 at the start, 2 from midnight of the first night", () => {
@@ -209,7 +213,7 @@ describe("burn in buckets", () => {
     const dry = today(state).burn.walk;
     expect(dry).toBeCloseTo(expectedDry, 6);
     expect(today(state).burn.activity).toBe(0);
-    state.weather.snowCm = 40;
+    ensureGround(state, world, state.player.region).snowCm = 40;
     let expectedWet = 0;
     for (let m = 0; m < 60; m++) {
       expectedWet += (2 * WALK_KCAL_PER_HOUR * massFactor(state) - BASE_KCAL_PER_HOUR) / 60;

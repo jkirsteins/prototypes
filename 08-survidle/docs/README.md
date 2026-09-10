@@ -332,6 +332,174 @@ waiting, and everything done while you are away run at the one scale.
   It is the review surface for portrait variety and legibility, not a game
   feature.
 
+## Spatial weather and visibility
+
+The atmosphere is a deterministic field of the world seed, absolute weather
+time and coordinates. It never rolls separately in each 300 m cell and never
+draws from the gameplay RNG. Pressure, humidity and temperature anomaly use a
+12 km sampling lattice. Their seeded component wavelengths are 5, 7 and 11
+lattice spacings, or 60, 84 and 132 km. A subordinate 1.2 km lattice has 6,
+8.4 and 13.2 km wavelengths. It can shape a precipitation edge or terrain fog
+only where the broad cloud field supplies support, so nearby cells normally
+belong to one continuous weather feature rather than unrelated showers.
+
+The whole field translates continuously at a seed-dependent 6 to 46 km/h.
+That system motion is separate from local surface wind. Surface wind combines
+the prevailing flow with the centred pressure gradient over 12 km, is smoothly
+bounded below 60 km/h, and supplies the same vector used by map and sky motion.
+Elevation cools air by 6.5 C/km. The upwind and downwind terrain samples are
+6 km away: rising ground adds humidity and precipitation, lee ground dries the
+air, and damp depressions increase fog potential. These are local modifiers to
+one larger system, not new weather systems.
+
+Every atmospheric sample contains temperature, pressure, relative humidity,
+cloud, liquid-equivalent precipitation, rain and snow phase rates, wind, fog,
+blowing snow and optical extinction. Rain and snow blend continuously from all
+rain at +1 C to all snow at -1 C. Frozen liquid uses the model's 10:1 fresh
+snow conversion, so 1 mm water equivalent becomes 1 cm fresh snow.
+
+### Ray extinction
+
+Visibility uses the 5 percent contrast threshold
+
+    tau_max = -ln(0.05) = 2.9957
+    beta_clear = tau_max / 50 km
+    MOR = tau_max / beta_total
+
+where every beta is in 1/km. The clear baseline is counted once. Rain, snow,
+fog and blowing-snow excess coefficients are added to it. Rain MOR anchors are
+20 km at 0.5 mm/h, 8 km at 2.5 mm/h, 3 km at 7.5 mm/h and 0.8 km at 25 mm/h.
+Snow anchors are 5 km at 0.4 cm/h, 1.2 km at 1 cm/h and 0.4 km at 2.5 cm/h.
+Between rate anchors the interpolation is logarithmic:
+
+    t = ln(rate / rate0) / ln(rate1 / rate0)
+    MOR = MOR0 * (MOR1 / MOR0) ^ t
+    beta_excess = tau_max / MOR - beta_clear
+
+Rates below the first anchor ramp linearly to zero excess; rates above the last
+anchor clamp. Fog moves exponentially from a 10 km onset MOR to 0.2 km at full
+density, and blowing snow from 12 km to 0.3 km. Both use a smooth onset over
+density 0 to 0.05.
+
+A sight ray walks each 300 m segment at its midpoint and accumulates
+
+    tau = sum(beta(segment midpoint) * segment length km)
+
+Each midpoint beta is bilinearly interpolated from the four surrounding
+integer cell-centre atmosphere samples. Every centre uses its own authoritative
+regional snow cover and is sampled at most once per visibility pass. The fixed
+centres make the result independent of ray enumeration order while retaining a
+continuous field between adjacent cells. A midpoint outside the world is
+opaque rather than borrowing an in-world edge value.
+
+The target is hidden once tau exceeds tau_max. Clear air after fog cannot
+restore lost contrast. Terrain, light, eyesight, skill and the geometric
+horizon set the maximum radius; weather only shortens it. The candidate set is
+circular, not square, and is capped at the 50 km clear-air MOR before ray
+work. A canopy remains a hard blocker. Ground already mapped remains known,
+while wildlife and newly mapped ground require current visibility.
+
+Live weather is rendered only where known ground intersects that current
+viewshed. Remembered ground outside it keeps its terrain memory but shows no
+current cloud, cloud shadow, fog, rain or snow, and never-seen ground shows
+neither terrain nor weather. This observation rule also applies to coarse map
+blocks, so zooming out cannot turn the map into a weather radar. The simulation
+still evolves the continuous weather field everywhere. The map key includes
+the exact projected viewshed at every zoom and shares that result with the
+markup once per displayed game minute, preventing stale coarse weather without
+adding another ray pass.
+
+Cloud feature translation follows game minutes, including the ordinary clock
+and accelerated work. The same simulated wind vector drives rain and snow
+drift. Fog and optional ASCII cloud glyphs use slower presentation-only cycles
+of 12 and 16 real seconds. Those decorative shape changes do not accelerate
+with work, pause, or alter the simulated feature's location or visibility.
+
+### Stationary ground consequences
+
+Moving clouds and stationary ground are separate state. Each materialized
+roughly 4 km region stores its last completed weather hour, snow depth, surface
+water, soil moisture, frost, standing-water ice, dry hours and the partial
+day's temperature integral. Completed hours replay deterministically when a
+region is next needed. In each hour the ground integrator applies, in order:
+
+    snow += snow_cm_per_hour
+    melt = min(2 cm, snow), only while temperature > 2 C
+    surface_water += rain_mm_per_hour + melt_cm
+    infiltration = min(surface_water, 2 * (1 - soil_moisture)) mm
+    soil_moisture += infiltration / 50
+    evaporation = 0.08 * (1 - relative_humidity)
+                  * max(0, temperature_C + 5) * (1 + wind_kmh / 20)
+
+Evaporation consumes surface water before the 50 mm soil store. Moist frozen
+ground adds `min(1, -temperature_C / 12) / 24` frost per hour; temperature
+above zero removes `temperature_C / 12`. Dry hours reset after at least 0.2 mm
+of hourly precipitation or while soil moisture exceeds 0.2, otherwise they
+increment. At local midnight snow settles by 5 percent. Standing-water ice
+uses the local daily mean: freezing grows squared thickness by 7.2 per
+freezing degree-day, while thaw removes 2 cm per positive degree-day.
+
+Version 1 saves copy their global snow, ice and drought into every already
+materialized region at the save's completed hour. Wet-day saves begin with
+1 mm surface water and 0.5 soil moisture; dry saves use zero and 0.1. Frost
+starts at zero. Untouched regions initialize from deterministic seasonal
+history. Version 2 saves retain their local records. Weather time has its own
+elapsed offset, so a new survivor can reset the life clock without moving the
+atmosphere or ground backward.
+
+Map glyphs sample atmosphere at their own coordinates and share one caught-up
+ground record per represented region. Unknown terrain stays secret while air
+can remain visible over it. Fog remains in the map's cell vocabulary: every
+300 m sample controls the opacity of one same-colour ASCII ripple, with a
+coordinate-stable animation phase and no weather border or separate viewport
+layer. Neighboring values remain coherent because they come from the same
+continuous simulated field. Rain and snow particles keep transparent
+backgrounds so precipitation cannot turn those cells into gray tiles. The
+default cloud display uses that same per-cell density to dim the ground as a
+moving shadow capped at a 14 percent black wash, leaving terrain glyphs
+readable. Ordinary cells have no border on any side; only actual region edges
+restore their owned boundary line. The persistent "clouds cast
+map shadows" setting can be turned off to replace those shadows with
+same-colour ASCII cloud ripples. The setting changes presentation only: cloud
+location, density, movement, light, visibility, rain and snow remain simulation
+output. Terrain memory and inherited-map dimming apply to terrain and signals,
+not the cell-owned atmosphere, so weather does not acquire discovery-state
+seams. The weather panel and sky use the player's same sample; CSS only
+amplifies opacity and motion from that sample. The legacy
+`Weather`-shaped fields are a derived player summary kept for save and narrow
+no-world compatibility. They do not drive the atmospheric field or ground
+integration. Cell-specific version 2 work, water, routes, audio and rendering
+query local conditions.
+
+Repeated current-cell reads in one simulation minute share one atmospheric
+sample through a one-entry `WeakMap` memo per live `GameState`. Its key covers
+world identity and seed, absolute weather minute, cell, climate start day and
+local snow input. The memo is not serialized, returns copies to callers, and
+does not apply to historical ground replay or sight's per-pass cell-centre cache.
+
+This is a physically inspired mesoscale model, not CFD. It deliberately omits
+metre-scale turbulence, shelter aerodynamics, cloud microphysics, fronts with
+vertical structure and forecast uncertainty. The performance probe is
+`npm run weather:profile`; it reports deterministic work and host timings but
+has no flaky timing gate. On the 2026-09-10 development host, seed 17 measured
+10,000 atmospheric samples in 57.29 ms and 10,000 identical memoized
+current-cell reads in 1.40 ms, the maximum-range open-fell sight
+workload over exactly 87,604 integer lattice candidates in 3.52 ms, 2,592
+map-sized atmospheric samples in 14.03 ms, one day of catch-up for 100 ground
+regions in 16.34 ms, and the 2,592-glyph late-day map render in 32.43 ms. The
+sight workload chooses a broadly open fell/rock origin, searches daylight for
+the clearest local atmosphere. That run reached 855 cells before optical
+attenuation and retained 287 visible cells, with deterministic checksum
+`855:287:570357823`, so it exercises long open rays instead of ending
+immediately in forest canopy.
+The 87,604 count
+is an exact enumeration of every non-origin `(dx, dy)` with
+`hypot(dx, dy) <= 167`: 167 cells follows from `ceil(50 km / 0.3 km)` and the
+clear-air maximum MOR. Those figures are calibration
+evidence, not portable budgets. The sight candidate cap removed an observed
+2,787,736-cell, 18.9 second scan of rays that the 50 km clear-air extinction
+limit could never reveal.
+
 ## Development
 
     npm install
@@ -339,6 +507,7 @@ waiting, and everything done while you are away run at the one scale.
     npm test
     npm run test:slow
     npm run build
+    npm run weather:profile
 
 `npm test` is the commit gate and stays under twenty seconds; it excludes
 `tests/slow/`, which holds the runs measured in whole simulated seasons -
@@ -347,6 +516,43 @@ worth a run when the reference player, the lineage or the landing moves.
 
 Every browser pass runs at 1440 by 900 and at 390 wide against
 `docs/ux.md`.
+
+Weather reference screenshots need the development server in one shell, then
+`npm run shots` in another. Headless Chrome writes the following seed 17
+simulation states to `docs/map-shots/`; the minute is elapsed game time and x/y
+are 300 m cell coordinates:
+
+| shot | minute | x | y | simulated feature |
+| --- | ---: | ---: | ---: | --- |
+| clear | 1,440 | 450 | 1,100 | clear comparison above rock |
+| sunny-clouds | 170,160 | 700 | 950 | dry midsummer sun under a broken cloud field |
+| approaching-rain | 86,760 | 1,040 | 150 | rain-band edge |
+| local-rain | 108,720 | 1,300 | 376 | 11.53 mm/h rain core |
+| persisted-snow | 480,480 | 296 | 1,200 | 10.66 cm/h snow over 39 cm retained ground snow |
+| valley-fog | 19,560 | 840 | 1,000 | dry 0.39 fog in a local bog depression |
+| windward-lee | 3,960 | 700 | 950 | terrain-modified extinction gradient |
+| obscured | 480,480 | 450 | 1,100 | 0.21 km MOR at the clear comparison rock |
+
+The URL only selects a catalog entry. Normal `GameState`, `WeatherWorld`,
+`visibleCells` and `mapHtml` generate every class, variable, glyph and known
+cell. The harness asserts unknown ground remains unrevealed, fog remains owned
+by its simulation cells without gray washes or weather borders, every
+non-boundary cell has zero computed border width, cloud shadows remain at or
+below 14 percent black, live weather never appears on unknown or remembered-only
+ground, and the obscured footprint is smaller than clear at the same location.
+It captures the approaching rain fixture with the real
+settings checkbox in both default cloud-shadow mode and optional ASCII-cloud
+mode, and verifies that the toggle changes neither simulation time nor the
+visibility footprint. Fog and cloud opacity come from sampled density;
+deterministic coordinate hashes only choose the phase and order of same-colour
+ASCII ripple glyphs. Reduced-motion mode freezes those glyphs.
+The sunny-cloud pair advances the normal simulation by 60 game minutes and
+captures the resulting cloud-shadow field before and after; it does not assign
+or modify rendering classes.
+The valley cell's normalized elevation is 0.321; its west, east, north and
+south samples 6 km away are 0.490, 0.446, 0.408 and 0.424. `fog-frame-a.png`
+and `fog-frame-b.png` hold the same frozen simulation minute and visibility
+footprint 3.2 real seconds apart; only presentation animation continues.
 
 `scripts/mapstats.ts` prints a downsampled view of the whole world and its
 terrain shares: `npx vite-node scripts/mapstats.ts 42`.
@@ -405,8 +611,9 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/sim/player.ts`: kcal burn, warmth balance, fatigue, wetness, health, the fat reserve.
 - `src/sim/sleep.ts`: the two processes sleep runs on, their lines, and how long a night is.
 - `src/sim/body.ts`: when an intent sleeps, warms up, eats and provisions.
-- `src/sim/weather.ts`: the temperature curve, precipitation, snow depth
-  and the constants it lays, settles and melts by.
+- `src/sim/climate.ts`: advected atmospheric fields, terrain modifiers and
+  optical extinction; `src/sim/weather.ts`: regional ground persistence,
+  catch-up, snow, water, frost and ice.
 - `src/world/terrain.ts`: world size, the geography, terrain thresholds, the region lattice.
 - `src/world/gen.ts`: region stats, capacities, spots, the start.
 - `src/sim/stocks.ts`: the spring egg stock, seeded on 1 May, and the root ground - what a cell's stand holds, what is left in each cell that has been dug, and the growing season's regrowth.

@@ -1,3 +1,4 @@
+import { localWeather } from "./weather";
 /**
  * Water: a reserve in litres beside the kilocalories. You drink where the
  * water is, or from a vessel you filled there; a shore under ice gives
@@ -52,7 +53,7 @@ export function iceHoleOpen(state: GameState, cell: number): boolean {
 
 /** Litres a source under foot could give: endless at open water or an open ice hole, the seep's liquid pool on its cell, nothing elsewhere. */
 export function sourceLitres(state: GameState, world: World, cell = cellOf(state, world)): number {
-  if (watersideCell(world, cell) && (state.weather.iceCm < ICE_SHORE_CM || iceHoleOpen(state, cell))) return Number.POSITIVE_INFINITY;
+  if (watersideCell(world, cell) && (localWeather(state, world, cell).iceCm < ICE_SHORE_CM || iceHoleOpen(state, cell))) return Number.POSITIVE_INFINITY;
   const s = state.seeps[cell];
   return s ? s.litres : 0;
 }

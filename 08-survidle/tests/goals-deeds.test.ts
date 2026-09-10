@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { drop, dropAll, eat, take } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
@@ -18,7 +18,11 @@ import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, DEADWOOD_KG, startTask, stepTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 import { drink } from "../src/sim/water";
+import { ensureGround } from "../src/sim/weather";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere, testRain } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 const cal = calendar(0);
 
@@ -94,6 +98,7 @@ describe("deeds reach the ladder", () => {
 
   it("credits a real drink and food with non-lean energy", () => {
     const { state, world } = announcedGame(3);
+    ensureGround(state, world, state.player.region).iceCm = 0;
     state.player.water = 1;
     placeAtSpot(state, world, state.player.region, "shore");
     expect(drink(state, world)).toBe(true);
@@ -176,13 +181,13 @@ describe("deeds reach the ladder", () => {
   });
 
   it("credits nothing when the tinder does not catch", () => {
+    testRain(1);
     const { state, world } = announcedGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
     siteFor(st, st.campCell!).structures.firePit = true;
     // Rain with no roof gives a one-in-three fail chance; seed 7 rolls it.
-    state.weather.precip = "light";
     addItem(state.player.pack, "firewood", 5);
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     const o = check(state, world, cal, "light");
@@ -250,6 +255,7 @@ describe("deeds reach the ladder", () => {
   });
 
   it("credits nothing when a standing order carries firewood home and drops it at camp", () => {
+    testAtmosphere();
     const { state, world } = announcedGame(17);
     siteCamp(state, world);
     const camp = regionState(state, world, state.player.region).campCell!;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { autoEat, eat, hungerLine, HUNGRY_LINE, SATIETY_BASE, satietyTarget } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
@@ -8,6 +8,9 @@ import { newGame } from "../src/sim/newgame";
 import { fatLandmarks } from "../src/sim/person";
 import { BASE_KCAL_PER_HOUR } from "../src/sim/player";
 import { current } from "../src/sim/record";
+import { testAtmosphere } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere());
 
 /**
  * The meal line and what the body does at it. The pool's size is not free:
@@ -109,6 +112,7 @@ describe("hunger and satiety", () => {
   });
 
   it("banks the surplus as fat when a deep larder meets a full stomach", () => {
+    testAtmosphere({ temperatureC: 20 });
     const { state, world } = newGame(1);
     const fat0 = state.player.fat;
     // A season of plenty: the pack never empties and the body never goes without.
@@ -117,13 +121,14 @@ describe("hunger and satiety", () => {
     // more than it burns - even by a little, even for a few days before
     // something else in the world catches up with it - has to show it.
     for (let m = 0; m < 30 * 1440; m++) {
-      for (const f of ["driedMeat", "cookedOilyFish", "cookedRoots", "fat"] as const) addItem(state.player.pack, f, 1);
+      addItem(state.player.pack, "fat", 1);
       advance(state, world, 1);
     }
     expect(state.player.fat).toBeGreaterThan(fat0);
   });
 
   it("loses fat at close to the burn rate through a stretch with nothing to eat", () => {
+    testAtmosphere({ temperatureC: 20 });
     const { state, world } = newGame(1);
     state.player.pack.items = {};
     const fat0 = state.player.fat;

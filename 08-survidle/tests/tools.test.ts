@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { itemLabel } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
@@ -12,6 +12,9 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { beginTask, check } from "../src/sim/tasks";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere());
 
 const cal = calendar(0);
 

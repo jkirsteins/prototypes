@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
@@ -11,8 +11,12 @@ import { feltTemperature, INDOOR_C, warmthTarget } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
-import { ambientTemperature } from "../src/sim/weather";
+import { ensureGround, localWeather } from "../src/sim/weather";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere, testRain } from "./weather-helpers";
+
+beforeEach(() => testAtmosphere());
+afterEach(() => vi.restoreAllMocks());
 
 const cal = calendar(0);
 
@@ -23,10 +27,10 @@ describe("wet wood", () => {
     const st = regionState(state, world, state.player.region);
     addItem(pile(state, st.campCell!), "log", 2);
     startTask(state, world, cal, "split");
-    state.weather.precip = "light";
+    testRain(1);
     advance(state, world, 20);
     expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell!), "wetFirewood")).toBe(20);
-    state.weather.precip = "none";
+    testRain(0);
     st.logsWet = 0;
     advance(state, world, 20);
     // The first batch has sat in the pack the whole 20 minutes, drying at the
@@ -41,7 +45,7 @@ describe("wet wood", () => {
     advance(state, world, 60);
     const after = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell!), "wetFirewood");
     expect(dryBefore - after).toBeCloseTo(2, 0);
-    state.weather.precip = "heavy";
+    testRain(10);
     advance(state, world, 60);
     const afterRain = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell!), "wetFirewood");
     expect(after - afterRain).toBeCloseTo(2, 0);
@@ -81,15 +85,14 @@ describe("wet wood", () => {
     siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 1.5;
-    // Push the ambient warm so this is really heavy rain, not heavy snow.
-    w.offset = 12;
-    expect(ambientTemperature(cal, state.weather)).toBeGreaterThan(0);
+    testRain(10);
+    expect(localWeather(state, world).temperatureC).toBeGreaterThan(0);
     advance(state, world, 1);
     expect(st.fire.lit).toBe(false);
     // The mirror case: heavy snowfall burns at half strength and never puts a fire out at once.
     w.precip = "heavy";
-    w.offset = -12;
-    const snowAmbient = ambientTemperature(cal, state.weather);
+    testRain(10, -12);
+    const snowAmbient = localWeather(state, world).temperatureC;
     expect(snowAmbient).toBeLessThan(0);
     // Heavy rain while it is actually snowing burns at 1.5x the open rate, the same as light rain.
     expect(burnPerHour(w, snowAmbient, st)).toBeCloseTo(openBurnPerHour(snowAmbient) * 1.5, 6);
@@ -97,7 +100,7 @@ describe("wet wood", () => {
     st.fire.fuelKg = 1.5;
     advance(state, world, 1);
     expect(st.fire.lit).toBe(true);
-    w.offset = 0;
+    testRain(1);
     // Lighting in light rain: a third of tries fail and cost the wood either way.
     w.precip = "light";
     state.player.tools.push({ id: "fireDrill", durability: 100 });
@@ -135,7 +138,7 @@ describe("wet wood", () => {
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     addItem(pile(state, st.campCell!), "wetFirewood", 10);
-    state.weather.precip = "heavy";
+    testRain(10);
     advance(state, world, 60);
     expect(qty(pile(state, st.campCell!), "wetFirewood")).toBeCloseTo(8, 6);
   });
@@ -181,9 +184,9 @@ describe("splitting waits for dry weather", () => {
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
     addItem(pile(state, st.campCell!), "log", 2);
-    state.weather.precip = "light";
+    testRain(1);
     expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: false, why: "waiting for dry weather" });
-    state.weather.precip = "none";
+    testRain(0);
     st.logsWet = 60;
     expect(check(state, world, calendar(0), "split").ok).toBe(false);
     st.logsWet = 6 * 60;
@@ -196,7 +199,7 @@ describe("splitting waits for dry weather", () => {
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
     addItem(pile(state, st.campCell!), "log", 1);
-    state.weather.precip = "heavy";
+    testRain(10);
     siteFor(st, st.campCell!).structures.leanTo = true;
     expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: true, detail: "one log into 20 kg of firewood, under the roof" });
     startTask(state, world, cal, "split");
@@ -211,7 +214,7 @@ describe("splitting waits for dry weather", () => {
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
     addItem(pile(state, st.campCell!), "log", 1);
-    state.weather.precip = "heavy";
+    testRain(10);
     expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: false, why: "waiting for dry weather" });
   });
 
@@ -221,7 +224,7 @@ describe("splitting waits for dry weather", () => {
     const st = regionState(state, world, state.player.region);
     addItem(pile(state, st.campCell!), "log", 1);
     siteFor(st, st.campCell!).structures.leanTo = true;
-    state.weather.precip = "heavy";
+    testRain(10);
     placeAtSpot(state, world, state.player.region, "shore");
     expect(check(state, world, calendar(0), "split", undefined, st.campCell!)).toMatchObject({ ok: true, detail: "one log into 20 kg of firewood, under the roof" });
   });
@@ -245,7 +248,7 @@ describe("spread and smoke", () => {
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     st.fire.unattended = 200;
-    state.weather.dryDays = 4;
+    ensureGround(state, world, state.player.region).dryHours = 96;
     placeAtSpot(state, world, state.player.region, "forest");
     const wood0 = st.wood;
     const rng = new Rng(9);
@@ -263,12 +266,13 @@ describe("spread and smoke", () => {
     // Banked to six kilos, or ground that is not dry, or a fire someone sits at: no spread in 400 hours.
     for (const fix of [{ fuel: 6, dry: 4, unattended: 200 }, { fuel: 30, dry: 1, unattended: 200 }, { fuel: 30, dry: 4, unattended: 30 }]) {
       const h = newGame(3);
+      siteCamp(h.state, h.world);
       const st2 = regionState(h.state, h.world, h.state.player.region);
       siteFor(st2, st2.campCell!).structures.firePit = true;
       st2.fire.lit = true;
       st2.fire.fuelKg = fix.fuel;
       st2.fire.unattended = fix.unattended;
-      h.state.weather.dryDays = fix.dry;
+      ensureGround(h.state, h.world, h.state.player.region).dryHours = fix.dry * 24;
       for (let k = 0; k < 400; k++) hourlyWorld(h.state, h.world, july, 18, rng, { region: h.state.player.region, atCamp: true });
       expect(st2.fire.lit).toBe(true);
     }

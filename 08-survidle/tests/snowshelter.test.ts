@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { dailyCamp } from "../src/sim/camp";
@@ -10,6 +10,10 @@ import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { REFERENCE_ORDERS, wantOpen } from "../src/sim/reference";
 import { siteCamp } from "./siting-helpers";
+import { ensureGround } from "../src/sim/weather";
+import { testAtmosphere } from "./weather-helpers";
+
+afterEach(() => vi.restoreAllMocks());
 
 const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg ?? ""}:${w.kind}`;
 
@@ -22,9 +26,9 @@ describe("the snow shelter", () => {
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     const cal = calendar(0, 334);
-    state.weather.snowCm = 10;
+    ensureGround(state, world, state.player.region).snowCm = 10;
     expect(check(state, world, cal, "build", "snowShelter").why).toBe("needs 40 cm of snow");
-    state.weather.snowCm = 45;
+    ensureGround(state, world, state.player.region).snowCm = 45;
     expect(check(state, world, cal, "build", "snowShelter").ok).toBe(true);
     siteFor(st, st.campCell!).structures.turfHut = true;
     expect(check(state, world, cal, "build", "snowShelter").why).toBe("the hut is warmer");
@@ -34,7 +38,7 @@ describe("the snow shelter", () => {
     const { state, world } = newGame(17, 334);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    state.weather.snowCm = 45;
+    ensureGround(state, world, state.player.region).snowCm = 45;
     const cal = calendar(0, 334);
     startTask(state, world, cal, "build", "snowShelter");
     for (let m = 0; m < 300 && state.task; m++) stepTask(state, world, cal, new Rng(m), 1);
@@ -53,14 +57,14 @@ describe("the snow shelter", () => {
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell!).structures.snowShelter = true;
-    state.weather.offset = 20;
+    testAtmosphere({ temperatureC: 10 });
     dailyCamp(state, world, calendar(0, 334), new Rng(1), null);
     dailyCamp(state, world, calendar(1440, 334), new Rng(2), null);
     expect(campSite(st)!.structures.snowShelter).toBe(true);
-    state.weather.offset = -20;
+    testAtmosphere({ temperatureC: -10 });
     dailyCamp(state, world, calendar(2880, 334), new Rng(3), null);
     expect(campSite(st)!.meltDays).toBe(0);
-    state.weather.offset = 20;
+    testAtmosphere({ temperatureC: 10 });
     for (let d = 0; d < SNOW_MELT_DAYS; d++) dailyCamp(state, world, calendar((3 + d) * 1440, 334), new Rng(d), null);
     expect(campSite(st)!.structures.snowShelter).toBe(false);
     expect(state.log.some((l) => l.text.includes("has slumped"))).toBe(true);

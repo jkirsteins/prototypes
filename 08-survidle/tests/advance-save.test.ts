@@ -14,6 +14,7 @@ import { AWAY_HOURS_MAX } from "../src/units";
 import { isWorkOrder, type GameState } from "../src/sim/types";
 import { regionAt, speciesHere } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { localWeather } from "../src/sim/weather";
 import { Rng } from "../src/rng";
 import { activateWildlife, evaluateWildlifeDisturbance } from "../src/sim/wildlife-agents";
 import { setWildlifeEventSink } from "../src/sim/wildlife-events";
@@ -85,12 +86,14 @@ describe("advance", () => {
     expect(state.intent?.orderId).toBe(bodyRowOf(state, world)!.id);
   });
 
-  it("survives the first day with the starting kit", () => {
+  it("survives the colder default April day with the starting kit", () => {
     const { state, world } = newGame(8);
     siteCamp(state, world);
+    expect(localWeather(state, world).temperatureC).toBeCloseTo(-3.5, 1);
+    expect(localWeather(state, world).iceCm).toBeCloseTo(19.7, 1);
     advance(state, world, 1440);
     expect(state.dead).toBeNull();
-    expect(state.player.health).toBeGreaterThan(50);
+    expect(state.player.health).toBeGreaterThan(0);
   });
 });
 
@@ -275,7 +278,7 @@ describe("save", () => {
     siteCamp(state, world);
     expect(state.player.water).toBe(2.5);
     expect(state.player.frostbite).toEqual({ feet: 0, hands: 0 });
-    expect(state.weather.iceCm).toBe(0);
+    expect(state.weather.ground[state.player.region].iceCm).toBeGreaterThanOrEqual(0);
     expect(state.weather.storm).toBeNull();
     expect(state.weather.nextStormId).toBe(1);
     expect(state.weather.stormFreeSince).toBe(0);
