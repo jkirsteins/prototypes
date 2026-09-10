@@ -9,9 +9,8 @@ import type {
   OpportunityStepDef,
   Season,
 } from "./types";
+import { dayNumber } from "./calendar";
 import type { FoodId } from "./items";
-import type { Species } from "./species";
-import type { StructureId, ToolId } from "./types";
 
 export const SEASONS: Season[] = ["spring", "summer", "autumn", "winter"];
 
@@ -19,30 +18,11 @@ const one = (id: string, label: string, credit: (event: OpportunityEvent) => num
   { id, label, credit, target, unit, final: true },
 ];
 
-const noCredit = (_event: OpportunityEvent) => 0;
 const defs = new Map<OpportunityKey, OpportunityDef>();
 
-const staticTitles: Record<string, [string, OpportunityCategory]> = {
-  site: ["Choose where to live", "survival"], drink: ["Drink water", "survival"], firewood: ["Gather firewood", "survival"],
-  fire: ["Light a fire", "survival"], bed: ["Get off the cold ground", "camp"], roof: ["Put a roof over your head", "camp"],
-  forageMeal: ["Forage and eat a meal", "food"], cook: ["Prepare and eat a hot meal", "food"], keptNight: ["Keep the fire alive overnight", "survival"],
-  snareMeal: ["Eat a snared meal", "food"], huntMeal: ["Eat a hunted meal", "food"], fishMeal: ["Eat a fished meal", "food"], trapMeal: ["Eat a trapped meal", "food"],
-  preserveHunt: ["Preserve a hunt", "food"], firstOrder: ["Place a first order", "survival"], findUsefulCover: ["Find useful cover", "weather"],
-  makeUsefulShelter: ["Turn the ground into shelter", "weather"], testShelter: ["Put shelter to the test", "weather"], readWeather: ["Read the weather", "weather"],
-  prepareWeather: ["Prepare for the weather", "weather"], surviveForecast: ["Survive a forecast", "weather"], water: ["Secure water", "survival"],
-  keptDays: ["Keep the fire for days", "survival"], foodSource: ["Find a food source", "food"], store: ["Store food", "food"], fat: ["Eat fat", "food"],
-  longOrder: ["Place a long order", "survival"], toolCare: ["Care for a tool", "mastery"], remoteRefuge: ["Find a remote refuge", "exploration"],
-  fieldFire: ["Light a field fire", "survival"], fieldMeal: ["Make a field meal", "food"], remoteStorm: ["Weather a remote storm", "weather"],
-  explore: ["Explore beyond home", "exploration"], secondCamp: ["Make a second camp", "exploration"], seasonalFood: ["Find seasonal food", "food"],
-  durableRoof: ["Build a durable roof", "camp"], winterStores: ["Prepare winter stores", "survival"],
-};
-
-for (const [key, [title, category]] of Object.entries(staticTitles)) {
-  const credit = key === "drink" ? (event: OpportunityEvent) => event.kind === "drank" ? 1 : 0
-    : key === "firewood" ? (event: OpportunityEvent) => event.kind === "gathered" && (event.item === "firewood" || event.item === "wetFirewood") ? event.kg : 0
-      : noCredit;
-  defs.set(key as OpportunityKey, { key: key as OpportunityKey, title, category, steps: one(key, title, credit, key === "firewood" ? 10 : 1, key === "firewood" ? "kg" : undefined) });
-}
+defs.set("site", { key: "site", title: "Choose where to live", category: "survival", steps: one("site", "Choose where to live", (_event) => 0) });
+defs.set("drink", { key: "drink", title: "Drink water", category: "survival", steps: one("drink", "Drink water", (event) => event.kind === "drank" ? 1 : 0) });
+defs.set("firewood", { key: "firewood", title: "Gather firewood", category: "survival", steps: one("firewood", "Gather firewood", (event) => event.kind === "gathered" && (event.item === "firewood" || event.item === "wetFirewood") ? event.kg : 0, 10, "kg") });
 
 for (const season of SEASONS) {
   const key = `season:${season}` as OpportunityKey;
@@ -75,17 +55,15 @@ export function newOpportunities(season: Season): OpportunityState {
 }
 
 export function opportunityDef(key: OpportunityKey): OpportunityDef | undefined {
-  const existing = defs.get(key);
-  if (existing) return existing;
-  const [kind] = key.split(":");
-  const category: OpportunityCategory = kind === "forage" ? "food" : kind === "build" ? "camp" : kind === "make" ? "mastery" : "wildlife";
-  const generated: OpportunityDef = { key, title: key, category, steps: one(key, key, noCredit) };
-  defs.set(key, generated);
-  return generated;
+  return defs.get(key);
 }
 
 export function opportunitySteps(key: OpportunityKey): OpportunityStepDef[] {
   return opportunityDef(key)?.steps ?? [];
+}
+
+export function opportunityEligible(def: OpportunityDef, minute: number): boolean {
+  return def.notBeforeDay === undefined || dayNumber(minute) >= def.notBeforeDay;
 }
 
 export function setCurrentOpportunity(state: OpportunityState, key: OpportunityKey | null): boolean {
@@ -135,11 +113,11 @@ export function applyOpportunityEvent(state: OpportunityState, event: Opportunit
   }
   for (const [key, def] of defs) {
     if (state.discoveredAt[key] !== undefined || def.prerequisites?.some((pre) => state.completedAt[pre] === undefined)) continue;
-    if (def.notBeforeDay !== undefined && minute / 1440 < def.notBeforeDay) continue;
+    if (!opportunityEligible(def, minute)) continue;
     if (def.prerequisites) { discoverOpportunity(state, key, minute, false); result.discovered.push(key); }
   }
   for (const group of GROUPS) {
-    if (group.keys.length && group.keys.every((key) => state.completedAt[key] !== undefined)) result.completedGroups.push(group.id);
+    if (group.keys.length && result.completed.some((key) => group.keys.includes(key)) && group.keys.every((key) => state.completedAt[key] !== undefined)) result.completedGroups.push(group.id);
   }
   if (result.completed.length || result.discovered.length || result.completedGroups.length) {
     state.notices.push({ id: `${minute}:${state.nextNoticeId++}`, minute, completed: result.completed, completedGroups: result.completedGroups, discovered: result.discovered, messages: [] });
@@ -152,4 +130,4 @@ export function opportunityGroupView(state: OpportunityState, id: OpportunityGro
   return { ...group, done: group.keys.length > 0 && group.keys.every((key) => state.completedAt[key] !== undefined), discovered: group.keys.filter((key) => state.discoveredAt[key] !== undefined), completed: group.keys.filter((key) => state.completedAt[key] !== undefined) };
 }
 
-export type { FoodId, Species, StructureId, ToolId };
+export type { FoodId };
