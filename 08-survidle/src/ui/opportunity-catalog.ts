@@ -58,11 +58,11 @@ function groupHeading(state: GameState, group: CatalogGroupId): string {
 
 export function opportunityDetailHtml(state: GameState, key: OpportunityKey): string {
   const back = `<button type="button" class="mini" data-act="opportunity-back">Back</button>`;
-  if (!isOpportunityDiscovered(state.opportunities, key) || !opportunityDef(key)) return `<p class="dim">[?] Undiscovered opportunity</p>${back}`;
+  if (!isOpportunityDiscovered(state.opportunities, key) || !opportunityDef(key)) return `<section class="opportunity-detail opportunity-body"><p class="dim">[?] Undiscovered opportunity</p></section><div class="opportunity-detail-actions">${back}</div>`;
   const def = opportunityDef(key)!;
   const done = isOpportunityComplete(state.opportunities, key);
   const current = !done && state.opportunities.current === key;
-  return `<section class="opportunity-detail"><h2>${esc(def.title)}</h2><p class="${done ? "done" : "opportunity-current"}">${done ? "[x] Done" : current ? "Current" : "[ ] Not done"}</p>${opportunityChecklistHtml(state, key)}${def.note ? `<p class="opportunity-note">${esc(def.note)}</p>` : ""}</section><div class="opportunity-detail-actions">${back}${!done && !current ? `<button type="button" class="mini" data-act="opportunity-current" data-opportunity="${esc(key)}">Set as current</button>` : ""}</div>`;
+  return `<section class="opportunity-detail opportunity-body"><h2>${esc(def.title)}</h2><p class="${done ? "done" : "opportunity-current"}">${done ? "[x] Done" : current ? "Current" : "[ ] Not done"}</p>${opportunityChecklistHtml(state, key)}${def.note ? `<p class="opportunity-note">${esc(def.note)}</p>` : ""}</section><div class="opportunity-detail-actions">${back}${!done && !current ? `<button type="button" class="mini" data-act="opportunity-current" data-opportunity="${esc(key)}">Set as current</button>` : ""}</div>`;
 }
 
 export function opportunityCatalogHtml(state: GameState, ui: Omit<OpportunityCatalogUi, "open">, pageSize = 8): string {
@@ -77,7 +77,7 @@ export function opportunityCatalogHtml(state: GameState, ui: Omit<OpportunityCat
     return `<li data-slot="${row.slot}">${heading}${leaf}</li>`;
   }).join("");
   const body = ui.detail === null
-    ? `<ol class="opportunity-rows">${rows}</ol><nav class="opportunity-pages" aria-label="Opportunity pages"><button id="opportunity-previous" type="button" class="mini" data-act="opportunity-page" data-page="${page.page - 1}"${page.page === 0 ? " disabled" : ""}>Previous</button><span>Page ${page.page + 1} / ${page.pageCount}</span><button id="opportunity-next" type="button" class="mini" data-act="opportunity-page" data-page="${page.page + 1}"${page.page === page.pageCount - 1 ? " disabled" : ""}>Next</button></nav>`
+    ? `<ol class="opportunity-rows opportunity-body">${rows}</ol><nav class="opportunity-pages" aria-label="Opportunity pages"><button id="opportunity-previous" type="button" class="mini" data-act="opportunity-page" data-page="${page.page - 1}"${page.page === 0 ? " disabled" : ""}>Previous</button><span>Page ${page.page + 1} / ${page.pageCount}</span><button id="opportunity-next" type="button" class="mini" data-act="opportunity-page" data-page="${page.page + 1}"${page.page === page.pageCount - 1 ? " disabled" : ""}>Next</button></nav>`
     : opportunityDetailHtml(state, ui.detail);
   return `<div class="box opportunity-catalog" role="dialog" aria-modal="true" aria-labelledby="opportunity-heading"><header class="opportunity-heading"><h1 id="opportunity-heading">Opportunities</h1><button type="button" class="mini" data-act="opportunity-close">Close</button></header><nav class="opportunity-categories" aria-label="Opportunity categories">${tabs}</nav>${body}</div>`;
 }

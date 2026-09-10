@@ -1352,23 +1352,28 @@ button.act small.gives, span.act small.gives,
 #overlay:has(.opportunity-catalog) { overflow-y: auto; align-items: flex-start; padding: 18px; }
 #overlay .box.opportunity-catalog {
   --opportunity-page-size: 8;
+  --opportunity-row-height: 64px;
   width: min(660px, 100%); max-height: none; overflow: visible;
-  margin: auto; text-align: left; padding: 18px 22px;
+  margin: 0 auto; text-align: left; padding: 18px 22px;
 }
 .opportunity-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .opportunity-categories { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 0 12px; border-bottom: 1px solid var(--line); }
 .opportunity-categories [aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
-.opportunity-rows { list-style: none; padding: 8px 0; margin: 0; display: grid; grid-template-rows: repeat(var(--opportunity-page-size), minmax(56px, auto)); }
+/* Lists and details reserve the same space. Fixed tracks include room for
+   wrapped titles and headings; short pages cannot pull navigation upwards. */
+.opportunity-body { height: calc(var(--opportunity-page-size) * var(--opportunity-row-height) + 16px); }
+.opportunity-rows { list-style: none; padding: 8px 0; margin: 0; display: grid; grid-template-rows: repeat(var(--opportunity-page-size), var(--opportunity-row-height)); }
 .opportunity-rows > li { display: flex; flex-direction: column; justify-content: end; min-width: 0; }
 .opportunity-group { display: block; font-weight: 600; padding-top: 3px; }
 .opportunity-row, .opportunity-unknown { display: flex; gap: 12px; align-items: baseline; padding: 7px 0 7px 12px; min-height: 32px; }
 .opportunity-row { width: 100%; border: 0; background: transparent; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.opportunity-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .opportunity-unknown, .opportunity-note { color: var(--dim); }
 .opportunity-row-status { margin-left: auto; flex: none; font-size: 11px; }
 .opportunity-pages { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .opportunity-pages button:first-child { justify-self: start; }
 .opportunity-pages button:last-child { justify-self: end; }
-.opportunity-detail { min-height: 260px; padding-top: 8px; }
+.opportunity-detail { padding-top: 8px; }
 .opportunity-detail h2 { color: var(--text); text-transform: none; font-size: 15px; letter-spacing: normal; }
 .opportunity-detail-actions { display: flex; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .cards { display: flex; gap: 12px; margin: 10px 0; align-items: stretch; }
@@ -1430,7 +1435,7 @@ button.act small.gives, span.act small.gives,
   .col { display: contents; }
   #opportunities { order: 0; }
   #overlay:has(.opportunity-catalog) { padding: 10px; }
-  #overlay .box.opportunity-catalog { --opportunity-page-size: 6; padding: 14px; }
+  #overlay .box.opportunity-catalog { --opportunity-page-size: 6; --opportunity-row-height: 96px; padding: 14px; }
   #shopping { order: 0; }
   #task { order: 1; }
   #stats { order: 2; }
