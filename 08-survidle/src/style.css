@@ -338,7 +338,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   100% { opacity: 0; transform: translate(-32px, 32px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sky-meteor, .weather-ripple, .fog-ripple, .cloud-ripple, .water-live, .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
+  .sky-meteor, .weather-ripple, .fog-ripple, .cloud-ripple, .water-live .water-ripple, .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
   .weather-ripple:not(:first-child), .fog-ripple:not(:first-child), .cloud-ripple:not(:first-child) { display: none; }
   .weather-ripple:first-child, .fog-ripple:first-child, .cloud-ripple:first-child { opacity: var(--wx-glyph-opacity); }
   .sky-meteor { opacity: 0; }
@@ -1465,28 +1465,36 @@ button.act small.gives, span.act small.gives,
    colour. */
 .grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; --water-rest: #102047; --water-lit: #182d60; }
 .grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; --water-rest: #060d20; --water-lit: #0b1532; }
-/* Light on open water: rippling, faked for the eye. Three smooth sine
-   waves cross the sheet in different directions, with different
-   wavelengths and speeds, and each cell's colour is their sum. A cell's
-   phase in each wave comes from its position, so neighbours move together
-   and the light travels and spreads rather than blinking in place; three
-   directions crossing means no stripe. One clock ticks per cell as a
-   registered number, and the colour is computed from it in place, so the
-   only per-frame work is the water cells' own style. Wall clock, never the
-   simulation's; remembered water and ice lie still. The clock's cycle is a
-   whole number of every wave's period, so the wrap is seamless. */
-@property --water-t { syntax: "<number>"; inherits: false; initial-value: 0; }
-.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.water-live {
-  background-color: color-mix(in srgb, var(--water-lit) calc((0.5 + (sin(var(--water-t) * 1.2566 + var(--water-p1)) + sin(var(--water-t) * 1.6755 + var(--water-p2)) + sin(var(--water-t) * 0.7854 + var(--water-p3))) / 6) * 100%), var(--water-rest));
+/* Light on open water: rippling, faked for the eye. Three smooth waves
+   cross the sheet in different directions, with different wavelengths and
+   speeds, and each cell shows their sum. A cell's start in each wave comes
+   from its position, so neighbours move together and the light travels and
+   spreads rather than blinking in place; three directions crossing means
+   no stripe.
+
+   Each wave is an overlay in the cell's lit blue whose opacity swells and
+   fades. Opacity is the one thing here the compositor animates by itself,
+   so a lake of two hundred cells costs the main thread nothing per frame;
+   a colour computed in place repainted every cell every frame and starved
+   the page. The overlay sits below the glyph inside the cell's own
+   stacking context. Wall clock, never the simulation's; remembered water
+   and ice lie still. */
+.grid .c.water-live { position: relative; isolation: isolate; }
+.grid .c.water-live .water-ripple {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--water-lit);
+  opacity: 0;
+  will-change: opacity;
+  animation: water-ripple 5s ease-in-out infinite;
+  /* ?shimmer= on the page sets the speed factor on the root; the delay scales with it so the pattern keeps its shape. */
+  animation-delay: calc(var(--water-delay) / var(--water-shimmer-speed, 1));
 }
-.grid .c.water-live {
-  animation: water-clock 600s linear infinite;
-  /* ?shimmer= on the page sets the speed factor on the root; unset, the ripples run as written. */
-  animation-duration: calc(600s / var(--water-shimmer-speed, 1));
-}
-@keyframes water-clock {
-  from { --water-t: 0; }
-  to { --water-t: 600; }
+.grid .c.water-live .water-ripple-1 { animation-duration: calc(5s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-2 { animation-duration: calc(3.75s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-3 { animation-duration: calc(8s / var(--water-shimmer-speed, 1)); }
+@keyframes water-ripple {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 0.34; }
 }
 /* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
    depth palette. Thin ice remains dark and uncertain; safe ice forms the

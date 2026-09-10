@@ -234,14 +234,14 @@ function detailHash(seed: number, x: number, y: number, n: number): number {
 }
 
 /**
- * The three ripples that light open water: a direction in radians and a
- * wavelength in drawn cells each. Their periods live in the stylesheet
- * beside the clock. Presentation only.
+ * The three ripples that light open water: a direction in radians, a
+ * wavelength in drawn cells and a period in real seconds each. The
+ * stylesheet's three overlay durations are these periods. Presentation only.
  */
 export const WATER_RIPPLES = [
-  { direction: 0.35, wavelength: 5 },
-  { direction: 2.27, wavelength: 3.5 },
-  { direction: 4.54, wavelength: 8 },
+  { direction: 0.35, wavelength: 5, periodS: 5 },
+  { direction: 2.27, wavelength: 3.5, periodS: 3.75 },
+  { direction: 4.54, wavelength: 8, periodS: 8 },
 ] as const;
 
 /**
@@ -258,6 +258,14 @@ export function waterRipplePhases(seed: number, x: number, y: number, zoom: numb
     const jitter = (detailHash(seed, x, y, 149 + 2 * i) % 1000) / 1000 * 0.5 - 0.25;
     const phase = (along / zoom / ripple.wavelength) * turn + jitter;
     return Math.round(((phase % turn) + turn) % turn * 1000) / 1000;
+  }) as [number, number, number];
+}
+
+/** The same phases as a start offset into each ripple's cycle, in seconds, for the overlays' animation delay. */
+export function waterRippleDelaysS(seed: number, x: number, y: number, zoom: number): [number, number, number] {
+  return waterRipplePhases(seed, x, y, zoom).map((phase, i) => {
+    const delay = Math.round(phase / (2 * Math.PI) * WATER_RIPPLES[i].periodS * 1000) / 1000;
+    return delay >= WATER_RIPPLES[i].periodS ? 0 : delay;
   }) as [number, number, number];
 }
 
@@ -1002,13 +1010,13 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (ui.cloudShadows && weather.cloud >= 0.15) content += `<i class="cloud-shadow" aria-hidden="true"></i>`;
       if (weatherGlyphs) content += `<i class="cell-weather" aria-hidden="true">${weatherGlyphs}</i>`;
     }
-    // Open water in sight catches the light. The phase is a function of the
-    // cell and the seed, so the same cell writes the same attribute on every
-    // render and the morph has nothing to change.
+    // Open water in sight catches the light: three overlays, one per ripple,
+    // whose opacity the compositor animates off the main thread. Each delay
+    // is a function of the cell and the seed, so the same cell writes the
+    // same markup on every render and the morph has nothing to change.
     if (cls.includes("t-water") && seen === 2 && !cls.includes("memory") && !cls.includes("mk") && !cls.includes("ice-thin") && !cls.includes("ice-safe")) {
       cls.push("water-live");
-      const [p1, p2, p3] = waterRipplePhases(world.seed, cx, cy, z);
-      styles.push(`--water-p1:${p1}`, `--water-p2:${p2}`, `--water-p3:${p3}`);
+      content += waterRippleDelaysS(world.seed, cx, cy, z).map((delay, i) => `<i class="water-ripple water-ripple-${i + 1}" style="--water-delay:-${delay}s" aria-hidden="true"></i>`).join("");
     }
     const style = styles.length ? ` style="${styles.join(";")}"` : "";
     parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${style}>${content}</span>`);

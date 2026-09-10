@@ -295,24 +295,25 @@ describe("the map's compositing layers", () => {
     // Rippling, faked for the eye: three smooth sine waves crossing the sheet
     // in different directions, summed per cell. Wall clock, never simulation
     // minutes, and a re-render writes the same attributes again.
-    const live = rule(".grid .c.water-live");
-    expect(live).toContain("animation: water-clock 600s linear infinite");
-    // A test aid: ?shimmer= scales the speed through one root property and nothing else.
-    expect(live).toContain("animation-duration: calc(600s / var(--water-shimmer-speed, 1))");
+    // Each ripple is an overlay whose opacity the compositor animates, so a
+    // lake costs the main thread nothing per frame.
+    expect(rule(".grid .c.water-live")).toContain("isolation: isolate");
+    const overlay = rule(".grid .c.water-live .water-ripple");
+    expect(overlay).toContain("z-index: -1");
+    expect(overlay).toContain("pointer-events: none");
+    expect(overlay).toContain("will-change: opacity");
+    expect(overlay).toContain("animation: water-ripple 5s ease-in-out infinite");
+    // A test aid: ?shimmer= scales the speed through one root property; the delay scales with it so the pattern keeps its shape.
+    expect(overlay).toContain("animation-delay: calc(var(--water-delay) / var(--water-shimmer-speed, 1))");
     expect(readFileSync("src/main.ts", "utf8")).toContain('params.get("shimmer")');
-    expect(css).toContain('@property --water-t { syntax: "<number>"; inherits: false; initial-value: 0; }');
-    const clock = css.match(/@keyframes water-clock[\s\S]*?\n}/)?.[0] ?? "";
-    expect(clock).toContain("from { --water-t: 0; }");
-    expect(clock).toContain("to { --water-t: 600; }");
-    // The colour carries the depth rules' own weight and comes after them, or a deep cell would keep its flat blue.
-    const colour = rule(".grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.water-live");
-    expect(colour).toContain("background-color: color-mix(in srgb, var(--water-lit) calc((0.5 + (sin(var(--water-t) * 1.2566 + var(--water-p1)) + sin(var(--water-t) * 1.6755 + var(--water-p2)) + sin(var(--water-t) * 0.7854 + var(--water-p3))) / 6) * 100%), var(--water-rest))");
-    expect(css.indexOf(".t-water.water-live {")).toBeGreaterThan(css.indexOf(".t-water.deep-2 {"));
-    // The clock's 600 s cycle is a whole number of each wave's period, so the wrap is seamless.
-    for (const omega of [1.2566, 1.6755, 0.7854]) {
-      const cycles = 600 * omega / (2 * Math.PI);
-      expect(Math.abs(cycles - Math.round(cycles))).toBeLessThan(0.01);
+    for (const [i, ripple] of WATER_RIPPLES.entries()) {
+      expect(rule(`.grid .c.water-live .water-ripple-${i + 1}`)).toContain(`animation-duration: calc(${ripple.periodS}s / var(--water-shimmer-speed, 1))`);
     }
+    const frames = css.match(/@keyframes water-ripple[\s\S]*?\n}/)?.[0] ?? "";
+    expect(frames).toContain("0%, 100% { opacity: 0; }");
+    expect(frames).toContain("50% { opacity: 0.34; }");
+    expect(frames).not.toContain("background");
+    expect(frames).not.toContain("transform");
     // Neighbours are near each other in phase: one drawn cell east moves each
     // ripple by its own step, so the light travels instead of blinking, and a
     // coarse block keeps the same step per drawn cell.
@@ -357,11 +358,15 @@ describe("the map's compositing layers", () => {
     root.innerHTML = first;
     const liveCells = [...root.querySelectorAll<HTMLElement>(".c.water-live")];
     expect(liveCells.length).toBeGreaterThan(20);
-    for (const prop of ["--water-p1", "--water-p2", "--water-p3"]) {
-      const phases = liveCells.map((el) => Number(el.style.getPropertyValue(prop)));
-      for (const phase of phases) expect(phase).toBeGreaterThanOrEqual(0);
-      for (const phase of phases) expect(phase).toBeLessThan(2 * Math.PI);
-      expect(new Set(phases).size).toBeGreaterThan(5);
+    for (const [i, ripple] of WATER_RIPPLES.entries()) {
+      const delays = liveCells.map((el) => {
+        const overlays = el.querySelectorAll<HTMLElement>(".water-ripple");
+        expect(overlays).toHaveLength(3);
+        return Number(overlays[i].style.getPropertyValue("--water-delay").match(/^-(\d+(?:\.\d+)?)s$/)?.[1]);
+      });
+      for (const delay of delays) expect(delay).toBeGreaterThanOrEqual(0);
+      for (const delay of delays) expect(delay).toBeLessThan(ripple.periodS);
+      expect(new Set(delays).size).toBeGreaterThan(5);
     }
     for (const el of liveCells) {
       expect(el.classList.contains("t-water")).toBe(true);
@@ -375,7 +380,7 @@ describe("the map's compositing layers", () => {
     root.innerHTML = mapHtml(frozen.world, frozen.state, newUiState(), frozen.cal);
     expect(root.querySelectorAll(".t-water.ice-safe").length).toBeGreaterThan(20);
     expect(root.querySelector(".water-live")).toBeNull();
-    expect(root.innerHTML).not.toContain("--water-p1");
+    expect(root.innerHTML).not.toContain("water-ripple");
   });
 
   it("makes the visual harness select simulation fixtures without injecting presentation state", () => {
