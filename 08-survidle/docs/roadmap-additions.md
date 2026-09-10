@@ -723,3 +723,35 @@ translucent fog edge to soften the hard cutoff. It must be derived only from the
 known/unknown boundary, preserve the uniform time-of-day shade across the whole
 viewport, and never reveal terrain or marks in an unknown cell. Treat this as a
 P2 readability pass, with screenshots at day, night and rain before shipping.
+
+## Per-frame panel rewrites
+
+**Raised** 2026-09-11, while measuring the water shimmer's cost.
+
+The frame loop renders every panel on every animation frame, and the browser
+pays for it whether or not anything changed. Measured in headless Chrome on a
+real run (seed 4, day 150, rain): a style recalculation and a layout 60 times
+a second, paint at 73 ms of every second, and a main thread busy 676 ms of
+every second, all with the water shimmer switched off. The per-frame mutation
+census names the writers: the six panes' `hidden` attribute, the sky's
+`aria-label` and gradient centre, the weather panel's children and path, and
+the map tip's `hidden`, each rewritten 60 times a second. The same run had
+358 CSS animations alive at once: 220 fog and rain glyph ripples, 120 sky
+rain drops, 11 water cells.
+
+The shimmer itself is not the cost. With it on, the same run paints 77 ms
+instead of 73 and stays at 60 frames a second; even the coast fixture with
+128 live water cells holds 60 frames a second and adds 43 ms a second of
+paint and raster.
+
+The fix is the one `setPanel` already applies to markup: write only what
+changed. Every per-frame writer above sets a value that is usually equal to
+the one already there; compare first, and the mutation, the style
+invalidation and the layout go away. The weather panel and the sky should
+then render on their own keys, as the weather panel already does for its
+text but not for its path. Measure with the same census before and after,
+and keep the churn budget test honest about it: a panel that rewrites an
+attribute every frame is churn even when the markup does not change. The
+animations are a second, smaller item: four ripples per weather cell could
+be one element whose content steps, and sky rain could cap its drop count
+by viewport size.
