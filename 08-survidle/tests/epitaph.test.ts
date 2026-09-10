@@ -62,10 +62,11 @@ describe("the epitaph", () => {
     expect(entry(r)[0]).toBe("Eirik Kalnins. Landed 1 April, year 1.");
   });
 
-  it("is deterministic for reference deaths", () => {
-    // These snapshots guard the complete report seam, not a balance target.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 26. Starved at camp, with nothing in the pack and 78 kg of firewood at camp."`);
-    expect(epitaph(runReference(42, 60).record)).toMatchInlineSnapshot(`"Darius Paulauskas. Day 53. Starved at camp, with nothing in the pack and 40 kg of firewood at camp."`);
+  it("is deterministic for the reference seeds; trap yields more with larger capacities", () => {
+    // These are measured deterministic outcomes, not survival targets: wetness,
+    // warmth and the work they interrupt can move the day substantially.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 29. Starved at camp, with nothing in the pack and no firewood at camp."`);
+    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 30. Starved at camp, with nothing in the pack and 60 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

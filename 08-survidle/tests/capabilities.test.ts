@@ -4,7 +4,7 @@ import { calendar } from "../src/sim/calendar";
 import { RECIPES, STRUCTURE_IDS, STRUCTURES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { regionState, siteFor } from "../src/sim/regionstate";
-import { RECOMMENDED, RUNG_LEVEL } from "../src/sim/skills";
+import { RECOMMENDED, RUNG_LEVEL, SKILL_IDS } from "../src/sim/skills";
 import { campHtml } from "../src/ui/panels";
 import { allPanesHtml } from "./pane";
 import { siteCamp } from "./siting-helpers";
@@ -20,6 +20,7 @@ describe("the capability spine's coverage", () => {
       else if (kind === "build") expect(STRUCTURES[name as keyof typeof STRUCTURES], k).toBeDefined();
       else if (kind === "craft") expect(RECIPES[name as keyof typeof RECIPES], k).toBeDefined();
       else if (kind === "rung") expect(RUNG_LEVEL[name as keyof typeof RUNG_LEVEL], k).toBeDefined();
+      else if (kind === "skill") expect(SKILL_IDS).toContain(name);
       else throw new Error(`unknown key kind ${k}`);
     }
   });
@@ -65,6 +66,14 @@ describe("the capability spine's coverage", () => {
 });
 
 describe("what a capability tells the panel", () => {
+  it("names the capability, dependencies and limit of each shelter and weather technique", () => {
+    for (const skill of ["naturalShelter", "shelterBuilding", "weatherSense"] as const) {
+      const row = CAPABILITIES.find((r) => typeof r.tier === "object" && r.tier.skill === skill);
+      expect(row, skill).toBeDefined();
+      expect(row?.gives).toBeTruthy();
+      expect(row?.limits).toBeTruthy();
+    }
+  });
   it("finds a row from the task and the argument a Do row is built with", () => {
     expect(capabilityFor("craft", "basketTrap")?.id).toBe("basket trap");
     expect(capabilityFor("craft", "snare")?.id).toBe("snares");

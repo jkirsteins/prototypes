@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { bodyRowOf, isCampRow, isBodyRow } from "../src/sim/bodyorder";
+import { stormOptions } from "../src/sim/body";
 import { rootStockFor } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
 import { campSite, fillPopulations, siteFor } from "../src/sim/regionstate";
@@ -13,6 +14,12 @@ import { AWAY_HOURS_MAX } from "../src/units";
 import { isWorkOrder, type GameState } from "../src/sim/types";
 import { regionAt, speciesHere } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { Rng } from "../src/rng";
+import { activateWildlife, evaluateWildlifeDisturbance } from "../src/sim/wildlife-agents";
+import { setWildlifeEventSink } from "../src/sim/wildlife-events";
+import { metricAreaForCell, resolveSpatialEstimate } from "../src/sim/wildlife-space";
+
+afterEach(() => setWildlifeEventSink(null));
 
 class MemStorage implements Storage {
   private m = new Map<string, string>();
@@ -25,13 +32,37 @@ class MemStorage implements Storage {
 }
 
 describe("advance", () => {
-  it("moves the clock by exactly the minutes asked, in any step size", () => {
+  it("produces the same seeded state when time arrives in whole minutes or fractional frames", () => {
     const a = newGame(8);
     const b = newGame(8);
-    advance(a.state, a.world, 60);
-    for (let i = 0; i < 600; i++) advance(b.state, b.world, 0.1);
-    expect(a.state.minute).toBeCloseTo(60, 6);
-    expect(b.state.minute).toBeCloseTo(60, 6);
+    advance(a.state, a.world, 60, { wildlife: "detailed" });
+    for (let i = 0; i < 600; i++) advance(b.state, b.world, 0.1, { wildlife: "detailed" });
+    expect(b.state).toEqual(a.state);
+  });
+
+  it("finishes a committed detailed-world tick when the survivor dies before a fractional storm onset", () => {
+    const setup = () => {
+      const game = newGame(8);
+      activateWildlife(game.state, game.world, new Rng(1));
+      const subject = game.state.wildlife.subjects.find((candidate) => candidate.active !== null)!;
+      const area = metricAreaForCell(game.world, subject.active!.cell)!;
+      if (area.kind !== "area") throw new Error("a wildlife cell must resolve to an area");
+      subject.active!.travel = { destination: { xM: area.min.xM + 10, yM: area.min.yM + 10 }, cell: subject.active!.cell };
+      game.state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 0.25, until: 360.25, warned: false };
+      return { ...game, subject };
+    };
+    const alive = setup();
+    const dying = setup();
+    dying.state.player.health = 0;
+    dying.state.player.warmth = 0;
+
+    advance(alive.state, alive.world, 1, { wildlife: "detailed" });
+    advance(dying.state, dying.world, 1, { wildlife: "detailed" });
+
+    expect(dying.state.dead).not.toBeNull();
+    expect(dying.state.minute).toBe(1);
+    expect(dying.state.advanceCarry).toBe(0);
+    expect(dying.subject.active?.position).toEqual(alive.subject.active?.position);
   });
 
   it("kills an idle character who runs out, and names the cause", () => {
@@ -64,6 +95,86 @@ describe("advance", () => {
 });
 
 describe("save", () => {
+  it("migrates a cell-only wildlife position without relocating or restarting its escape", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const subject = state.wildlife.subjects[0];
+    const expectedPoint = resolveSpatialEstimate(state.seed, subject.id, metricAreaForCell(world, subject.active!.cell)!);
+    const raw = JSON.parse(serialize(state));
+    const active = raw.state.wildlife.subjects[0].active;
+    delete active.position;
+    delete active.travel;
+    active.intent = "flee";
+    active.escapeRemainingM = 123;
+    active.escapeStartedMinute = 4;
+    active.escapeEpisode = 2;
+    const loaded = deserialize(JSON.stringify(raw))!.state;
+    expect(loaded.wildlife.subjects[0].active).toMatchObject({
+      cell: active.cell, position: expectedPoint, travel: null,
+      escapeRemainingM: 123, escapeStartedMinute: 4, escapeEpisode: 2,
+    });
+    expect(loaded.rng).toBe(state.rng);
+    expect(loaded.log).toEqual(state.log);
+  });
+
+  it("migrates old active wildlife without replaying an existing flight", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const raw = JSON.parse(serialize(state));
+    const active = raw.state.wildlife.subjects[0].active;
+    active.intent = "flee";
+    active.alarm = 60;
+    delete active.escapeRemainingM;
+    delete active.escapeStartedMinute;
+    delete active.lastDetectionMinute;
+    delete active.escapeEpisode;
+    const loaded = deserialize(JSON.stringify(raw))!.state;
+    expect(loaded.wildlife.subjects[0].active).toMatchObject({
+      escapeRemainingM: 420, escapeStartedMinute: state.minute,
+      lastDetectionMinute: state.minute, escapeEpisode: 0,
+    });
+    advance(loaded, world, 1, { wildlife: "detailed" });
+    const scheduled = loaded.wildlife.subjects[0].active!;
+    expect(scheduled.cell).toBe(active.cell);
+    expect(scheduled.travel).not.toBeNull();
+    const before = { ...scheduled.position };
+    advance(loaded, world, 1, { wildlife: "detailed" });
+    expect(scheduled.position).not.toEqual(before);
+  });
+
+  it("lets a legacy zero-alarm flight settle without replaying an event or log", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const raw = JSON.parse(serialize(state));
+    raw.state.wildlife.subjects = [raw.state.wildlife.subjects[0]];
+    const active = raw.state.wildlife.subjects[0].active;
+    active.intent = "flee";
+    active.alarm = 0;
+    delete active.escapeRemainingM;
+    delete active.escapeStartedMinute;
+    delete active.lastDetectionMinute;
+    delete active.escapeEpisode;
+    const events: string[] = [];
+    setWildlifeEventSink((event) => events.push(event.id));
+    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const deer = loaded.wildlife.subjects[0];
+    const point = resolveSpatialEstimate(loaded.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
+    // Remain 500 m away, beyond both detection and settlement ranges.
+    loaded.player.x = (point.xM + 500) / 300;
+    loaded.player.y = point.yM / 300;
+    loaded.minute = 29;
+    evaluateWildlifeDisturbance(loaded, world, calendar(29, loaded.startDoy), true);
+    expect(deer.active!.intent).toBe("flee");
+    loaded.minute = 30;
+    evaluateWildlifeDisturbance(loaded, world, calendar(30, loaded.startDoy), true);
+    expect(deer.active).toMatchObject({
+      intent: "wander", alarm: 0, escapeRemainingM: 0,
+      escapeStartedMinute: null, lastDetectionMinute: 0, escapeEpisode: 0,
+    });
+    expect(events).toHaveLength(0);
+    expect(loaded.log).toEqual(state.log);
+  });
+
   it("round-trips the whole state", () => {
     const { state, world } = newGame(9);
     siteCamp(state, world);
@@ -76,6 +187,89 @@ describe("save", () => {
     expect(file!.state).toEqual(expected);
   });
 
+  it("round-trips stable storm identity and an inspectable teaching opportunity", () => {
+    const { state, world } = newGame(9);
+    state.weather.storm = { id: 4, source: "synthetic", kind: "rain", from: 600, until: 960, warned: false };
+    state.weather.nextStormId = 5;
+    state.goals.opportunity = {
+      goal: "testShelter", status: "reserved", createdAt: 20, attempts: 2,
+      stormId: 4, source: "synthetic", area: { region: 7, centre: 99, radiusKm: 1 },
+      announcedAt: null, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+      readerIndex: 1, plan: null,
+    };
+    state.goals.opportunity.plan = stormOptions(state, world, state.weather.storm);
+    const back = deserialize(serialize(state))!.state;
+    expect(back.weather.storm).toEqual(state.weather.storm);
+    expect(back.weather.nextStormId).toBe(5);
+    expect(back.goals.opportunity).toEqual(state.goals.opportunity);
+  });
+
+  it("adds zeroed storm metrics to an opportunity from before shelter testing", () => {
+    const { state } = newGame(9);
+    state.goals.opportunity = {
+      goal: "testShelter", status: "reserved", createdAt: 20, attempts: 1,
+      stormId: null, source: null, area: null, announcedAt: null, resolvedAt: null,
+      minutesByProtection: [4, 3, 2, 1], atCampMinutes: 9, awayFromCampMinutes: 1, maxWetness: 70,
+    };
+    const raw = JSON.parse(serialize(state));
+    delete raw.state.goals.opportunity.minutesByProtection;
+    delete raw.state.goals.opportunity.atCampMinutes;
+    delete raw.state.goals.opportunity.awayFromCampMinutes;
+    delete raw.state.goals.opportunity.maxWetness;
+    delete raw.state.goals.opportunity.readerIndex;
+    delete raw.state.goals.opportunity.plan;
+
+    expect(deserialize(JSON.stringify(raw))!.state.goals.opportunity).toMatchObject({
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+      readerIndex: null, plan: null,
+    });
+  });
+
+  it.each(["fieldFire", "fieldMeal"] as const)("migrates a legacy %s opportunity into the shared remote storm attempt", (goal) => {
+    const { state } = newGame(9);
+    state.goals.opportunity = {
+      goal, status: "reserved", createdAt: 20, attempts: 2,
+      stormId: null, source: null, area: { region: 7, centre: 99, radiusKm: 1 },
+      announcedAt: null, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    };
+
+    expect(deserialize(serialize(state))!.state.goals.opportunity).toMatchObject({
+      goal: "remoteStorm", status: "reserved", attempts: 2,
+      area: { region: 7, centre: 99, radiusKm: 1 },
+    });
+  });
+
+  it("migrates storms and goals from before stable identity and opportunities", () => {
+    const { state } = newGame(9);
+    const raw = JSON.parse(serialize(state));
+    raw.state.weather.storm = { kind: "rain", from: 600, until: 960, warned: false };
+    delete raw.state.weather.nextStormId;
+    delete raw.state.goals.opportunity;
+    const back = deserialize(JSON.stringify(raw))!.state;
+    expect(back.weather.storm).toEqual({ id: 1, source: "natural", kind: "rain", from: 600, until: 960, warned: false });
+    expect(back.weather.nextStormId).toBe(2);
+    expect(back.goals.opportunity).toBeNull();
+  });
+
+  it("keeps a fractional tick across a save and reload", () => {
+    const uninterrupted = newGame(9);
+    const reloaded = newGame(9);
+    advance(uninterrupted.state, uninterrupted.world, 1, { wildlife: "detailed" });
+    advance(reloaded.state, reloaded.world, 0.4, { wildlife: "detailed" });
+    const file = deserialize(serialize(reloaded.state))!;
+    advance(file.state, reloaded.world, 0.6, { wildlife: "detailed" });
+    expect(file.state).toEqual(uninterrupted.state);
+  });
+
+  it("starts the fixed-step carry empty when loading a pre-version-9 save", () => {
+    const legacy = JSON.parse(serialize(newGame(9).state));
+    legacy.version = 8;
+    legacy.state.advanceCarry = 0.75;
+    expect(deserialize(JSON.stringify(legacy))!.state.advanceCarry).toBe(0);
+  });
+
   it("a new game starts with the new body fields, and an old save gets them filled", () => {
     const { state, world } = newGame(8);
     siteCamp(state, world);
@@ -83,6 +277,8 @@ describe("save", () => {
     expect(state.player.frostbite).toEqual({ feet: 0, hands: 0 });
     expect(state.weather.iceCm).toBe(0);
     expect(state.weather.storm).toBeNull();
+    expect(state.weather.nextStormId).toBe(1);
+    expect(state.weather.stormFreeSince).toBe(0);
     const st = state.regions[state.player.region];
     expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0 });
     expect(st.smoke).toBe(0);
@@ -102,6 +298,8 @@ describe("save", () => {
     delete raw.state.player.tools.find((t: { id: string }) => t.id === "barkBucket").litres;
     delete raw.state.weather.iceCm;
     delete raw.state.weather.storm;
+    delete raw.state.weather.nextStormId;
+    delete raw.state.weather.stormFreeSince;
     delete raw.state.weather.dryDays;
     delete raw.state.weather.wetDay;
     delete raw.state.weather.dryWarned;
@@ -124,6 +322,8 @@ describe("save", () => {
     expect(back.player.tools.find((t) => t.id === "barkBucket")!.frozen).toBe(false);
     expect(back.weather.iceCm).toBe(0);
     expect(back.weather.storm).toBeNull();
+    expect(back.weather.nextStormId).toBe(1);
+    expect(back.weather.stormFreeSince).toBe(state.minute);
     expect(back.weather.dryDays).toBe(0);
     expect(back.weather.wetDay).toBe(false);
     expect(back.weather.dryWarned).toBe(false);
@@ -356,11 +556,12 @@ describe("the world save", () => {
     expect(back.player.huntSigns).toEqual({});
   });
 
-  it("writes version 6 and reads 4 by wrapping the survivor as the first of the world", () => {
+  it("writes version 9 and reads 4 by wrapping the survivor as the first of the world", () => {
     const { state } = newGame(8);
-    expect(JSON.parse(serialize(state)).version).toBe(8);
+    expect(JSON.parse(serialize(state)).version).toBe(9);
     const v4 = JSON.parse(serialize(state)) as { version: number; savedAt: number; state: Record<string, unknown> };
     v4.version = 4;
+    delete v4.state.advanceCarry;
     delete v4.state.survivors;
     delete v4.state.year;
     delete v4.state.landing;
@@ -373,6 +574,7 @@ describe("the world save", () => {
     expect(file.state.survivors[0].name.first.length).toBeGreaterThan(0);
     expect(file.state.survivors[0].landed).toEqual({ year: 1, doy: file.state.startDoy });
     expect(file.state.spine).toEqual({ fired: {}, announced: {} });
+    expect(file.state.advanceCarry).toBe(0);
     for (const st of Object.values(file.state.regions)) expect(campSite(st)?.structureAge ?? {}).toEqual({});
   });
 });
@@ -381,7 +583,7 @@ describe("the version 6 save", () => {
   it("writes version 6 and fills the producers' fields into an older save", () => {
     const { state } = newGame(8);
     const text = serialize(state);
-    expect(JSON.parse(text).version).toBe(8);
+    expect(JSON.parse(text).version).toBe(9);
     const old = JSON.parse(text);
     old.version = 5;
     delete old.state.player.known;

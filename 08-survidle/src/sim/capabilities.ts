@@ -11,7 +11,7 @@ import { cellAt, type World } from "../world/gen";
 import { campSite } from "./regionstate";
 import type { GameState, RecipeId, RegionState, Rung, Site, SkillId, StructureId, TaskId } from "./types";
 
-export type CapabilityKey = `rec:${string}` | `build:${StructureId}` | `craft:${RecipeId}` | `rung:${Rung}`;
+export type CapabilityKey = `rec:${string}` | `build:${StructureId}` | `craft:${RecipeId}` | `rung:${Rung}` | `skill:${SkillId}`;
 
 export interface CapabilityRow {
   /** The name a player remembers. */
@@ -32,6 +32,30 @@ export const NOT_TIERS: StructureId[] = ["boughBed"];
 export const PRODUCERS: string[] = ["snares", "drying rack", "basket trap", "water trough", "seep"];
 
 export const CAPABILITIES: CapabilityRow[] = [
+  {
+    id: "natural shelter",
+    keys: ["skill:naturalShelter"],
+    tier: { skill: "naturalShelter", level: 5 },
+    receives: ["wayfinding", "weatherSense"],
+    gives: "the best cover the ground holds, improved by work",
+    limits: "the terrain's ceiling; open ground has nothing to find",
+  },
+  {
+    id: "emergency shelter",
+    keys: ["skill:shelterBuilding"],
+    tier: { skill: "shelterBuilding", level: 1 },
+    receives: ["woodcraft", "weatherSense"],
+    gives: "a windbreak, then weatherproof cover, then somewhere liveable",
+    limits: "time to work before the storm; temporary cover falls in fourteen days",
+  },
+  {
+    id: "weather sense",
+    keys: ["skill:weatherSense"],
+    tier: { skill: "weatherSense", level: 1 },
+    receives: ["naturalShelter", "shelterBuilding"],
+    gives: "practice reading the weather for a shelter decision",
+    limits: "a reading needs an observation; knowing the weather does not build a roof",
+  },
   {
     id: "jobs, grinds, keeps, conditions and pace",
     keys: ["rung:job", "rung:grind", "rung:keep", "rung:condition", "rung:pace"],

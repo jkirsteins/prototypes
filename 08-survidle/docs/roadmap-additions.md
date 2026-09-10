@@ -4,20 +4,128 @@ Items raised but not built, written here because the roadmap the specs cite
 (`the roadmap's gate table`, `roadmap item B`) is not in this repo. Move them
 into it when they meet.
 
+## Walking skill
+
+**Raised** 2026-09-09, while designing wildlife disturbance.
+
+The disturbance model now accepts a neutral movement-proficiency profile, but
+ordinary walking still trains no skill. Flesh this out as a separate design
+task rather than hiding it inside Hunting or adding a second "stalk" walking
+skill. Hunting owns deliberate approach, reading animals, and identification;
+Walking should own general travel competence.
+
+Start that item by inventorying every bonus it could touch: terrain pace,
+energy and calorie cost, load tolerance, footing noise, falls and injuries,
+route finding versus Wayfinding, snow and darkness penalties, recovery on long
+journeys, and how much nearby wildlife detects. Decide which of those are
+trained by ordinary travel, how inherited competence works, what mastery keys
+mean across terrain and weather, and what the UI exposes before assigning any
+numbers. Guard against a feedback loop where faster walking produces more
+Walking XP simply because it covers more distance per real second. Keep
+deliberate stealth a Hunting input unless playtesting demonstrates a genuinely
+different repeated action that deserves its own verb and progression track.
+
+## Metric reach for legacy predator interactions
+
+**Raised** 2026-09-09, while replacing wildlife cell jumps with continuous
+metric travel.
+
+Animal locomotion, ungulate detection, startle distance, and escape now use
+exact metres and elapsed game minutes. Older wolf attacks, wolf predation,
+bear and wolverine camp-food contact, and fire or torch avoidance still use
+cell membership or cell-count reach. This is a required blocker before
+simulation-cell size itself changes, not an optional polish pass.
+
+Convert those interactions to physical distances with cells serving only as a
+broad-phase lookup. Specify separate warning, pursuit, attack, predation,
+camp-contact, fire-avoidance, and torch-avoidance radii. Pursuit must target the
+moving actor's exact point rather than a stale destination cell. A swept check
+must catch a wolf crossing the survivor or prey between update endpoints, and
+assign the interaction a time inside that elapsed interval. Explicit cooldowns
+must prevent update chunking or smaller cells from multiplying attacks, kills,
+feeding, or theft. Preserve an in-progress pursuit and cooldown across saves.
+
+The current ten-minute wildlife decision tick also owns needs, feeding,
+predation, and attacks. Locomotion has been separated from it, but the remaining
+cadences are still bundled in `moveOne`. Split them before adding swept contact
+so changing decision frequency cannot silently change hunger or lethality.
+Test identical metric separations and moving crossings on two grid scales and
+with split versus whole elapsed intervals. Detailed and aggregate predator
+risk should agree where both modes represent the same exposure.
+
+Predators currently have zero disturbance gain and therefore do not emit the
+new startle event. The `startle_brush_predator` audio slot is reserved but
+unreachable. Decide predator perception, defensive retreat, and disclosure as
+part of this item, or remove the reserved slot if predator departures will use
+a different presentation contract.
+
+## Wildlife scale transition
+
+**Raised** 2026-09-09, during the post-implementation scale audit.
+
+Exact positions and travel speed are metric, but changing the simulation grid
+still has several prerequisites beyond predator reach:
+
+- `advanceWildlifeTravel` stops after 32 waypoint arrivals in one update. The
+  ceiling is only a runaway-loop guard at today's cell size and update cadence;
+  smaller cells or a long detailed update could discard available travel.
+  Replace it with progress detection and preserved residual time or distance,
+  then prove whole and split updates agree beyond 32 crossings.
+- Current tests prove gait distance and split-update invariance at the configured
+  cell scale, not by running one journey against two interchangeable grid
+  scales. Add injectable grid geometry or an equivalent adapter fixture before
+  claiming that a changed simulation grid has been exercised end to end.
+- Saves written before exact positions store only a cell. Their migration uses
+  today's `WORLD_W`, `WORLD_H`, and `CELL_KM`, so a later grid change would
+  reinterpret an old cell under the new geometry. Version the saved world
+  geometry or migrate those saves before changing any of the three constants.
+- Animal visibility and occlusion still use the containing terrain cell even
+  though disturbance geometry is exact. Define how exact sight rays sample
+  cover on a finer grid and test an animal crossing into and out of cover.
+- Active agents stop at their active-region boundary. Decide whether a finer
+  grid keeps that deliberate local-simulation boundary or needs persistent
+  cross-region journeys, including activation, save, and aggregate handoff.
+- A subject uses one stable seeded point per cell as its waypoint. If finer
+  cells expose repetitive paths, replace this with a metric path vocabulary
+  whose outcome is stable across save/load and independent of render detail.
+- Audit map labels, test fixtures, and documentation for literal assumptions
+  about the old cell size. Production map distance labels and the disturbance
+  tests now read `CELL_KM`; descriptive references to today's 300 m world are
+  not conversion logic.
+
+The existing optional mechanical-subcells item covers the larger routing and
+resource consequences. This item is the compatibility gate that must be
+cleared even if the new grid remains visually similar.
+
+## Wildlife calibration and deferred senses
+
+**Raised** 2026-09-09, during the post-implementation scale audit.
+
+The centralized travel and escape speeds are provisional gameplay calibration.
+The cited field studies anchor initiation and escape distances, but do not
+validate every species gait used here. Before wildlife movement becomes a
+hunting balance dependency, compare ordinary travel, escape duration, pursuit,
+and encounter frequency against sources and playtests. Keep physical constants
+in the species profiles and record why each number changed.
+
+Wind and scent are neutral inputs in the disturbance spec and are not yet
+simulated. Add them only through metric encounter context, with direction,
+strength, terrain, precipitation, and Hunting effects specified together.
+Human listening must also confirm that contact plus receding terrain movement
+reads as an animal startling, especially for a heard-only event; automated
+checks establish scheduling and disclosure, not recognisability.
+
 ## Optional revisit: mechanical subcells
 
 **Raised** 2026-09-09, while adding close-map visual detail.
 
-The first close map rung now divides each 300 m simulation cell into a 3 by 3
-field of cosmetic 100 m details. The closest rung subdivides further into a 6
-by 6 field of cosmetic 50 m details. These fields have no individual cell
-borders, so the terrain reads as one continuous surface. Large-animal markers
-can roam through the details and cross toward their next real cell, but their
-visual position does not affect movement, detection, pursuit, targeting,
-resources or encounters. The survivor's marker uses the continuous in-cell
-position the walking simulation already keeps; this adds no second walking
-task, skill or progress bar. All interaction still resolves to the containing
-300 m cell.
+The first close map rung divides each 300 m terrain cell into a 3 by 3 field of
+cosmetic 100 m details. The closest rung subdivides further into a 6 by 6 field
+of cosmetic 50 m details. These fields have no individual cell borders, so the
+terrain reads as one continuous surface. Large-animal and survivor markers are
+projections of their exact movement positions rather than cosmetic subcell
+motion. Resources and most interaction targets still resolve to the containing
+terrain cell; the visual detail cells themselves remain non-mechanical.
 
 This separation is deliberate. Making the details mechanical would multiply
 the routing graph, retune travel and sight, redistribute cell-based resources,
@@ -26,6 +134,45 @@ and only be revisited if visual subcells prove insufficient in play: for
 example, if close animal approaches repeatedly feel misleading, or players need
 to choose a precise patch of ground inside a cell. At that point the work wants
 its own spec and balance pass rather than more visual exceptions.
+
+## Current viewshed refinements
+
+**Raised** 2026-09-09, after the first topographic viewshed pass.
+
+**Foundation built.** At the cell-scale zooms, current sight now has a circular
+maximum range, elevation and canopy occlusion, Earth-curvature drop, distinct
+remembered and inherited ground, and no live camp flame or glow through an
+occluder. A clear night fire uses a separate five-kilometre luminous-source
+range, so seeing the flame does not pretend the unlit ground is visible. The
+map is awareness gathered while standing in a cell, not a literal
+instantaneous gaze cone, so it remains 360 degrees unless facing and turning
+become simulation actions.
+
+Refine it in this order, and only where play or screenshots expose a problem:
+
+1. When roadmap 7 lands, give fog, low cloud, rain, falling snow and smoke one
+   per-cell atmospheric transmission field. Terrain rays and luminous-source
+   rays both accumulate it: dense fog can hide a nearby flame, haze weakens a
+   distant flame before hiding it, and heavy precipitation shortens both
+   ranges. Add physical distance contrast from that same field, not a cosmetic
+   feather around the viewshed edge. Never reveal an exact hidden fire merely
+   because an atmospheric glow is drawn; a diffuse glow needs its own uncertain
+   observation state.
+2. Add animal-specific visual detection, localized sound and observed dynamic
+   state in the order under Sensory map follow-ons below.
+3. If diagonal pinholes or missed blockers are visible at 300 m resolution,
+   replace rounded ray traversal with supercover traversal and keep a regression
+   gallery for ridge, valley and forest-edge cases. Do not add finer mechanical
+   cells merely to smooth the outline.
+4. When fires make terrain mutable, add a terrain observation generation to the
+   viewshed cache key or invalidate the cache for every changed burn, smoke and
+   regrowth cell before rendering or marking knowledge.
+
+The current rain overlay is presentation only for sight: overcast reduces
+ambient sky light, but rain and snow do not yet attenuate terrain or flame
+line-of-sight. Screenshot coverage must label that limitation until the shared
+transmission field exists. Fog is not yet simulated and must not be mocked only
+in CSS.
 
 ## Burn scars
 
@@ -36,36 +183,54 @@ and eventually growing back. It is the one mark on the map the survivor makes
 by living somewhere rather than by building something, and it would make a camp
 you have kept for a season look like a camp you have kept for a season.
 
-This is not part of the colour pass and was deliberately left out of it. A
-colour is a rule about a cell the world already describes; a scar is a fact the
-world has to remember, which means state, a cause, and a lifetime. Three
-decisions before it can be specced, and none of them are mine to take:
+This is not a separate cheap decoration any more. The realism roadmap already
+specifies the authoritative version in `8. Forest fire`: active burning cells,
+smouldering ground, the persistent burn overlay and ecological succession. This
+entry remains as a cross-reference until that sub-project lands.
 
-**What burns.** The cheap version is only your own fire sites: a hearth
-scorches the cell it sits on, and nothing else in the world ever burns. That is
-one class on one cell, no new state beyond what `regionState` already keeps,
-and it delivers most of the look - the camp you have lived at is ringed with
-old fire. The expensive version is fire that spreads: a lit fire in dry weather
-taking the ground around it, which is a hazard, a loss condition, and a reason
-to site a camp carefully. The second is a mechanic, not a decoration, and it
-would want its own spec.
+The implementation order is fixed by what each layer can honestly know:
 
-**How long a scar lasts, and in what terms.** A fire site used for a week is
-not a fire site used for a year, and the fade wants to be in days that mean
-something rather than a number picked to look right - the same rule the rest of
-this game's numbers hold to. Charcoal on a hearth outlasts the hearth; a burnt
-meadow greens in a season. If the two differ, the scar is per terrain.
+1. The current viewshed distinguishes visible ground from remembered ground,
+   with terrain and canopy occlusion. This is the foundation, not part of the
+   fire state.
+2. Roadmap 7 supplies wind, thunderstorms and fog visibility; item 8 replaces
+   the dry-day counter with litter and peat moisture.
+3. Item 8 adds ignition, active fire cells, spread, destruction and smouldering.
+4. Smoke reads those real cells and the real wind. Low smoke limits the local
+   viewshed; an elevated plume gives only an approximate distant bearing.
+5. A finished burn writes the persistent scar, then succession and wildlife
+   capacity read its age. The scar never predicts or substitutes for steps 2
+   through 4.
 
-**Whether it survives a life.** Camps, knowledge and the journal all carry
-between survivors in their own ways. An heir finding the ancestor's burnt hearth
-is a good moment; an heir finding a map speckled with ninety years of soot is
-not. Whatever the answer, it should be the same answer the dimmed journal
-ground already gives, or a deliberately different one.
+The old cheap option, scorching every occupied fire site without a fire, is
+withdrawn. It would make a visual claim that the simulation never caused and
+would leave two incompatible definitions of burned ground. The drawing follows
+the effective terrain in item 8 and gets rows in `scripts/map-shots.mjs` for
+flame, smoulder, fresh scar and succession.
 
-Once those are settled the drawing is small: a `scorched` class carrying a step
-for age, excluded from marked cells the way every other conditional ground rule
-in `style.css` is, plus a row in `scripts/map-shots.mjs` so the look is checked
-with the rest.
+## Sensory map follow-ons
+
+**Raised** 2026-09-09, during the current-viewshed pass.
+
+The viewshed can hide what the existing simulation locates, but it cannot make
+up observations the simulation does not record. Build these in order:
+
+1. **Detection.** Large wildlife uses its own distance, size, movement, cover,
+   light and weather check inside the terrain viewshed. Seeing a cell never by
+   itself means seeing every animal on it.
+2. **Localized sound.** A wildlife subject emits a real event with origin,
+   loudness and time. Rain, wind, fire and terrain affect whether it is heard
+   and how well it can be localized.
+3. **Uncertain map cue.** A heard but unseen subject produces a steady,
+   short-lived `?` at an approximate bearing or area. It never uses the hidden
+   subject's exact cell, never flickers, and is replaced by the animal glyph
+   only after visual detection.
+4. **Observed dynamic state.** Fires, coals, traps, piles and other changing
+   marks retain last-observed state and time. Until that exists the close map
+   must prefer hiding live off-screen changes over reading omniscient state.
+
+Fire and smoke consume the same observation interfaces after roadmap item 8
+creates their spatial state; they do not add renderer-only exceptions.
 
 ## The reference runner and a walking heir never reach for a seep
 

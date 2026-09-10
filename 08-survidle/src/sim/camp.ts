@@ -4,7 +4,7 @@ import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty } from "./inventory";
-import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepSmoke } from "./fire";
+import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepFieldFire, stepSmoke } from "./fire";
 import { goalDeed, KEPT_DAYS } from "./goals";
 import {
   BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
@@ -26,6 +26,7 @@ export { rootStockFor };
 
 /** Fires, racks and rot, every minute, everywhere; `who` is null with nobody home. */
 export function stepCamp(state: GameState, world: World, ambient: number, dt: number, who: Presence | null): void {
+  if (who) stepFieldFire(state, world, ambient, dt);
   const cal = calendar(state.minute, state.startDoy);
   // Read here rather than after: dailyCamp's own gate below flips state.lastDay
   // later in this same tick, so this still catches the one tick the day turns.
@@ -214,6 +215,43 @@ const FALLS: Record<DecayingId, (name: string) => string> = {
   dryingRack: (n) => `The rack at ${n} has rotted through.`,
   turfHut: (n) => `The roof of the hut at ${n} has come down.`,
 };
+
+/** A noticed hollow or overhang is re-read after this many days. */
+const FOUND_COVER_DAYS = 7;
+
+/**
+ * Ages noticed cover by elapsed simulation time. This runs before the task
+ * step for the same interval, so cover found at its end begins at age zero.
+ */
+export function stepFoundCover(state: GameState, dt: number): void {
+  for (const id of touchedRegions(state)) {
+    for (const site of Object.values(state.regions[id].sites)) {
+      if (site.cover === 0) continue;
+      site.coverAge += dt;
+      if (site.coverAge < FOUND_COVER_DAYS * 1440) continue;
+      site.cover = 0;
+      site.coverAge = 0;
+    }
+  }
+}
+
+/**
+ * Like found cover, emergency work decays by elapsed minutes, not daily
+ * rolls: a build just before 04:00 still gets fourteen complete days.
+ * Partial work rots too, everywhere, even with nobody there to see it fall.
+ */
+export function stepEmergencyShelter(state: GameState, world: World, dt: number): void {
+  for (const id of touchedRegions(state)) {
+    for (const site of Object.values(state.regions[id].sites)) {
+      if (site.emergencyMinutes <= 0) continue;
+      site.emergencyAge += dt;
+      if (site.emergencyAge < 14 * 1440) continue;
+      site.emergencyMinutes = 0;
+      site.emergencyAge = 0;
+      log(state, `The emergency shelter at ${regionAt(world, id).name} has fallen in.`, "bad");
+    }
+  }
+}
 
 /** Lean food: fully lean meat and fish (FOODS.leanShare 1), the kind the ceiling caps outright. */
 const LEAN_FOOD_IDS = (Object.keys(FOODS) as FoodId[]).filter((f) => FOODS[f].leanShare === 1);

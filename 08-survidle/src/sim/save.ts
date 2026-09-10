@@ -15,6 +15,9 @@ import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
 import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type Species, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
 import { emptyWildlife } from "./wildlife-agents";
+import { DISTURBANCE_PROFILES } from "./species";
+import { precipitationStormKind } from "./weather";
+import { metricPointForStoredCell } from "./wildlife-space";
 
 export const SAVE_KEY = "survidle.save";
 
@@ -23,18 +26,18 @@ export function awaySeconds(state: GameState): number {
   return state.awayHours * 3600;
 }
 
-export interface SaveFile { version: 8; savedAt: number; state: GameState }
+export interface SaveFile { version: 9; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  const file: SaveFile = { version: 8, savedAt: now, state };
+  const file: SaveFile = { version: 9, savedAt: now, state };
   return JSON.stringify(file);
 }
 
 export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
-    if (!(file?.version >= 3 && file?.version <= 8) || !file.state || typeof file.savedAt !== "number") return null;
-    migrate(file.state);
+    if (!(file?.version >= 3 && file?.version <= 9) || !file.state || typeof file.savedAt !== "number") return null;
+    migrate(file.state, file.version);
     return file as unknown as SaveFile;
   } catch {
     return null;
@@ -46,9 +49,10 @@ export function deserialize(text: string): SaveFile | null {
  * run in progress survives a new structure the same way it survives a new
  * region: by not having it yet.
  */
-export function migrate(state: GameState): void {
+export function migrate(state: GameState, version = 9): void {
   state.startDoy ??= START_DOY;
   state.awayHours ??= AWAY_HOURS_DEFAULT;
+  state.advanceCarry = version < 9 ? 0 : (state.advanceCarry ?? 0);
   state.skills ??= newSkills();
   // A skill added since the save was written is the harder half of the same
   // problem: the record is there, so the line above sees nothing missing, and
@@ -69,6 +73,26 @@ export function migrate(state: GameState): void {
   if (legacyGoals) migrateLegacyGoals(state);
   state.goals.introduced ??= {};
   state.goals.stepProgress ??= {};
+  state.goals.noticeQueue ??= [];
+  state.goals.opportunity ??= null;
+  if (state.goals.chapter3HomeRegion === undefined) {
+    const here = state.regions[state.player.region];
+    const camp = here?.campCell !== null && here?.campCell !== undefined
+      ? state.player.region
+      : Number(Object.entries(state.regions).find(([, region]) => region.campCell !== null)?.[0]);
+    state.goals.chapter3HomeRegion = state.goals.introduced.remoteRefuge && Number.isFinite(camp) ? camp : null;
+  }
+  if (state.goals.opportunity) {
+    if (state.goals.opportunity.goal === "fieldFire" || state.goals.opportunity.goal === "fieldMeal") {
+      state.goals.opportunity.goal = "remoteStorm";
+    }
+    state.goals.opportunity.minutesByProtection ??= [0, 0, 0, 0];
+    state.goals.opportunity.atCampMinutes ??= 0;
+    state.goals.opportunity.awayFromCampMinutes ??= 0;
+    state.goals.opportunity.maxWetness ??= 0;
+    state.goals.opportunity.readerIndex ??= null;
+    state.goals.opportunity.plan ??= null;
+  }
   const goalIds = new Set(GOALS.map((goal) => goal.id));
   state.goals.queue = (state.goals.queue ?? []).filter((id) => goalIds.has(id));
   if (state.task?.id === "explore" && state.task.originRegion === undefined) {
@@ -88,7 +112,19 @@ export function migrate(state: GameState): void {
   state.wildlife.visible ??= [];
   state.wildlife.knownDens ??= {};
   state.wildlife.recognitionQueue ??= [];
-  for (const subject of state.wildlife.subjects) subject.denCell ??= null;
+  for (const subject of state.wildlife.subjects) {
+    subject.denCell ??= null;
+    if (!subject.active) continue;
+    const active = subject.active;
+    // An old fleeing animal resumes an existing episode without replaying it.
+    active.escapeRemainingM ??= active.intent === "flee" ? DISTURBANCE_PROFILES[subject.species].escapeMinM : 0;
+    active.escapeStartedMinute ??= active.intent === "flee" ? state.minute : null;
+    active.lastDetectionMinute ??= active.alarm > 0 || active.escapeStartedMinute !== null ? state.minute : null;
+    active.escapeEpisode ??= 0;
+    active.position ??= metricPointForStoredCell(state.seed, subject.id, active.cell)
+      ?? { xM: 0, yM: 0 };
+    active.travel ??= null;
+  }
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
   state.survivors ??= [firstRecord(state.seed, state.startDoy)];
   // A record from before the person: the median survivor, with the sex its name says and a face of its own.
@@ -112,6 +148,8 @@ export function migrate(state: GameState): void {
       };
     }
   }
+  state.player.skyReadDay ??= null;
+  state.player.fieldFire ??= null;
   state.seeps ??= {};
   state.carcasses ??= [];
   state.nextCarcassId ??= 1;
@@ -261,6 +299,11 @@ export function migrate(state: GameState): void {
   for (const inv of Object.values(state.piles)) stackBerries(inv);
   const w = state.weather;
   w.storm ??= null;
+  if (w.storm) w.storm.kind ??= precipitationStormKind(w, calendar(w.storm.from, state.startDoy));
+  if (w.storm) w.storm.id ??= 1;
+  if (w.storm) w.storm.source ??= "natural";
+  w.nextStormId = Math.max(w.nextStormId ?? 1, (w.storm?.id ?? 0) + 1);
+  w.stormFreeSince ??= state.minute;
   w.dryDays ??= 0;
   w.wetDay ??= false;
   w.dryWarned ??= false;
@@ -307,6 +350,12 @@ export function migrate(state: GameState): void {
       delete flat.build;
     }
     st.sites ??= {};
+    for (const site of Object.values(st.sites)) {
+      site.cover ??= 0;
+      site.coverAge ??= 0;
+      site.emergencyMinutes ??= 0;
+      site.emergencyAge ??= 0;
+    }
     st.snares ??= 0;
     st.fire.wetKg ??= 0;
     st.fire.indoors ??= false;
@@ -377,12 +426,19 @@ export function migrate(state: GameState): void {
 function migrateLegacyGoals(state: GameState): void {
   const old = ["site", "firewood", "fire", "cook", "keptNight", "bed", "keptDays", "roof", "keptRain", "water", "snare", "store", "spring", "summer", "autumn", "winter"] as const;
   const anchor = ["site", "firewood", "fire", "cook", "keptNight", "firstOrder", "keptDays", "foodSource", "foodSource", "foodSource", "store", "store", "spring", "summer", "autumn", "winter"] as const;
+  const journey = [
+    "site", "drink", "firewood", "fire", "bed", "roof", "forageMeal", "cook", "keptNight",
+    "snareMeal", "huntMeal", "fishMeal", "trapMeal", "firstOrder", "water", "keptDays",
+    "foodSource", "store", "fat", "longOrder", "toolCare", "explore", "secondCamp",
+    "seasonalFood", "durableRoof", "winterStores", "spring", "summer", "autumn", "winter",
+  ] as const;
   const done = state.goals.done as Record<string, true | undefined>;
   let current = old.findIndex((id) => !done[id]);
   if (current < 0) current = old.length;
-  const before = current === old.length ? GOALS.length : GOALS.findIndex((goal) => goal.id === anchor[current]);
+  const before = current === old.length ? journey.length : journey.indexOf(anchor[current]);
   for (let i = 0; i < before; i++) {
-    const goal = GOALS[i];
+    const goal = GOALS.find((candidate) => candidate.id === journey[i]);
+    if (!goal) continue;
     done[goal.id] = true;
     state.goals.progress[goal.id] = Math.max(state.goals.progress[goal.id] ?? 0, goal.target);
   }

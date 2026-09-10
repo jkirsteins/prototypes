@@ -61,6 +61,12 @@ function everyRow(): Row[] {
 }
 
 describe("every Do row has exactly one purpose", () => {
+  it("places reading the sky under Explore > Weather", () => {
+    expect(subtabOf("readSky")).toBe("Explore");
+    expect(purposeOf("readSky")).toBe("Weather");
+    expect(PURPOSES.Explore).toContain("Weather");
+    expect(everyRow().filter((row) => row.id === "readSky")).toHaveLength(1);
+  });
   const rows = everyRow();
 
   it("finds rows at all, so an empty pass cannot read as a pass", () => {
@@ -94,6 +100,23 @@ describe("every Do row has exactly one purpose", () => {
   it("makeCamp is siting, so it sits under Build and not among the chores", () => {
     expect(subtabOf("makeCamp")).toBe("Build");
     expect(purposeOf("makeCamp")).toBe("Site");
+  });
+
+  it("finding shelter has one visible home under Explore", () => {
+    expect(subtabOf("findShelter")).toBe("Explore");
+    expect(purposeOf("findShelter")).toBe("Shelter");
+    expect(PURPOSES.Explore).toContain("Shelter");
+  });
+
+  it("improving shelter has one visible home under Build", () => {
+    expect(subtabOf("improveCover")).toBe("Build");
+    expect(purposeOf("improveCover")).toBe("Shelter");
+    expect(PURPOSES.Build).toContain("Shelter");
+  });
+
+  it("emergency shelter has one visible home under Build", () => {
+    expect(subtabOf("emergencyShelter")).toBe("Build");
+    expect(purposeOf("emergencyShelter")).toBe("Shelter");
   });
 
   it("an arg-keyed row beats its bare task, which is how every hunt species shares one line", () => {

@@ -10,6 +10,7 @@ import type { Calendar } from "../sim/calendar";
 import type { Cue } from "../sim/cues";
 import { activityLoop, ambienceMix, openCalls, surroundings } from "../sim/soundscape";
 import type { GameState } from "../sim/types";
+import type { WildlifeStartleEvent } from "../sim/wildlife-encounter";
 import type { World } from "../world/gen";
 import type { AudioEngine } from "./engine";
 
@@ -17,6 +18,8 @@ export interface Scheduler {
   /** Once per rAF. live is false while dead, away, or the tab is hidden: everything fades out and nothing starts. */
   frame(state: GameState, world: World, cal: Calendar, ambient: number, nowMs: number, live: boolean): void;
   cue(c: Cue): void;
+  /** Live, already-deduplicated presentation events only. Snow is read from current weather by the caller. */
+  wildlifeStartle(event: WildlifeStartleEvent, snowCovered?: boolean): void;
 }
 
 const ROLL_MS = 250;
@@ -77,6 +80,28 @@ export function createScheduler(engine: AudioEngine, random: () => number = Math
     },
     cue(c) {
       engine.play(c);
+    },
+    wildlifeStartle(event, snowCovered = false) {
+      const forest = event.terrain === "spruce" || event.terrain === "pine" || event.terrain === "birch";
+      const slot = snowCovered ? "startle_hoof_snow" : event.terrain === "bog" ? "startle_hoof_bog"
+        : `startle_hoof_${event.body}_${forest ? "forest" : "open"}`;
+      // Stable presentation variation neither consumes the caller's RNG nor
+      // advances the simulation's stream. Group counterpoint stays in range.
+      let hash = 2166136261;
+      for (let i = 0; i < event.id.length; i++) hash = Math.imul(hash ^ event.id.charCodeAt(i), 16777619);
+      const rate = 0.95 + (hash >>> 0) / 4294967295 * 0.1;
+      const gain = 1 / (1 + Math.max(0, event.distanceM) / 100);
+      const pan = Math.cos(event.bearingRad);
+      engine.duck(900, 0.28);
+      engine.play("startle_contact", { gain, pan, rate, delay: 0 });
+      // Short recordings contain several impacts. Three increasingly quiet
+      // bursts describe roughly two seconds of movement away from the source.
+      for (const [delay, level] of [[0.08, 1], [0.72, 0.62], [1.44, 0.3]]) {
+        engine.play(slot, { gain: gain * level, pan, rate, delay });
+      }
+      if (event.group === "group") {
+        engine.play(slot, { gain: gain * 0.4, pan, rate: rate <= 1 ? rate + 0.04 : rate - 0.04, delay: 0.23 });
+      }
     },
   };
 }

@@ -9,27 +9,30 @@
  * check, so a missing drill or an under-level pit is skipped, never an error.
  */
 import type { Rng } from "../rng";
-import { routeMinutes } from "../world/route";
+import { remainingWalkMinutes, routeMinutes } from "../world/route";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
-import { autoEat, edible, hungerLine } from "./actions";
-import type { Calendar } from "./calendar";
+import { addFirewood, autoEat, edible, hungerLine } from "./actions";
+import { calendar, type Calendar } from "./calendar";
 import { feedFire } from "./camp";
-import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
+import { fireAt, fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
 import { AXES, axeInHand, hasTool, pile, pileAt, qty, takeUp, toolNear, transfer, weight } from "./inventory";
+import type { StormPlanInputs, StormPlanOption, StormPlanSnapshot } from "./goals";
 import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { log } from "./log";
-import { baseWalkSpeed } from "./player";
+import { baseWalkSpeed, workSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
-import { campSite, regionState } from "./regionstate";
+import { campSite, newSite, regionState, siteAt } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { seepStopped } from "./seep";
+import { coverCeiling, EMERGENCY_MINUTES, findCover, galeProtection, improveCoverMinutes, protectionOf } from "./shelter";
+import { skillLevel } from "./skills";
 import { collapseRecoveryPending, COLLAPSE_RECOVERED_AT, RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
-import { isWorkIntent, type BodyNeed, type CampNeed, type CareNeed, type GameState, type ItemId, type WorkIntent } from "./types";
+import { isWorkIntent, type BodyNeed, type CampNeed, type CareNeed, type GameState, type ItemId, type Protection, type Task, type TaskId, type ToolId, type WorkIntent } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
-import { ambientTemperature, stormComing, stormNow, walkableIce } from "./weather";
+import { ambientTemperature, forecastKnowledge, stormComing, stormNow, walkableIce } from "./weather";
 
 /** Fatigue at which a body lies down wherever it is, whatever the clock says: the collapse. */
 export const SLEEP_AT = 20;
@@ -108,7 +111,7 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   const p = state.player;
   // Read once, before the sleep clauses, because both have a say in them.
   const thirsty = p.water < THIRSTY_L && canQuench(state, world, cal);
-  const storming = stormComing(state.weather, state.minute) || stormNow(state.weather, state.minute);
+  const storming = stormComing(state) || stormNow(state.weather, state.minute);
   // Thirst defers a bedtime only when the body would actually get up and go to
   // the water. A storm outranks thirst, so a thirsty body sitting one out is
   // not going to drink first, and the exception would only keep it awake.
@@ -517,25 +520,294 @@ function thirstyStep(state: GameState, world: World, cal: Calendar, dry: boolean
   return null;
 }
 
+function planInputs(
+  state: GameState,
+  world: World,
+  storm: NonNullable<GameState["weather"]["storm"]>,
+  region: number,
+  cell: number,
+  route: number[] | null,
+  travelMinutes: number | null,
+): StormPlanInputs {
+  const site = siteAt(state.regions[region], cell);
+  const protection = protectionOf(site);
+  const knowledge = forecastKnowledge(state, storm);
+  const effectiveProtection = knowledge.kind === "gale" ? galeProtection(world, cell, site) : protection;
+  const fire = fireAt(state, world, cell);
+  const packedGear: Partial<Record<ToolId, number>> = {};
+  for (const id of Object.keys(TOOLS) as ToolId[]) {
+    const n = qty(state.player.pack, id);
+    if (n > 0) packedGear[id] = n;
+  }
+  return {
+    forecast: knowledge,
+    route: route ? [...route] : route,
+    travelMinutes,
+    protection,
+    effectiveProtection,
+    fireLit: fire !== null,
+    fuelKg: fire?.fuelKg ?? 0,
+    activeGear: state.player.tools.map((tool) => tool.id),
+    packedGear,
+    supplies: {
+      firewoodKg: qty(state.player.pack, "firewood"),
+      foodKg: PROVISIONS.reduce((total, food) => total + qty(state.player.pack, food), 0),
+      waterLitres: state.player.water + vesselLitres(state.player),
+    },
+  };
+}
+
+function shelterAdequate(inputs: StormPlanInputs): boolean {
+  if (inputs.forecast.kind === "snow") return inputs.effectiveProtection >= 1;
+  return inputs.effectiveProtection >= 2;
+}
+
+interface ShelterPreparation {
+  minutes: number;
+  protection: Protection;
+  effectiveProtection: Protection;
+}
+
+function projectedShelter(
+  inputs: StormPlanInputs,
+  world: World,
+  cell: number,
+  site: ReturnType<typeof siteAt>,
+  cover: Protection,
+  emergencyMinutes: number,
+): { protection: Protection; effectiveProtection: Protection } {
+  const base = site ?? newSite();
+  const projected = {
+    ...base,
+    structures: { ...base.structures },
+    cover,
+    emergencyMinutes,
+  };
+  const protection = protectionOf(projected);
+  const effectiveProtection = inputs.forecast.kind === "gale"
+    ? galeProtection(world, cell, projected)
+    : protection;
+  return { protection, effectiveProtection };
+}
+
+function taskMinutes(state: GameState, world: World, id: TaskId, effectiveMinutes: number): number {
+  const task: Task = { id, progress: 0, duration: effectiveMinutes, repeat: false };
+  return Math.ceil(effectiveMinutes / workSpeed(state, world, task) - 1e-9);
+}
+
+/** The shelter work the body policy can actually finish here before onset. */
+function shelterPreparation(
+  state: GameState,
+  world: World,
+  cal: Calendar,
+  cell: number,
+  inputs: StormPlanInputs,
+): ShelterPreparation {
+  if (shelterAdequate(inputs)) {
+    return { minutes: 0, protection: inputs.protection, effectiveProtection: inputs.effectiveProtection };
+  }
+  const site = siteAt(state.regions[cellAt(world, cell).region], cell);
+  let minutes = 0;
+  let protection = inputs.protection;
+  let effectiveProtection = inputs.effectiveProtection;
+  let cover = site?.cover ?? 0;
+  let built = site?.emergencyMinutes ?? 0;
+  const maximum = Math.min(3, coverCeiling(world, cell) + 1) as Protection;
+  const adequate = () => inputs.forecast.kind === "snow" ? effectiveProtection >= 1 : effectiveProtection >= 2;
+  const project = () => {
+    ({ protection, effectiveProtection } = projectedShelter(inputs, world, cell, site, cover, built));
+  };
+  const improveFoundCover = () => {
+    while (cover < maximum && !adequate()) {
+      const work = improveCoverMinutes(cover);
+      if (work === null) break;
+      minutes += taskMinutes(state, world, "improveCover", work);
+      cover = Math.min(maximum, cover + 1) as Protection;
+      project();
+    }
+  };
+
+  if (cover > 0) {
+    improveFoundCover();
+  } else if (coverCeiling(world, cell) > 0) {
+    const search = check(state, world, cal, "findShelter", undefined, cell);
+    if (search.ok) {
+      minutes += taskMinutes(state, world, "findShelter", search.duration);
+      cover = findCover(world, cell, skillLevel(state, "naturalShelter"));
+      project();
+      improveFoundCover();
+    }
+  } else {
+    for (const level of [1, 2, 3] as const) {
+      if (built >= EMERGENCY_MINUTES[level] || adequate()) continue;
+      const work = EMERGENCY_MINUTES[level] - built;
+      minutes += taskMinutes(state, world, "emergencyShelter", work);
+      built = EMERGENCY_MINUTES[level];
+      project();
+    }
+  }
+  return { minutes, protection, effectiveProtection };
+}
+
+function optionSurvivalScore(
+  inputs: StormPlanInputs,
+  kind: StormPlanOption["kind"],
+  arrivalMargin: number | null,
+  viable: boolean,
+  continuing = false,
+  preparationMinutes = 0,
+): number {
+  const adequate = shelterAdequate(inputs);
+  const recoverableTravel = !viable && kind !== "localShelter" && adequate && continuing
+    && arrivalMargin !== null && arrivalMargin >= -15;
+  if (!viable && kind !== "localShelter" && !recoverableTravel) return 0;
+
+  const drill = inputs.activeGear.includes("fireDrill") || (inputs.packedGear.fireDrill ?? 0) > 0;
+  const fire = inputs.fireLit
+    ? 60 + Math.min(12, inputs.fuelKg) * 5
+    : drill && inputs.supplies.firewoodKg >= 1 ? 25 : 0;
+  const supplies = Math.min(12, inputs.supplies.firewoodKg) * 2
+    + Math.min(2, inputs.supplies.foodKg) * 10
+    + Math.min(3, inputs.supplies.waterLitres) * 5;
+  const closeHome = kind === "returnCamp" && shelterAdequate(inputs) && (inputs.travelMinutes ?? Infinity) <= 15;
+  const place = kind === "returnCamp" ? closeHome ? 300 : 80 : kind === "localShelter" ? 40 : 0;
+  const margin = Math.min(60, Math.max(0, arrivalMargin ?? 0));
+  const travelExposure = Math.min(120, inputs.travelMinutes ?? 0);
+  const score = (viable ? 1000 : 0) + (adequate ? 1000 : 0)
+    + inputs.effectiveProtection * 100 + fire + supplies
+    + place + margin - travelExposure - preparationMinutes * 3 + (continuing ? 30 : 0);
+  return !viable && kind === "localShelter" ? Math.max(1, score) : score;
+}
+
+function routeReading(state: GameState, world: World, cal: Calendar, target: number): { route: number[] | null; minutes: number | null } {
+  const ongoing = state.task?.id === "walk" && state.route?.target === target ? state.route : null;
+  if (ongoing?.path.length) {
+    return {
+      route: [...ongoing.path],
+      minutes: remainingWalkMinutes(world, state.player, ongoing.path, baseWalkSpeed(state, cal, state.weather), ongoing.ice),
+    };
+  }
+  const here = cellOf(state, world);
+  if (here === target) return { route: [], minutes: 0 };
+  const ice = walkableIce(state.weather);
+  const route = survivorRoute(state, world, here, target, ice, fearsFell(state));
+  return {
+    route,
+    minutes: route ? routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather), ice) : null,
+  };
+}
+
+/** One deterministic reading shared by the body, weather wall and onset evidence. */
+export function stormOptions(
+  state: GameState,
+  world: World,
+  storm: NonNullable<GameState["weather"]["storm"]>,
+): StormPlanSnapshot {
+  const cal = calendar(state.minute, state.startDoy);
+  const here = cellOf(state, world);
+  const remaining = Math.max(0, storm.from - state.minute);
+  const options: StormPlanOption[] = [];
+  const st = state.regions[state.player.region];
+  const camp = st?.campCell ?? null;
+  if (camp !== null) {
+    const reading = routeReading(state, world, cal, camp);
+    const inputs = planInputs(state, world, storm, state.player.region, camp, reading.route, reading.minutes);
+    const arrivalMargin = reading.minutes === null ? null : remaining - reading.minutes;
+    const viable = arrivalMargin !== null && arrivalMargin >= 0;
+    const continuing = state.task?.id === "walk" && state.route?.target === camp;
+    options.push({
+      kind: "returnCamp", target: { region: state.player.region, cell: camp }, inputs, arrivalMargin, viable,
+      survivalScore: optionSurvivalScore(
+        inputs, "returnCamp", arrivalMargin, viable, continuing,
+      ),
+    });
+  }
+
+  const localInputs = planInputs(state, world, storm, state.player.region, here, [], 0);
+  const localPreparation = shelterPreparation(state, world, cal, here, localInputs);
+  const localViable = localPreparation.minutes <= remaining
+    && (localInputs.forecast.kind === "snow" ? localPreparation.effectiveProtection >= 1 : localPreparation.effectiveProtection >= 2);
+  const projectedLocalInputs = {
+    ...localInputs,
+    protection: localPreparation.protection,
+    effectiveProtection: localPreparation.effectiveProtection,
+  };
+  options.push({
+    kind: "localShelter", target: { region: state.player.region, cell: here }, inputs: localInputs,
+    arrivalMargin: remaining, viable: localViable,
+    survivalScore: optionSurvivalScore(
+      projectedLocalInputs, "localShelter", remaining - localPreparation.minutes, localViable, false, localPreparation.minutes,
+    ),
+  });
+
+  const remote: StormPlanOption[] = [];
+  for (const [regionKey, region] of Object.entries(state.regions)) {
+    const regionId = Number(regionKey);
+    for (const [cellKey, site] of Object.entries(region.sites)) {
+      const cell = Number(cellKey);
+      if (cell === here || cell === camp || state.mapped[cell] === undefined || protectionOf(site) < 2) continue;
+      const reading = routeReading(state, world, cal, cell);
+      if (!reading.route || reading.minutes === null) continue;
+      const inputs = planInputs(state, world, storm, regionId, cell, reading.route, reading.minutes);
+      const arrivalMargin = remaining - reading.minutes;
+      const viable = arrivalMargin >= 0 && shelterAdequate(inputs);
+      const continuing = state.task?.id === "walk" && state.route?.target === cell;
+      remote.push({
+        kind: "remoteRefuge", target: { region: regionId, cell }, inputs, arrivalMargin, viable,
+        survivalScore: optionSurvivalScore(inputs, "remoteRefuge", arrivalMargin, viable, continuing),
+      });
+    }
+  }
+  remote.sort((a, b) => b.survivalScore - a.survivalScore
+    || (b.arrivalMargin ?? -Infinity) - (a.arrivalMargin ?? -Infinity)
+    || a.target.region - b.target.region || a.target.cell - b.target.cell);
+  if (remote[0]) options.push(remote[0]);
+
+  const ranked = [...options].sort((a, b) => b.survivalScore - a.survivalScore
+    || ["returnCamp", "remoteRefuge", "localShelter"].indexOf(a.kind) - ["returnCamp", "remoteRefuge", "localShelter"].indexOf(b.kind)
+    || a.target.region - b.target.region || a.target.cell - b.target.cell);
+  return {
+    stormId: storm.id,
+    minute: state.minute,
+    knowledge: forecastKnowledge(state, storm),
+    recommended: ranked[0].kind,
+    options,
+  };
+}
+
 /**
- * Walk to this region's camp, light a fire there if a cold pit allows it, keep
- * it fed against the wind with dry wood, then wait the storm out. A dry read
- * never feeds the fire, since that is fuel spent on the strength of a read
- * rather than a minute; the fire steps above it are already only
- * descriptions and need no guard, and the walk or the wait it falls back to
- * is the same answer either way.
+ * Return to this region's camp while the remaining warning covers the walk.
+ * Otherwise find and improve cover, or build where the ground offers none,
+ * then light a fire. These are ordinary steps owned by the winning body row;
+ * nothing is added to the list. A dry read never spends fuel.
  */
 function stormStep(state: GameState, world: World, cal: Calendar, dry: boolean): Step | null {
   const st = regionState(state, world, state.player.region);
   const camp = st.campCell;
-  if (camp === null) return null;
   const here = cellOf(state, world);
-  if (here !== camp) {
-    return check(state, world, cal, "walk", `cell:${camp}`).ok ? walkStep(state, world, camp, " before the storm") : null;
+  const storm = state.weather.storm;
+  if (!storm) return null;
+  const plan = stormOptions(state, world, storm);
+  const choice = plan.options.find((option) => option.kind === plan.recommended)!;
+  if (choice.target.cell !== here && choice.kind !== "localShelter"
+    && check(state, world, cal, "walk", `cell:${choice.target.cell}`).ok) {
+    return walkStep(state, world, choice.target.cell, choice.kind === "returnCamp" ? " before the storm" : " to shelter from the storm");
   }
-  const fs = fireStep(state, world, cal, camp);
+  if (choice.kind === "localShelter") {
+    if (!shelterAdequate(choice.inputs)) {
+      if (check(state, world, cal, "improveCover").ok) return { id: "improveCover", step: "improving shelter for the storm" };
+      if (coverCeiling(world, here) > 0 && check(state, world, cal, "findShelter").ok) return { id: "findShelter", step: "finding shelter for the storm" };
+      if (check(state, world, cal, "emergencyShelter").ok) return { id: "emergencyShelter", step: "building shelter for the storm" };
+      return null;
+    }
+  }
+  const fs = fireStep(state, world, cal, here);
   if (fs) return fs;
-  if (!dry && st.fire.lit && fuelTotal(st.fire) < SPREAD_FUEL_KG) feedFire(state, world, state.player.region, SPREAD_FUEL_KG - fuelTotal(st.fire), true);
+  if (!dry) {
+    const field = state.player.fieldFire;
+    if (field && field.cell === here && field.fuelKg < SPREAD_FUEL_KG) addFirewood(state, world, SPREAD_FUEL_KG - field.fuelKg);
+    else if (here === camp && st.fire.lit && fuelTotal(st.fire) < SPREAD_FUEL_KG) feedFire(state, world, state.player.region, SPREAD_FUEL_KG - fuelTotal(st.fire), true);
+  }
   return { id: "rest", step: "waiting out the storm" };
 }
 
@@ -560,17 +832,17 @@ function homeStep(state: GameState, world: World, cal: Calendar): Step | null {
 export function fireStep(state: GameState, world: World, cal: Calendar, at: number): Step | null {
   const p = state.player;
   const st = regionState(state, world, p.region);
-  if (st.fire.lit) return null;
+  if (fireAt(state, world, at)) return null;
   // Every step below is preparation for a light, so the drill decides whether
   // any of it is worth the walk home. The fire site is bare ground and can be
   // cleared anywhere; without a drill, clearing it warms nobody tonight.
   if (!toolNear(p, "fireDrill", [p.pack, pile(state, at)])) return null;
   const site = campSite(st);
-  if (!site?.structures.firePit) {
+  if (at === st.campCell && !site?.structures.firePit) {
     return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: "clearing the fire site" } : null;
   }
   // The body's own choice of method, allowed to a reflex: the fire indoors where a hut or a hearth stands, the pit otherwise.
-  const indoors = site.structures.turfHut || (site.structures.cabin && site.structures.hearth);
+  const indoors = at === st.campCell && (site?.structures.turfHut || (site?.structures.cabin && site.structures.hearth));
   if (indoors && check(state, world, cal, "lightIndoors", undefined, at).ok) return { id: "lightIndoors", step: "lighting the fire indoors" };
   if (check(state, world, cal, "light", undefined, at).ok) return { id: "light", step: "lighting the fire" };
   const firewood = qty(state.player.pack, "firewood") + qty(pile(state, at), "firewood");
@@ -624,6 +896,7 @@ function fireNeedStep(state: GameState, world: World, cal: Calendar, dry: boolea
  * that only makes it colder than working would have.
  */
 function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
+  if (fireAt(state, world)) return true;
   const st = regionState(state, world, state.player.region);
   const camp = st.campCell;
   if (camp === null) return false;
@@ -640,6 +913,7 @@ function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
  * run in.
  */
 function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" | "cold" | "spent", dry: boolean): Step {
+  if (need === "cold" && fireAt(state, world)) return { id: "rest", step: "warming up by the fire" };
   const p = state.player;
   const st = regionState(state, world, p.region);
   const camp = st.campCell;
@@ -718,6 +992,7 @@ export function orderKit(state: GameState): ItemId[] {
   if (it?.task === "build" && it.arg === "snare") return ["snare"];
   if (it?.task === "build" && it.arg === "seep") return ["stick"];
   if (it?.task === "setTrap") return ["basketTrap"];
+  if (it.task === "grindBark" || (it.task === "crack" && !axeInHand(state.player))) return ["stone"];
   return [];
 }
 
@@ -747,6 +1022,9 @@ export function provisionKit(state: GameState, world: World): number {
   const kit = orderKit(state);
   const pack = state.player.pack;
   const camp = pile(state, it.campCell);
+  if (kit.includes("stone")) {
+    return transfer(camp, pack, "stone", Math.max(0, 1 - qty(pack, "stone")));
+  }
   if (kit.includes("arrow")) {
     const want = ARROWS_TO_CARRY - qty(pack, "arrow");
     if (want <= 0) return 0;

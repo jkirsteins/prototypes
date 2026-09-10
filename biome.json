@@ -6,7 +6,7 @@
       "!**/node_modules",
       "!**/dist",
       "!**/.superpowers",
-      "!**/.claude",
+      "!.claude",
       "!**/*.json",
       "!01-escapecastle/src/ink/scene1.json"
     ]

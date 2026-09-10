@@ -40,6 +40,22 @@ describe("the gate skill", () => {
   it("the runner's own steps and the moves are not orders", () => {
     expect(NOT_ORDERS).toEqual(["walk", "travel", "rest", "sleep", "night", "makeCamp", "explore", "searchHome"]);
   });
+
+  it("gates shelter jobs and grinds by technique, retaining the no-stock keep fallback", () => {
+    for (const [task, skill] of [["findShelter", "naturalShelter"], ["improveCover", "naturalShelter"], ["emergencyShelter", "shelterBuilding"]] as const) {
+      const { state } = newGame(3);
+      expect(NOT_ORDERS).not.toContain(task);
+      expect(gateSkill(task)).toBe(skill);
+      expect(orderGate(state, req(task, { kind: "once" }), "job").ok).toBe(true);
+      expect(orderGate(state, req(task, { kind: "times", n: 2 }), "job").ok).toBe(false);
+      setLevel(state, skill, 3);
+      expect(orderGate(state, req(task, { kind: "times", n: 2 }), "job").ok).toBe(true);
+      expect(orderGate(state, req(task, { kind: "forever" }), "grind").ok).toBe(false);
+      setLevel(state, skill, 5);
+      expect(orderGate(state, req(task, { kind: "forever" }), "grind").ok).toBe(true);
+      expect(normalizeOrder(req(task, { kind: "campHas", qty: 1 }), "keep").req.until).toEqual({ kind: "once" });
+    }
+  });
 });
 
 describe("the normalised kind", () => {

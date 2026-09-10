@@ -4,10 +4,15 @@
  * game is how fast the clock runs, and that lives in units.ts.
  */
 import type { FoodId } from "./items";
+import type { StormPlanSnapshot } from "./goals";
 import type { DayLedger } from "./ledger";
 import type { Species } from "./species";
+import type { StormKind } from "./weather";
 
 export type Season = "spring" | "summer" | "autumn" | "winter";
+
+/** How much a place gives against the weather: open ground, a windbreak, weatherproof, or good enough to live in. */
+export type Protection = 0 | 1 | 2 | 3;
 
 export type Terrain =
   | "water" | "fell" | "rock" | "bog"
@@ -25,6 +30,10 @@ export type WildlifeIntent = "forage" | "drink" | "rest" | "flee" | "hunt" | "ca
 export interface WildlifeCohort { sex: "f" | "m"; bornYear: number; count: number }
 export interface WildlifeActive {
   cell: number;
+  /** Exact world position in metres. The cell is only its current spatial bucket. */
+  position: { xM: number; yM: number };
+  /** One physical segment in progress; decisions choose it and elapsed game time traverses it. */
+  travel: { destination: { xM: number; yM: number }; cell: number } | null;
   hunger: number;
   thirst: number;
   rest: number;
@@ -32,6 +41,12 @@ export interface WildlifeActive {
   intent: WildlifeIntent;
   target: number | null;
   route: number[];
+  /** Metres left in the current escape, spent through passable spatial steps. */
+  escapeRemainingM: number;
+  escapeStartedMinute: number | null;
+  lastDetectionMinute: number | null;
+  /** Counts transitions into escape, rather than individual detection rolls. */
+  escapeEpisode: number;
 }
 export interface WildlifeSubject {
   id: number;
@@ -154,7 +169,7 @@ export type TaskId =
   | "hunt" | "findDen" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
-  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome";
+  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome" | "findShelter" | "improveCover" | "emergencyShelter" | "readSky";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
@@ -162,7 +177,7 @@ export const TASK_IDS: TaskId[] = [
   "hunt", "findDen", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
-  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome",
+  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome", "findShelter", "improveCover", "emergencyShelter", "readSky",
 ];
 
 export interface Task {
@@ -174,6 +189,8 @@ export interface Task {
   /** Minutes of work the task needs at full speed. */
   duration: number;
   repeat: boolean;
+  /** Natural shelter level promised when this search began, before its practice. */
+  shelterLevel?: number;
   /** Persistent large-animal subject selected when a detailed hunt begins. */
   wildlifeSubject?: number;
   /** A successful pursuit becomes real field work without pretending the carcass is inventory. */
@@ -470,6 +487,14 @@ export interface Seep { class: SeepClass; litres: number; ice: number; dug: numb
  */
 export interface Site {
   structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean; snowShelter: boolean };
+  /** Natural protection a search found here, if any. */
+  cover: Protection;
+  /** Minutes since that cover was last found or improved. */
+  coverAge: number;
+  /** Effective work invested in temporary bough-and-deadfall shelter. */
+  emergencyMinutes: number;
+  /** Elapsed minutes since this emergency shelter was last worked on. */
+  emergencyAge: number;
   /** Drying racks standing here, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
   racks: number;
   /** Minutes since the bough bed was laid; boughs go flat and brown after four days. */
@@ -526,6 +551,8 @@ export interface RegionState {
 }
 
 export interface Player {
+  /** Day index of the dawn preceding the last sky reading; null until read. */
+  skyReadDay: number | null;
   /** Position in cell units; the cell under foot is floor(x), floor(y). */
   x: number;
   y: number;
@@ -561,6 +588,8 @@ export interface Player {
   tools: Tool[];
   /** A torch in hand: lit or put out, and the minutes of burn left. Zero means none equipped. */
   torch: { lit: boolean; minutes: number };
+  /** A hand-fed fire that dies on leaving its cell; never a hearth or embers. */
+  fieldFire: { cell: number; fuelKg: number } | null;
   pack: Inventory;
   /** Litres of water in the body, 0..3. */
   water: number;
@@ -585,8 +614,12 @@ export interface Weather {
   snowCm: number;
   /** The day index whose dawn roll has happened. */
   rolledDay: number;
-  /** A storm window: from and until in minutes; warned records the one-hour warning was logged. */
-  storm: { from: number; until: number; warned: boolean } | null;
+  /** The next stable identity issued to a storm in this world. */
+  nextStormId: number;
+  /** Minute the latest storm ended, for a full storm-free retry day. */
+  stormFreeSince: number;
+  /** A storm window: from and until in minutes; warned records the warning was logged. */
+  storm: { id: number; source: "natural" | "synthetic"; kind: StormKind; from: number; until: number; warned: boolean } | null;
   /** Days running with no precipitation, for the drought warning. */
   dryDays: number;
   wetDay: boolean;
@@ -634,7 +667,7 @@ export interface Died {
 }
 
 export type Grade = -2 | -1 | 0 | 1 | 2;
-export type QuirkId = "coastBorn" | "forestBorn" | "sleepsLight" | "bigEater" | "steadyByTheFire";
+export type QuirkId = "coastBorn" | "forestBorn" | "sleepsLight" | "bigEater" | "steadyByTheFire" | "weatherEye";
 /** Who the survivor is: rolled per candidate, kept on the record, read through person.ts. */
 export interface Person {
   sex: "f" | "m";
@@ -689,7 +722,7 @@ export interface RunStats {
   killsKcal: number;
 }
 
-export type SkillId = "woodcraft" | "foraging" | "hunting" | "fishing" | "crafting" | "building" | "wayfinding";
+export type SkillId = "woodcraft" | "foraging" | "hunting" | "fishing" | "crafting" | "building" | "wayfinding" | "naturalShelter" | "shelterBuilding" | "weatherSense";
 
 /** Practice, in minutes. A level is a count of hours behind the tool. */
 export interface SkillState {
@@ -706,9 +739,35 @@ export interface SkillState {
 export type GoalId =
   | "site" | "drink" | "firewood" | "fire" | "bed" | "roof" | "forageMeal" | "cook" | "keptNight"
   | "snareMeal" | "huntMeal" | "fishMeal" | "trapMeal" | "firstOrder"
+  | "findUsefulCover" | "makeUsefulShelter" | "testShelter"
+  | "readWeather" | "prepareWeather" | "surviveForecast"
   | "water" | "keptDays" | "foodSource" | "store" | "fat" | "longOrder" | "toolCare"
+  | "remoteRefuge" | "fieldFire" | "fieldMeal" | "remoteStorm"
   | "explore" | "secondCamp" | "seasonalFood" | "durableRoof" | "winterStores"
   | "spring" | "summer" | "autumn" | "winter";
+
+export interface GoalOpportunity {
+  goal: GoalId;
+  status: "reserved" | "announced" | "running" | "resolved";
+  createdAt: number;
+  attempts: number;
+  stormId: number | null;
+  source: "natural" | "synthetic" | null;
+  area: { region: number; centre: number; radiusKm: 1 } | null;
+  announcedAt: number | null;
+  resolvedAt: number | null;
+  /** Matching-storm minutes in the Chapter 1 teaching area, by protection level. */
+  minutesByProtection: [number, number, number, number];
+  /** Matching-storm time at the active camp and away from it. */
+  atCampMinutes: number;
+  awayFromCampMinutes: number;
+  /** The highest body wetness actually reached during the matching storm. */
+  maxWetness: number;
+  /** Stable identity of the survivor whose sky reading earned Chapter 2. */
+  readerIndex?: number | null;
+  /** The immutable shared option reading taken at this storm's onset. */
+  plan?: StormPlanSnapshot | null;
+}
 
 export interface GoalState {
   done: Partial<Record<GoalId, true>>;
@@ -719,6 +778,12 @@ export interface GoalState {
   introduced: Partial<Record<GoalId, true>>;
   /** Completions not yet shown, drained by the overlay one batch at a time. */
   queue: GoalId[];
+  /** Factual opportunity outcomes waiting for the same teaching surface. */
+  noticeQueue: string[];
+  /** The one weather teaching attempt owned by this world. */
+  opportunity: GoalOpportunity | null;
+  /** Camp region Chapter 3 called home when its first lesson was introduced. */
+  chapter3HomeRegion: number | null;
   /** The season the last daily roll stood in: a turnover is this differing from now. */
   lastSeason: Season;
 }
@@ -735,6 +800,8 @@ export interface GameState {
   /** Real hours the world runs on without the player before the catch-up caps it: the away dial, 1 to AWAY_HOURS_MAX, set per run. */
   awayHours: number;
   minute: number;
+  /** Elapsed game minutes not yet large enough to run the next fixed simulation tick. */
+  advanceCarry: number;
   rng: number;
   player: Player;
   /** State of every region touched so far, by region id. */

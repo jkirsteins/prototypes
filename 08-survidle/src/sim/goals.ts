@@ -6,22 +6,65 @@
  * Goals belong to the world and not to a life, and they advance on deeds
  * rather than on state. An heir who lands to a lit fire has not lit one.
  */
-import type { Calendar } from "./calendar";
+import { calendar, type Calendar } from "./calendar";
 import { qty } from "./inventory";
 import type { FoodId } from "./items";
-import type { GameState, GoalId, GoalState, ItemId, RecipeId, Season, StructureId, TaskId } from "./types";
+import { straightKm } from "./position";
+import { current } from "./record";
+import { gainedForecastFact, type ForecastKnowledge, type StormKind } from "./weather";
+import type { World } from "../world/gen";
+import type { GameState, GoalId, GoalState, ItemId, Protection, RecipeId, Season, StructureId, TaskId, ToolId } from "./types";
 
 export type { GoalId } from "./types";
 
+export type StormOptionKind = "returnCamp" | "localShelter" | "remoteRefuge";
+
+export interface StormPlanInputs {
+  forecast: ForecastKnowledge;
+  route: number[] | null;
+  travelMinutes: number | null;
+  protection: Protection;
+  effectiveProtection: Protection;
+  fireLit: boolean;
+  fuelKg: number;
+  activeGear: ToolId[];
+  packedGear: Partial<Record<ToolId, number>>;
+  supplies: { firewoodKg: number; foodKg: number; waterLitres: number };
+}
+
+export interface StormPlanOption {
+  kind: StormOptionKind;
+  target: { region: number; cell: number };
+  inputs: StormPlanInputs;
+  arrivalMargin: number | null;
+  viable: boolean;
+  survivalScore: number;
+}
+
+export interface StormPlanSnapshot {
+  stormId: number;
+  minute: number;
+  knowledge: ForecastKnowledge;
+  recommended: StormOptionKind;
+  options: StormPlanOption[];
+}
+
 /** Something this survivor did. The only thing that moves a goal. */
-export type Deed =
+export type GoalEvent =
   | { kind: "task"; id: TaskId; arg?: string }
+  | { kind: "taskCompleted"; minute: number; id: TaskId; arg?: string; region: number; cell: number; atCamp: boolean }
   | { kind: "crafted"; recipe: RecipeId }
   /** Firewood as it leaves the ground or the block: the one moment that cannot be replayed by moving a pile's contents around. */
   | { kind: "gathered"; item: ItemId; kg: number }
   | { kind: "built"; structure: StructureId }
+  | { kind: "sheltered"; protection: Protection }
+  | { kind: "protectionChanged"; minute: number; region: number; cell: number; from: Protection; to: Protection; source: "found" | "improved" | "emergency" | "structure" }
+  | { kind: "forecastChanged"; minute: number; stormId: number; before: ForecastKnowledge; after: ForecastKnowledge; source: "passive" | "readSky" }
+  | { kind: "stormStarted"; minute: number; stormId: number; plan: StormPlanSnapshot }
+  | { kind: "stormEnded"; minute: number; stormId: number; stormKind: StormKind; survivorAlive: boolean; minutesByProtection: [number, number, number, number]; atCampMinutes: number; awayFromCampMinutes: number; maxWetness: number }
   /** The tinder caught. A light that failed is not a fire lit. */
   | { kind: "lit" }
+  | { kind: "fireLit"; minute: number; region: number; cell: number; atCamp: boolean }
   /** A fire alive at dusk, lit or embers, is still alive at the dawn roll. */
   | { kind: "keptNight" }
   /** How long, in minutes, the current run of keeping has lasted: the span since the fire was last lit from cold. */
@@ -49,6 +92,9 @@ export type Deed =
   | { kind: "seasonalFood" }
   | { kind: "winterStocked" }
   | { kind: "season"; season: Season };
+
+/** Kept while the existing emitters move to the broader event name. */
+export type Deed = GoalEvent;
 
 export type GoalPhase = "firstWeek" | "firstMonth" | "firstSeason" | "longTerm";
 export type FoodMethod = "forage" | "hunt" | "fish" | "snare" | "trap";
@@ -81,17 +127,30 @@ export interface GoalDef {
   /** What a counted goal prints beside its figure; absent on a one-shot, which draws no bar. */
   unit?: string;
   /** What this deed contributes, in the goal's own unit. 0 when unrelated. */
-  credit: (d: Deed) => number;
+  credit: (d: GoalEvent) => number;
   /** Stored, deed-driven checklist. The last final step cannot advance until every earlier step is complete. */
   steps: GoalStepDef[];
+  /** The first lived day on which this goal can be held out. */
+  notBeforeDay?: number;
+  /** Outcomes that must already belong to the world before this one is eligible. */
+  after?: GoalId[];
+  /** Contextual lessons accept events only while the lesson is on the panel. */
+  activeOnly?: boolean;
 }
 
-const task = (...ids: TaskId[]) => (d: Deed) => (d.kind === "task" && ids.includes(d.id) ? 1 : 0);
+const task = (...ids: TaskId[]) => (d: Deed) => ((d.kind === "task" || d.kind === "taskCompleted") && ids.includes(d.id) ? 1 : 0);
+const lit = (d: Deed) => d.kind === "lit" || d.kind === "fireLit" ? 1 : 0;
 const built = (...ids: StructureId[]) => (d: Deed) => (d.kind === "built" && ids.includes(d.structure) ? 1 : 0);
 const season = (s: Season) => (d: Deed) => (d.kind === "season" && d.season === s ? 1 : 0);
+const roof = (d: Deed) => d.kind === "protectionChanged"
+  ? (d.from < 2 && d.to >= 2 ? 1 : 0)
+  : d.kind === "sheltered"
+    ? (d.protection >= 2 ? 1 : 0)
+  : built("leanTo", "turfHut", "snowShelter", "cabin")(d);
 
 /** The kilos of firewood a gather actually produced, wet or dry: the goal is the gathering. */
 const firewoodKg = (d: Deed) => (d.kind === "gathered" && (d.item === "firewood" || d.item === "wetFirewood") ? d.kg : 0);
+const awaitingContext = (_d: GoalEvent) => 0;
 
 const one = (id: string, label: string, credit: GoalDef["credit"], target = 1, unit?: string): GoalStepDef[] => [
   { id, label, credit, target, unit, final: true },
@@ -134,21 +193,29 @@ export const GOALS: GoalDef[] = [
   { id: "drink", phase: "firstWeek", title: "Drink water", target: 1, credit: (d) => (d.kind === "drank" ? 1 : 0), steps: one("drink", "Drink", (d) => (d.kind === "drank" ? 1 : 0)) },
   { id: "firewood", phase: "firstWeek", title: `Gather ${FIREWOOD_KG} kg of firewood`, target: FIREWOOD_KG, unit: "kg", credit: firewoodKg, steps: one("wood", `Gather ${FIREWOOD_KG} kg`, firewoodKg, FIREWOOD_KG, "kg") },
   {
-    id: "fire", phase: "firstWeek", title: "Light a fire", target: 1, credit: (d) => (d.kind === "lit" ? 1 : 0),
+    id: "fire", phase: "firstWeek", title: "Light a fire", target: 1, credit: lit,
     steps: [
       step("site", "Establish a fire site", built("firePit")),
       step("fuel", "Provide fuel", (d) => (d.kind === "fuelled" ? 1 : 0)),
       step("ignition", "Provide ignition", crafted("fireDrill")),
-      { ...step("light", "Light the fire", (d) => (d.kind === "lit" ? 1 : 0)), final: true },
+      { ...step("light", "Light the fire", lit), final: true },
     ],
   },
   { id: "bed", phase: "firstWeek", title: "Get off the cold ground", target: 1, credit: built("boughBed"), steps: one("bed", "Build a bed", built("boughBed")) },
-  { id: "roof", phase: "firstWeek", title: "Put a roof over your head", target: 1, credit: built("leanTo", "turfHut", "snowShelter", "cabin"), steps: one("roof", "Build a roof", built("leanTo", "turfHut", "snowShelter", "cabin")) },
+  { id: "roof", phase: "firstWeek", title: "Put a roof over your head", target: 1, credit: roof, steps: one("roof", "Build a roof", roof) },
   {
     id: "forageMeal", phase: "firstWeek", title: "Forage and eat a meal", target: 1, credit: gatheredMeal,
     steps: [step("gather", "Gather edible food", acquired("forage")), { ...step("eat", "Eat gathered food", gatheredMeal), final: true }],
   },
   { id: "cook", phase: "firstWeek", title: "Prepare and eat a hot meal", target: 1, credit: preparedMeal, steps: [step("cook", "Cook food", (d) => (d.kind === "cooked" && d.kg > 0 ? 1 : 0)), { ...step("eat", "Eat the meal", preparedMeal), final: true }] },
+  {
+    id: "findUsefulCover", phase: "firstWeek", title: "Find useful cover", target: 1,
+    credit: (d) => (d.kind === "protectionChanged" && d.source === "found" && d.to > d.from && d.to >= 1 ? 1 : 0),
+    steps: one("cover", "Find useful cover", (d) => (d.kind === "protectionChanged" && d.source === "found" && d.to > d.from && d.to >= 1 ? 1 : 0)),
+    after: ["cook"], activeOnly: true,
+  },
+  { id: "makeUsefulShelter", phase: "firstWeek", title: "Turn the ground into shelter", target: 1, credit: awaitingContext, steps: one("shelter", "Reach weatherproof protection", awaitingContext), after: ["findUsefulCover"], activeOnly: true },
+  { id: "testShelter", phase: "firstWeek", title: "Put shelter to the test", target: 1, credit: awaitingContext, steps: one("storm", "Weather the offered rain", awaitingContext), after: ["makeUsefulShelter"], activeOnly: true },
   { id: "keptNight", phase: "firstWeek", title: "Keep the fire alive overnight", target: 1, credit: (d) => (d.kind === "keptNight" ? 1 : 0), steps: one("night", "Keep the fire alive until dawn", (d) => (d.kind === "keptNight" ? 1 : 0)) },
   {
     id: "snareMeal", phase: "firstMonth", title: "Eat from a snare", target: 1, credit: cookedMeat,
@@ -174,6 +241,9 @@ export const GOALS: GoalDef[] = [
   },
   { id: "firstOrder", phase: "firstWeek", title: "Give a standing camp order", target: 1, credit: (d) => (d.kind === "ordered" && ["deadwood", "split", "splitWedges", "chop", "fill", "melt"].includes(d.task) ? 1 : 0), steps: one("order", "Give a standing order", (d) => (d.kind === "ordered" && ["deadwood", "split", "splitWedges", "chop", "fill", "melt"].includes(d.task) ? 1 : 0)) },
   { id: "water", phase: "firstMonth", title: "Keep water at camp", target: 1, credit: built("waterStore", "seep"), steps: one("source", "Establish storage or a camp source", built("waterStore", "seep")) },
+  { id: "readWeather", phase: "firstMonth", title: "Read approaching weather", target: 1, credit: awaitingContext, steps: one("read", "Learn a new forecast fact", awaitingContext), notBeforeDay: 8, after: ["testShelter", "keptNight", "bed"], activeOnly: true },
+  { id: "prepareWeather", phase: "firstMonth", title: "Prepare for what is coming", target: 1, credit: awaitingContext, steps: one("plan", "Have a viable plan at onset", awaitingContext), notBeforeDay: 8, after: ["readWeather"], activeOnly: true },
+  { id: "surviveForecast", phase: "firstMonth", title: "Come through the forecast storm", target: 1, credit: awaitingContext, steps: one("survive", "Survive the forecast storm", awaitingContext), notBeforeDay: 8, after: ["prepareWeather"], activeOnly: true },
   {
     id: "keptDays",
     phase: "firstMonth",
@@ -187,6 +257,10 @@ export const GOALS: GoalDef[] = [
   { id: "fat", phase: "firstMonth", title: "Find food with fat", target: 1, credit: (d) => (d.kind === "ateFat" ? 1 : 0), steps: one("fat", "Eat food containing fat", (d) => (d.kind === "ateFat" ? 1 : 0)) },
   { id: "longOrder", phase: "firstMonth", title: "Try a longer order", target: 1, credit: (d) => (d.kind === "ordered" && d.long ? 1 : 0), steps: one("order", "Give a grind or keep order", (d) => (d.kind === "ordered" && d.long ? 1 : 0)) },
   { id: "toolCare", phase: "firstMonth", title: "Keep a tool working", target: 1, credit: (d) => (d.kind === "toolCared" ? 1 : 0), steps: one("care", "Restore or replace a tool", (d) => (d.kind === "toolCared" ? 1 : 0)) },
+  { id: "remoteRefuge", phase: "firstSeason", title: "Prepare a refuge beyond home", target: 1, credit: awaitingContext, steps: one("refuge", "Prepare shelter in another region", awaitingContext), notBeforeDay: 31, after: ["surviveForecast"], activeOnly: true },
+  { id: "fieldFire", phase: "firstSeason", title: "Light a fire away from camp", target: 1, credit: awaitingContext, steps: one("fire", "Light away from camp", awaitingContext), notBeforeDay: 31, after: ["remoteRefuge"], activeOnly: true },
+  { id: "fieldMeal", phase: "firstSeason", title: "Make a meal away from camp", target: 1, credit: awaitingContext, steps: one("meal", "Cook at a field fire", awaitingContext), notBeforeDay: 31, after: ["fieldFire"], activeOnly: true },
+  { id: "remoteStorm", phase: "firstSeason", title: "Ride out weather beyond home", target: 1, credit: awaitingContext, steps: one("storm", "Weather the storm beyond home", awaitingContext), notBeforeDay: 31, after: ["fieldMeal"], activeOnly: true },
   { id: "explore", phase: "firstSeason", title: "Explore another region", target: 1, credit: (d) => (d.kind === "explored" && d.anotherRegion ? 1 : 0), steps: one("explore", "Explore another region", (d) => (d.kind === "explored" && d.anotherRegion ? 1 : 0)) },
   { id: "secondCamp", phase: "firstSeason", title: "Establish a second camp", target: 1, credit: (d) => (d.kind === "campedAgain" ? 1 : 0), steps: one("camp", "Make camp in another region", (d) => (d.kind === "campedAgain" ? 1 : 0)) },
   { id: "seasonalFood", phase: "firstSeason", title: "Try a seasonal food", target: 1, credit: preparedMeal, steps: [step("gather", "Gather seasonal food", (d) => (d.kind === "seasonalFood" ? 1 : 0)), { ...step("eat", "Eat seasonal food", preparedMeal), final: true }] },
@@ -210,7 +284,7 @@ export function goalDef(id: GoalId): GoalDef {
 }
 
 export function newGoals(s: Season): GoalState {
-  return { done: {}, progress: {}, stepProgress: {}, introduced: {}, queue: [], lastSeason: s };
+  return { done: {}, progress: {}, stepProgress: {}, introduced: {}, queue: [], noticeQueue: [], opportunity: null, chapter3HomeRegion: null, lastSeason: s };
 }
 
 /**
@@ -224,6 +298,16 @@ export const GOAL_STAGES: GoalId[][] = [
   ["fire"],
   ["bed", "roof", "keptNight"],
   ["forageMeal", "cook"],
+  ["findUsefulCover"],
+  ["makeUsefulShelter"],
+  ["testShelter"],
+  ["readWeather"],
+  ["prepareWeather"],
+  ["surviveForecast"],
+  ["remoteRefuge"],
+  ["fieldFire"],
+  ["fieldMeal"],
+  ["remoteStorm"],
   ["snareMeal", "huntMeal", "fishMeal"],
   ["trapMeal", "foodSource", "store"],
   ["fat"],
@@ -233,6 +317,24 @@ export const GOAL_STAGES: GoalId[][] = [
   ["secondCamp", "seasonalFood", "durableRoof"],
   ["winterStores"],
 ];
+
+const WEATHER_OVERLAY_GOALS = new Set<GoalId>([
+  "readWeather", "prepareWeather", "surviveForecast",
+  "remoteRefuge", "fieldFire", "fieldMeal", "remoteStorm",
+]);
+
+/** Calendar and prerequisite gates decide visibility, never whether an ordinary deed counted early. */
+export function goalEligible(state: GameState, cal: Calendar, goal: GoalDef): boolean {
+  const opportunity = state.goals.opportunity?.goal;
+  const inheritedChapter = opportunity === "readWeather"
+    ? ["readWeather", "prepareWeather", "surviveForecast"].includes(goal.id)
+    : opportunity === "remoteStorm"
+      ? ["fieldFire", "fieldMeal", "remoteStorm"].includes(goal.id)
+      : false;
+  if (goal.notBeforeDay !== undefined && cal.day < goal.notBeforeDay
+    && !state.goals.introduced[goal.id] && !inheritedChapter) return false;
+  return goal.after?.every((id) => state.goals.done[id]) ?? true;
+}
 
 /** The next season to arrive that has not been seen here, or null when all four have. */
 function nextSeason(state: GameState, cal: Calendar): GoalId | null {
@@ -250,8 +352,23 @@ function nextSeason(state: GameState, cal: Calendar): GoalId | null {
  * next season due.
  */
 export function activeGoals(state: GameState, cal: Calendar): GoalId[] {
+  const lesson = GOAL_STAGES
+    .flat()
+    .find((id) => WEATHER_OVERLAY_GOALS.has(id) && !state.goals.done[id] && goalEligible(state, cal, goalDef(id)));
+  if (lesson) {
+    for (const stage of GOAL_STAGES) {
+      if (stage.some((id) => WEATHER_OVERLAY_GOALS.has(id))) continue;
+      const pending = stage.filter((id) => !state.goals.done[id]);
+      if (pending.length === 0) continue;
+      const open = pending.filter((id) => goalEligible(state, cal, goalDef(id)));
+      if (open.length > 0) return [lesson, ...open.slice(0, 2)];
+    }
+    return [lesson];
+  }
   for (const stage of GOAL_STAGES) {
-    const open = stage.filter((id) => !state.goals.done[id]);
+    const pending = stage.filter((id) => !state.goals.done[id]);
+    if (pending.length === 0) continue;
+    const open = pending.filter((id) => goalEligible(state, cal, goalDef(id)));
     if (open.length > 0) return open;
   }
   const due = nextSeason(state, cal);
@@ -263,7 +380,16 @@ export function unintroducedGoals(state: GameState, cal: Calendar): GoalId[] {
 }
 
 export function introduceGoals(state: GameState, ids: GoalId[]): void {
-  for (const id of ids) state.goals.introduced[id] = true;
+  for (const id of ids) {
+    state.goals.introduced[id] = true;
+    if (id !== "remoteRefuge" || state.goals.chapter3HomeRegion !== null) continue;
+    if (state.regions[state.player.region]?.campCell !== null && state.regions[state.player.region]?.campCell !== undefined) {
+      state.goals.chapter3HomeRegion = state.player.region;
+      continue;
+    }
+    const camp = Object.entries(state.regions).find(([, region]) => region.campCell !== null);
+    state.goals.chapter3HomeRegion = camp ? Number(camp[0]) : null;
+  }
 }
 
 /**
@@ -271,12 +397,44 @@ export function introduceGoals(state: GameState, ids: GoalId[]): void {
  * Earlier deeds are never replayed. Every non-final checklist item may be
  * done in any order, while the final item waits for the rest of its goal.
  */
-export function goalDeed(state: GameState, d: Deed): GoalId[] {
+function shelterOpportunity(goal: "makeUsefulShelter" | "testShelter", minute: number, area: { region: number; centre: number; radiusKm: 1 }): GoalState["opportunity"] {
+  return {
+    goal, status: "reserved", createdAt: minute, attempts: 1,
+    stormId: null, source: null, area, announcedAt: null, resolvedAt: null,
+    minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    readerIndex: null, plan: null,
+  };
+}
+
+function fieldOpportunity(minute: number, area: { region: number; centre: number; radiusKm: 1 }): GoalState["opportunity"] {
+  return {
+    goal: "remoteStorm", status: "reserved", createdAt: minute, attempts: 1,
+    stormId: null, source: null, area, announcedAt: null, resolvedAt: null,
+    minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    readerIndex: null, plan: null,
+  };
+}
+
+function finishGoal(state: GameState, id: GoalId, finished: GoalId[]): void {
+  if (state.goals.done[id]) return;
+  const goal = goalDef(id);
+  const progress = state.goals.stepProgress[id] ?? {};
+  for (const step of goal.steps) progress[step.id] = step.target;
+  state.goals.stepProgress[id] = progress;
+  state.goals.progress[id] = goal.target;
+  state.goals.done[id] = true;
+  state.goals.queue.push(id);
+  finished.push(id);
+}
+
+export function goalDeed(state: GameState, d: GoalEvent, world?: World): GoalId[] {
   const finished: GoalId[] = [];
+  const active = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
   let specificMealTaken = false;
   const specificMeals = new Set<GoalId>(["forageMeal", "snareMeal", "huntMeal", "fishMeal", "trapMeal"]);
   for (const g of GOALS) {
     if (state.goals.done[g.id] || !state.goals.introduced[g.id]) continue;
+    if (g.activeOnly && !active.has(g.id)) continue;
     const progress = state.goals.stepProgress[g.id] ?? {};
     state.goals.stepProgress[g.id] = progress;
     const earlierDone = g.steps.filter((s) => !s.final).every((s) => (progress[s.id] ?? 0) + 1e-9 >= s.target);
@@ -299,6 +457,78 @@ export function goalDeed(state: GameState, d: Deed): GoalId[] {
       state.goals.done[g.id] = true;
       state.goals.queue.push(g.id);
       finished.push(g.id);
+    }
+  }
+  if (d.kind === "protectionChanged" && finished.includes("findUsefulCover")) {
+    state.goals.opportunity = shelterOpportunity("makeUsefulShelter", d.minute, { region: d.region, centre: d.cell, radiusKm: 1 });
+  }
+  if (d.kind === "protectionChanged") {
+    const opportunity = state.goals.opportunity;
+    const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
+    const area = opportunity?.area;
+    if (opportunity?.goal === "makeUsefulShelter" && area && world && activeNow.has("makeUsefulShelter") && state.goals.introduced.makeUsefulShelter
+      && d.to > d.from && d.to >= 2 && d.region === area.region
+      && straightKm(world, area.centre, d.cell) <= area.radiusKm) {
+      finishGoal(state, "makeUsefulShelter", finished);
+      state.goals.opportunity = shelterOpportunity("testShelter", d.minute, area);
+    }
+    if (activeNow.has("remoteRefuge") && state.goals.introduced.remoteRefuge && d.to > d.from && d.to >= 2
+      && state.goals.chapter3HomeRegion !== null && d.region !== state.goals.chapter3HomeRegion) {
+      finishGoal(state, "remoteRefuge", finished);
+      state.goals.opportunity = fieldOpportunity(d.minute, { region: d.region, centre: d.cell, radiusKm: 1 });
+    }
+  }
+  if (d.kind === "fireLit" && !d.atCamp) {
+    const opportunity = state.goals.opportunity;
+    const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
+    if (opportunity?.goal === "remoteStorm" && opportunity.area && activeNow.has("fieldFire") && state.goals.introduced.fieldFire) {
+      finishGoal(state, "fieldFire", finished);
+    }
+  }
+  if (d.kind === "taskCompleted" && d.id === "cook" && !d.atCamp) {
+    const opportunity = state.goals.opportunity;
+    const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
+    if (opportunity?.goal === "remoteStorm" && opportunity.area && activeNow.has("fieldMeal") && state.goals.introduced.fieldMeal) {
+      finishGoal(state, "fieldMeal", finished);
+    }
+  }
+  if (d.kind === "forecastChanged") {
+    const opportunity = state.goals.opportunity;
+    const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
+    if (opportunity?.goal === "readWeather" && (opportunity.status === "announced" || opportunity.status === "reserved")
+      && opportunity.stormId === d.stormId && state.goals.introduced.readWeather
+      && d.source === "readSky" && gainedForecastFact(d.before, d.after)) {
+      opportunity.readerIndex = current(state).index;
+      if (activeNow.has("readWeather")) finishGoal(state, "readWeather", finished);
+    }
+  }
+  if (d.kind === "stormStarted") {
+    const opportunity = state.goals.opportunity;
+    const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
+    if (opportunity?.goal === "readWeather" && opportunity.stormId === d.stormId && d.plan.stormId === d.stormId) {
+      opportunity.plan ??= structuredClone(d.plan);
+      if (activeNow.has("prepareWeather") && state.goals.introduced.prepareWeather && d.plan.options.some((option) => option.viable)) {
+        finishGoal(state, "prepareWeather", finished);
+      }
+    }
+  }
+  if (d.kind === "stormEnded") {
+    const opportunity = state.goals.opportunity;
+    const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
+    if (opportunity?.goal === "testShelter" && opportunity.stormId === d.stormId && activeNow.has("testShelter") && state.goals.introduced.testShelter
+      && d.survivorAlive && d.minutesByProtection[2] + d.minutesByProtection[3] + 1e-9 >= 60) {
+      finishGoal(state, "testShelter", finished);
+    }
+    if (opportunity?.goal === "readWeather" && opportunity.stormId === d.stormId && activeNow.has("surviveForecast") && state.goals.introduced.surviveForecast
+      && d.survivorAlive && opportunity.readerIndex === current(state).index) {
+      finishGoal(state, "surviveForecast", finished);
+    }
+    const adequateMinutes = d.stormKind === "snow"
+      ? d.minutesByProtection[1] + d.minutesByProtection[2] + d.minutesByProtection[3]
+      : d.minutesByProtection[2] + d.minutesByProtection[3];
+    if (opportunity?.goal === "remoteStorm" && opportunity.stormId === d.stormId && activeNow.has("remoteStorm") && state.goals.introduced.remoteStorm
+      && d.survivorAlive && d.atCampMinutes <= 1e-9 && adequateMinutes + 1e-9 >= 60) {
+      finishGoal(state, "remoteStorm", finished);
     }
   }
   return finished;

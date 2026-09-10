@@ -14,7 +14,7 @@ describe("the horizon stages", () => {
     expect(HORIZON_STAGES.map((s) => s.id)).toEqual(["manual", "grinds", "keeps", "producers", "stocked"]);
     expect(stage("manual").levels).toEqual({});
     for (const s of SKILL_IDS) expect(stage("grinds").levels[s]).toBe(5);
-    expect(stage("keeps").levels).toEqual({ woodcraft: 10, building: 10, foraging: 5, hunting: 5, fishing: 5, crafting: 5, wayfinding: 5 });
+    expect(stage("keeps").levels).toEqual({ woodcraft: 10, building: 10, foraging: 5, hunting: 5, fishing: 5, crafting: 5, wayfinding: 5, naturalShelter: 5, shelterBuilding: 5, weatherSense: 5 });
     expect(stage("manual").band).toEqual([0, 2]);
     expect(stage("grinds").band).toEqual([1, 2]);
     expect(stage("keeps").band).toEqual([3, 5]);

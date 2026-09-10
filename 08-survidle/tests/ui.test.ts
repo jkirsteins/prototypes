@@ -33,6 +33,8 @@ import { huntedLand } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, speciesHere, spotOf } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
+import { hasLineOfSight, visibleCells } from "../src/sim/sight";
+import { CELL_KM } from "../src/units";
 
 /**
  * Everything the player can reach, from the panels they actually have: the Do
@@ -268,6 +270,138 @@ describe("panels", () => {
     expect(document.querySelectorAll("#map .mk-player").length).toBe(1);
     expect(document.querySelectorAll("#map .c.fog").length).toBeGreaterThan(100);
     expect(document.querySelectorAll("#map .c.cur").length).toBeGreaterThan(50);
+  });
+
+  it("distinguishes visible, remembered, inherited, and unknown ground at cell zoom", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = newUiState();
+    mapRegion(state, world, state.player.region);
+    const visible = visibleCells(state, world, cal, cellOf(state, world));
+    const remembered = regionAt(world, state.player.region).cells.find((cell) => !visible.has(cell));
+    expect(remembered).toBeDefined();
+    const inherited = neighbours(world, remembered!).find((cell) => !visible.has(cell));
+    expect(inherited).toBeDefined();
+    state.mapped[inherited!] = 3;
+    setPanel("map", mapHtml(world, state, ui, cal));
+    const cell = (index: number) => document.querySelector<HTMLElement>(`#map .c[data-map-cell="${index}"]`);
+    expect(cell(cellOf(state, world))?.classList.contains("memory")).toBe(false);
+    expect(cell(remembered!)?.classList.contains("memory")).toBe(true);
+    expect(cell(inherited!)?.classList.contains("dim")).toBe(true);
+    expect(document.querySelector("#map .c.fog")).not.toBeNull();
+  });
+
+  it("does not reveal a live camp fire through terrain occlusion", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    mapRegion(state, world, state.player.region);
+    const camp = st.campCell!;
+    const away = regionAt(world, state.player.region).cells.find((cell) => {
+      if (cellAt(world, cell).terrain === "water") return false;
+      const distanceKm = Math.hypot(cell % world.w - camp % world.w, Math.floor(cell / world.w) - Math.floor(camp / world.w)) * CELL_KM;
+      return distanceKm <= 5 && !hasLineOfSight(world, cell, camp, 1.5);
+    });
+    expect(away).toBeDefined();
+    placeAt(state, world, away!);
+    state.minute = 15 * 60;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    setPanel("map", mapHtml(world, state, newUiState(), calendar(state.minute, state.startDoy)));
+    expect(document.querySelector("#map .mk-fire")).toBeNull();
+    expect(document.querySelector("#map .mk-camp, #map .mk-shelter")).not.toBeNull();
+    expect(document.querySelector("#map .lit-0, #map .lit-1, #map .lit-2")).toBeNull();
+  });
+
+  it("shows a nearby camp fire itself through clear night even when the ground around it is dark", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    const camp = st.campCell!;
+    const observer = neighbours(world, camp).find((cell) => cellAt(world, cell).terrain !== "water");
+    expect(observer).toBeDefined();
+    mapRegion(state, world, state.player.region);
+    placeAt(state, world, observer!);
+    state.minute = 15 * 60;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    setPanel("map", mapHtml(world, state, newUiState(), calendar(state.minute, state.startDoy)));
+    const fire = document.querySelector<HTMLElement>(`#map .mk-fire[data-map-cell="${camp}"]`);
+    expect(fire).not.toBeNull();
+    expect(fire?.classList.contains("lit-0")).toBe(true);
+    expect(fire?.classList.contains("memory")).toBe(false);
+  });
+
+  it("shows a distant unobstructed night fire as a subdued point without local light rings", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    const camp = st.campCell!;
+    const observer = regionAt(world, state.player.region).cells.find((cell) => {
+      if (cellAt(world, cell).terrain === "water") return false;
+      const distanceKm = Math.hypot(cell % world.w - camp % world.w, Math.floor(cell / world.w) - Math.floor(camp / world.w)) * CELL_KM;
+      return distanceKm >= 2 && distanceKm <= 5 && hasLineOfSight(world, cell, camp, 1.5);
+    });
+    expect(observer).toBeDefined();
+    mapRegion(state, world, state.player.region);
+    placeAt(state, world, observer!);
+    state.minute = 15 * 60;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    setPanel("map", mapHtml(world, state, newUiState(), calendar(state.minute, state.startDoy)));
+    const fire = document.querySelector<HTMLElement>(`#map .mk-fire[data-map-cell="${camp}"]`);
+    expect(fire).not.toBeNull();
+    expect(fire?.classList.contains("fire-far")).toBe(true);
+    expect(document.querySelector("#map .lit-0, #map .lit-1, #map .lit-2")).toBeNull();
+  });
+
+  it("lets nearby firelight straddle an occlusion boundary without revealing the hidden ground", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    const land = regionAt(world, region).cells.filter((cell) => cellAt(world, cell).terrain !== "water");
+    let scenario: { camp: number; observer: number; exposed: number; hidden: number } | null = null;
+    for (const camp of land) {
+      const cx = camp % world.w;
+      const cy = Math.floor(camp / world.w);
+      const ring: number[] = [];
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          if (Math.abs(dx) === 2 && Math.abs(dy) === 2) continue;
+          const cell = (cy + dy) * world.w + cx + dx;
+          if (cellAt(world, cell).region === region) ring.push(cell);
+        }
+      }
+      for (let oy = -3; oy <= 3; oy++) {
+        for (let ox = -3; ox <= 3; ox++) {
+          const observer = (cy + oy) * world.w + cx + ox;
+          const distanceKm = Math.hypot(ox, oy) * CELL_KM;
+          if (distanceKm <= 0 || distanceKm > 1 || cellAt(world, observer).terrain === "water" || !hasLineOfSight(world, observer, camp, 1.5)) continue;
+          const exposed = ring.find((cell) => cell !== camp && cell !== observer && hasLineOfSight(world, observer, cell, 0.5));
+          const hidden = ring.find((cell) => cell !== camp && !hasLineOfSight(world, observer, cell, 0.5));
+          if (exposed !== undefined && hidden !== undefined) scenario = { camp, observer, exposed, hidden };
+          if (scenario) break;
+        }
+        if (scenario) break;
+      }
+      if (scenario) break;
+    }
+    expect(scenario).not.toBeNull();
+    st.campCell = scenario!.camp;
+    siteFor(st, scenario!.camp).structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    mapRegion(state, world, region);
+    placeAt(state, world, scenario!.observer);
+    state.minute = 15 * 60;
+    state.weather.clear = false;
+    const cal = { ...calendar(state.minute, state.startDoy), moonLight: 0 };
+    setPanel("map", mapHtml(world, state, newUiState(), cal));
+    const cell = (index: number) => document.querySelector<HTMLElement>(`#map .c[data-map-cell="${index}"]`);
+    expect(cell(scenario!.exposed)?.matches(".lit-1, .lit-2")).toBe(true);
+    expect(cell(scenario!.hidden)?.matches(".lit-1, .lit-2")).toBe(false);
+    expect(cell(scenario!.hidden)?.classList.contains("memory")).toBe(true);
   });
 
   it("draws the walk as a line, solid ahead and dashed behind, and marks cells with something lying on them", () => {
@@ -599,14 +733,15 @@ describe("panels", () => {
     expect(document.querySelector(`#overlay [data-act="restart"]`)).toBeNull();
   });
 
-  it("skills panel lists seven rows with level, hours to next, pool share and active perks", () => {
+  it("skills panel lists ten rows with level, hours to next, pool share and active perks", () => {
     const { state } = newGame(21);
     state.skills.woodcraft.xp = levelMinutes(7) + 60;
     state.skills.woodcraft.pool = poolCapacity("woodcraft") * 0.3;
     const h = skillsHtml(state);
     expect(h).toContain("Woodcraft");
     expect(h).toContain("Fishing");
-    expect((h.match(/class="skill"/g) ?? []).length).toBe(7);
+    expect((h.match(/class="skill"/g) ?? []).length).toBe(10);
+    for (const name of ["Natural shelter", "Shelter building", "Weather sense"]) expect(h).toContain(name);
     // Level 8 needs 98 h; level 7 had 72; one hour in, 25 h to go.
     expect(h).toContain("25 h to 8");
     expect(h).toContain("pool 30%");

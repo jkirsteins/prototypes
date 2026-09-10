@@ -19,6 +19,11 @@ export function current(state: GameState): LifeRecord {
   return state.survivors[state.survivors.length - 1];
 }
 
+/** Storms this survivor lived through, as recorded when the weather ended. */
+export function survivedStorms(state: GameState): number {
+  return current(state).events.filter((event) => event.kind === "storm").length;
+}
+
 /** The world date of a minute of this life: the landing year plus however many year ends the day index crossed. */
 export function worldDate(state: GameState, minute = state.minute): WorldDate {
   const cal = calendar(minute, state.startDoy);

@@ -9,7 +9,7 @@ import { mapRegion } from "../src/sim/mapped";
 import { seeFrom } from "../src/sim/sight";
 import { newGame } from "../src/sim/newgame";
 import { body } from "../src/sim/person";
-import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot, rockCell } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { catchUp, deserialize, serialize } from "../src/sim/save";
 import { beginTask, startTask, stopTask } from "../src/sim/tasks";
@@ -1392,6 +1392,13 @@ describe("pre-emption", () => {
     // to, so the map is wound back to what an eye at camp actually takes in.
     for (const k of Object.keys(state.mapped)) delete state.mapped[Number(k)];
     seeFrom(state, world, calendar(state.minute, state.startDoy), cellOf(state, world));
+    // The topographic viewshed can now include a distant outcrop for this
+    // seed. Keep the fixture's stone rows deliberately unknown so the test
+    // remains about an in-flight task bypassing order judgement.
+    for (const k of Object.keys(state.mapped)) {
+      const cell = Number(k);
+      if (rockCell(world, cell)) delete state.mapped[cell];
+    }
     // Ranked above the live row, so the prefix rule alone would still ask
     // each of them the question every minute regardless of what the live
     // row is doing - stone's ground is not yet known this early, so each one

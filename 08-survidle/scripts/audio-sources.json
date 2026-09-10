@@ -912,5 +912,245 @@
       23.0
     ],
     "note": "the exact species, scolding from a branch"
+  },
+  {
+    "slot": "startle_contact",
+    "file": "startle_contact_01.ogg",
+    "url": "https://cdn.freesound.org/previews/452/452570_612689-hq.mp3",
+    "source": "Freesound 452570, \"branch breaking forest twig snap crunch.wav\", https://freesound.org/people/kyles/sounds/452570/",
+    "author": "kyles (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0,
+      0.36
+    ],
+    "filter": "highpass=f=220,treble=g=3,afade=t=out:st=0.35:d=0.7",
+    "note": "short branch snap supplies the sharp contact onset; second cut is brighter and shorter in pitch; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_contact",
+    "file": "startle_contact_02.ogg",
+    "url": "https://cdn.freesound.org/previews/452/452570_612689-hq.mp3",
+    "source": "Freesound 452570, \"branch breaking forest twig snap crunch.wav\", https://freesound.org/people/kyles/sounds/452570/",
+    "author": "kyles (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.035,
+      0.49
+    ],
+    "filter": "asetrate=51840,aresample=48000,highpass=f=320,treble=g=2,afade=t=out:st=0.35:d=0.7",
+    "note": "short branch snap supplies the sharp contact onset; second cut is brighter and shorter in pitch; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_light_forest",
+    "file": "startle_hoof_light_forest_01.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.1,
+      0.92
+    ],
+    "filter": "asetrate=53760,aresample=48000,lowpass=f=2600,equalizer=f=900:t=q:w=1:g=3,afade=t=out:st=0.35:d=0.7",
+    "note": "quick light hoofbeats and dirt/brush texture under the branch onset; forest filtering softens the hard attack; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_light_forest",
+    "file": "startle_hoof_light_forest_02.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.88,
+      1.7
+    ],
+    "filter": "asetrate=51840,aresample=48000,lowpass=f=2300,equalizer=f=1200:t=q:w=1:g=3,afade=t=out:st=0.35:d=0.7",
+    "note": "quick light hoofbeats and dirt/brush texture under the branch onset; forest filtering softens the hard attack; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_heavy_forest",
+    "file": "startle_hoof_heavy_forest_01.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.15,
+      0.96
+    ],
+    "filter": "asetrate=38400,aresample=48000,lowpass=f=2100,bass=g=5,afade=t=out:st=0.35:d=0.7",
+    "note": "lower, slower forest bounds with heavier thuds and fewer impacts per second; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_heavy_forest",
+    "file": "startle_hoof_heavy_forest_02.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.88,
+      1.7
+    ],
+    "filter": "asetrate=40320,aresample=48000,lowpass=f=1900,bass=g=4,afade=t=out:st=0.35:d=0.7",
+    "note": "lower, slower forest bounds with heavier thuds and fewer impacts per second; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_light_open",
+    "file": "startle_hoof_light_open_01.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.08,
+      0.88
+    ],
+    "filter": "asetrate=54720,aresample=48000,highpass=f=180,treble=g=3,afade=t=out:st=0.35:d=0.7",
+    "note": "quick open-ground hoof scrapes with hard-edged attacks and dry surface movement; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_light_open",
+    "file": "startle_hoof_light_open_02.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.88,
+      1.7
+    ],
+    "filter": "asetrate=52800,aresample=48000,highpass=f=160,treble=g=4,afade=t=out:st=0.35:d=0.7",
+    "note": "quick open-ground hoof scrapes with hard-edged attacks and dry surface movement; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_heavy_open",
+    "file": "startle_hoof_heavy_open_01.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.12,
+      0.94
+    ],
+    "filter": "asetrate=39360,aresample=48000,bass=g=5,treble=g=1,afade=t=out:st=0.35:d=0.7",
+    "note": "heavy open-ground hoof bounds retain the scrape and stone-like clatter above the lower impact; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_heavy_open",
+    "file": "startle_hoof_heavy_open_02.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.88,
+      1.7
+    ],
+    "filter": "asetrate=41280,aresample=48000,bass=g=4,treble=g=2,afade=t=out:st=0.35:d=0.7",
+    "note": "heavy open-ground hoof bounds retain the scrape and stone-like clatter above the lower impact; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_bog",
+    "file": "startle_hoof_bog_01.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.09,
+      0.85
+    ],
+    "filter": "asetrate=42240,aresample=48000,lowpass=f=1700,equalizer=f=600:t=q:w=1:g=5,aecho=0.8:0.8:18|39:0.28|0.13,afade=t=out:st=0.35:d=0.7",
+    "note": "bog foley treatment: hollow low impacts and short diffuse splash-like tails; processed dirt gallop, not a field recording of bog wildlife; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_bog",
+    "file": "startle_hoof_bog_02.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.88,
+      1.7
+    ],
+    "filter": "asetrate=44160,aresample=48000,lowpass=f=1900,equalizer=f=750:t=q:w=1:g=4,aecho=0.8:0.8:23|47:0.24|0.12,afade=t=out:st=0.35:d=0.7",
+    "note": "bog foley treatment: hollow low impacts and short diffuse splash-like tails; processed dirt gallop, not a field recording of bog wildlife; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_snow",
+    "file": "startle_hoof_snow_01.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.1,
+      0.95
+    ],
+    "filter": "asetrate=51840,aresample=48000,highpass=f=650,treble=g=7,equalizer=f=2600:t=q:w=1:g=4,afade=t=out:st=0.35:d=0.7",
+    "note": "snow foley treatment: emphasized granular scrape and crunchy upper impacts; processed dirt gallop, not a field recording on snow; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_hoof_snow",
+    "file": "startle_hoof_snow_02.ogg",
+    "url": "https://cdn.freesound.org/previews/684/684446_12716775-hq.mp3",
+    "source": "Freesound 684446, \"HorseGallop1.wav\", https://freesound.org/people/gbnelso/sounds/684446/",
+    "author": "gbnelso (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.88,
+      1.7
+    ],
+    "filter": "asetrate=53760,aresample=48000,highpass=f=750,treble=g=6,equalizer=f=3200:t=q:w=1:g=4,afade=t=out:st=0.35:d=0.7",
+    "note": "snow foley treatment: emphasized granular scrape and crunchy upper impacts; processed dirt gallop, not a field recording on snow; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_brush_predator",
+    "file": "startle_brush_predator_01.ogg",
+    "url": "https://cdn.freesound.org/previews/452/452570_612689-hq.mp3",
+    "source": "Freesound 452570, \"branch breaking forest twig snap crunch.wav\", https://freesound.org/people/kyles/sounds/452570/",
+    "author": "kyles (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.015,
+      0.5
+    ],
+    "filter": "asetrate=36000,aresample=48000,lowpass=f=2900,aecho=0.8:0.8:95|210:0.4|0.2,afade=t=out:st=0.35:d=0.7",
+    "note": "brush thrash without hooves; reserved for a future species-specific predator departure, not selected by ungulate startles; variant 1 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
+  },
+  {
+    "slot": "startle_brush_predator",
+    "file": "startle_brush_predator_02.ogg",
+    "url": "https://cdn.freesound.org/previews/452/452570_612689-hq.mp3",
+    "source": "Freesound 452570, \"branch breaking forest twig snap crunch.wav\", https://freesound.org/people/kyles/sounds/452570/",
+    "author": "kyles (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0,
+      0.46
+    ],
+    "filter": "asetrate=40320,aresample=48000,lowpass=f=3300,aecho=0.8:0.8:80|185:0.35|0.18,afade=t=out:st=0.35:d=0.7",
+    "note": "brush thrash without hooves; reserved for a future species-specific predator departure, not selected by ungulate startles; variant 2 uses an independent cut and treatment; final edge fades and peak normalization are applied by audio-fetch.mjs"
   }
 ]

@@ -6,9 +6,9 @@ import { deserialize, serialize } from "../src/sim/save";
 import {
   chopSticks, craftSuccess, effectiveNeeds, EXTRAS, fishKg, gap, gapInjury, huntExtras, injuryChance,
   level, levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel, masteryMinutes, newSkills, poolCapacity,
-  RECOMMENDED, SKILL_IDS, skillOf, skillLevel, speedFactor, spoiledNeeds, wearFactor, yieldFactor,
+  RECOMMENDED, SKILL_IDS, SKILL_NAMES, carrySkills, skillOf, skillLevel, speedFactor, spoiledNeeds, wearFactor, yieldFactor,
 } from "../src/sim/skills";
-import { TASK_IDS } from "../src/sim/types";
+import { TASK_IDS, type LifeRecord } from "../src/sim/types";
 import { RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../src/sim/skills";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
@@ -19,6 +19,7 @@ import { noteHuntSign } from "../src/sim/hunting";
 import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "../src/sim/species";
 import { regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { skillsHtml } from "../src/ui/panels";
 
 describe("skill curves", () => {
   it("skill level is hours squared: 1 at 0, 2 at 2 h, 10 at 162 h, capped at 50", () => {
@@ -55,6 +56,38 @@ describe("skill curves", () => {
 });
 
 describe("what trains what", () => {
+  it("registers ten skills with named pools, visible rungs and heir carry for the three techniques", () => {
+    const { state } = newGame(3);
+    expect(SKILL_IDS).toHaveLength(10);
+    const ancestor: LifeRecord = { ...state.survivors[0], skills: {} };
+    for (const id of SKILL_IDS) {
+      expect(SKILL_NAMES[id]).toBeTruthy();
+      expect(MASTERY_KEYS[id].length).toBeGreaterThan(0);
+      ancestor.skills![id] = levelMinutes(19);
+    }
+    const carried = carrySkills(state, ancestor);
+    for (const id of ["naturalShelter", "shelterBuilding", "weatherSense"] as const) {
+      expect(carried).toContainEqual({ skill: id, level: 10 });
+      expect(state.skills[id]).toMatchObject({ xp: 9720, pool: 0, mastery: {} });
+      expect(skillsHtml(state)).toContain(`data-fill="skill:${id}"`);
+      expect(state.log.some((line) => line.text.includes(`keeps from ${SKILL_NAMES[id]}`))).toBe(true);
+    }
+  });
+
+  it("trains shelter techniques without moving permanent work or field fire ownership", () => {
+    const { state, world } = newGame(3);
+    for (const [task, skill] of [["findShelter", "naturalShelter"], ["improveCover", "naturalShelter"], ["emergencyShelter", "shelterBuilding"]] as const) {
+      expect(skillOf(task)).toBe(skill);
+      expect(masteryKey(state, world, task)).toBe(task);
+      expect(MASTERY_KEYS[skill]).toContain(task);
+    }
+    expect(MASTERY_KEYS.weatherSense).toContain("readSky");
+    for (const task of ["light", "cook", "crack"] as const) expect(skillOf(task)).toBe("building");
+    expect(skillOf("grindBark")).toBe("foraging");
+    expect(skillOf("build", "leanTo")).toBe("building");
+    expect(skillOf("build", "snowShelter")).toBe("building");
+  });
+
   it("maps every task to a skill and a mastery key, and walks to nothing", () => {
     const { state, world } = newGame(3);
     expect(skillOf("chop")).toBe("woodcraft");
@@ -154,6 +187,17 @@ describe("training", () => {
 });
 
 describe("effects", () => {
+  it("prices search levels only in search duration, while improvements and building gain their own skill pace", () => {
+    const { state, world } = newGame(3);
+    state.skills.naturalShelter.xp = levelMinutes(20);
+    expect(speedFactor(state, world, "findShelter")).toBe(1);
+    expect(speedFactor(state, world, "improveCover")).toBeCloseTo(1.19);
+    expect(speedFactor(state, world, "emergencyShelter")).toBe(1);
+    state.skills.shelterBuilding.xp = levelMinutes(20);
+    expect(speedFactor(state, world, "emergencyShelter")).toBeCloseTo(1.19);
+    expect(speedFactor(state, world, "build", "leanTo")).toBe(1);
+  });
+
   it("Woodcraft 11 fells 10% faster than Woodcraft 1", () => {
     const { state, world } = newGame(3);
     placeAtSpot(state, world, state.player.region, "forest");
@@ -525,6 +569,10 @@ describe("the rungs", () => {
     for (const id of ["chop", "haul", "fill", "sleep", "night", "melt", "thaw"]) expect(TASK_IDS).toContain(id);
     expect(TASK_IDS).not.toContain("wait");
     expect(TASK_IDS).toContain("findDen");
-    expect(TASK_IDS.length).toBe(45);
+    expect(TASK_IDS).toContain("findShelter");
+    expect(TASK_IDS).toContain("improveCover");
+    expect(TASK_IDS).toContain("emergencyShelter");
+    expect(TASK_IDS).toContain("readSky");
+    expect(TASK_IDS.length).toBe(49);
   });
 });

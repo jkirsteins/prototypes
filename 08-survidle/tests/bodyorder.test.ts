@@ -9,12 +9,15 @@ import { SPENT_AT } from "../src/sim/sleep";
 import { addOrder, removeOrder, ordersHere, orderSentence, judgeOrders } from "../src/sim/orders";
 import { bodyRowOf, campRowOf, isBodyRow, isCampRow, judgeBodyRow, judgeCampRow, serveCampRow, BODY_SENTENCE, CAMP_SENTENCE } from "../src/sim/bodyorder";
 import { addItem, pile, qty } from "../src/sim/inventory";
-import { placeAtSpot } from "../src/sim/position";
+import { placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { siteCamp } from "./siting-helpers";
 import { Rng } from "../src/rng";
 import { hurryKind } from "../src/ui/hurry";
 import { deserialize, serialize } from "../src/sim/save";
+import { cellAt, regionAt } from "../src/world/gen";
+import { runOrders } from "../src/sim/orders";
+import { stepTask } from "../src/sim/tasks";
 
 const cal = calendar(0);
 
@@ -116,7 +119,7 @@ describe("the body row", () => {
     st.fire.lit = true;
     st.fire.fuelKg = 1;
     addItem(pile(state, st.campCell!), "firewood", 5);
-    state.weather.storm = { from: state.minute, until: state.minute + 200, warned: true };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute, until: state.minute + 200, warned: true };
     for (let i = 0; i < 20; i++) judgeBodyRow(state, world, cal, new Rng(1));
     expect(st.fire.fuelKg).toBe(1);
     expect(qty(pile(state, st.campCell!), "firewood")).toBe(5);
@@ -183,11 +186,12 @@ describe("the body row", () => {
 
   it("a blocked need reads as the row's own fragment on the row, and the log's own sentence in the log", () => {
     const { state, world } = newGame(3);
-    // Off camp, over the pack's hard limit, so the walk home fails and the
-    // storm has nowhere to send the body: the same way the reviewer reached it.
-    placeAtSpot(state, world, state.player.region, "heath");
+    // On water and over the pack limit: neither a shelter in place nor a
+    // walk can start. Open land now has the emergency shelter answer.
+    const water = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "water")!;
+    placeAt(state, world, water);
     addItem(state.player.pack, "log", 2);
-    state.weather.storm = { from: state.minute, until: state.minute + 200, warned: true };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute, until: state.minute + 200, warned: true };
     // The row's own reading is the fragment, the same shape every other
     // skip reason takes, since the panel never resolves the log's voice.
     expect(judgeBodyRow(state, world, cal, new Rng(1))).toEqual({ v: "blocked", why: NEED_WORDS.storm });
@@ -200,6 +204,102 @@ describe("the body row", () => {
 });
 
 describe("the body row takes its turn by rank", () => {
+  it("sets storm shelter work aside at storm end so ready work resumes with cover progress kept", () => {
+    const { state, world } = newGame(17);
+    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
+    placeAt(state, world, cell);
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 0, until: 10, warned: true };
+    const work = addOrder(state, world, { task: "readSky", where: "nearest", until: { kind: "once" }, deliver: "leave" }, "job");
+    const rows = ordersHere(state, world).map(o => o.id);
+    runOrders(state, world, cal, new Rng(1));
+    expect(state.task?.id).toBe("emergencyShelter");
+    advance(state, world, 9);
+    const progress = regionState(state, world, state.player.region).sites[cell].emergencyMinutes;
+    expect(progress).toBeGreaterThan(0);
+    advance(state, world, 2);
+    expect(state.weather.storm).toBeNull();
+    expect(state.intent?.orderId).toBe(work.id);
+    expect(state.task?.id).toBe("readSky");
+    const kept = regionState(state, world, state.player.region).sites[cell].emergencyMinutes;
+    expect(kept).toBeGreaterThanOrEqual(progress);
+    advance(state, world, 1);
+    expect(regionState(state, world, state.player.region).sites[cell].emergencyMinutes).toBe(kept);
+    expect(ordersHere(state, world).map(o => o.id)).toEqual(rows);
+  });
+
+  it("claims a matching shelter task from lower-ranked work under the body row's name", () => {
+    const { state, world } = newGame(17);
+    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "spruce")!;
+    placeAt(state, world, cell);
+    const work = addOrder(state, world, { task: "findShelter", where: { cell }, until: { kind: "once" }, deliver: "leave" }, "job");
+    runOrders(state, world, cal, new Rng(1));
+    stepTask(state, world, cal, new Rng(1), 5);
+    const progress = state.task!.progress;
+    expect(state.intent?.orderId).toBe(work.id);
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
+    runOrders(state, world, cal, new Rng(1));
+    expect(state.intent).toMatchObject({ mode: "care", orderId: bodyRowOf(state, world)!.id });
+    expect(state.task?.id).toBe("findShelter");
+    expect(state.task!.progress).toBeGreaterThanOrEqual(progress);
+  });
+
+  it("sets aside its own emergency build at weatherproof while keeping site progress", () => {
+    const { state, world } = newGame(17);
+    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
+    placeAt(state, world, cell);
+    state.weather.precip = "none";
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
+    addItem(state.player.pack, "fireDrill", 1);
+    addItem(state.player.pack, "firewood", 2);
+    const body = bodyRowOf(state, world)!;
+    const ids = ordersHere(state, world).map(o => o.id);
+    runOrders(state, world, cal, new Rng(1));
+    expect(state.task?.id).toBe("emergencyShelter");
+    stepTask(state, world, cal, new Rng(1), 90);
+    const progress = regionState(state, world, state.player.region).sites[cell].emergencyMinutes;
+    expect(progress).toBeGreaterThanOrEqual(90);
+    runOrders(state, world, cal, new Rng(1));
+    expect(state.task?.id).toBe("light");
+    expect(state.intent).toMatchObject({ mode: "care", orderId: body.id });
+    expect(regionState(state, world, state.player.region).sites[cell].emergencyMinutes).toBe(progress);
+    expect(ordersHere(state, world).map(o => o.id)).toEqual(ids);
+  });
+
+  it("leaves higher-ranked work running, then owns every storm step and resumes set-aside work", () => {
+    const { state, world } = newGame(17);
+    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "spruce")!;
+    placeAt(state, world, cell);
+    state.weather.precip = "none";
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
+    addItem(state.player.pack, "fireDrill", 1);
+    addItem(state.player.pack, "firewood", 10);
+    const work = addOrder(state, world, { task: "sticks", where: { cell }, until: { kind: "forever" }, deliver: "leave" }, "grind", "top");
+    const list = ordersHere(state, world);
+    const body = bodyRowOf(state, world)!;
+    const ids = list.map(o => o.id).sort();
+    runOrders(state, world, cal, new Rng(1));
+    stepTask(state, world, cal, new Rng(1), 5);
+    const progress = state.task!.progress;
+    runOrders(state, world, cal, new Rng(1));
+    expect(state.intent?.orderId).toBe(work.id);
+    expect(state.task?.id).toBe("sticks");
+    list.splice(list.indexOf(body), 1);
+    list.unshift(body);
+    for (const task of ["findShelter", "improveCover", "light", "rest"] as const) {
+      runOrders(state, world, cal, new Rng(1));
+      expect(state.task?.id).toBe(task);
+      expect(state.intent).toMatchObject({ mode: "care", orderId: body.id, need: "storm" });
+      expect(list.map(o => o.id).sort()).toEqual(ids);
+      if (task !== "rest") stepTask(state, world, cal, new Rng(1), 100);
+    }
+    expect(Object.values(state.paused).some(p => p.id === "sticks" && p.fraction > 0)).toBe(true);
+    state.weather.storm = null;
+    stepTask(state, world, cal, new Rng(1), 100);
+    runOrders(state, world, cal, new Rng(1));
+    expect(state.intent?.orderId).toBe(work.id);
+    expect(state.task?.id).toBe("sticks");
+    expect(state.task!.progress).toBeGreaterThanOrEqual(progress);
+  });
   it("under the work, the survivor works on past spent", () => {
     const { state, world } = newGame(3);
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");

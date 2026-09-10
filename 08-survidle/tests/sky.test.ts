@@ -10,10 +10,129 @@ import { mapHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { bodyPosition, lighting, phaseName, skyHtml, updateSky, WALL } from "../src/ui/sky";
 import { siteCamp } from "./siting-helpers";
+import { current } from "../src/sim/record";
+import { levelMinutes } from "../src/sim/skills";
+import { stormOptions } from "../src/sim/body";
 
-const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
+const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
 /** Minutes since the run start for a clock hour on day one. */
 const at = (hour: number) => calendar((hour - 8) * 60);
+
+describe("forecast knowledge in the weather wall", () => {
+  it.each(["snow", "gale"] as const)("reads stored %s only at an earned stage, without leaking it into stage-one markup", (kind) => {
+    resetPanels();
+    document.body.innerHTML = '<div id="weather"></div>';
+    const { state, world } = newGame(17);
+    current(state).person.quirks = [];
+    state.weather.offset = 30;
+    state.weather.precip = "none";
+    state.weather.snowCm = 0;
+    state.weather.iceCm = 0;
+    state.weather.storm = { id: 1, source: "natural", kind, from: 60, until: 420, warned: false };
+    const cal = calendar(0);
+    const render = () => {
+      setPanel("weather", weatherHtml(state, world, cal, 15));
+      updateSky(state, cal, 15);
+      return document.querySelector("#weather")!.innerHTML;
+    };
+    const noviceSnow = render();
+    const sky = document.querySelector("svg.sky");
+    state.weather.storm.kind = "rain";
+    expect(render()).toBe(noviceSnow);
+    state.weather.storm.kind = kind;
+    state.skills.weatherSense.xp = levelMinutes(13);
+    render();
+    expect(document.querySelector("[data-weather-forecast]")?.textContent).toBe(`heavy ${kind} storm in 1 h`);
+    expect(sky?.getAttribute("aria-label")).toBe(`sky: heavy ${kind} storm in 1 h`);
+    expect(document.querySelector("svg.sky")).toBe(sky);
+    state.skills.weatherSense.xp = 0;
+    expect(render()).toBe(noviceSnow);
+    expect(document.querySelector("svg.sky")).toBe(sky);
+  });
+
+  it("hides distant storms and reveals arrival, kind, severity and duration only as learned", () => {
+    const { state, world } = newGame(17);
+    current(state).person.quirks = [];
+    state.weather.offset = 15;
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 100, until: 460, warned: false };
+    const line = () => {
+      const root = document.createElement("div");
+      root.innerHTML = weatherHtml(state, world, calendar(state.minute), 15);
+      return root.querySelector("[data-weather-forecast]")?.textContent ?? "";
+    };
+    expect(line()).toBe("");
+    state.minute = 40;
+    expect(line()).toBe("a storm is coming");
+    state.skills.weatherSense.xp = levelMinutes(13);
+    expect(line()).toBe("heavy rain storm in 1 h");
+    state.skills.weatherSense.xp = levelMinutes(25);
+    expect(line()).toBe("heavy rain storm in 1 h, lasting 6 h");
+    state.minute = 100;
+    state.skills.weatherSense.xp = 0;
+    expect(line()).toBe("storm");
+  });
+
+  it("shows the vague teaching sign before ordinary forecast knowledge", () => {
+    const { state, world } = newGame(17);
+    current(state).person.quirks = [];
+    state.minute = 10;
+    state.weather.storm = { id: 9, source: "natural", kind: "gale", from: 100, until: 460, warned: false };
+    state.goals.opportunity = {
+      goal: "readWeather", status: "announced", createdAt: 0, attempts: 1,
+      stormId: 9, source: "natural", area: null, announcedAt: 10, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    };
+
+    const root = document.createElement("div");
+    root.innerHTML = weatherHtml(state, world, calendar(state.minute), 15);
+
+    expect(root.querySelector("[data-weather-forecast]")?.textContent).toBe("conditions are changing");
+    expect(root.querySelector("[data-weather-plan]")).toBeNull();
+    expect(root.textContent).not.toContain("gale");
+  });
+
+  it("describes the same recommended option as the body without leaking hidden storm detail", () => {
+    const { state, world } = newGame(17);
+    current(state).person.quirks = [];
+    state.weather.storm = { id: 12, source: "natural", kind: "gale", from: 60, until: 500, warned: false };
+    const render = () => {
+      const root = document.createElement("div");
+      root.innerHTML = weatherHtml(state, world, calendar(0), 15);
+      return root;
+    };
+    const plan = stormOptions(state, world, state.weather.storm);
+    const first = render();
+    const line = first.querySelector<HTMLElement>("[data-weather-plan]")!;
+    expect(line.dataset.weatherPlan).toBe(plan.recommended);
+    expect(line.textContent).toBe("plan: shelter here");
+    const markup = first.innerHTML;
+    state.weather.storm.kind = "snow";
+    state.weather.storm.until = 900;
+    expect(render().innerHTML).toBe(markup);
+  });
+
+  it("updates accessible forecast detail without replacing the painted sky", () => {
+    resetPanels();
+    document.body.innerHTML = '<div id="weather"></div>';
+    const { state, world } = newGame(17);
+    current(state).person.quirks = [];
+    state.weather.offset = 15;
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
+    const cal = calendar(0);
+    setPanel("weather", weatherHtml(state, world, cal, 15));
+    updateSky(state, cal, 15);
+    const sky = document.querySelector("svg.sky");
+    expect(sky?.getAttribute("aria-label")).toContain("a storm is coming");
+    state.skills.weatherSense.xp = levelMinutes(25);
+    setPanel("weather", weatherHtml(state, world, cal, 15));
+    updateSky(state, cal, 15);
+    expect(document.querySelector("svg.sky")).toBe(sky);
+    expect(sky?.getAttribute("aria-label")).toContain("lasting 6 h");
+    state.skills.weatherSense.xp = 0;
+    updateSky(state, cal, 15);
+    expect(sky?.getAttribute("aria-label")).not.toMatch(/rain|6 h|1 h/);
+  });
+});
 
 describe("sky arc", () => {
   it("puts the sun on the left horizon at sunrise, high at midday, right at sunset", () => {

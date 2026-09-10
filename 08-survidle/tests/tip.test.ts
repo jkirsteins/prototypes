@@ -17,9 +17,11 @@ import { addItem, emptyInventory, pile } from "../src/sim/inventory";
 import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { createCarcass, stepCarcasses } from "../src/sim/hunting";
+import { metricPointForPlayer } from "../src/sim/wildlife-space";
 import { seeFrom } from "../src/sim/sight";
 import { siteCamp } from "./siting-helpers";
 import { campCellOf, cellOf, placeAt } from "../src/sim/position";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { cellFromClient, cellFromPoint, levelAt, viewOrigin } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { mapInventoryHtml, tipHtml, tipKey } from "../src/ui/tip";
@@ -96,7 +98,11 @@ describe("what the tooltip says", () => {
       condition: 70, reproductive: "none", dependentUntilYear: 0,
       name: null, nameKind: "field", colour: 0, lastKnownDay: -1,
       denCell: null,
-      active: { cell: here, hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [] },
+      active: {
+        cell: here, position: metricPointForPlayer(state, world)!, travel: null,
+        hunger: 20, thirst: 20, rest: 20, alarm: 0, intent: "wander", target: null, route: [],
+        escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
+      },
     });
 
     expect(tipHtml(state, world, cal, here)).toContain("deer, 7, wander");
@@ -195,6 +201,64 @@ describe("what the tooltip says", () => {
     expect(tipHtml(state, world, cal, camp)).toMatch(/20(\.0)? kg/);
   });
 
+  it("reports known protection as a fact without adding a shelter action", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const here = cellOf(state, world);
+    siteFor(regionState(state, world, state.player.region), here).cover = 2;
+    const html = tipHtml(state, world, cal, here);
+    expect(html).toContain("Protection:</b> weatherproof");
+    expect(html).not.toContain('data-id="findShelter"');
+  });
+
+  it("names terrain lee and usable profile, refreshing when a low alternative appears at the same protection", () => {
+    const { state, world } = newGame(17);
+    placeAt(state, world, 523074);
+    markKnown(state, 523074);
+    const cal = calendar(0);
+    const site = siteFor(regionState(state, world, state.player.region), 523074);
+    site.emergencyMinutes = 90;
+    const key = tipKey(state, world, 523074);
+    expect(tipHtml(state, world, cal, 523074)).toContain("high profile");
+    expect(tipHtml(state, world, cal, 523074)).toContain("lee ground");
+    site.cover = 2;
+    expect(tipKey(state, world, 523074)).not.toBe(key);
+    expect(tipHtml(state, world, cal, 523074)).toContain("low profile");
+    placeAt(state, world, 523076);
+    markKnown(state, 523076);
+    expect(tipHtml(state, world, cal, 523076)).toContain("exposed to wind");
+  });
+
+  it("does not reveal an unearned gale through tooltip text or its cache key", () => {
+    const { state, world } = newGame(21);
+    const here = cellOf(state, world);
+    const cal = calendar(0);
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
+    const html = tipHtml(state, world, cal, here);
+    const key = tipKey(state, world, here);
+    state.weather.storm.kind = "gale";
+    expect(tipHtml(state, world, cal, here)).toBe(html);
+    expect(tipKey(state, world, here)).toBe(key);
+  });
+
+  it("updates emergency protection only when work crosses a protection threshold", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const here = cellOf(state, world);
+    const site = siteFor(regionState(state, world, state.player.region), here);
+    site.emergencyMinutes = 29;
+    const before = tipKey(state, world, here);
+    site.emergencyMinutes = 30;
+    const windbreak = tipKey(state, world, here);
+    expect(windbreak).not.toBe(before);
+    expect(tipHtml(state, world, cal, here)).toContain("Protection:</b> windbreak");
+    site.emergencyMinutes = 50;
+    expect(tipKey(state, world, here)).toBe(windbreak);
+    site.emergencyMinutes = 90;
+    expect(tipKey(state, world, here)).not.toBe(windbreak);
+    expect(tipHtml(state, world, cal, here)).toContain("Protection:</b> weatherproof");
+  });
+
   it("it omits generated camp-to-spot estimates", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
@@ -249,6 +313,22 @@ describe("the tooltip's key", () => {
     const before = tipKey(state, world, cal, here);
     stepCarcasses(state, 60, 12);
     expect(tipKey(state, world, cal, here)).not.toBe(before);
+  });
+
+  it("changes when known protection changes", () => {
+    const { state, world } = newGame(21);
+    const here = cellOf(state, world);
+    const before = tipKey(state, world, here);
+    siteFor(regionState(state, world, state.player.region), here).cover = 2;
+    expect(tipKey(state, world, here)).not.toBe(before);
+  });
+
+  it("changes when a search establishes that the ground is open", () => {
+    const { state, world } = newGame(21);
+    const here = cellOf(state, world);
+    const before = tipKey(state, world, here);
+    siteFor(regionState(state, world, state.player.region), here).cover = 0;
+    expect(tipKey(state, world, here)).not.toBe(before);
   });
 });
 

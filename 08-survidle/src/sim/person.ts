@@ -15,7 +15,7 @@ import type { Candidate, GameState, Grade, Person, QuirkId } from "./types";
 
 export { FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./fears";
 
-export const QUIRKS: QuirkId[] = ["coastBorn", "forestBorn", "sleepsLight", "bigEater", "steadyByTheFire"];
+export const QUIRKS: QuirkId[] = ["coastBorn", "forestBorn", "sleepsLight", "bigEater", "steadyByTheFire", "weatherEye"];
 /** The body the tables were written for. */
 export const MEDIAN_MASS_KG = 72;
 
@@ -230,6 +230,7 @@ const QUIRK_LINES: Record<QuirkId, string> = {
   sleepsLight: "Sleeps light. Wolves never reach the bed; a storm night is a long one, and the morning short.",
   bigEater: "Big eater. Works a tenth faster and burns a tenth more.",
   steadyByTheFire: "Steady by the fire. Lights in rain without fail.",
+  weatherEye: "A weather eye. Reads a storm half an hour earlier.",
 };
 
 const QUIRK_FEARS: Partial<Record<QuirkId, string>> = {

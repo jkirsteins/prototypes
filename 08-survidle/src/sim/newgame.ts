@@ -32,6 +32,7 @@ function freshPlayer(person: Person, world: World, cell: number, region: number)
   const pack = emptyInventory();
   addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
   return {
+    skyReadDay: null,
     x: (cell % world.w) + 0.5,
     y: Math.floor(cell / world.w) + 0.5,
     region,
@@ -58,6 +59,7 @@ function freshPlayer(person: Person, world: World, cell: number, region: number)
     ],
     tools: [{ id: "axe", durability: 100 }],
     torch: { lit: false, minutes: 0 },
+    fieldFire: null,
     pack,
     water: 2.5,
     frostbite: { feet: 0, hands: 0 },
@@ -123,12 +125,13 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     startDoy,
     awayHours: AWAY_HOURS_DEFAULT,
     minute: 0,
+    advanceCarry: 0,
     rng: derive(seed, 99),
     player: freshPlayer(first.person, world, start.campCell, world.start),
     regions: {},
     discovered: {},
     mapped: {},
-    weather: { precip: "none", clear: true, offset: 0, snowCm: warm ? 0 : 3, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 },
+    weather: { precip: "none", clear: true, offset: 0, snowCm: warm ? 0 : 3, rolledDay: 0, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 },
     task: null,
     log: [],
     dead: null,

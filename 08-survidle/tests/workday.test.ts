@@ -42,7 +42,7 @@ function debtFor(target: number, hour: number): number {
 function calmNight(state: GameState): number {
   let m = state.minute;
   for (let i = 0; i < 4000; i++) {
-    if (calendar(m).isNight && !stormNow(state.weather, m) && !stormComing(state.weather, m)) return m;
+    if (calendar(m).isNight && !stormNow(state.weather, m) && !stormComing({ ...state, minute: m })) return m;
     m += 15;
   }
   throw new Error("no calm night within the search");

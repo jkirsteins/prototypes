@@ -101,7 +101,7 @@ function at(c: SkyCase): { state: GameState; world: ReturnType<typeof newGame>["
   // nothing it inherited, or a September sky reports the snow seed 21 happened
   // to have lying about.
   Object.assign(state.weather, { clear: true, precip: "none", snowCm: 0, iceCm: 0, storm: null }, c.weather);
-  if (c.name === "storm") state.weather.storm = { from: state.minute, until: state.minute + 180, warned: true };
+  if (c.name === "storm") state.weather.storm = { id: 1, source: "natural", kind: "rain", from: state.minute, until: state.minute + 180, warned: true };
   return { state, world };
 }
 

@@ -1,8 +1,8 @@
 import { Rng } from "../rng";
-import { CELL_KM, fmtDuration, shareWord } from "../units";
+import { fmtDuration, shareWord } from "../units";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, neighbours, regionAt, spotOf, type World } from "../world/gen";
-import { passable, routeKm, routeMinutes } from "../world/route";
+import { passable, routeKm, routeMinutes, walkPath } from "../world/route";
 import { itemLabel, loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { dayNumber, type Calendar } from "./calendar";
@@ -35,11 +35,12 @@ import {
   atCamp, campCellOf, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { EMBER_RELIGHT_MINUTES, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { goalDeed } from "./goals";
+import { builtProtection, coverCeiling, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare } from "./mapped";
-import { campSite, discovery, regionState, siteFor } from "./regionstate";
+import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { seeFrom, sightReachCells } from "./sight";
 import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
@@ -47,12 +48,12 @@ import { fatSeason, fishItem, fishSpecies, inSpawn, isFish, LARGE_GAME, marrowFa
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type PausedTask, type RecipeId,
-  type Site, type SkillId, type SpotId, type StructureId, type TaskId, type ToolId, type WorkOrder,
+  type Protection, type Site, type SkillId, type SpotId, type StructureId, type TaskId, type ToolId, type WorkOrder,
 } from "./types";
 import { isWorkIntent } from "./types";
 import { owningOrder } from "./orderowner";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
-import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
+import { ambientTemperature, DEEP_SNOW_CM, forecastKnowledge, forecastText, ICE_SAFE_CM, iceMode, sameForecastKnowledge, skyReadDay, stormNow, walkableIce } from "./weather";
 import { plain } from "./voice";
 import { claimHuntableAnimal, knownBearDen, unknownBearDen } from "./wildlife-agents";
 import { carcassMinutes, createCarcass, disturbHuntingGround, hasRecentHuntSign, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteFailedHunt, noteHuntSign, processCarcass } from "./hunting";
@@ -101,7 +102,7 @@ export interface TaskOption {
 }
 
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs", "innerBark", "roots", "tapSap", "seaweed"]);
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs", "innerBark", "roots", "tapSap", "seaweed", "findShelter", "improveCover"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "hone", "light", "lightIndoors", "lightTorch"]);
 
@@ -130,19 +131,20 @@ export const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "findDen", "fish", "cook",
   "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
   "setTrap", "emptyTrap", "makeCamp", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
+  "findShelter", "improveCover", "emergencyShelter",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
 export function toolFor(id: TaskId, arg?: string): ToolId | null {
   switch (id) {
-    case "chop": case "split": return "axe";
+    case "chop": case "split": case "crack": return "axe";
     case "hunt": return "bow";
     case "fish": return "fishingSpear";
     case "craft": return RECIPES[arg as RecipeId]?.tool ?? null;
     case "repair": return "needle";
     case "hone": return "whetstone";
     case "light": case "lightIndoors": return "fireDrill";
-    case "fill": return "barkBucket";
+    case "fill": case "melt": return "barkBucket";
     case "iceHole": return "axe";
     case "mend": return null;
     case "innerBark": return "knife";
@@ -726,19 +728,18 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const kg = Math.min(1, totalQty(invs, food));
       const label = food === "rawFat" ? "Render fat" : `Cook ${ITEM_NAMES[food]}`;
       const detail = food === "rawFat" ? "1 kg at a time; raw fat rots in three warm days, rendered it keeps" : "1 kg at a time over the fire";
-      const o = needCamp(opt({ group: "camp", label, detail, duration: Math.max(1, 10 * kg), repeatable: true }));
-      if (!o.ok) return o;
-      if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
+      const o = opt({ group: "camp", label, detail, duration: Math.max(1, 10 * kg), repeatable: true });
+      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire" };
       if (kg <= TRACE_KG) return { ...o, ok: false, why: `no ${ITEM_NAMES[food]} here` };
       if (food === "roots" && disabled("roots")) return { ...o, ok: false, why: "disabled for the probe" };
       return o;
     }
     case "crack": {
-      const o = needCamp(opt({ group: "camp", label: "Crack bones for marrow", detail: `${MARROW_KG_PER_BONE * 1000} g of marrow a bone at a fat animal, less in spring; the fragments still make a needle`, duration: 20, repeatable: true }));
-      if (!o.ok) return o;
+      const o = opt({ group: "camp", label: "Crack bones for marrow", detail: `${MARROW_KG_PER_BONE * 1000} g of marrow a bone at a fat animal, less in spring; the fragments still make a needle`, duration: 20, repeatable: true });
       if (totalQty(invs, "bone") < 1) return { ...o, ok: false, why: "no bones here" };
-      if (totalQty(toolInvs, "stone") < 1 && !axeInHand(p)) return { ...o, ok: false, why: "needs a stone or the axe" };
+      if (totalQty(toolInvs, "stone") < 1 && !axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs a stone or the axe" };
       if (disabled("marrow")) return { ...o, ok: false, why: "disabled for the probe" };
+      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire" };
       return o;
     }
     case "eggs": {
@@ -753,11 +754,11 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "grindBark": {
       const kg = Math.min(1, totalQty(invs, "driedBark"));
-      const o = needCamp(opt({ group: "camp", label: "Grind bark flour", detail: "20 minutes a kilo with a stone", duration: Math.max(1, Math.round(BARK_FLOUR_MINUTES_PER_KG * kg)), repeatable: true }));
-      if (!o.ok) return o;
+      const o = opt({ group: "camp", label: "Grind bark flour", detail: "20 minutes a kilo with a stone", duration: Math.max(1, Math.round(BARK_FLOUR_MINUTES_PER_KG * kg)), repeatable: true });
       if (kg <= TRACE_KG) return { ...o, ok: false, why: "no dried bark here" };
       if (totalQty(toolInvs, "stone") < 1) return { ...o, ok: false, why: "needs a stone" };
       if (disabled("bark")) return { ...o, ok: false, why: "disabled for the probe" };
+      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire" };
       return o;
     }
     case "craft": {
@@ -862,16 +863,16 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "light": {
-      const rekindle = hasEmbers(st.fire);
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(campSite(st)), hasQuirk(state, "steadyByTheFire"));
-      const o = needCamp(opt({
-        group: "camp", label: "Light the fire at the site",
+      const rekindle = camp && hasEmbers(st.fire);
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(siteAt(st, at)), hasQuirk(state, "steadyByTheFire"));
+      const o = opt({
+        group: "camp", label: camp ? "Light the fire at the site" : "Light a field fire",
         detail: rekindle ? "1 kg firewood" : `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
         duration: rekindle ? EMBER_RELIGHT_MINUTES : lr.minutes,
-      }));
-      if (!o.ok) return o;
-      if (!campSite(st)?.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
-      if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
+      });
+      if (terrain === "water") return { ...o, ok: false, why: "needs dry ground" };
+      if (camp && !campSite(st)?.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
+      if (fireAt(state, world, at)) return { ...o, ok: false, why: "already burning" };
       if (!rekindle && !toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       if (!rekindle && lr.blocked) return { ...o, ok: false, why: lr.blocked };
@@ -882,7 +883,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = opt({ group: "camp", label: relight ? "Relight torch" : "Light a torch", detail: relight ? `${fmtDuration(p.torch.minutes)} fuel left` : "burns 1 h; no night penalty on foot, and wolves keep off", duration: 1 });
       if (p.torch.lit) return { ...o, ok: false, why: "a torch is already burning" };
       if (!relight && totalQty(invs, "torch") < 1) return { ...o, ok: false, why: "needs a torch" };
-      if (camp && st.fire.lit) return { ...o, detail: `${o.detail}; lit from the fire` };
+      if (fireAt(state, world, at)) return { ...o, detail: `${o.detail}; lit from the fire` };
       if (hasTool(p, "fireDrill")) return { ...o, duration: 10, detail: `${o.detail}; with the fire drill` };
       return { ...o, ok: false, why: "needs a fire or a fire drill" };
     }
@@ -934,6 +935,38 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       // Nobody can say how far the unmapped ground between here and camp actually runs, so no duration is offered.
       return { ...o, duration: 0, detail: "no telling how long; it ends the moment the way opens" };
     }
+    case "readSky":
+      return opt({ group: "move", label: "Read the sky", detail: "ten minutes watching the weather; the reading lasts until dawn", duration: 10, repeatable: true });
+    case "findShelter": {
+      const level = skillLevel(state, "naturalShelter");
+      const duration = Math.max(10, 31 - level);
+      const cover = findCover(world, at, level);
+      const o = opt({ group: "move", label: "Find shelter", detail: `look over this ground for natural cover; ${PROTECTION_WORDS[cover]} at Natural shelter ${level}`, duration });
+      return passable(terrain) ? o : { ...o, ok: false, why: "not on water" };
+    }
+    case "improveCover": {
+      const cover = siteAt(st, at)?.cover ?? 0;
+      const duration = improveCoverMinutes(cover) ?? 0;
+      const maximum = Math.min(3, coverCeiling(world, at) + 1) as 1 | 2 | 3;
+      const next = Math.min(maximum, cover + 1) as 1 | 2 | 3;
+      const o = opt({ group: "build", label: "Improve shelter", detail: `${PROTECTION_WORDS[cover]} to ${PROTECTION_WORDS[next]}`, duration });
+      if (cover === 0) return { ...o, ok: false, why: "no cover found here" };
+      if (cover >= maximum) return { ...o, ok: false, why: "cover cannot be improved further" };
+      return o;
+    }
+    case "emergencyShelter": {
+      const minutes = siteAt(st, at)?.emergencyMinutes ?? 0;
+      const level = builtProtection(minutes);
+      const next = Math.min(3, level + 1) as 1 | 2 | 3;
+      const o = opt({
+        group: "build", label: `Emergency shelter - ${PROTECTION_WORDS[next]}`,
+        detail: `${Math.max(0, EMERGENCY_MINUTES[next] - minutes)} effective minutes to ${PROTECTION_WORDS[next]}; boughs and deadfall last fourteen days without work`,
+        duration: Math.max(0, EMERGENCY_MINUTES[3] - minutes),
+      });
+      if (!passable(terrain)) return { ...o, ok: false, why: "not on water" };
+      if (level === 3) return { ...o, ok: false, why: "emergency shelter is already liveable" };
+      return o;
+    }
     case "haul": {
       const from = at;
       // Haul does not read `repeat` (beginTask refuses "haul" outright; the intent's own until governs it), so a loop button beside it would be a promise the button cannot keep.
@@ -966,18 +999,19 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return opt({ group: "camp", label: "Sleep", detail: `until rested, about ${Math.round(minutes / 60)} h; ${bedText(state, world)}`, duration: minutes });
     }
     case "melt": {
-      const o = needCamp(opt({ group: "camp", label: "Melt snow", detail: "1 kg of the fire's wood for a litre", duration: 15, repeatable: true }));
-      if (!o.ok) return o;
-      if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
-      if (st.fire.fuelKg < 1) return { ...o, ok: false, why: "the fire is too low" };
+      const o = opt({ group: "camp", label: "Melt snow", detail: "1 kg of the fire's wood for a litre", duration: 15, repeatable: true });
+      if (!camp && !toolNear(p, "barkBucket", toolInvs)) return { ...o, ok: false, why: "needs a bark bucket" };
+      const fire = fireAt(state, world, at);
+      if (!fire) return { ...o, ok: false, why: "needs a lit fire" };
+      if (fire.fuelKg < 1) return { ...o, ok: false, why: "the fire is too low" };
       if (state.weather.snowCm < 1) return { ...o, ok: false, why: "no snow to melt" };
       return o;
     }
     case "thaw": {
-      const o = needCamp(opt({ group: "camp", label: "Thaw the water", detail: "a frozen vessel by the fire", duration: 10 }));
-      if (!o.ok) return o;
-      if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
-      if (!p.tools.some((t) => t.frozen) && qty(pileAt(state, campCell), "ice") <= 1e-9) return { ...o, ok: false, why: "nothing is frozen" };
+      const o = opt({ group: "camp", label: "Thaw the water", detail: "a frozen vessel by the fire", duration: 10 });
+      if (!camp && !p.tools.some(t => TOOLS[t.id].litres)) return { ...o, ok: false, why: "needs a vessel" };
+      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire" };
+      if (!p.tools.some((t) => t.frozen) && (!camp || qty(pileAt(state, campCell), "ice") <= 1e-9)) return { ...o, ok: false, why: "nothing is frozen" };
       return o;
     }
     case "lightIndoors": {
@@ -1111,6 +1145,10 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "explore", `region:${r.id}`));
   for (const nb of r.neighbours) out.push(check(state, world, cal, "explore", `region:${nb.id}`));
   out.push(check(state, world, cal, "searchHome"));
+  out.push(check(state, world, cal, "findShelter"));
+  out.push(check(state, world, cal, "readSky"));
+  out.push(check(state, world, cal, "improveCover"));
+  out.push(check(state, world, cal, "emergencyShelter"));
   return out.map((o) => withProgression(state, world, o));
 }
 
@@ -1291,6 +1329,13 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     ...(paused?.huntPhase ? { huntPhase: paused.huntPhase } : {}),
     ...(paused?.carcassId !== undefined ? { carcassId: paused.carcassId } : {}),
   };
+  if (id === "findShelter") state.task.shelterLevel = skillLevel(state, "naturalShelter");
+  if (id === "emergencyShelter") {
+    const minutes = siteAt(regionState(state, world, state.player.region), cellOf(state, world))?.emergencyMinutes ?? 0;
+    const cost = hasQuirk(state, "bigEater") ? BIG_EATER_PACE : 1;
+    state.task.duration = EMERGENCY_MINUTES[3] * cost;
+    state.task.progress = minutes * cost;
+  }
   return true;
 }
 
@@ -1399,7 +1444,28 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
     stepSearchHome(state, world, cal, rng, dt);
     return;
   }
+  if ((t.id === "cook" || t.id === "crack" || t.id === "grindBark") && !fireAt(state, world)) {
+    state.task = null;
+    if (isWorkIntent(state.intent) && state.intent.task === t.id) state.intent = null;
+    log(state, `${check(state, world, cal, t.id, t.arg).label}: needs a lit fire. {You} {stop}.`);
+    return;
+  }
+  // The site is authoritative: it can expire before this very step, and
+  // neither a task bar nor paused work may bring those old minutes back.
+  if (t.id === "emergencyShelter") {
+    const o = check(state, world, cal, t.id, t.arg);
+    if (!o.ok) {
+      state.task = null;
+      if (isWorkIntent(state.intent) && state.intent.task === t.id) state.intent = null;
+      log(state, `${o.label}: ${o.why}. {You} {stop}.`);
+      return;
+    }
+    const minutes = siteAt(regionState(state, world, state.player.region), cellOf(state, world))?.emergencyMinutes ?? 0;
+    t.progress = minutes * (t.duration / EMERGENCY_MINUTES[3]);
+  }
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state, world) : 1;
+  // Older saves may hold a search started before levels were recorded.
+  if (t.id === "findShelter") t.shelterLevel ??= skillLevel(state, "naturalShelter");
   train(state, world, dt);
   // An "any" task is the intent's and the order's work under whatever species it drew.
   const wanted = t.any ? "any" : t.arg;
@@ -1408,7 +1474,30 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   const order = liveOrderFor(state, world, t.id, wanted) ?? liveOrderFor(state, world, t.id, t.arg);
   if (order) order.minutes += dt;
   t.progress += dt * pace;
+  if (t.id === "emergencyShelter" && dt * pace > 0) {
+    const cell = cellOf(state, world);
+    const site = siteFor(regionState(state, world, state.player.region), cell);
+    const before = protectionOf(site);
+    site.emergencyMinutes = Math.min(EMERGENCY_MINUTES[3], t.progress / (t.duration / EMERGENCY_MINUTES[3]));
+    site.emergencyAge = 0;
+    const after = protectionOf(site);
+    if (after !== before) goalDeed(state, {
+      kind: "protectionChanged", minute: state.minute, region: state.player.region, cell,
+      from: before, to: after, source: "emergency",
+    }, world);
+  }
   if (t.progress < t.duration) return;
+  // Existing cover ages before this task step. If it expires in the finishing
+  // interval, the improvement has nothing left to work and is not a completion.
+  if (t.id === "improveCover") {
+    const o = check(state, world, cal, t.id, t.arg);
+    if (!o.ok) {
+      state.task = null;
+      if (isWorkIntent(state.intent) && state.intent.task === t.id) state.intent = null;
+      log(state, `${o.label}: ${o.why}. {You} {stop}.`);
+      return;
+    }
+  }
   // The dark refuses nothing; it wastes the attempt. Work that needs light
   // to be sure of itself rolls when it would finish, and a failure puts the
   // attempt back to the start rather than ending the work: the yield when it
@@ -1484,8 +1573,11 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
       }
       log(state, `${Math.round(recovered.meatKg * 10) / 10} kg of meat dressed from the carcass.`, "good");
     }
-    goalDeed(state, { kind: "task", id, arg });
-  } else complete(state, world, cal, rng, id, arg);
+    goalDeed(state, {
+      kind: "taskCompleted", minute: state.minute, id, arg, region: state.player.region,
+      cell: cellOf(state, world), atCamp: atCamp(state, world),
+    }, world);
+  } else complete(state, world, cal, rng, id, arg, t.shelterLevel);
   if (repeat && !state.dead) {
     // "Anything" draws afresh; state.task is already null, so beginTask sets nothing aside.
     const o = check(state, world, cal, id, wanted);
@@ -1538,41 +1630,29 @@ export function fallThrough(state: GameState, world: World, rng: Rng, land: numb
 function walkAlong(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): boolean {
   const route = state.route!;
   const p = state.player;
-  let km = (walkSpeed(state, cal, state.weather, hereTerrain(state, world), undefined, route.ice) / 60) * dt;
-  while (km > 1e-9 && route.path.length) {
-    const cell = route.path[0];
-    const next = cellCenter(world, cell);
-    const dx = next.x - p.x;
-    const dy = next.y - p.y;
-    const distKm = Math.hypot(dx, dy) * CELL_KM;
-    if (km >= distKm) {
-      p.x = next.x;
-      p.y = next.y;
+  const km = (walkSpeed(state, cal, state.weather, hereTerrain(state, world), undefined, route.ice) / 60) * dt;
+  walkPath(world, p, route.path, km, (cell, movedKm, arrived) => {
+    if (arrived) {
       setRegion(state, world, cellAt(world, cell).region);
       seeFrom(state, world, cal, cell);
-      route.walked.push(route.path.shift()!);
-      km -= distKm;
-      state.stats.km += distKm;
+      route.walked.push(cell);
+      state.stats.km += movedKm;
       const terrain = cellAt(world, cell).terrain;
       if (terrain === "water") {
         if (state.weather.iceCm < ICE_SAFE_CM) cue("iceCracks");
         if (state.weather.iceCm < ICE_SAFE_CM && rng.chance(fallChance(state.weather.iceCm))) {
           fallThrough(state, world, rng, route.lastLand);
-          return true;
+          return false;
         }
       } else {
         route.lastLand = cell;
       }
     } else {
-      const f = km / distKm;
-      p.x += dx * f;
-      p.y += dy * f;
       setRegion(state, world, cellAt(world, cellIndex(world, p.x, p.y)).region);
-      state.stats.km += km;
-      km = 0;
+      state.stats.km += movedKm;
     }
-  }
-  return route.path.length === 0;
+  });
+  return !state.route || route.path.length === 0;
 }
 
 /**
@@ -2044,11 +2124,6 @@ export function leftBehind(state: GameState, world: World): string {
  * below is untouched: a deed is what happened, not a special case inside
  * whatever happened.
  */
-function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
-  completeTask(state, world, cal, rng, id, arg);
-  goalDeed(state, { kind: "task", id, arg });
-}
-
 /** Resolves the pursuit half of a hunt. True means a kill became field work. */
 function resolveHuntPursuit(state: GameState, world: World, cal: Calendar, rng: Rng, task: NonNullable<GameState["task"]>): boolean {
   const p = state.player;
@@ -2109,7 +2184,15 @@ function resolveHuntPursuit(state: GameState, world: World, cal: Calendar, rng: 
   return false;
 }
 
-function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
+function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string, shelterLevel?: number): void {
+  const succeeded = completeTask(state, world, cal, rng, id, arg, shelterLevel);
+  if (succeeded !== false) goalDeed(state, {
+    kind: "taskCompleted", minute: state.minute, id, arg, region: state.player.region,
+    cell: cellOf(state, world), atCamp: atCamp(state, world),
+  }, world);
+}
+
+function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string, shelterLevel?: number): boolean | undefined {
   const p = state.player;
   const st = regionState(state, world, p.region);
   const invs = reach(state, world);
@@ -2293,7 +2376,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const out = food === "rawMeat" ? "cookedMeat" : food === "fish" ? "cookedFish" : food === "oilyFish" ? "cookedOilyFish" : food === "roots" ? "cookedRoots" : "fat";
       produce(state, world, out, kg);
       if (kg > 0) goalDeed(state, { kind: "cooked", kg, item: out });
-      return;
+      return kg > 0;
     }
     case "crack": {
       consume(invs, [{ item: "bone", qty: 1 }]);
@@ -2389,6 +2472,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
         st.snares++;
       } else {
         const site = siteFor(st, st.campCell!);
+        const before = protectionOf(site);
         if (sid === "seep") {
           const here = cellOf(state, world);
           state.seeps[here] = { class: seepGround(world, here)!, litres: 0, ice: 0, dug: state.minute };
@@ -2400,6 +2484,11 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
           if (sid === "boughBed") site.boughBedAge = 0;
           if (sid === "leanTo" || sid === "dryingRack" || sid === "turfHut") site.structureAge[sid] = 0;
         }
+        const after = protectionOf(site);
+        if (sid !== "seep" && after !== before) goalDeed(state, {
+          kind: "protectionChanged", minute: state.minute, region: state.player.region, cell: st.campCell!,
+          from: before, to: after, source: "structure",
+        }, world);
       }
       state.stats.structures++;
       // Once per structure per life; the first snare set is the record's snare line.
@@ -2426,38 +2515,48 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "light":
     case "lightIndoors": {
-      const rekindle = hasEmbers(st.fire);
+      const camp = atCamp(state, world);
+      const rekindle = camp && hasEmbers(st.fire);
       consume(invs, [{ item: "firewood", qty: 1 }]);
       if (!rekindle && wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(campSite(st)), hasQuirk(state, "steadyByTheFire"));
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(siteAt(st, cellOf(state, world))), hasQuirk(state, "steadyByTheFire"));
       if (!rekindle && lr.failChance > 0 && rng.chance(lr.failChance)) {
         log(state, "The tinder will not catch.", "bad");
-        return;
+        return false;
+      }
+      if (!camp) {
+        p.fieldFire = { cell: cellOf(state, world), fuelKg: 1 };
+        goalDeed(state, { kind: "fireLit", minute: state.minute, region: state.player.region, cell: cellOf(state, world), atCamp: false }, world);
+        cue("fireCatches");
+        log(state, "Smoke, then flame. The field fire is lit.", "good");
+        return true;
       }
       st.fire.lit = true;
       st.fire.embers = 0;
       // A run of keeping survives the coals; only a fire lit from cold starts a new one.
       if (st.fire.litSince === null) st.fire.litSince = state.minute;
       goalDeed(state, { kind: "fuelled" });
-      goalDeed(state, { kind: "lit" });
+      goalDeed(state, { kind: "fireLit", minute: state.minute, region: state.player.region, cell: cellOf(state, world), atCamp: true }, world);
       cue("fireCatches");
       st.fire.fuelKg += 1;
       // The row names the method: the pit fire is outdoors whatever stands, the fire indoors is indoors.
       st.fire.indoors = id === "lightIndoors";
       log(state, "Smoke, then flame. The fire is lit.", "good");
-      return;
+      return true;
     }
     case "lightTorch": {
       const relight = p.torch.minutes > 0;
       if (!relight) consume(invs, [{ item: "torch", qty: 1 }]);
-      if (!(atCamp(state, world) && st.fire.lit) && wearTool(state, "fireDrill", wearFactor(state, world, "lightTorch"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
+      if (!fireAt(state, world) && wearTool(state, "fireDrill", wearFactor(state, world, "lightTorch"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
       p.torch = { lit: true, minutes: relight ? p.torch.minutes : TORCH_BURN_MINUTES };
       cue("torchLit");
       log(state, "The torch catches.", "good");
       return;
     }
     case "melt": {
-      st.fire.fuelKg = Math.max(0, st.fire.fuelKg - 1);
+      const fire = fireAt(state, world);
+      if (!fire) return;
+      fire.fuelKg = Math.max(0, fire.fuelKg - 1);
       let l = 1.0;
       const drinkL = Math.min(l, WATER_FULL - p.water);
       p.water += drinkL;
@@ -2517,6 +2616,47 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       if (hadCampInAnotherRegion) goalDeed(state, { kind: "campedAgain", region: state.player.region });
       return;
     }
+    case "readSky": {
+      const storm = state.weather.storm;
+      const before = storm ? forecastKnowledge(state, storm) : null;
+      state.player.skyReadDay = skyReadDay(state);
+      const after = storm ? forecastKnowledge(state, storm) : null;
+      if (storm && before && after && !sameForecastKnowledge(before, after)) {
+        goalDeed(state, { kind: "forecastChanged", minute: state.minute, stormId: storm.id, before, after, source: "readSky" }, world);
+      }
+      log(state, `{You} {read} the sky: ${forecastText(state) || "no storm can be read in it"}.`);
+      return;
+    }
+    case "findShelter": {
+      const cell = cellOf(state, world);
+      const site = siteFor(st, cell);
+      const before = protectionOf(site);
+      site.cover = Math.max(site.cover, findCover(world, cell, shelterLevel ?? skillLevel(state, "naturalShelter"))) as Protection;
+      site.coverAge = 0;
+      const after = protectionOf(site);
+      if (after !== before) goalDeed(state, {
+        kind: "protectionChanged", minute: state.minute, region: state.player.region, cell,
+        from: before, to: after, source: "found",
+      }, world);
+      log(state, site.cover === 0 ? "There is no shelter here." : `{You} {find} ${PROTECTION_WORDS[site.cover]} cover.`);
+      return;
+    }
+    case "improveCover": {
+      const cell = cellOf(state, world);
+      const site = siteFor(st, cell);
+      const before = protectionOf(site);
+      const maximum = Math.min(3, coverCeiling(world, cell) + 1) as Protection;
+      const after = improveCover(site, maximum);
+      if (after !== before) goalDeed(state, {
+        kind: "protectionChanged", minute: state.minute, region: state.player.region, cell,
+        from: before, to: after, source: "improved",
+      }, world);
+      log(state, `{You} {work} the cover into something ${PROTECTION_WORDS[after]}.`);
+      return;
+    }
+    case "emergencyShelter":
+      log(state, "{You} {finish} the emergency shelter. It is liveable, but will fall in fourteen days.");
+      return;
     // A sleep leaves nothing behind it: it ran to the wake line, and whether
     // the body lies down again is the model's to say next minute.
     case "sleep":

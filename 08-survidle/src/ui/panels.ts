@@ -1,6 +1,6 @@
 import { edible, hungerLine, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
-import { COLD_UNDER, SLEEP_AT, SOAKED_WETNESS, workResumeAt } from "../sim/body";
+import { COLD_UNDER, SLEEP_AT, SOAKED_WETNESS, stormOptions, workResumeAt } from "../sim/body";
 import { isCareRow } from "../sim/bodyorder";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
@@ -36,7 +36,7 @@ import {
 } from "../sim/tasks";
 import { isWorkIntent, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
-import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
+import { forecastText, iceMode, stormComing, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { routeKm } from "../world/route";
@@ -240,8 +240,15 @@ export function weatherHtml(state: GameState, world: World, cal: Calendar, ambie
   const snow = state.weather.snowCm >= 1 ? `snow ${Math.round(state.weather.snowCm)} cm` : "";
   const ice = state.weather.iceCm >= 1 ? `ice ${Math.round(state.weather.iceCm)} cm` : "";
   const ground = [snow, ice].filter(Boolean).join(", ");
-  const storm = state.weather.storm && stormNow(state.weather, state.minute)
-    ? `<div class="wx-warn">storm, ${fmtDuration(state.weather.storm.until - state.minute)} left</div>` : "";
+  const forecast = forecastText(state);
+  const forecastLine = forecast ? `<div class="wx-warn" data-weather-forecast>${esc(forecast)}</div>` : "";
+  const plan = forecast && state.weather.storm && (stormComing(state) || stormNow(state.weather, state.minute))
+    ? stormOptions(state, world, state.weather.storm)
+    : null;
+  const planWords = plan?.recommended === "returnCamp" ? "return to camp"
+    : plan?.recommended === "remoteRefuge" ? "go to the known refuge"
+      : plan ? "shelter here" : "";
+  const planLine = plan ? `<div class="wx-warn" data-weather-plan="${plan.recommended}">plan: ${planWords}</div>` : "";
   const dry = groundDry(state.weather, cal) ? `<div class="wx-warn">tinder dry</div>` : "";
   const felt = Math.round(feltTemperature(state, world, ambient));
   return `<div class="wx">
@@ -259,7 +266,7 @@ export function weatherHtml(state: GameState, world: World, cal: Calendar, ambie
   <div class="wx-k">Feels like</div><div class="wx-v ${felt < 0 ? "bad" : ""}">${felt} C</div>
   ${ground ? `<div class="wx-k">Ground</div><div class="wx-v">${ground}</div>` : ""}
 </div>
-${storm}${dry}
+${forecastLine}${planLine}${dry}
 <div class="wx-where"><svg class="speed-history" viewBox="0 0 100 22" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="speed-fade-${uid || "live"}"><stop offset="0" stop-opacity="0"/><stop offset="1" stop-opacity="1"/></linearGradient></defs><path data-speed-path fill="url(#speed-fade-${uid || "live"})"></path></svg><span>${esc(regionAt(world, state.player.region).name)}</span><span class="wx-rate ${rate > 1 ? "hurrying" : ""}" data-speed-rate>1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</span></div>
 </div>`;
 }
@@ -770,8 +777,9 @@ export function instantHtml(state: GameState, world: World): string {
     })
     .join(" ");
   const st = regionState(state, world, p.region);
-  const wood = invs.reduce((a, inv) => a + qty(inv, "firewood") + qty(inv, "wetFirewood"), 0);
-  const fire = st.fire.lit && camp
+  const field = p.fieldFire?.cell === cellOf(state, world) && p.fieldFire.fuelKg > 0;
+  const wood = camp && !field ? invs.reduce((a, inv) => a + qty(inv, "firewood") + qty(inv, "wetFirewood"), 0) : qty(p.pack, "firewood");
+  const fire = (st.fire.lit && camp) || field
     ? `<button class="mini" data-act="feed" ${wood <= 0 ? "disabled" : ""}>add firewood <small>${fmtKg(wood)} within reach</small></button>`
     : "";
   const atSource = waterSource(state, world);

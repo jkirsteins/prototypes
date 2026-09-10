@@ -3,7 +3,7 @@ import { cellAt, type World } from "../world/gen";
 import { speedOf } from "../world/route";
 import type { Calendar } from "./calendar";
 import { type Exposure, garmentWet, skinExposure, stepGarments, wetFactor } from "./clothing";
-import { fireWarmth, fireWarms, SMOKE_COUGH, SMOKE_DEADLY, SMOKE_DRAIN_PER_HOUR } from "./fire";
+import { fireAt, warmthAtFire, SMOKE_COUGH, SMOKE_DEADLY, SMOKE_DRAIN_PER_HOUR } from "./fire";
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { creditBurn, creditTime } from "./ledger";
@@ -13,6 +13,7 @@ import { BIG_EATER_BURN, body, fatLandmarks, hasQuirk, massFactor, personOf } fr
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { regionState, siteAt } from "./regionstate";
+import { galeProtection, protectionOf } from "./shelter";
 import { speedFactor } from "./skills";
 import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
 import type { DeathCause, GameState, IceMode, Site, Task, TaskId, Terrain, Weather } from "./types";
@@ -22,6 +23,7 @@ import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 /** Tasks done at camp, by the fire and under the roof. */
 const CAMP_TASKS = new Set<TaskId>([
   "rest", "night",
+  "emergencyShelter",
   "sleep", "craft", "cook", "split", "splitWedges", "repair", "build", "mend", "light", "lightTorch", "sharpen", "hone", "melt", "thaw", "lightIndoors", "hang", "crack", "grindBark",
 ]);
 
@@ -33,11 +35,12 @@ export type Activity = "sleep" | "rest" | "light" | "walk" | "heavy";
 export function activityOf(task: Task | null): Activity {
   if (!task) return "rest";
   switch (task.id) {
+    case "readSky": return "light";
     case "sleep": return "sleep";
     case "rest": case "night": case "craft": case "cook": case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "melt": case "thaw": case "lightIndoors": case "crack": case "grindBark": return "rest";
-    case "sticks": case "bark": case "stone": case "berries": case "eggs": case "innerBark": case "roots": case "tapSap": case "seaweed": case "deadwood": case "hunt": case "findDen": case "fish": case "fill": case "hang": case "read": case "setTrap": case "emptyTrap": case "makeCamp": return "light";
+    case "sticks": case "bark": case "stone": case "berries": case "eggs": case "innerBark": case "roots": case "tapSap": case "seaweed": case "deadwood": case "hunt": case "findDen": case "fish": case "fill": case "hang": case "read": case "setTrap": case "emptyTrap": case "makeCamp": case "findShelter": case "improveCover": return "light";
     case "travel": case "walk": case "haul": case "explore": case "searchHome": return "walk";
-    case "chop": case "split": case "splitWedges": case "build": case "mend": case "iceHole": return "heavy";
+    case "chop": case "split": case "splitWedges": case "build": case "mend": case "iceHole": case "emergencyShelter": return "heavy";
   }
 }
 
@@ -47,17 +50,16 @@ export function isCampTask(task: Task | null): boolean {
 
 /** The roof's own warmth, whichever roof stands, regardless of a snow shelter beside it: cabin over turf hut over lean-to. */
 export function roofBonus(site: Site | null): number {
-  if (!site) return 0;
-  if (site.structures.cabin) return 15;
-  if (site.structures.turfHut) return 10;
-  if (site.structures.leanTo) return 5;
+  const protection = protectionOf(site);
+  if (protection === 3) return site?.structures.cabin ? 15 : 10;
+  if (protection === 2 && site?.structures.leanTo) return 5;
   return 0;
 }
 
 /** Degrees of comfort the shelter gives, for someone at camp doing camp things. */
 export function shelterBonus(site: Site | null): number {
-  if (!site) return 0;
-  if (site.structures.snowShelter && !site.structures.cabin && !site.structures.turfHut) return 0;
+  const protection = protectionOf(site);
+  if (protection === 2 && site?.structures.snowShelter) return 0;
   return roofBonus(site);
 }
 
@@ -69,15 +71,13 @@ export function shelterBonus(site: Site | null): number {
  */
 export function sheltered(state: GameState, world: World): boolean {
   const site = siteAt(regionState(state, world, state.player.region), cellOf(state, world));
-  if (!site) return false;
-  return isCampTask(state.task) && (site.structures.cabin || site.structures.leanTo || site.structures.turfHut || site.structures.snowShelter);
+  return isCampTask(state.task) && protectionOf(site) >= 2;
 }
 
 /** True with a lit torch in hand or beside your own lit fire: the light wolves keep away from. */
 export function firelit(state: GameState, world: World): boolean {
   if (state.player.torch.lit) return true;
-  const r = regionState(state, world, state.player.region);
-  return atCamp(state, world) && r.fire.lit;
+  return fireAt(state, world) !== null;
 }
 
 export function insulation(state: GameState): number {
@@ -165,30 +165,36 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
     // A room at its temperature is the shelter's whole gift; the bonus is for a roof with no warm air under it.
     if (campTask) felt += shelterBonus(here);
   }
-  // The fire is the camp's: there is no fire burning at a site the survivor left.
-  if (camp && fireWarms(r)) felt += fireWarmth(r.fire, campTask);
+  felt += warmthAtFire(state, world, campTask);
   if (bedded(state.task)) felt += beddingInsulation(state);
   if (state.task?.id === "sleep" && here?.structures.boughBed) felt += BOUGH_BED_C;
   const a = activityOf(state.task);
   felt += a === "heavy" ? 6 : a === "walk" ? 4 : a === "light" ? 2 : 0;
   felt -= 0.15 * p.wetness;
-  if (stormNow(state.weather, state.minute)) felt -= 6;
+  if (stormNow(state.weather, state.minute)) {
+    const snowWindbreak = state.weather.storm?.kind === "snow" && campTask && protectionOf(here) >= 1;
+    if (state.weather.storm?.kind === "gale") {
+      // Design scale: each effective level takes a third of the existing
+      // six-degree wind loss off. Terrain lee also helps outdoor work;
+      // a roof and its profile only count while actually using the shelter.
+      felt -= 6 * (3 - galeProtection(world, cellOf(state, world), campTask ? here : null)) / 3;
+    } else if (!snowWindbreak) felt -= 6;
+  }
   // A starving body has no insulation and no fuel: up to 4 C gone at the end of the fat.
   felt -= 4 * starvation(state);
   return felt;
 }
 
 /** Work goes slower when exhausted or hurt, and faster with practice. */
-export function workSpeed(state: GameState, world: World): number {
+export function workSpeed(state: GameState, world: World, task: Task | null = state.task): number {
   const p = state.player;
   let f = 1;
   if (p.energy < 20) f *= 0.5;
   if (p.injured > 0) f *= 0.7;
   if (p.water < THIRSTY_L) f *= 0.8;
   f *= 1 - 0.5 * starvation(state);
-  const t = state.task;
-  if (t) f *= speedFactor(state, world, t.id, t.arg);
-  if (p.frostbite.feet > 0 && activityOf(state.task) === "heavy") f *= 0.7;
+  if (task) f *= speedFactor(state, world, task.id, task.arg);
+  if (p.frostbite.feet > 0 && activityOf(task) === "heavy") f *= 0.7;
   const r = regionState(state, world, p.region);
   if (atCamp(state, world) && r.smoke > SMOKE_COUGH) f *= 0.7;
   return f;
@@ -341,18 +347,23 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const roof = sheltered(state, world);
   // Walls are the walls the survivor is standing inside, the same place roof reads.
   const site = siteAt(r, cellOf(state, world));
+  const protection = campTask ? protectionOf(site) : 0;
+  const windProtection = stormNow(w, state.minute) && w.storm?.kind === "gale"
+    ? galeProtection(world, cellOf(state, world), campTask ? site : null) : protection;
+  const snowing = w.precip !== "none" && ambient <= 0;
+  const snowWindbreak = stormNow(w, state.minute) && w.storm?.kind === "snow" && protection >= 1;
   const walled = roof && (site?.structures.cabin || site?.structures.turfHut || site?.structures.snowShelter);
   const h = dt / 60;
 
   const x: Exposure = {
     raining: w.precip !== "none",
     heavy: w.precip === "heavy",
-    snowing: w.precip !== "none" && ambient <= 0,
-    roof,
+    snowing,
+    roof: roof || snowWindbreak,
     walled: !!walled,
-    fireAtCamp: r.fire.lit && camp && campTask,
+    fireAtCamp: fireAt(state, world) !== null && campTask,
     bedded: bedded(state.task),
-    storm: stormNow(w, state.minute),
+    storm: stormNow(w, state.minute) && windProtection === 0,
   };
   stepGarments(state, x, dt);
 
@@ -422,9 +433,10 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   p.energy = clamp(p.energy + energyRate * h, 0, 100);
 
   // Wetness.
-  if (x.raining && !x.walled) {
+  if (x.raining && !x.roof && !x.walled) {
     let wet = x.heavy ? 2 : 1;
-    if (x.roof) wet *= 0.5;
+    // The same wind that drives water into clothing drives it onto exposed skin.
+    if (x.storm) wet *= 2;
     // Snow brushes off; it dampens rather than soaks.
     const cap = x.snowing ? SNOW_DAMP_MAX : 100;
     if (x.snowing) wet *= 0.25;
@@ -532,6 +544,7 @@ export function die(state: GameState, cause: DeathCause, regionName = ""): void 
   if (state.dead) return;
   fillDied(state, cause, regionName);
   state.dead = { cause, minute: state.minute };
+  state.advanceCarry = 0;
   state.task = null;
   log(state, DEATH_LINES[cause], "bad");
 }

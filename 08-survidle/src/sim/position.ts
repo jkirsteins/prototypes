@@ -50,6 +50,7 @@ export function placeAt(state: GameState, world: World, idx: number): void {
 
 /** Records a change of region, discovering it on first entry. */
 export function setRegion(state: GameState, world: World, id: number): void {
+  if (state.player.fieldFire && state.player.fieldFire.cell !== cellOf(state, world)) state.player.fieldFire = null;
   if (id < 0) return;
   state.player.region = id;
   if (state.discovered[id] !== VISITED) enterRegion(state, world, id);

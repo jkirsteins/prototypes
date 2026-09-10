@@ -11,8 +11,10 @@ import { purposeOf, subtabOf } from "../src/ui/purpose";
 import { paneHtml } from "./pane";
 import { defaultChoice, defaultChoiceFor, newUiState, rowRequest, setWhenField } from "../src/ui/render";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { TASK_IDS } from "../src/sim/types";
 import type { OrderWhen, TaskId } from "../src/sim/types";
+import { siteCamp } from "./siting-helpers";
 
 
 describe("the purposes and the filter", () => {
@@ -169,6 +171,11 @@ describe("the purposes and the filter", () => {
     expect(filterRows(rows, "hearth").map((r) => r.label)).toEqual(["fire site"]);
   });
 
+  it("shelter, cover and weather all find the shelter search", () => {
+    const rows = [{ id: "findShelter" as TaskId, label: "Find shelter", detail: "look over this ground", why: "", group: "move" }];
+    for (const word of ["shelter", "cover", "weather"]) expect(filterRows(rows, word).map((r) => r.label), word).toEqual(["Find shelter"]);
+  });
+
   it("the rows come back best answer first: name, then the lines under it, then the keywords", () => {
     const rows = [
       { id: "deadwood" as TaskId, label: "Gather dead wood", detail: "15 kg off the forest floor", why: "", group: "gather" },
@@ -259,6 +266,43 @@ describe("the purposes and the filter", () => {
     const html = doHtml(state, world, cal, food);
     expect(html).toContain('data-opt="intent:roots:"');
     expect(html).not.toContain('data-opt="intent:deadwood:"');
+  });
+
+  it("Explore has one Shelter row in Do", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Explore" as const, purpose: "Shelter" } };
+    const html = doHtml(state, world, cal, ui);
+    expect(html).toContain('data-opt="intent:findShelter:"');
+    expect((html.match(/data-opt="intent:findShelter:/g) ?? []).length).toBe(1);
+  });
+
+  it("Build has one improve-cover Shelter row in Do", () => {
+    const { state, world } = newGame(21);
+    const here = siteCamp(state, world);
+    placeAt(state, world, here);
+    siteFor(regionState(state, world, state.player.region), here).cover = 1;
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Build" as const, purpose: "Shelter" } };
+    const html = doHtml(state, world, cal, ui);
+    expect(html).toContain('data-opt="intent:improveCover:');
+    expect((html.match(/data-opt="intent:improveCover:/g) ?? []).length).toBe(1);
+    expect(doHtml(state, world, cal, { ...ui, filter: "roof cover" })).toContain('data-opt="intent:improveCover:');
+  });
+
+  it("Build offers one emergency Shelter row whose face names the next protection threshold", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Build" as const, purpose: "Shelter" } };
+    const html = doHtml(state, world, cal, ui);
+    expect((html.match(/data-opt="intent:emergencyShelter:/g) ?? [])).toHaveLength(1);
+    const face = html.match(/data-opt="intent:emergencyShelter:[\s\S]*?<\/button>/)?.[0];
+    expect(face).toContain("windbreak");
+    expect(doHtml(state, world, cal, { ...ui, filter: "roof cover" })).toContain('data-opt="intent:emergencyShelter:');
+    const site = siteFor(regionState(state, world, state.player.region), cellOf(state, world));
+    site.emergencyMinutes = 50;
+    const next = doHtml(state, world, cal, ui).match(/data-opt="intent:emergencyShelter:[\s\S]*?<\/button>/)?.[0];
+    expect(next).toContain("weatherproof");
   });
 
   it("Camp is no longer one heap of twenty-six rows", () => {

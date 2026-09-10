@@ -16,6 +16,8 @@ export interface AudioEngine {
   setLoops(targets: Record<Slot, number>, indoors: boolean): void;
   /** delay is real seconds before the start: a thunderclap after its flash, once the wind sub-project brings one. */
   play(slot: Slot, opts?: { gain?: number; pan?: number; rate?: number; delay?: number }): void;
+  /** Briefly reduce ambience and survivor footsteps by amount, then restore smoothly. */
+  duck(durationMs: number, amount: number): void;
   settings(): AudioSettings;
   update(s: Partial<AudioSettings>): void;
   /** A hidden tab: hold the loops. */
@@ -40,12 +42,31 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
   const buses: Partial<Record<"ambience" | "flavour" | "action", GainNode>> = {};
+  let ambienceDuck: GainNode | null = null;
+  let footstepsDuck: GainNode | null = null;
   let lowpass: BiquadFilterNode | null = null;
   const buffers = new Map<string, AudioBuffer>();
+  const loading = new Set<string>();
+  const warned = new Set<string>();
+  const shots = new Set<AudioBufferSourceNode>();
   const roundRobin = new Map<Slot, number>();
   const loops = new Map<Slot, { src: AudioBufferSourceNode; gain: GainNode; quietSince: number }>();
   let cfg = loadSettings(storage);
   let suspended = false;
+
+  const warnOnce = (key: string, reason: unknown): void => {
+    if (warned.has(key)) return;
+    warned.add(key);
+    console.warn(`audio: ${key} unavailable (${reason instanceof Error ? reason.message : String(reason)})`);
+  };
+
+  const stopShots = (): void => {
+    for (const src of shots) {
+      src.stop();
+      src.disconnect();
+    }
+    shots.clear();
+  };
 
   const applySettings = (): void => {
     if (!ctx || !master) return;
@@ -68,21 +89,27 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     lowpass.frequency.value = OUTDOORS_HZ;
     lowpass.connect(master);
     buses.ambience = ctx.createGain();
-    buses.ambience.connect(lowpass);
+    ambienceDuck = ctx.createGain();
+    buses.ambience.connect(ambienceDuck);
+    ambienceDuck.connect(lowpass);
     buses.flavour = ctx.createGain();
     buses.flavour.connect(master);
     buses.action = ctx.createGain();
     buses.action.connect(master);
+    footstepsDuck = ctx.createGain();
+    footstepsDuck.connect(buses.action);
     applySettings();
     const c = ctx;
     for (const def of Object.values(slots)) {
       for (const file of def.files) {
-        if (buffers.has(file)) continue;
+        if (buffers.has(file) || loading.has(file)) continue;
+        loading.add(file);
         fetch(`${import.meta.env.BASE_URL}audio/${file}`)
           .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`))))
           .then((bytes) => c.decodeAudioData(bytes))
           .then((buf) => buffers.set(file, buf))
-          .catch((err: Error) => console.warn(`audio: ${file} unavailable (${err.message})`));
+          .catch((err: Error) => warnOnce(file, err))
+          .finally(() => loading.delete(file));
       }
     }
     if (c.state === "suspended") void c.resume();
@@ -90,35 +117,61 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
 
   const pickFile = (slot: Slot): AudioBuffer | null => {
     const def = slots[slot];
-    if (!def || !def.files.length) return null;
+    if (!def?.files.length) {
+      warnOnce(slot, "no files registered");
+      return null;
+    }
     const i = (roundRobin.get(slot) ?? -1) + 1;
     roundRobin.set(slot, i);
     const file = def.files[i % def.files.length];
+    if (!buffers.has(file) && !loading.has(file)) warnOnce(file, "not decoded");
     return buffers.get(file) ?? null;
   };
 
   const play = (slot: Slot, opts: { gain?: number; pan?: number; rate?: number; delay?: number } = {}): void => {
-    if (!ctx || suspended) return;
+    if (!ctx || suspended || cfg.muted) return;
     const def = slots[slot];
     const buf = pickFile(slot);
     if (!def || !buf) return;
-    const bus = buses[BUS_OF(def, slot)];
+    const bus = slot.startsWith("step_") ? footstepsDuck : buses[BUS_OF(def, slot)];
     if (!bus) return;
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.playbackRate.value = opts.rate ?? 1;
-    const g = ctx.createGain();
-    g.gain.value = def.gain * (opts.gain ?? 1);
-    src.connect(g);
-    if (opts.pan !== undefined && typeof ctx.createStereoPanner === "function") {
-      const p = ctx.createStereoPanner();
-      p.pan.value = Math.max(-1, Math.min(1, opts.pan));
-      g.connect(p);
-      p.connect(bus);
-    } else {
-      g.connect(bus);
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.playbackRate.value = opts.rate ?? 1;
+      const g = ctx.createGain();
+      g.gain.value = def.gain * (opts.gain ?? 1);
+      src.connect(g);
+      let p: StereoPannerNode | null = null;
+      if (opts.pan !== undefined && typeof ctx.createStereoPanner === "function") {
+        p = ctx.createStereoPanner();
+        p.pan.value = Math.max(-1, Math.min(1, opts.pan));
+        g.connect(p);
+        p.connect(bus);
+      } else {
+        g.connect(bus);
+      }
+      src.onended = () => { shots.delete(src); src.disconnect(); g.disconnect(); p?.disconnect(); };
+      src.start(ctx.currentTime + Math.max(0, opts.delay ?? 0));
+      shots.add(src);
+    } catch (err) {
+      warnOnce(slot, err);
     }
-    src.start(ctx.currentTime + Math.max(0, opts.delay ?? 0));
+  };
+
+  const duck = (durationMs: number, amount: number): void => {
+    if (!ctx || suspended || cfg.muted) return;
+    const now = ctx.currentTime;
+    for (const node of [ambienceDuck, footstepsDuck]) {
+      if (!node) continue;
+      const g = node.gain;
+      // Separate gain nodes leave user volume and ambience settings intact.
+      // Holding automation also lets a second departure extend the dip.
+      if (typeof g.cancelAndHoldAtTime === "function") g.cancelAndHoldAtTime(now);
+      else { g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); }
+      g.linearRampToValueAtTime(1 - Math.max(0, Math.min(1, amount)), now + 0.015);
+      g.linearRampToValueAtTime(1, now + Math.max(0.03, durationMs / 1000));
+    }
   };
 
   const setLoops = (targets: Record<Slot, number>, indoors: boolean): void => {
@@ -166,14 +219,18 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     ready: () => ctx !== null,
     setLoops,
     play,
+    duck,
     settings: () => ({ ...cfg }),
     update(s) {
       cfg = { ...cfg, ...s, volume: Math.min(1, Math.max(0, s.volume ?? cfg.volume)) };
+      if (cfg.muted) stopShots();
       saveSettings(cfg, storage);
       applySettings();
     },
     suspend() {
       suspended = true;
+      // Frozen delayed one-shots must not replay when the tab is restored.
+      stopShots();
       void ctx?.suspend();
     },
     resume() {
