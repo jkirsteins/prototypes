@@ -414,6 +414,10 @@ and accelerated work. The same simulated wind vector drives rain and snow
 drift. Fog and optional ASCII cloud glyphs use slower presentation-only cycles
 of 12 and 16 real seconds. Those decorative shape changes do not accelerate
 with work, pause, or alter the simulated feature's location or visibility.
+Liquid water in the current viewshed shimmers on the same kind of cycle, 14
+real seconds per cell with a seeded phase, easing its background a shade
+lighter and back within its own depth band. Ice, marked cells and remembered
+water lie still, and reduced motion turns the shimmer off.
 
 ### Stationary ground consequences
 

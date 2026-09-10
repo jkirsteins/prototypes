@@ -2,13 +2,16 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
-import { mapRegion } from "../src/sim/mapped";
+import { mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
-import { cellOf } from "../src/sim/position";
+import { cellCenter, cellOf, setRegion } from "../src/sim/position";
+import { visibleCells } from "../src/sim/sight";
+import { ensureGround } from "../src/sim/weather";
+import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
 import { activateWildlife } from "../src/sim/wildlife-agents";
 import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState } from "../src/ui/render";
-import { cellAt, neighbours } from "../src/world/gen";
+import { cellAt, neighbours, regionPeek } from "../src/world/gen";
 import { passable } from "../src/world/route";
 import { css, rule } from "./css";
 import { neighbourLandCell } from "./siting-helpers";
@@ -286,6 +289,65 @@ describe("the map's compositing layers", () => {
     expect(rule(".grid.night .c.lit-0")).toContain("animation: flicker");
     expect(rule(".grid .c.mk-player.mood-walk")).toContain("animation: mood-toil");
     expect(rule(".grid .c.mk-player.mood-work")).toContain("animation: mood-toil");
+  });
+
+  it("lets seen liquid water shimmer on the wall clock, out of step per cell, and nothing else", () => {
+    // The shimmer is a presentation cycle like fog's and clouds': real
+    // seconds, never simulation minutes, with a per-cell phase from the seed
+    // so the sheet moves and a re-render writes the same attribute again.
+    const live = rule(".grid .c.water-live");
+    expect(live).toContain("animation: water-shimmer 14s ease-in-out infinite");
+    expect(live).toContain("animation-delay: var(--water-phase)");
+    const shimmer = css.match(/@keyframes water-shimmer[\s\S]*?\n}/)?.[0] ?? "";
+    expect(shimmer).toContain("background-color: var(--water-rest)");
+    expect(shimmer).toContain("background-color: var(--water-lit)");
+    expect(shimmer).not.toContain("transform:");
+    expect(shimmer).not.toContain("opacity:");
+    expect(rule("@media (prefers-reduced-motion: reduce)")).toContain(".water-live");
+    // Each depth band shimmers within its own palette.
+    expect(rule(".grid .c.t-water")).toContain("--water-rest: #0a1633");
+    expect(rule(".grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0")).toContain("--water-rest: #102047");
+    expect(rule(".grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2")).toContain("--water-rest: #060d20");
+
+    // The frozen-water shore in midsummer: open coastal water in sight.
+    const summer = WEATHER_SHOTS["sunny-clouds"].minute;
+    const { x, y } = WEATHER_SHOTS["frozen-water"];
+    const { state, world } = newGame(17);
+    state.minute = summer;
+    state.weather.elapsedMinutes = 0;
+    const cell = y * world.w + x;
+    const center = cellCenter(world, cell);
+    state.player.x = center.x;
+    state.player.y = center.y;
+    setRegion(state, world, regionPeek(world, x, y));
+    ensureGround(state, world, state.player.region);
+    const cal = calendar(state.minute, state.startDoy);
+    state.mapped = {};
+    for (const seen of visibleCells(state, world, cal, cell)) markKnown(state, seen);
+    const ui = newUiState();
+    const first = mapHtml(world, state, ui, cal);
+    expect(mapHtml(world, state, ui, cal)).toBe(first);
+    const root = document.createElement("div");
+    root.innerHTML = first;
+    const liveCells = [...root.querySelectorAll<HTMLElement>(".c.water-live")];
+    expect(liveCells.length).toBeGreaterThan(20);
+    const phases = liveCells.map((el) => Number(el.style.getPropertyValue("--water-phase").match(/^-(\d+)ms$/)?.[1]));
+    for (const phase of phases) expect(phase).toBeGreaterThanOrEqual(0);
+    for (const phase of phases) expect(phase).toBeLessThan(14000);
+    expect(new Set(phases).size).toBeGreaterThan(5);
+    for (const el of liveCells) {
+      expect(el.classList.contains("t-water")).toBe(true);
+      for (const still of ["mk", "memory", "dim", "ice-thin", "ice-safe"]) expect(el.classList.contains(still)).toBe(false);
+    }
+    // Water the survivor remembers but cannot see now lies still.
+    for (const el of root.querySelectorAll(".c.t-water.memory, .c.t-water.dim")) expect(el.classList.contains("water-live")).toBe(false);
+
+    // Frozen water is a sheet, not a surface that catches light.
+    const frozen = weatherShotFixture("frozen-water");
+    root.innerHTML = mapHtml(frozen.world, frozen.state, newUiState(), frozen.cal);
+    expect(root.querySelectorAll(".t-water.ice-safe").length).toBeGreaterThan(20);
+    expect(root.querySelector(".water-live")).toBeNull();
+    expect(root.innerHTML).not.toContain("--water-phase");
   });
 
   it("makes the visual harness select simulation fixtures without injecting presentation state", () => {

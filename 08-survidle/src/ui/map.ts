@@ -233,6 +233,9 @@ function detailHash(seed: number, x: number, y: number, n: number): number {
   return h >>> 0;
 }
 
+/** The wall-clock period of the light on open water, between fog's 12 s and the clouds' 16 s. */
+const WATER_SHIMMER_MS = 14000;
+
 /** Presentation-only fog motion. Density and location still come exclusively from the atmosphere sample. */
 export function fogGlyphHtml(seed: number, x: number, y: number): string {
   const shapes = [".", ":", "~", "="];
@@ -973,6 +976,13 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (weatherGlyphs) cls.push("wx-glyph");
       if (ui.cloudShadows && weather.cloud >= 0.15) content += `<i class="cloud-shadow" aria-hidden="true"></i>`;
       if (weatherGlyphs) content += `<i class="cell-weather" aria-hidden="true">${weatherGlyphs}</i>`;
+    }
+    // Open water in sight catches the light. The phase is texture from the
+    // seed like the fog's and the clouds': the same cell writes the same
+    // attribute on every render, so the morph has nothing to change.
+    if (cls.includes("t-water") && seen === 2 && !cls.includes("memory") && !cls.includes("mk") && !cls.includes("ice-thin") && !cls.includes("ice-safe")) {
+      cls.push("water-live");
+      styles.push(`--water-phase:-${detailHash(world.seed, cx, cy, 149) % WATER_SHIMMER_MS}ms`);
     }
     const style = styles.length ? ` style="${styles.join(";")}"` : "";
     parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${style}>${content}</span>`);
