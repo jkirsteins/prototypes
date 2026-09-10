@@ -32,15 +32,18 @@ circadian and ultradian alertness curves in `src/sim/sleep.ts`.
 
 Stamina remains the reserve spent by physical work. At or below `SLEEP_AT`, the
 survivor is too exhausted to work and must Rest. This is an exhaustion recovery,
-not sleep. The existing sticky `spent` need holds Rest until `RESTED_AT`, which
-also keeps the work gate closed until that same threshold and prevents immediate
-stop-start work without adding another recovery latch. If
-Sleepiness reaches `SLEEP_ONSET` during that Rest, the body changes once from
-Rest to Sleep through the ordinary sleep rule.
+not sleep. A `player.collapsed` flag records that physical state until Stamina
+reaches `RESTED_AT`. It is deliberately separate from the ordinary sticky
+`spent` need, because ordinary tiredness may remain ranked below player-selected
+work while a collapse must block it. The flag never changes sleep pressure,
+sleep onset, waking, or sleep duration. If Sleepiness reaches `SLEEP_ONSET`
+during that Rest, the body changes once from Rest to Sleep through the ordinary
+sleep rule.
 
 The old `sleeping.collapsed` state is no longer produced. Save loading accepts
-it for compatibility and converts it to the corresponding exhausted Rest state.
-No second sleep-pressure value or collapse-specific sleep duration is added.
+it for compatibility and converts it to `player.collapsed` plus the corresponding
+exhausted Rest state. This physical recovery memory is not a second sleep system:
+no second sleep-pressure value or collapse-specific sleep duration is added.
 
 ## Continuous automatic sleep
 

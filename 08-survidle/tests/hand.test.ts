@@ -67,8 +67,9 @@ describe("work chosen by hand is the player's", () => {
     expect(cellOf(state, world)).not.toBe(camp);
     advance(state, world, 1);
     expect(state.intent?.mode).toBe("care");
-    expect(until(g, () => state.task?.id === "sleep", 300)).toBe(true);
-    expect(state.player.sleeping?.collapsed).toBe(true);
+    expect(until(g, () => state.task?.id === "rest", 300)).toBe(true);
+    expect(state.player.collapsed).toBe(true);
+    expect(state.player.sleeping).toBeNull();
   });
 
   it("a list of once orders served while away: the body speaks before each one starts", () => {

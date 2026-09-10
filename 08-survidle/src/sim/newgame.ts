@@ -46,6 +46,7 @@ function freshPlayer(person: Person, world: World, cell: number, region: number)
     // reserve derives from its fatigue.
     sleepDebt: 10,
     sleeping: null,
+    collapsed: false,
     bodyNeed: null,
     coldSpent: false,
     wetness: 0,

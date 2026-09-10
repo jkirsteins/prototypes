@@ -6,7 +6,7 @@ import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, judgeOrders, ordersHere } from "../src/sim/orders";
 import { cellOf, placeAtSpot } from "../src/sim/position";
-import { COLLAPSE_RECOVERED_AT } from "../src/sim/sleep";
+import { RESTED_AT } from "../src/sim/sleep";
 import { insertWalkAtTop, isWalkOrder } from "../src/sim/walkorders";
 import { siteCamp } from "./siting-helpers";
 import { Rng } from "../src/rng";
@@ -46,14 +46,15 @@ describe("visible walk orders", () => {
     const target = neighbours(world, from).find((cell) => cellAt(world, cell).terrain !== "water")!;
     const walk = insertWalkAtTop(state, world, target);
     state.player.energy = 25;
-    state.player.sleeping = { collapsed: true };
+    state.player.collapsed = true;
+    state.player.bodyNeed = "spent";
 
     expect(startIntent(state, world, calendar(state.minute), new Rng(1), walk.req, walk.id)).toBe(false);
     expect(state.task).toBeNull();
     judgeOrders(state, world, calendar(state.minute));
     expect(walk.skipped).toBe("too exhausted");
 
-    state.player.energy = COLLAPSE_RECOVERED_AT;
+    state.player.energy = RESTED_AT;
     expect(startIntent(state, world, calendar(state.minute), new Rng(1), walk.req, walk.id)).toBe(true);
     expect(state.task?.id).toBe("walk");
   });
@@ -74,7 +75,7 @@ describe("visible walk orders", () => {
     }
 
     expect(resumedAt).not.toBeNull();
-    expect(resumedAt!).toBeGreaterThanOrEqual(COLLAPSE_RECOVERED_AT - 0.2);
+    expect(resumedAt!).toBeGreaterThanOrEqual(RESTED_AT - 0.2);
     expect(ordersHere(state, world).some(isWalkOrder)).toBe(false);
   });
 

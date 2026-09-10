@@ -4,7 +4,7 @@
 
 **Goal:** Make Sleepiness the sole authority over automatic sleep, show approximate sleep and wake times, keep each sleep as one continuous activity, and leave Rest as the only explicit recovery action.
 
-**Architecture:** Extend the pure two-process functions in `src/sim/sleep.ts` with onset and no-floor wake projections. A small UI projection turns those values into clock text beside the merged Sleepiness bar. The body converts low Stamina into the existing sticky `spent` Rest need, while automatic Sleep remains a body-owned task that generic task completion cannot divide.
+**Architecture:** Extend the pure two-process functions in `src/sim/sleep.ts` with onset and no-floor wake projections. A small UI projection turns those values into clock text beside the merged Sleepiness bar. The body records low-Stamina collapse independently from ordinary tiredness and forces Rest to the existing recovery line, while automatic Sleep remains a body-owned task that generic task completion cannot divide.
 
 **Tech Stack:** TypeScript, Vite, Vitest, happy-dom
 
@@ -198,7 +198,7 @@ git commit -m "feat(survidle): show sleep and wake forecasts"
 **Interfaces:**
 - Preserves: `player.sleeping` as `{ collapsed: false } | null` for sleep continuity
 - Removes: collapse recovery as a sleep exit condition
-- Migrates: `{ collapsed: true }` to `sleeping = null` and `bodyNeed = "spent"`
+- Migrates: `{ collapsed: true }` to `sleeping = null`, `player.collapsed = true`, and `bodyNeed = "spent"`
 
 - [ ] **Step 1: Replace the collapse-sleep test with failing Rest behavior**
 
@@ -244,14 +244,12 @@ if (mem.sleeping) {
 if (mem.sleeping || mem.night) return "sleep";
 ```
 
-After the storm check and before ordinary cold, thirst, and hunger service, return `spent` when `p.energy <= SLEEP_AT`. Keep the existing sticky spent clause and `RESTED_AT` exit for subsequent minutes. Remove `collapseRecoveryPending`, `COLLAPSE_RECOVERED_AT`, `workResumeAt`, and the collapse-only UI marker/status after fixing their consumers. Make `tooExhausted` use the existing sticky need as the recovery memory:
-
-```ts
-return state.player.energy <= SLEEP_AT
-  || (state.player.bodyNeed === "spent" && state.player.energy < RESTED_AT);
-```
-
-This keeps work blocked until the same `RESTED_AT` threshold that ends the Rest need, without making Stamina a sleep condition or adding a collapse latch.
+At or below `SLEEP_AT`, set `player.collapsed` and return `spent` after the sleep
+and storm checks. Clear it at `RESTED_AT`. Use the same flag in `tooExhausted`
+and the Stamina recovery marker. Do not use `bodyNeed === "spent"` as the
+collapse memory: ordinary evening tiredness uses that need too and is allowed to
+remain ranked below selected work. This keeps work blocked through physical
+recovery without making Stamina a sleep condition.
 
 Narrow the Player field to:
 
@@ -264,6 +262,7 @@ In save normalization, convert a legacy true value before narrowing:
 ```ts
 if (p.sleeping?.collapsed === true) {
   p.sleeping = null;
+  p.collapsed = true;
   p.bodyNeed = "spent";
 }
 ```

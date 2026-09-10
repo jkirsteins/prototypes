@@ -28,14 +28,14 @@ import { survivorRoute, survivorRouteMinutes } from "./routing";
 import { seepStopped } from "./seep";
 import { coverCeiling, EMERGENCY_MINUTES, findCover, galeProtection, improveCoverMinutes, protectionOf } from "./shelter";
 import { skillLevel } from "./skills";
-import { collapseRecoveryPending, COLLAPSE_RECOVERED_AT, RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
+import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
 import { isWorkIntent, type BodyNeed, type CampNeed, type CareNeed, type GameState, type ItemId, type Protection, type Task, type TaskId, type ToolId, type WorkIntent } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
 import { ambientTemperature, forecastKnowledge, stormComing, stormNow, walkableIce } from "./weather";
 
-/** Fatigue at which a body lies down wherever it is, whatever the clock says: the collapse. */
+/** Stamina at which work gives way to forced Rest. This does not start sleep. */
 export const SLEEP_AT = 20;
 export const COLD_UNDER = 30;
 export const WARM_AT = 45;
@@ -55,12 +55,12 @@ const PROVISIONS: FoodId[] = ["driedMeat", "cookedMeat", "cookedFish", "berries"
  */
 export const WORK_HOURS_DEFAULT = 10;
 
-/** The active recovery line, when a collapse is still holding work. */
+/** The active recovery line for a physical collapse, or null when work is not collapse-blocked. */
 export function workResumeAt(state: GameState): number | null {
-  return collapseRecoveryPending(state.player.energy, state.player.sleeping) ? COLLAPSE_RECOVERED_AT : null;
+  return state.player.collapsed && state.player.energy < RESTED_AT ? RESTED_AT : null;
 }
 
-/** Work stays refused through the whole collapse, not only at the instant Energy crosses its floor. */
+/** Work stays refused through the exhausted Rest need, not only at the instant Stamina crosses its floor. */
 export function tooExhausted(state: GameState): boolean {
   return state.player.energy <= SLEEP_AT || workResumeAt(state) !== null;
 }
@@ -98,7 +98,8 @@ export function snaresWaiting(state: GameState, world: World, cal: Calendar): nu
  */
 interface NeedMemory {
   need: BodyNeed | null;
-  sleeping: { collapsed: boolean } | null;
+  sleeping: { collapsed: false } | null;
+  collapsed: boolean;
   coldSpent: boolean;
   night: boolean;
 }
@@ -119,25 +120,25 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   // not going to drink first, and the exception would only keep it awake.
   const drinkFirst = thirsty && !storming;
   const sleepy = sleepiness(p.sleepDebt, cal.hour);
+  if (p.energy <= SLEEP_AT) mem.collapsed = true;
+  else if (mem.collapsed && p.energy >= RESTED_AT) mem.collapsed = false;
   // The body lies down when the two processes cross the onset line and gets up
   // when they fall back to the wake line: no clock is read here, so the
   // bedtime, the wake and the nap are all the same clause. A thirsty body
-  // that can drink drinks before it lies down; one that has worked itself
-  // under the collapse line sleeps parched, which is what a collapse is, and
-  // holds that sleep past the wake line until the fatigue reserve is full.
+  // that can drink drinks before it lies down. Physical exhaustion is a Rest
+  // need below, not a second route into sleep.
   // The night lives on the player, not the intent, and only the model ends
   // it: a sleep broken to feed the fire, or by an order changing under the
   // sleeper, is a night interrupted rather than a night over, and the body
   // goes back to bed on the next free minute.
-  if (p.energy <= SLEEP_AT) mem.sleeping = { collapsed: true };
-  else if (mem.sleeping) {
-    const stillNeedsSleep = sleepy > WAKE_AT || collapseRecoveryPending(p.energy, mem.sleeping);
-    if (!stillNeedsSleep) mem.sleeping = null;
+  if (mem.sleeping) {
+    if (sleepy <= WAKE_AT) mem.sleeping = null;
   } else if (sleepy >= SLEEP_ONSET && !drinkFirst) {
     mem.sleeping = { collapsed: false };
   }
   if (mem.sleeping || mem.night) return "sleep";
   if (storming) return "storm";
+  if (mem.collapsed) return "spent";
   // Warm again: whatever a spent rest gave up on is worth trying afresh next time it turns cold.
   if (p.warmth >= WARM_AT) mem.coldSpent = false;
   const wetCold = p.wetness > SOAKED_WETNESS && ambientTemperature(cal, localWeather(state, world)) < WET_COLD_C;
@@ -186,10 +187,11 @@ export function campNeed(state: GameState, world: World, cal: Calendar): CampNee
  */
 export function currentNeed(state: GameState, world: World, cal: Calendar): BodyNeed | null {
   const p = state.player;
-  const mem: NeedMemory = { need: p.bodyNeed, sleeping: p.sleeping, coldSpent: p.coldSpent, night: isWorkIntent(state.intent) && state.intent.task === "night" && state.intent.done < 1 };
+  const mem: NeedMemory = { need: p.bodyNeed, sleeping: p.sleeping, collapsed: p.collapsed, coldSpent: p.coldSpent, night: isWorkIntent(state.intent) && state.intent.task === "night" && state.intent.done < 1 };
   const need = needFrom(state, world, cal, mem);
   p.bodyNeed = need;
   p.sleeping = mem.sleeping;
+  p.collapsed = mem.collapsed;
   p.coldSpent = mem.coldSpent;
   return need;
 }
@@ -208,7 +210,7 @@ export function currentNeed(state: GameState, world: World, cal: Calendar): Body
  * answer about somebody else. It comes back unkept like the rest.
  */
 export function bodyAsks(state: GameState, world: World, cal: Calendar): BodyNeed | null {
-  return needFrom(state, world, cal, { need: null, sleeping: state.player.sleeping, coldSpent: false, night: false });
+  return needFrom(state, world, cal, { need: null, sleeping: state.player.sleeping, collapsed: state.player.collapsed, coldSpent: false, night: false });
 }
 
 /**
@@ -225,7 +227,7 @@ export function bodyAsks(state: GameState, world: World, cal: Calendar): BodyNee
  */
 export function peekNeed(state: GameState, world: World, cal: Calendar): BodyNeed | null {
   const p = state.player;
-  return needFrom(state, world, cal, { need: p.bodyNeed, sleeping: p.sleeping, coldSpent: p.coldSpent, night: isWorkIntent(state.intent) && state.intent.task === "night" && state.intent.done < 1 });
+  return needFrom(state, world, cal, { need: p.bodyNeed, sleeping: p.sleeping, collapsed: p.collapsed, coldSpent: p.coldSpent, night: isWorkIntent(state.intent) && state.intent.task === "night" && state.intent.done < 1 });
 }
 
 /** Whether hunger can be answered: safe food in the pack, or at camp with a walk there open. A hunger nothing can answer masks nothing. */

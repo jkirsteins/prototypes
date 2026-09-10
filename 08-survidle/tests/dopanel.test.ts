@@ -132,6 +132,16 @@ describe("the purposes and the filter", () => {
     expect(html).not.toContain('data-act="more"');
   });
 
+  it("offers Rest but leaves falling asleep and waking to the body", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    expect(availableTasks(state, world, cal).map((o) => o.id)).not.toContain("sleep");
+    const html = doHtml(state, world, cal, { ...newUiState(), panes: { pane: "do", subtab: "Camp", purpose: "Rest" } });
+    expect(html).toContain('data-opt="intent:rest:');
+    expect(html).not.toContain('data-opt="intent:sleep:');
+    expect(html).not.toContain('data-opt="intent:night:');
+  });
+
   it("offers material tracking only inside an eligible Make or Build row", () => {
     const { state, world } = newGame(3);
     const cal = calendar(state.minute, state.startDoy);

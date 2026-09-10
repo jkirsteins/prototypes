@@ -45,12 +45,12 @@ const TREE_TERRAINS = ["spruce", "pine", "birch"] as const;
  */
 const VOCABULARY: { name: string; words: string; rows: string[] }[] = [
   { name: "weather", words: "sky forecast storm warning rain snow", rows: ["readSky"] },
-  { name: "fire", words: "tinder kindling", rows: ["light", "lightIndoors", "lightTorch", "craft:torch", "craft:fireDrill", "build:firePit", "chop", "deadwood", "sticks", "bark", "split", "splitWedges", "melt", "night"] },
+  { name: "fire", words: "tinder kindling", rows: ["light", "lightIndoors", "lightTorch", "craft:torch", "craft:fireDrill", "build:firePit", "chop", "deadwood", "sticks", "bark", "split", "splitWedges", "melt"] },
   { name: "fuel", words: "firewood", rows: ["chop", "deadwood", "sticks", "split", "splitWedges"] },
   { name: "food", words: "eat hunger", rows: ["hunt", "findDen", "fish", "cook", "berries", "eggs", "roots", "innerBark", "seaweed", "tapSap", "crack", "grindBark", "hang", "setTrap", "emptyTrap", "build:snare", "build:dryingRack", "craft:snare", "craft:bow", "craft:arrows", "craft:fishingSpear", "craft:basketTrap"] },
   { name: "water", words: "drink thirst", rows: ["fill", "melt", "thaw", "iceHole", "tapSap", "build:seep", "build:waterStore", "craft:barkBucket", "craft:waterskin"] },
-  { name: "warmth", words: "heat cold", rows: ["light", "lightIndoors", "lightTorch", "night", "sleep", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "build:boughBed", "repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens", "craft:hideBlanket"] },
-  { name: "sleep", words: "rest bed", rows: ["sleep", "rest", "night", "build:boughBed", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "craft:hideBlanket"] },
+  { name: "warmth", words: "heat cold", rows: ["light", "lightIndoors", "lightTorch", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "build:boughBed", "repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens", "craft:hideBlanket"] },
+  { name: "sleep", words: "rest bed", rows: ["rest", "build:boughBed", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "craft:hideBlanket"] },
   { name: "shelter", words: "roof cover weather", rows: ["findShelter", "improveCover", "emergencyShelter", "makeCamp", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter"] },
   { name: "tool", words: "gear", rows: ["craft", "sharpen", "hone"] },
   { name: "clothing", words: "clothes", rows: ["repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"] },
@@ -222,7 +222,7 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
       ...r.neighbours.map((n) => ({ id: "explore" as TaskId, arg: `region:${n.id}` })),
       { id: "searchHome" as TaskId },
     ] },
-    { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "splitWedges" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "cook", arg: "oilyFish" }, { id: "cook", arg: "rawFat" }, { id: "cook", arg: "roots" }, { id: "crack" }, { id: "grindBark" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill", arg: "shore" }, { id: "fill", arg: "hole" }, { id: "fill", arg: "seep" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "hone" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
+    { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "splitWedges" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "cook", arg: "oilyFish" }, { id: "cook", arg: "rawFat" }, { id: "cook", arg: "roots" }, { id: "crack" }, { id: "grindBark" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill", arg: "shore" }, { id: "fill", arg: "hole" }, { id: "fill", arg: "seep" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "hone" }, { id: "rest" }] },
     { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
     // Mending sits with building because it is the same act on the same things: a
     // lean-to whose roof has gone is a lean-to to build again. It had no row of its

@@ -227,7 +227,7 @@ export function grades(p: Person): GradeLine[] {
 const QUIRK_LINES: Record<QuirkId, string> = {
   coastBorn: "Coast-born. Reads any shore at a glance.",
   forestBorn: "Forest-born. Knows the forest's game two levels early.",
-  sleepsLight: "Sleeps light. Wolves never reach the bed; a storm night is a long one, and the morning short.",
+  sleepsLight: "Light sleeper. Safe from wolves while asleep. Storms reduce sleep quality.",
   bigEater: "Big eater. Works a tenth faster and burns a tenth more.",
   steadyByTheFire: "Steady by the fire. Lights in rain without fail.",
   weatherEye: "A weather eye. Reads a storm half an hour earlier.",

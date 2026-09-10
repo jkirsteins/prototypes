@@ -84,9 +84,11 @@ describe("reachability: everything in the catalogue has a button", () => {
     expect(html).toContain('data-specific="fish"');
   });
   it("every gather and camp task, in the Do list", () => {
-    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "lightTorch", "sharpen", "repair", "rest", "sleep"]) {
+    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "lightTorch", "sharpen", "repair", "rest"]) {
       expect(html).toContain(`data-opt="intent:${id}:`);
     }
+    expect(html).not.toContain('data-opt="intent:sleep:');
+    expect(html).not.toContain('data-opt="intent:night:');
   });
   it("every walk out of camp, in the map's places list", () => {
     for (const s of regionAt(world, state.player.region).spots) {
@@ -871,9 +873,11 @@ describe("the Do panel", () => {
     for (const s of huntedLand()) if (roster.capacity[s]) expect(html).toContain(`data-opt="intent:hunt:${s}"`);
     expect(html).toContain('data-opt="intent:fish:any"');
     expect(html).toContain('data-specific="fish"');
-    for (const id of ["sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "night", "rest", "sleep"]) {
+    for (const id of ["sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "rest"]) {
       expect(html).toContain(`data-opt="intent:${id}:`);
     }
+    expect(html).not.toContain('data-opt="intent:sleep:');
+    expect(html).not.toContain('data-opt="intent:night:');
     expect(html).toContain('data-opt="intent:lightTorch:"');
     expect(html).not.toContain('class="tabs"');
   });
