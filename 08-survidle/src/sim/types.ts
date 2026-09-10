@@ -543,8 +543,8 @@ export interface RegionState {
   nextOrderId: number;
   /** An ice hole cut at the shore: where, and when. Cleared at the dawn tick, when it has skinned over. */
   iceHole: { cell: number; minute: number } | null;
-  /** The basket trap set in this region's water: where, the live fish in it (oilyKg is the oily-species share of kg), the species that shore holds, and minutes since it was last emptied. */
-  trap: { cell: number; kg: number; oilyKg: number; fish: Species[]; age: number } | null;
+  /** The basket trap set in this region's water: where, live kilos, the identities actually caught, the species that shore holds, and minutes since it was last emptied. */
+  trap: { cell: number; kg: number; oilyKg: number; fish: Species[]; age: number; caught?: Species[] } | null;
   /** Clutches this region's nesting birds hold, set on 1 May and gathered down to nothing by the "Gather eggs" task; cleared on 1 July. */
   nests: number;
   /** Kilos of rhizome left in each cell that has been dug, by cell index. A cell with no entry is at the full figure its ground holds. */
@@ -880,6 +880,12 @@ export type OpportunityEvent =
   | { kind: "cooked"; kg: number; item?: ItemId }
   | { kind: "drank" }
   | { kind: "foodAcquired"; method: FoodMethod }
+  | { kind: "waterRead"; species: Species[] }
+  | { kind: "fishCaught"; species: Species; method: "direct" | "trap" }
+  | { kind: "foraged"; item: FoodId }
+  | { kind: "toolAvailable"; tool: ToolId }
+  | { kind: "toolMade"; tool: ToolId }
+  | { kind: "structureAvailable"; structure: StructureId }
   | { kind: "ate"; item: FoodId | "sap" }
   | { kind: "preserved" }
   | { kind: "fuelled" }

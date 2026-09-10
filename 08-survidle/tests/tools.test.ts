@@ -88,6 +88,7 @@ describe("tools as items", () => {
     expect(beginTask(state, world, cal, "craft", "knife")).toBe(true);
     advance(state, world, 60);
     expect(hasTool(p, "knife")).toBe(true);
+    expect(state.opportunities.completedAt["make:knife"]).toBeDefined();
     expect(qty(p.pack, "knife")).toBe(0);
     addItem(p.pack, "stone", 2);
     addItem(p.pack, "stick", 1);

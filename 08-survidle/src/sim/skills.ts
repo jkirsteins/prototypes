@@ -12,6 +12,7 @@ import { hereTerrain } from "./position";
 import { extrasClass, fatSeason, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
 import type { GameState, ItemId, LifeRecord, RecipeId, Rung, SkillId, SkillState, StructureId, Task, TaskId } from "./types";
 import { log } from "./log";
+import { discoverAvailableOpportunities } from "./opportunity-catalog";
 
 export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building", "wayfinding", "naturalShelter", "shelterBuilding", "weatherSense"];
 
@@ -482,6 +483,7 @@ export function trainTask(state: GameState, world: World, t: Pick<Task, "id" | "
         teachOnce(state, k);
       }
     }
+    discoverAvailableOpportunities(state, world, calendar(state.minute, state.startDoy));
   }
   const mBefore = masteryLevel(s.mastery[key] ?? 0);
   s.mastery[key] = (s.mastery[key] ?? 0) + dt;

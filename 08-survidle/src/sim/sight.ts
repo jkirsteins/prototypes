@@ -10,6 +10,7 @@ import type { Calendar } from "./calendar";
 import { CLEAR_MOR_KM, MAX_OPTICAL_DEPTH, sampleAtmosphere } from "./climate";
 import { lightFactor, skyLux, SPOT_LUX, WALK_LUX } from "./light";
 import { markKnown } from "./mapped";
+import { discoverAvailableOpportunities } from "./opportunity-catalog";
 import { body } from "./person";
 import { RUNG_LEVEL, skillLevel } from "./skills";
 import type { GameState, LocalGroundWeather, Terrain } from "./types";
@@ -326,6 +327,7 @@ export function opticalCandidateRangeCells(terrainRange: number): number {
  */
 export function seeFrom(state: GameState, world: World, cal: Calendar, cell: number): void {
   for (const visible of visibleCells(state, world, cal, cell)) markKnown(state, visible);
+  discoverAvailableOpportunities(state, world, cal);
 }
 
 /** Ground in sight now, unlike mapped knowledge which survives after the eye moves on. */

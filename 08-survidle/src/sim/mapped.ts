@@ -4,6 +4,8 @@
  * read, or mapped. A route may only cross what is in here.
  */
 import { regionAt, type World } from "../world/gen";
+import { calendar } from "./calendar";
+import { discoverAvailableOpportunities } from "./opportunity-catalog";
 import type { GameState } from "./types";
 
 // A cache stamp for knownRoute, not game state: it never goes into the save.
@@ -25,6 +27,7 @@ export function markKnown(state: GameState, cell: number): void {
 
 export function mapRegion(state: GameState, world: World, region: number): void {
   for (const c of regionAt(world, region).cells) markKnown(state, c);
+  discoverAvailableOpportunities(state, world, calendar(state.minute, state.startDoy));
 }
 
 export function knownShare(state: GameState, world: World, region: number): number {

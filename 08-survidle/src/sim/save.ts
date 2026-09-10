@@ -216,6 +216,8 @@ export function migrate(state: GameState, version = 10): void {
   }
   // An order's click carries the same task/arg shape under different field names.
   for (const st of Object.values(state.regions)) {
+    // Old traps have aggregate kilos only. Preserve them without inventing species credit.
+    if (st.trap) st.trap.caught ??= [];
     for (const o of st.orders ?? []) {
       if (isCareRow(o)) {
         delete (o as unknown as { req?: unknown }).req;

@@ -297,6 +297,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         st.trap.kg = 0;
         st.trap.oilyKg = 0;
         st.trap.age = 0;
+        st.trap.caught = [];
       }
     }
     if (st.trap) {
@@ -315,6 +316,8 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
           st.pop[s] = Math.max(0, popOf(st, s) - 1);
           const before = st.trap.kg;
           st.trap.kg = Math.min(TRAP_HOLD_KG, before + (SPECIES_DEFS[s].yields?.meatKg ?? 0) * kgFactor);
+          st.trap.caught ??= [];
+          if (st.trap.kg > before && !st.trap.caught.includes(s)) st.trap.caught.push(s);
           // The class through fishItem, the same call the spear's catch makes, so the without
           // probe shuts the oily side in one place rather than leaking it into the trap.
           if (fishItem(s) === "oilyFish") st.trap.oilyKg += st.trap.kg - before;

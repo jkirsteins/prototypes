@@ -2301,6 +2301,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       produce(state, world, "berries", kg);
       creditYield(state, "berries", kg * FOODS.berries.kcalPerKg);
       if (kg > 1e-9) recordOpportunityEvent(state, { kind: "foodAcquired", method: "forage" });
+      if (kg > 1e-9) recordOpportunityEvent(state, { kind: "foraged", item: "berries" });
       recordOpportunityEvent(state, { kind: "seasonalFood" });
       return;
     }
@@ -2310,6 +2311,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       produce(state, world, "freshBark", kg);
       creditYield(state, "bark", (kg / BARK_DRY_RATIO) * FOODS.barkFlour.kcalPerKg);
       if (kg > 1e-9) recordOpportunityEvent(state, { kind: "foodAcquired", method: "forage" });
+      if (kg > 1e-9) recordOpportunityEvent(state, { kind: "foraged", item: "barkFlour" });
       log(state, `{You} {strip} the pines: ${(kg * 1000).toFixed(0)} g of inner bark.`, "good");
       return;
     }
@@ -2326,6 +2328,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       produce(state, world, "roots", kept);
       creditYield(state, "roots", kept * FOODS.cookedRoots.kcalPerKg);
       if (kept > 1e-9) recordOpportunityEvent(state, { kind: "foodAcquired", method: "forage" });
+      if (kept > 1e-9) recordOpportunityEvent(state, { kind: "foraged", item: "cookedRoots" });
       if (!winter) recordOpportunityEvent(state, { kind: "seasonalFood" });
       return;
     }
@@ -2347,6 +2350,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       produce(state, world, "seaweed", kg);
       creditYield(state, "seaweed", kg * FOODS.seaweed.kcalPerKg);
       if (kg > 1e-9) recordOpportunityEvent(state, { kind: "foodAcquired", method: "forage" });
+      if (kg > 1e-9) recordOpportunityEvent(state, { kind: "foraged", item: "seaweed" });
       recordOpportunityEvent(state, { kind: "seasonalFood" });
       log(state, `{You} {gather} seaweed off the rocks: ${(kg * 1000).toFixed(0)} g.`, "good");
       return;
@@ -2403,6 +2407,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
         if (!hasEvent(state, (e) => e.kind === "firstKill" && e.species === s)) record(state, { kind: "firstKill", species: s });
         const kg = fishKg(state, s) * yieldFactor(state, "fishing");
         recordOpportunityEvent(state, { kind: "foodAcquired", method: "fish" });
+        recordOpportunityEvent(state, { kind: "fishCaught", species: s, method: "direct" });
         const item = fishItem(s);
         produce(state, world, item, kg);
         // Raw fish is not eaten; the yield is what it cooks to.
@@ -2425,15 +2430,16 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     case "setTrap": {
       const here = cellOf(state, world);
       consume(invs, [{ item: "basketTrap", qty: 1 }]);
-      st.trap = { cell: here, kg: 0, oilyKg: 0, fish: [...state.player.known[here].fish], age: 0 };
+      st.trap = { cell: here, kg: 0, oilyKg: 0, fish: [...state.player.known[here].fish], age: 0, caught: [] };
       log(state, `The trap is set at ${whereIs(state, world, here)}.`);
       state.stats.structures++;
       return;
     }
     case "emptyTrap": {
-      const kg = takeTrapFish(state, world);
-      if (kg > 1e-9) recordOpportunityEvent(state, { kind: "foodAcquired", method: "trap" });
-      log(state, `{You} {empty} the trap: ${kg.toFixed(1)} kg of fish.`, "good");
+      const catchResult = takeTrapFish(state, world);
+      if (catchResult.kg > 1e-9) recordOpportunityEvent(state, { kind: "foodAcquired", method: "trap" });
+      for (const species of catchResult.species) recordOpportunityEvent(state, { kind: "fishCaught", species, method: "trap" });
+      log(state, `{You} {empty} the trap: ${catchResult.kg.toFixed(1)} kg of fish.`, "good");
       return;
     }
     case "cook": {
@@ -2461,6 +2467,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       produce(state, world, "eggs", kg);
       creditYield(state, "eggs", kg * FOODS.eggs.kcalPerKg);
       if (kg > 1e-9) recordOpportunityEvent(state, { kind: "foodAcquired", method: "forage" });
+      if (kg > 1e-9) recordOpportunityEvent(state, { kind: "foraged", item: "eggs" });
       if (kg > 1e-9) recordOpportunityEvent(state, { kind: "seasonalFood" });
       log(state, `{You} {gather} the nests: ${(kg * 1000).toFixed(0)} g of eggs.`, "good");
       return;
@@ -2500,6 +2507,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
         const item = rec.out.item;
         produce(state, world, item, rec.out.qty ?? 1);
         if (item in TOOLS) {
+          recordOpportunityEvent(state, { kind: "toolMade", tool: item as ToolId });
           recordOpportunityEvent(state, { kind: "toolCared" });
           if (hasTool(p, item as ToolId)) log(state, `{You} {have} a spare ${rec.name}.`, "good");
           else if (takeUp(state, world, item as ToolId)) log(state, `{You} {have} a ${rec.name}.`, "good");
@@ -2748,16 +2756,18 @@ export function putOutTorch(state: GameState): boolean {
   return true;
 }
 
-/** Moves the live fish out of this region's trap into the pack and credits the trap's row. Returns the kilos taken (fish and oily fish together). */
-function takeTrapFish(state: GameState, world: World): number {
+/** Moves the live fish out of this region's trap into the pack and retains the identities actually collected. */
+function takeTrapFish(state: GameState, world: World): { kg: number; species: Species[] } {
   const st = regionState(state, world, state.player.region);
   const kg = st.trap?.kg ?? 0;
-  if (!st.trap || kg <= 1e-9) return 0;
+  if (!st.trap || kg <= 1e-9) return { kg: 0, species: [] };
   const oilyKg = st.trap.oilyKg;
   const leanKg = kg - oilyKg;
+  const species = [...new Set(st.trap.caught ?? [])];
   st.trap.kg = 0;
   st.trap.oilyKg = 0;
   st.trap.age = 0;
+  st.trap.caught = [];
   if (leanKg > 1e-9) {
     produce(state, world, "fish", leanKg);
     creditYield(state, "trap", leanKg * FOODS.cookedFish.kcalPerKg);
@@ -2767,17 +2777,18 @@ function takeTrapFish(state: GameState, world: World): number {
     creditYield(state, "trap", oilyKg * FOODS.cookedOilyFish.kcalPerKg);
   }
   state.stats.animals++;
-  return kg;
+  return { kg, species };
 }
 
 /** The fish in the trap come out when you arrive at its cell, as hares do at the snares: a basket at the shore you stand on is not a trip. */
 function collectTrap(state: GameState, world: World): void {
   const st = regionState(state, world, state.player.region);
   if (!st.trap || cellOf(state, world) !== st.trap.cell) return;
-  const kg = takeTrapFish(state, world);
-  if (kg > 1e-9) {
+  const catchResult = takeTrapFish(state, world);
+  if (catchResult.kg > 1e-9) {
     recordOpportunityEvent(state, { kind: "foodAcquired", method: "trap" });
-    log(state, `${kg.toFixed(1)} kg of fish in the trap at ${whereIs(state, world, st.trap.cell)}; {you} {take} them.`, "good");
+    for (const species of catchResult.species) recordOpportunityEvent(state, { kind: "fishCaught", species, method: "trap" });
+    log(state, `${catchResult.kg.toFixed(1)} kg of fish in the trap at ${whereIs(state, world, st.trap.cell)}; {you} {take} them.`, "good");
   }
 }
 

@@ -10,6 +10,7 @@ import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { intentOption, startIntent, yieldItem } from "./intent";
 import { recordOpportunityEvent } from "./opportunities";
+import { discoverAvailableOpportunities } from "./opportunity-catalog";
 import { log } from "./log";
 import { addOrder, type Landing, orderSentence } from "./orders";
 import { RUNG_LEVEL, RUNG_WORD, type Rung, SKILL_NAMES, skillLevel, skillOf } from "./skills";
@@ -122,6 +123,8 @@ export function giveOrder(state: GameState, world: World, req: IntentRequest, ki
  * what clicking a thing means.
  */
 export function orderByHand(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, kind: OrderKind): WorkOrder {
+  // Refresh at the Do-list interaction too, so a loaded capability cannot remain hidden until another skill or map change.
+  discoverAvailableOpportunities(state, world, cal);
   if (normalizeOrder(req, kind).req.until.kind !== "once") return giveOrder(state, world, req, kind);
   const o = giveOrder(state, world, req, kind, "top");
   // A click that starts nothing says so. startIntent refuses when the check at

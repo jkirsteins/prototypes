@@ -1,6 +1,10 @@
 import { dayNumber, type Calendar } from "./calendar";
 import { qty } from "./inventory";
 import type { FoodId } from "./items";
+import {
+  allOpportunityDefs, catalogOpportunityDef, eventDiscoveryKeys,
+  OPPORTUNITY_GROUPS, registerAuthoredOpportunityDefs, SEASONS,
+} from "./opportunity-catalog";
 import { straightKm } from "./position";
 import { current } from "./record";
 import { gainedForecastFact } from "./weather";
@@ -8,8 +12,8 @@ import type { World } from "../world/gen";
 import type { GameState, OpportunityCategory, OpportunityDef, OpportunityEvent, OpportunityGroupDef, OpportunityGroupId, OpportunityKey, OpportunityState, OpportunityStepDef, RecipeId, Season, StaticOpportunityId, StructureId, TaskId, WeatherOpportunityContext } from "./types";
 export type { OpportunityKey, OpportunityEvent, StormPlanSnapshot, StormPlanOption, StormPlanInputs, StormOptionKind, FoodMethod } from "./types";
 import type { FoodMethod } from "./types";
+export { allOpportunityDefs, discoverAvailableOpportunities, OPPORTUNITY_CATEGORIES, OPPORTUNITY_GROUPS, SEASONS } from "./opportunity-catalog";
 
-export const SEASONS: Season[] = ["spring", "summer", "autumn", "winter"];
 const task = (...ids: TaskId[]) => (d: OpportunityEvent) => ((d.kind === "task" || d.kind === "taskCompleted") && ids.includes(d.id) ? 1 : 0);
 const lit = (d: OpportunityEvent) => d.kind === "lit" || d.kind === "fireLit" ? 1 : 0;
 const built = (...ids: StructureId[]) => (d: OpportunityEvent) => (d.kind === "built" && ids.includes(d.structure) ? 1 : 0);
@@ -17,7 +21,7 @@ const roof = (d: OpportunityEvent) => d.kind === "protectionChanged"
   ? (d.from < 2 && d.to >= 2 ? 1 : 0)
   : d.kind === "sheltered"
     ? (d.protection >= 2 ? 1 : 0)
-  : built("leanTo", "turfHut", "snowShelter", "cabin")(d);
+    : built("leanTo", "turfHut", "snowShelter", "cabin")(d);
 
 /** The kilos of firewood a gather actually produced, wet or dry: the goal is the gathering. */
 const firewoodKg = (d: OpportunityEvent) => (d.kind === "gathered" && (d.item === "firewood" || d.item === "wetFirewood") ? d.kg : 0);
@@ -147,21 +151,9 @@ export const OPPORTUNITIES: OpportunityDef[] = [
   { key: "preserveHunt", title: "Preserve meat from a hunt", category: "food", prerequisites: ["snareMeal", "huntMeal", "fishMeal"], steps: [step("hunt", "Hunt any animal", (event) => event.kind === "animalKilled" ? 1 : 0), { ...step("preserve", "Preserve meat", (event) => event.kind === "preserved" ? 1 : 0), final: true }] },
 ];
 for (const def of OPPORTUNITIES) def.note = NOTES[def.key as StaticOpportunityId];
-for (const season of SEASONS) OPPORTUNITIES.push({ key: `season:${season}`, title: `Live through ${season}`, category: "weather", group: "seasons", steps: one("season", `Live into ${season}`, (event) => event.kind === "season" && event.season === season ? 1 : 0) });
+for (const season of SEASONS) OPPORTUNITIES.push({ key: `season:${season}`, title: `Live through ${season}`, category: "exploration", group: "seasons", steps: one("season", `Live into ${season}`, (event) => event.kind === "season" && event.season === season ? 1 : 0) });
 const defs = new Map(OPPORTUNITIES.map((def) => [def.key, def]));
-const GROUPS: OpportunityGroupDef[] = [
-  { id: "track-animals", title: "Track animals", category: "wildlife", keys: [] },
-  { id: "hunt-animals", title: "Hunt animals", category: "wildlife", keys: [] },
-  { id: "dress-carcasses", title: "Dress carcasses", category: "wildlife", keys: [] },
-  { id: "recover-kills", title: "Recover kills", category: "wildlife", keys: [] },
-  { id: "catch-fish", title: "Catch fish", category: "wildlife", keys: [] },
-  { id: "trap-fish", title: "Trap fish", category: "wildlife", keys: [] },
-  { id: "forage-foods", title: "Forage foods", category: "food", keys: [] },
-  { id: "build-shelters", title: "Build shelters", category: "camp", keys: [] },
-  { id: "make-tools", title: "Make tools", category: "mastery", keys: [] },
-  { id: "seasons", title: "Seasons", category: "weather", keys: SEASONS.map((s) => `season:${s}` as OpportunityKey) },
-];
-
+registerAuthoredOpportunityDefs(OPPORTUNITIES);
 export function newOpportunities(season: Season): OpportunityState {
   const state: OpportunityState = {
     discoveredAt: {}, completedAt: {}, stepProgress: {}, current: null,
@@ -170,12 +162,11 @@ export function newOpportunities(season: Season): OpportunityState {
   for (const value of SEASONS) discoverOpportunity(state, `season:${value}`, 0, false);
   discoverOpportunity(state, "site", 0, true);
   state.current = "site";
-  state.lastCategory = season === "winter" ? "weather" : "survival";
   return state;
 }
 
 export function opportunityDef(key: OpportunityKey): OpportunityDef | undefined {
-  return defs.get(key);
+  return defs.get(key) ?? catalogOpportunityDef(key);
 }
 
 export function opportunityStepDefs(key: OpportunityKey): OpportunityStepDef[] {
@@ -219,7 +210,13 @@ export interface OpportunityGroupView extends OpportunityGroupDef {
   completed: OpportunityKey[];
 }
 
-export function applyOpportunityEvent(state: OpportunityState, event: OpportunityEvent, minute: number, contextual?: (completed: OpportunityKey[]) => void): OpportunityEventResult {
+export function applyOpportunityEvent(
+  state: OpportunityState,
+  event: OpportunityEvent,
+  minute: number,
+  contextual?: (completed: OpportunityKey[]) => void,
+  discoveryKeys = eventDiscoveryKeys(event),
+): OpportunityEventResult {
   const result: OpportunityEventResult = { completed: [], discovered: [], completedGroups: [] };
   for (const key of Object.keys(state.discoveredAt) as OpportunityKey[]) {
     if (state.completedAt[key] !== undefined) continue;
@@ -241,14 +238,18 @@ export function applyOpportunityEvent(state: OpportunityState, event: Opportunit
     }
   }
   contextual?.(result.completed);
-  for (const [key, def] of defs) {
+  for (const def of allOpportunityDefs()) {
+    const key = def.key;
     if (state.discoveredAt[key] !== undefined || state.completedAt[key] !== undefined || def.prerequisites?.some((pre) => state.completedAt[pre] === undefined)) continue;
     if (!chapterEligible(state, def, minute)) continue;
     if (def.prerequisites) { discoverOpportunity(state, key, minute, false); result.discovered.push(key); }
   }
+  for (const key of discoveryKeys) {
+    if (discoverOpportunity(state, key, minute, false)) result.discovered.push(key);
+  }
   if (state.current !== null && state.completedAt[state.current] !== undefined) state.current = null;
   if (state.current === null && result.discovered.length === 1) setCurrentOpportunity(state, result.discovered[0]);
-  for (const group of GROUPS) {
+  for (const group of OPPORTUNITY_GROUPS) {
     if (group.keys.length && result.completed.some((key) => group.keys.includes(key)) && group.keys.every((key) => state.completedAt[key] !== undefined)) result.completedGroups.push(group.id);
   }
   if (result.completed.length || result.discovered.length || result.completedGroups.length) {
@@ -258,7 +259,7 @@ export function applyOpportunityEvent(state: OpportunityState, event: Opportunit
 }
 
 export function opportunityGroupView(state: OpportunityState, id: OpportunityGroupId): OpportunityGroupView {
-  const group = GROUPS.find((candidate) => candidate.id === id) ?? { id, title: id, category: "mastery" as OpportunityCategory, keys: [] };
+  const group = OPPORTUNITY_GROUPS.find((candidate) => candidate.id === id) ?? { id, title: id, category: "mastery" as OpportunityCategory, keys: [] };
   return { ...group, done: group.keys.length > 0 && group.keys.every((key) => state.completedAt[key] !== undefined), discovered: group.keys.filter((key) => state.discoveredAt[key] !== undefined), completed: group.keys.filter((key) => state.completedAt[key] !== undefined) };
 }
 
@@ -352,7 +353,7 @@ export function recordOpportunityEvent(state: GameState, d: OpportunityEvent, wo
         finishOpportunity(state, "remoteStorm", finished);
       }
     }
-  });
+  }, eventDiscoveryKeys(d, state));
   captureChapterHome(state);
   return result.completed;
 }
@@ -379,7 +380,7 @@ function captureChapterHome(state: GameState): void {
 /** Calendar gates can open on a quiet minute without a survivor deed. */
 export function refreshOpportunities(state: GameState, minute = state.minute): void {
   const discovered: OpportunityKey[] = [];
-  for (const def of OPPORTUNITIES) {
+  for (const def of allOpportunityDefs()) {
     if (state.opportunities.completedAt[def.key] !== undefined) continue;
     if (!def.prerequisites || !chapterEligible(state.opportunities, def, minute) || def.prerequisites.some((key) => state.opportunities.completedAt[key] === undefined)) continue;
     if (discoverOpportunity(state.opportunities, def.key, state.minute, false)) discovered.push(def.key);
@@ -393,7 +394,7 @@ export function refreshOpportunities(state: GameState, minute = state.minute): v
 
 export function activeOpportunityKeys(state: GameState, cal: Calendar): OpportunityKey[] {
   refreshOpportunities(state, (cal.day - 1) * 1440);
-  return OPPORTUNITIES.filter((def) => state.opportunities.discoveredAt[def.key] !== undefined && state.opportunities.completedAt[def.key] === undefined).map((def) => def.key);
+  return allOpportunityDefs().filter((def) => state.opportunities.discoveredAt[def.key] !== undefined && state.opportunities.completedAt[def.key] === undefined).map((def) => def.key);
 }
 
 export function unpresentedOpportunityKeys(state: GameState, cal: Calendar): OpportunityKey[] {
