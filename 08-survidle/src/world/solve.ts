@@ -1,0 +1,53 @@
+/**
+ * The world solve: one pure function from seed and size to the arrays a
+ * world is made of. Six stages, each reporting progress, all arithmetic
+ * and square roots so every engine solves the same seed to the same
+ * cell. Nothing here is stored; a world is solved again from its seed.
+ */
+import { coarseSize, coarseSurface, erode, ERODE_ITERATIONS, upsample } from "./erode";
+import { accumulate, connectedSea, flowDirections, lakeComponents, priorityFlood } from "./hydro";
+import { carveGlacial, runoffWeights } from "./classify";
+
+export type SolveProgress = (stage: string, fraction: number) => void;
+export const STAGES = ["raising the land", "wearing the valleys", "filling the lakes", "cutting the fjords", "naming the ground"] as const;
+/** Bumped whenever the solve changes what a seed produces; the node cache is keyed by it. */
+export const GENERATOR_VERSION = 1;
+/** A depression must be this deep somewhere to be a lake rather than damp ground. */
+export const LAKE_MIN_DEPTH_M = 2;
+
+export interface HydrologyResult {
+  height: Float32Array;
+  sea: Uint8Array;
+  lake: Uint8Array;
+  dir: Uint8Array;
+  count: Uint32Array;
+  flow: Float32Array;
+}
+
+export function hydrologyPass(height: Float32Array, w: number, h: number, sea: Uint8Array) {
+  const filled = priorityFlood(height, w, h, sea);
+  const dir = flowDirections(filled, w, h, sea);
+  const { count, flow, order } = accumulate(dir, w, h, runoffWeights(w, h));
+  return { filled, dir, count, flow, order };
+}
+
+/** Stages 1 to 5: template, erosion, upsample, drainage, carving and the sea re-read, then drainage again with the lakes. */
+export function solveHydrology(seed: number, w: number, h: number, onProgress: SolveProgress = () => {}): HydrologyResult {
+  onProgress(STAGES[0], 0);
+  const { cw, ch } = coarseSize(w, h);
+  const coarse = coarseSurface(seed, cw, ch);
+  onProgress(STAGES[1], 0);
+  erode(coarse.height, cw, ch, coarse.uplift, coarse.sea, ERODE_ITERATIONS, (i) => onProgress(STAGES[1], (i + 1) / ERODE_ITERATIONS));
+  const height = upsample(coarse.height, cw, ch, w, h, seed);
+  onProgress(STAGES[2], 0);
+  const seaBefore = connectedSea(height, w, h);
+  const first = hydrologyPass(height, w, h, seaBefore);
+  onProgress(STAGES[3], 0);
+  carveGlacial(height, w, h, first.dir, first.count, first.order, seaBefore);
+  const sea = connectedSea(height, w, h);
+  onProgress(STAGES[3], 0.5);
+  const second = hydrologyPass(height, w, h, sea);
+  const lake = lakeComponents(height, second.filled, w, h, sea, LAKE_MIN_DEPTH_M);
+  onProgress(STAGES[3], 1);
+  return { height, sea, lake, dir: second.dir, count: second.count, flow: second.flow };
+}
