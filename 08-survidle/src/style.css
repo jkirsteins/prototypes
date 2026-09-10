@@ -1477,8 +1477,16 @@ button.act small.gives, span.act small.gives,
    the background is their sum. No cell ever rests, none is in step with its
    neighbour, and the sum never visibly repeats, so there is no beat for the
    eye to lock onto - which is what a single wave gave, however scattered
-   its cells were. The waves move registered numbers, so the browser
-   interpolates them and one colour-mix turns the sum into the colour. */
+   its cells were. The waves move registered numbers, and one colour-mix
+   turns the sum into the colour.
+
+   They step rather than slide, like the fog and cloud glyphs. A colour that
+   ramps smoothly up and back down reads as breathing at any period; a
+   colour that holds and jumps reads as a glint. A 6-frame-a-second capture
+   of the sliding version looked right for exactly this reason: sampling had
+   turned the ramps into jumps. Three levels per half-wave give the sum a
+   jump every few tenths of a second at irregular moments, and a held level
+   is a frame with nothing to repaint. */
 @property --water-glint-a { syntax: "<number>"; inherits: false; initial-value: 0; }
 @property --water-glint-b { syntax: "<number>"; inherits: false; initial-value: 0; }
 @property --water-glint-c { syntax: "<number>"; inherits: false; initial-value: 0; }
@@ -1489,7 +1497,7 @@ button.act small.gives, span.act small.gives,
   background-color: color-mix(in srgb, var(--water-lit) calc((var(--water-glint-a) + var(--water-glint-b) + var(--water-glint-c)) * 33.3%), var(--water-rest));
 }
 .grid .c.water-live {
-  animation: water-glint-a 2.3s ease-in-out infinite, water-glint-b 3.7s ease-in-out infinite, water-glint-c 5.9s ease-in-out infinite;
+  animation: water-glint-a 2.3s steps(3) infinite, water-glint-b 3.7s steps(3) infinite, water-glint-c 5.9s steps(3) infinite;
   /* ?shimmer= on the page sets the speed factor on the root; unset, the periods stay as written. */
   animation-duration: calc(2.3s / var(--water-shimmer-speed, 1)), calc(3.7s / var(--water-shimmer-speed, 1)), calc(5.9s / var(--water-shimmer-speed, 1));
   animation-delay: var(--water-phase-a), var(--water-phase-b), var(--water-phase-c);

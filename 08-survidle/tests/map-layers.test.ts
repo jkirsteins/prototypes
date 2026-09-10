@@ -301,7 +301,7 @@ describe("the map's compositing layers", () => {
     // step with its neighbour, and the sheet has no beat to lock onto.
     const live = rule(".grid .c.water-live");
     const [a, b, c] = WATER_GLINT_PERIODS_MS.map((ms) => `${ms / 1000}s`);
-    expect(live).toContain(`animation: water-glint-a ${a} ease-in-out infinite, water-glint-b ${b} ease-in-out infinite, water-glint-c ${c} ease-in-out infinite`);
+    expect(live).toContain(`animation: water-glint-a ${a} steps(3) infinite, water-glint-b ${b} steps(3) infinite, water-glint-c ${c} steps(3) infinite`);
     expect(live).toContain("animation-delay: var(--water-phase-a), var(--water-phase-b), var(--water-phase-c)");
     // A test aid: ?shimmer= scales the speed through one root property and nothing else.
     expect(live).toContain(`animation-duration: calc(${a} / var(--water-shimmer-speed, 1)), calc(${b} / var(--water-shimmer-speed, 1)), calc(${c} / var(--water-shimmer-speed, 1))`);

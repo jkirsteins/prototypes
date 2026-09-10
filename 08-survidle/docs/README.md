@@ -417,9 +417,11 @@ with work, pause, or alter the simulated feature's location or visibility.
 Liquid water in the current viewshed shimmers on the same kind of wall clock.
 It is faked for the eye, not modelled: each cell sums three small waves of
 2.3, 3.7 and 5.9 real seconds, each on its own seeded phase, between its
-depth band's blue and a shade lighter. No cell rests, none is in step with
-its neighbour, and the sum never visibly repeats, so the sheet flickers
-without a beat. Ice, marked cells and remembered water lie still, and reduced
+depth band's blue and a shade lighter. The waves step through three levels
+rather than sliding, like the fog and cloud glyphs, because a smooth ramp
+reads as breathing and a jump reads as a glint. No cell rests, none is in
+step with its neighbour, and the sum never visibly repeats, so the sheet
+flickers without a beat. Ice, marked cells and remembered water lie still, and reduced
 motion turns the shimmer off. `?shimmer=2` is a test aid that runs all three
 waves twice as fast for tuning; it is not a game feature.
 
