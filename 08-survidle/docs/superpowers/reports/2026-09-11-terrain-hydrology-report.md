@@ -539,7 +539,8 @@ stated.
 | a route that must cross water | the places panel offered "across the ice (8 cm, thin)" for four neighbouring regions, so the thin-ice route offer is live in the page |
 | phone width | at 400 by 860 the page is one column, `document.documentElement.scrollWidth` 400 against `innerWidth` 400: no horizontal scroll |
 | console | no exceptions; only vite's connect lines and Chrome's AudioContext autoplay warning, which headless always raises |
-| memory | `usedJSHeapSize` oscillates between 88 MB and 254 MB with `totalJSHeapSize` 293 MB, so it crosses the 200 MB line at peaks and settles at about 90 MB. A solved world is 44 MB of arrays; the run returns to its floor after each collection, so this reads as churn rather than a leak |
+| memory, live heap after a forced collection | 65 MB after the bar hides, 65 MB after two game minutes at the default zoom, 65 MB after a zoom-out (`totalJSHeapSize` 68 to 70 MB). Under the 200 MB line at all three moments, so the check passes |
+| memory, without collecting first | `usedJSHeapSize` oscillates between 88 MB and 254 MB and `totalJSHeapSize` reaches 293 MB. The peak is garbage the collector had not taken yet: the live figure above is flat at 65 MB across the same moments |
 
 Screenshots, all at seed 42:
 
@@ -551,14 +552,60 @@ Screenshots, all at seed 42:
   belt, and the fell spine east of it.
 - `docs/terrain-shots/river-ford.png` - 100 m per detail on the nearest river
   to the landing, at (715, 2160): `=` for the channel, `#` for its fords.
+- `docs/terrain-shots/river-course-300m.png` - the same course at 300 m per
+  glyph: a chain of lakes with short river reaches between them.
+- `docs/terrain-shots/river-whole-north.png` - the whole-world rung, where a
+  one-cell channel does not survive the glyph.
+- `docs/terrain-shots/river-route-at-ford.png` - the walk that crosses at the
+  ford, in progress.
 - `docs/terrain-shots/phone-400.png` - 400 px wide.
 
-Two checks in the brief could not be run as written. Walking a route that
-refuses a river without a ford and takes one at a ford needs a river within
-reach of a landing, and there is none on seed 42 (below); the rule itself is
-covered by `tests/hydro.test.ts` and `tests/route.test.ts`. Rivers as lines
-from the crest to the sea do not appear at any rung near this landing for the
-same reason.
+### The two river checks, on the reach rather than on the landing
+
+Seed 42 has no river within reach of its landing, so both checks were run by
+putting the survivor on the nearest reach, at (715, 2160), from the console -
+the same placement the zoomed-out shot uses.
+
+**A river does not read as a line from the crest to the sea.** Following the
+solved flow directions downstream from that cell: 201 steps, of which 53 are
+river cells and 148 are lake. The river cells come in runs of 1 to 15, so the
+course is a chain of lakes joined by short reaches rather than one line, and
+it ends at the southern world edge as a river cell rather than at the sea.
+With the whole course and a three-cell margin marked known, the map draws it
+at the two closest rungs only:
+
+| rung | river glyphs | water glyphs |
+| --- | ---: | ---: |
+| 100 m per detail | 4 | 38 |
+| 300 m per glyph | 11 | 169 |
+| 900 m per glyph | 0 | 209 |
+| 2.7 km per glyph | 0 | 45 |
+
+A channel one cell wide disappears into a glyph that covers nine or more
+cells, so at 900 m and coarser the course reads as its lakes alone.
+`docs/terrain-shots/river-course-300m.png` is the 300 m view of the chain;
+`river-whole-north.png` is the whole-world rung, where the course is not
+drawn at all.
+
+**The route refuses a crossing with no ford and takes one at a ford.** Run in
+open water: the clock was moved to 20 July and the ground state dropped so
+every region recomputed from the climate, which leaves the reach ice-free
+(`iceCm` 0). The survivor stood at (749, 2133), one cell north of a river cell
+at (749, 2134) that is *not* a ford. Asked for each walk the way a player asks
+- a click on the target cell of the map:
+
+- Target (749, 2135), the far bank straight across the fordless cell: the app
+  planned a 14-cell route that never steps on (749, 2134). The only river cell
+  on it is (744, 2135), which is a ford - it walks five cells west and crosses
+  there.
+- Target (745, 2135), the far bank across that ford: a 7-cell route, crossing
+  at the same ford cell.
+- The same fordless crossing with knowledge cut back to a corridor holding two
+  river cells and no ford: no route, no task, and the log reads "Walk to a
+  spot 0.6 km south: you know no way there."
+
+`docs/terrain-shots/river-route-at-ford.png` holds the crossing walk in
+progress.
 
 ## Open findings (task 12)
 
@@ -570,11 +617,13 @@ km box, 8 of them fords, and the map draws both), but a run that starts on
 the southern shore will not meet one. The river cell count was already
 reported in the first submission; what is new is that the play area has none.
 
-**A river is not a connected line of cells.** Along the reach above, the
-channel steps (729, 2147), (728, 2148), (727, 2149), then jumps to
-(725, 2150) with the same discharge either side. Whether the gap is a lake
-cell in the channel or a cell that missed the 40 m3/s threshold is worth one
-look before rivers are drawn as continuous lines anywhere.
+**A river is not a connected line of cells, and the gaps are lakes.** Traced
+downstream from (715, 2160), the course is 53 river cells and 148 lake cells
+over 201 steps, in river runs of 1 to 15, and it leaves the world at the
+southern edge rather than reaching the sea. That is a defensible landscape - a
+chain of tarns linked by short reaches - but it means "the river from the
+crest to the sea" is not a thing the map can draw, and at 900 m per glyph and
+coarser the channel is not drawn at all.
 
 **Lee ground from a depression is nearly unreachable.** `isLee` calls a cell
 lee when it is lower than all four cardinal neighbours. A drainage solve
