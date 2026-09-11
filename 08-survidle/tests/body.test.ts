@@ -21,6 +21,7 @@ import { isWorkOrder } from "../src/sim/types";
 import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
+import { unnamedShoreRegion } from "./world-facts";
 import { ensureGround, iceMode } from "../src/sim/weather";
 import { testAtmosphere, testRain } from "./weather-helpers";
 import { levelMinutes } from "../src/sim/skills";
@@ -727,19 +728,19 @@ describe("the runner in the elements", () => {
   });
 
   it("a region with no named shore spot but real waterside cells still finds water to walk to", () => {
-    // findStart requires a shore spot, so no starting region can ever lack one; this
-    // stands the player in seed 2's region 94 instead, whose frac.water (2.0%) sits
-    // at placeSpots' 2% floor for naming a "shore" spot (share <= 0.02 gets none),
-    // though it still borders water.
+    // findStart requires a shore spot, so no starting region can ever lack one. The
+    // finder looks for the other case instead: a region under placeSpots' 2% water
+    // floor, which names no shore though it still borders water. Which region that
+    // is moves with the map, so the rule is what the test names.
     const g = newGame(2);
     siteCamp(g.state, g.world);
     const { state, world } = g;
-    const r = regionAt(world, 94);
+    const { region: id, dryForest } = unnamedShoreRegion(world, state.player.region);
+    const r = regionAt(world, id);
     expect(hasSpot(r, "shore")).toBe(false);
     // The camp itself is a shore cell now; stand in forest away from the water so the thirst has to walk.
-    const dryForest = r.cells.find((c) => ["spruce", "pine", "birch"].includes(cellAt(world, c).terrain) && !neighbours(world, c).some((n) => cellAt(world, n).terrain === "water"))!;
     placeAt(state, world, dryForest);
-    mapRegion(state, world, 94);
+    mapRegion(state, world, id);
     addItem(state.player.pack, "driedMeat", 2);
     startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
     expect(until(g, () => state.task?.id === "chop")).toBe(true);

@@ -663,3 +663,240 @@ touched; that session needs to restart `npm run dev`.
 **The world cache holds stale versions.** `node_modules/.cache/survidle-worlds`
 carries v1, v2 and v3 bins side by side, 44 MB each, about 5.4 GB in total.
 Nothing reads v1 or v2 now.
+
+## Slow suite
+
+`npm run test:slow` on the whole branch, one run, in the foreground: 2114.77 s
+(35 minutes), inside the 45-minute budget, so this is the complete state and not
+a partial reading.
+
+    Test Files  32 failed | 68 passed (100)
+         Tests  94 failed | 1241 passed (1335)
+
+The fast suite is the commit gate and is green; the slow suite is where the runs
+that advance the game clock live, and it had not been run whole on this branch
+before. Four of the failures were re-baked in this round (the three region ids
+the review named, plus the `away for the season` block, which carried the same
+literal 1865); the lines below are the run as it stood, with the re-baked four
+marked. Each line says whether the failure is an old-world fixture (the test
+names a place, a seed's camp or a number that meant something on the old map), a
+rule change (the old assertion contradicts what the spec now says the world is),
+or a real bug (the source is wrong).
+
+**tests/body.test.ts, 22 failures. Old-world fixture, one cause.** `felling()`
+builds its case on seed 39 with the comment "meadow camp, forest 0.6 km away".
+On the solved world that camp is not meadow and the forest is not 0.6 km off, so
+the runner does something else with its first minutes and every assertion about
+which step comes next reads the wrong one. The `Cannot read properties of
+undefined (reading 'sites')` group is the same fixture failing earlier: the camp
+the storm plan asks about is not sited where the test put it.
+
+- collapsing, it sets the tree aside, walks to camp and rests to the recovery line - old-world fixture
+- makes a fire before collapse recovery when the means are at camp - old-world fixture
+- with no way to camp it rests where it stands and says so - old-world fixture
+- cold, it goes to camp and rests until warm again, and collapse outranks cold - old-world fixture
+- cold with a lean-to at camp and no fire still goes to camp - old-world fixture
+- hungry, it eats from the pack and keeps working - old-world fixture
+- pockets provisions when leaving camp, up to 2 kg - old-world fixture
+- the quiver is filled whenever the bow leaves camp - old-world fixture
+- drinks from a vessel, else walks to the shore, else melts snow at the fire - old-world fixture
+- a storm sends it home, keeps the fire fed, and it waits under the roof - old-world fixture
+- a storm at a cold site with a drill and dry wood lights the fire first - old-world fixture
+- in winter it leaves the work so as to be at camp by sunset - old-world fixture
+- the home need holds sticky from the minute it first fires until night - old-world fixture
+- banks a big fire before walking off camp - old-world fixture
+- thirst that cannot be quenched does not mask the home need - old-world fixture
+- records the full return-home evidence and gives a close camp the body step - old-world fixture
+- can recommend unfinished local work without calling it viable preparation - old-world fixture
+- treats a high-profile weatherproof frame as inadequate in an active gale - old-world fixture: the cell the test stands on is fell, not meadow
+- does not treat short emergency work beside an exposed frame as gale cover - old-world fixture: same cell, fell not meadow
+- starts partial local shelter instead of walking toward camp - old-world fixture
+- executes the local shelter work projected while standing at a bare camp - old-world fixture
+- accepts a low windbreak in lee as weatherproof during an active gale - old-world fixture: fell, not spruce
+- (re-baked this round) a region with no named shore spot but real waterside cells still finds water to walk to - was an old-world fixture, now finds its region by the rule
+
+**tests/bodyorder.test.ts, 6 failures. Old-world fixture.** The same storm-shelter
+set-up on the same seeds.
+
+- sets storm shelter work aside at storm end so ready work resumes - old-world fixture
+- sets aside its own emergency build at weatherproof while keeping site progress - old-world fixture
+- leaves higher-ranked work running, then owns every storm step - old-world fixture
+- claims a matching shelter task from lower-ranked work under the body row's name - old-world fixture
+- above the work, it takes the minute mid-chunk and the work keeps its minutes - old-world fixture: the chunk count follows from where the work is
+- the walk to the snares still waits for the work in hand to end - old-world fixture: the walk is a different length now
+
+**tests/intent.test.ts, 8 failures. Old-world fixture.** Every one is about which
+cell work lands on near the landing, and the ground around the landing changed.
+
+- nearest ground is the nearest usable cell, including the one underfoot - old-world fixture: no bog underfoot now
+- previews the first walk separately from felling time - old-world fixture: no spruce forest within the preview
+- a spot that does not suit the work falls back to one that does - old-world fixture: a literal cell number
+- a hunt for anything stays on plausible ground without reading the hidden population - old-world fixture: no candidate ground
+- a hunt for anything lets hunting skill trade proximity for better ground - old-world fixture: same
+- walks to the forest, fells once, and is done - old-world fixture: the destination is a bare spot, not a named forest
+- a gather stops once the shortfall is in the pack - old-world fixture: nothing to gather where it stands
+- a hole fill judged from camp reads only the axe the fill can carry - old-world fixture: the camp is not on the water it assumed
+
+**tests/tasks.test.ts, 7 failures, 4 re-baked this round.**
+
+- (re-baked) a migrant gone for the year is away, not merely scarce - old-world fixture: region 1865
+- (re-baked) ice takes the lake birds off the row and leaves the fish under it - old-world fixture: region 1865
+- (re-baked) the card and the row say the same thing about an absent species - old-world fixture: region 1865
+- (re-baked) a generic hunt does not reveal a hidden roster - old-world fixture: region 1865
+- travels to a neighbouring region's camp and can go anywhere with a route - old-world fixture: the first neighbour of a fjord landing is across water
+- turns a successful hunt into field work before any meat is recovered - old-world fixture: the hunt finds nothing on this ground
+- offers every kind of task somewhere in the list, legal or not - old-world fixture: a task whose ground is not within the landing's reach
+
+**tests/orders.test.ts, 4 failures.**
+
+- the next region has its own empty list, and the first list resumes on return - old-world fixture: the neighbour it travels to is not reachable dry-shod
+- an order for the forest is skipped at night with "dark; at first light" - real bug or rule change: the reason given is "dark; no fire to work by", a different night clause; which clause is right is a night-gate question, not a terrain one, and it wants the author
+- the dark refuses a once order nothing, and still holds a standing one back - same night clause, same call
+- a task in flight is not judged at all, not merely not acted on - old-world fixture: the task in flight is a different one here
+
+**tests/night-work.test.ts, 2 failures.**
+
+- still skips a standing order for the forest after dark, with the reason it always gave - same night-clause disagreement as orders.test.ts
+- the collapse blocks the work row, then lets the ranked self-care row rest - old-world fixture: the walk home is longer, so the minute under test is a walk
+
+**tests/water.test.ts, 3 failures.**
+
+- a working day without drinking ends thirsty and dies of thirst - old-world fixture: the survivor does not die on this ground in the days the test runs
+- camp water freezes without a fire under -5 C - rule change: the camp is on the shore now and the local temperature is the lowland's, not the ridge's
+- a bucket at camp over half full may split in the freeze - rule change: same temperature
+
+**tests/animals.test.ts, 4 failures. Rule change, one cause.** Habitat shares per
+region are computed from the new terrain, so capacity, refill and flock decay all
+land on different numbers.
+
+- a save written before the catalogue keeps the species it still has - rule change
+- a migrant flock returns after the local thaw and leaves at a tenth per day - rule change
+- moves big game out of repeatedly disturbed ground without losing animals - rule change: the disturbed region has no big game to move
+- refills a half-emptied region to nine tenths within thirty summer days - rule change: 0.88 against a 0.9 line, the neighbours being less full
+
+**tests/animal-agents.test.ts, 2 failures. Old-world fixture.**
+
+- uses one seeded detection threshold across fractional updates - old-world fixture: the agent stands on different ground and the seeded roll lands elsewhere
+- will not attack from the survivor's cell through fire or a carried torch - old-world fixture: same
+
+**tests/ui.test.ts, 5 failures.**
+
+- every road out, in the map's corner - old-world fixture: a literal region id in the expected markup
+- every option that trains says which skill it is under - old-world fixture: birch where the test expects spruce
+- the bar under a row aims at the next thing practice buys - old-world fixture: same birch/spruce
+- a rebuilt grid is born with the hour's light - old-world fixture: a literal saturation from the old tone
+- the activity row names work started by hand as its whole order - old-world fixture: the destination has no forest name
+
+**tests/epitaph.test.ts, 3 failures.**
+
+- is deterministic for reference seeds through the larder and camp-fuel loop - old-world fixture: a stored snapshot of the old world's run
+- carries a kitted trap into the larder under controlled open-water weather - old-world fixture: the trap's water is not where the test puts it
+- is deterministic for the reference seeds; trap yields more with larger capacities - old-world fixture: a stored snapshot
+
+**tests/churn.test.ts, 2 failures. Real bug, and the one worth a look.** The panel
+churn budget is exceeded by `stats` (23 redraws) and `weather` (30) standing
+idle, and `skills` (30) with work in hand. Nothing about the panel morphing
+changed in this branch, so the likely cause is that a panel now shows a value
+that moves every minute on the new world (a height, a temperature, a distance to
+water) where it used to be stable. Worth tracing before merge.
+
+**tests/probe.test.ts, 2 failures.**
+
+- shuts the trap's oily side too: the class goes through fishItem in one place - real bug: an undefined where a number is expected, which is a code path, not a place
+- the seaweed bullet reads the shore's ice exactly as the seaweed task does - old-world fixture: the shore it reads is not a sea shore here
+
+**tests/plants.test.ts, 1 failure.**
+
+- seaweed loads at the sea shore while it is open - old-world fixture: the cell is not beside the sea
+
+**tests/fish.test.ts, 1 failure.**
+
+- a perch caught in April brings roe; a char brings oily fish - old-world fixture: nothing is caught where the test casts
+
+**tests/roots.test.ts, 2 failures.**
+
+- a cell holds its stand's rhizome - old-world fixture: the finder says "no such ground near the start"
+- a winter dig needs an open ice hole at the shore - old-world fixture: same
+
+**tests/horizon.test.ts, 2 failures.**
+
+- the manual stage is every open want as a once job on a stocked camp - rule change: the want list now carries `fill:shore` where it carried `fill:hole`, which is the water work reading an open shore rather than an iced one
+- reports the current manual-stage balance miss honestly at the day-four freeze - rule change: the same list, one entry longer
+
+**tests/hand.test.ts, 2 failures.**
+
+- a once order past the spent line walks to the wood and gathers - old-world fixture: no wood to walk to
+- a once given by hand cuts in, and a second click displaces the first - old-world fixture: the count follows from the walk
+
+**tests/workday.test.ts, 2 failures.**
+
+- mid-chunk the thirst is answered first whatever the rank - old-world fixture: the snare walk is a different length
+- and the other way round the moment the player ranks the body over the camp - old-world fixture: same
+
+**tests/advance-save.test.ts, 2 failures.**
+
+- falls asleep on its own when idle and spent - old-world fixture: the survivor is still walking at the minute under test
+- survives the colder default April day with the starting kit - rule change: April at the landing reads -0.99 C against the test's -3.5. The spec says the lapse rate now works from real metres and that gate readings move and are reported, not tuned. This is that reading.
+
+**tests/startday.test.ts, 1 failure.**
+
+- an April game opens with the deterministic local seasonal snow cover - rule change: snow cover at a sea-level landing is 0, not the ridge's 20 cm
+
+**tests/camp.test.ts, 1 failure; tests/torch.test.ts, 1 failure.**
+
+- wolves come only at night outside shelter - old-world fixture: no wolves in this region's capacity
+- what a torch does: keeps the wolves off, as does your own lit fire - old-world fixture: same
+
+**tests/shopping.test.ts, 1 failure.**
+
+- marks a known place when it can answer a current shortage - old-world fixture: no outcrop among the known places near the landing
+
+**tests/skills.test.ts, 1 failure.**
+
+- Hunting 11 has 10% better odds; Fishing reads its own skill - rule change: the odds double because the species drawn on this ground is a different one
+
+**tests/spine.test.ts, 1 failure.**
+
+- the season spine fires each threshold once, in order, over a year - rule change: six thresholds fire where eight did, the missing two being ice thresholds on water the region no longer has
+
+**tests/walkorders.test.ts, 1 failure.**
+
+- keeps a cross-region walk owned and removes it from its source queue - old-world fixture: "neighbour has no passable cell", a fjord neighbour
+
+**tests/explore.test.ts, 1 failure.**
+
+- maps a region by walking it, and the minutes are the ground's - rule change: 130 minutes against a 72-minute line, because the ground is rougher and the region holds water the walk must go round
+
+**tests/words.test.ts, 1 failure.**
+
+- the names are Norwegian: the letters are the real ones - real bug: the sample of region names carries no å, ø or æ at all. Name generation is not part of this branch's subject, so either the name tables lost their Norwegian stems or the terrain classes feeding them changed enough to select only the ASCII ones. Worth tracing before merge.
+
+**tests/reference.test.ts, 1 failure.**
+
+- a kitted level-20 list makes one spare spear and stops - rule change: the want list is one entry different on the new ground
+
+**tests/slow/heir.test.ts, 1 failure.**
+
+- the heir walks to the old camp before it gives an order, and reaches it inside three days - rule change: 14 days on the new ground. The heir landing is 3 to 20 km from the last camp on a shore, and a fjord coast makes that walk far longer than the straight line. The three-day line was calibrated on the old world's walkable ground.
+
+**tests/slow/wayfinding-vantage.test.ts, 1 failure.**
+
+- keeps median sweep time within five percent through level 20, across seeds 1..12 - old-world fixture: eight of the twelve seeds now measure 0, so the median comparison is NaN. The measure needs seeds whose landing has a vantage on the new world.
+
+### What this round re-baked, and what it did not
+
+Re-baked, by finders rather than literals: the three the review named, and the
+`away for the season` block in `tests/tasks.test.ts` that carried the same 1865.
+`tests/world-facts.ts` gained `seaShoreBesideLake`, `unnamedShoreRegion` and
+`lakeShoreNear`, each stating its rule in its doc comment.
+
+Not re-baked: the other 90. They are not a second batch of the same job. Two
+thirds of them are one fixture each in a file whose whole set-up assumes the old
+map (`felling()` on seed 39 is 28 failures on its own across two files), and the
+right fix for those is to re-site the set-up, which changes what every test in
+the file is measuring and wants the author's eye on the readings rather than a
+mechanical swap. The rule changes are readings the spec asked for - "gate
+readings will move because the lowland stops being cooled; they are reported,
+not tuned" - and re-baking them silently would be tuning. Three are worth
+tracing as possible real bugs before merge: the panel churn budget, the missing
+Norwegian letters, and `probe.test.ts`'s undefined in the trap's oily side.

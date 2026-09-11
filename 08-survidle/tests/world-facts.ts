@@ -11,7 +11,7 @@
  * Every finder is pure geometry over the solved arrays, so it costs a flood of
  * a region or two and never a route search.
  */
-import { cellAt, fordAt, heightAt, neighbours, regionAt, regionOf, terrainOf, waterKindOf, type World } from "../src/world/gen";
+import { cellAt, fordAt, hasSpot, heightAt, neighbours, regionAt, regionOf, streamAt, terrainOf, waterKindOf, type World } from "../src/world/gen";
 import { passable } from "../src/world/route";
 import type { Terrain } from "../src/sim/types";
 import { TERRAIN_INDEX } from "../src/world/terrain";
@@ -303,6 +303,99 @@ export function terrainRunNear(world: World, home: number, pattern: Terrain[]): 
   }
   throw new Error(`no region near ${home} holds a straight ${pattern.join(", ")} run`);
 }
+
+/**
+ * A region near `home` that holds a lake of its own and, on the same region, a
+ * land cell whose water is salt and only salt. Both halves matter to a case
+ * about the water a survivor stands beside: the lake gives the region's lake
+ * fish the habitat share they need to be counted at all - `wildlifeCapacity`
+ * wants a habitat over 2 percent of the region - while the cell the survivor
+ * stands on touches the sea and no lake, so what bites there is the sea's.
+ * `accept` is the caller's own further test on the pairing, since what lives in
+ * a region is species knowledge and not geometry.
+ */
+export function seaShoreBesideLake(
+  world: World, home: number,
+  accept: (region: number, cell: number) => boolean = () => true,
+): { region: number; cell: number } {
+  for (const id of lakeRegionsOutward(world, home)) {
+    for (const cell of regionAt(world, id).cells) {
+      if (!passable(cellAt(world, cell).terrain)) continue;
+      if (!besideSea(world, cell)) continue;
+      if (neighbours(world, cell).some((n) => waterKindOf(world, n) === "lake")) continue;
+      if (accept(id, cell)) return { region: id, cell };
+    }
+  }
+  throw new Error(`no region within reach of ${home} holds a lake and a salt-only shore cell`);
+}
+
+/**
+ * The nearest region to `home` holding a lake, with a land cell on its lake
+ * shore. `accept` is the caller's own further test on the region, for the cases
+ * that want what lives in the lake as well as the water.
+ */
+export function lakeShoreNear(
+  world: World, home: number,
+  accept: (region: number) => boolean = () => true,
+): { region: number; cell: number } {
+  for (const id of lakeRegionsOutward(world, home)) {
+    if (!accept(id)) continue;
+    const cell = regionAt(world, id).cells.find((c) =>
+      passable(cellAt(world, c).terrain) && neighbours(world, c).some((n) => waterKindOf(world, n) === "lake"));
+    if (cell !== undefined) return { region: id, cell };
+  }
+  throw new Error(`no region within reach of ${home} holds a lake shore`);
+}
+
+/**
+ * Regions holding lake water, nearest first, found by ringing over the grid for
+ * the water rather than over regions. A lake is uncommon within reach of an
+ * outer-coast landing, and building a region for every square of the search is
+ * hundreds of floods to find that out; this builds only the regions a lake cell
+ * actually lands in.
+ */
+function* lakeRegionsOutward(world: World, home: number): Generator<number> {
+  const from = regionAt(world, home).campCell as number;
+  const cx = xOf(world, from);
+  const cy = yOf(world, from);
+  const tried = new Set<number>();
+  for (let r = 1; r < 1200; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+        const x = cx + dx;
+        const y = cy + dy;
+        if (x < 1 || y < 1 || x >= world.w - 1 || y >= world.h - 1) continue;
+        if (waterKindOf(world, y * world.w + x) !== "lake") continue;
+        const id = regionOf(world, x, y);
+        if (tried.has(id)) continue;
+        tried.add(id);
+        yield id;
+      }
+    }
+  }
+}
+
+/**
+ * A region near `home` that borders water but was never given a shore spot, and
+ * a forest cell in it away from the water to stand in. `placeSpots` names a
+ * shore only where water is more than 2 percent of the region, so a region under
+ * that floor still has water on its edge and nothing named to walk to: the case
+ * where thirst has to find the water itself.
+ */
+export function unnamedShoreRegion(world: World, home: number): { region: number; dryForest: number } {
+  const wet = (cell: number) => streamAt(world, cell) || neighbours(world, cell).some((n) => waterKindOf(world, n) !== null);
+  for (const id of regionsOutward(world, home, 600)) {
+    const region = regionAt(world, id);
+    if (hasSpot(region, "shore")) continue;
+    if (!region.cells.some((c) => passable(cellAt(world, c).terrain) && wet(c))) continue;
+    const dryForest = region.cells.find((c) => FOREST.includes(cellAt(world, c).terrain) && !wet(c));
+    if (dryForest !== undefined) return { region: id, dryForest };
+  }
+  throw new Error(`no region within reach of ${home} borders water with no shore spot named`);
+}
+
+const FOREST: Terrain[] = ["spruce", "pine", "birch"];
 
 /** The nearest region to `home`, itself included, that satisfies a rule. */
 export function regionNear(world: World, home: number, wants: (id: number) => boolean): number {

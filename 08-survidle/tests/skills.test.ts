@@ -17,8 +17,9 @@ import { workSpeed } from "../src/sim/player";
 import { regionDensity } from "../src/sim/animals";
 import { noteHuntSign } from "../src/sim/hunting";
 import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "../src/sim/species";
-import { regionAt } from "../src/world/gen";
+import { hasSpot, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { regionNear } from "./world-facts";
 import { skillsHtml } from "../src/ui/panels";
 
 describe("skill curves", () => {
@@ -485,13 +486,14 @@ describe("pool yield perks", () => {
   });
 
   it("stone at a full pool is 5 per gather, taken from a real gather rather than the formula alone", () => {
-    // No seed's start region ever has an outcrop: findStart requires forest >= 0.45,
-    // which leaves no room for rock. Seed 4's world has one two lattice cells over,
-    // at region 2405 - reached directly, the way tests place the player anywhere.
+    // No seed's start region ever has an outcrop: findStart requires forest, which
+    // leaves little room for rock. The nearest region that names one stands in for
+    // it, reached directly, the way tests place the player anywhere.
     const g = newGame(4);
     siteCamp(g.state, g.world);
     const { state, world } = g;
-    placeAtSpot(state, world, 2405, "outcrop");
+    const rock = regionNear(world, state.player.region, (id) => hasSpot(regionAt(world, id), "outcrop"));
+    placeAtSpot(state, world, rock, "outcrop");
     state.skills.foraging.pool = poolCapacity("foraging");
     expect(startTask(state, world, cal, "stone")).toBe(true);
     run(g, 30);
