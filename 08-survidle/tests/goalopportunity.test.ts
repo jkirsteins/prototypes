@@ -14,7 +14,7 @@ import { cellOf, placeAt, straightKm } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { survivorRoute } from "../src/sim/routing";
 import { current } from "../src/sim/record";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { startTask, stepTask } from "../src/sim/tasks";
 import type { GameState, GoalId } from "../src/sim/types";
 import { skyReadDay, stepWeather } from "../src/sim/weather";
@@ -1156,7 +1156,7 @@ describe("misses and retries", () => {
     const completed = structuredClone(state.goals.done);
     const introduced = structuredClone(state.goals.introduced);
     const notices = [...state.goals.noticeQueue];
-    const loaded = deserialize(serialize(state))!.state;
+    const loaded = readSave(serialize(state))!.state;
 
     land(loaded, world, { first: "Ilze", last: "Berg" });
     advance(loaded, world, 1439);

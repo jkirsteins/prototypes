@@ -104,9 +104,9 @@ export function firstRecord(seed: number, startDoy: number, person?: Person): Li
  * aboard the first boat, the date a week later per boat asked for. The
  * placeholder under the overlay is the median survivor, which land replaces.
  */
-export function newWorld(seed: number, boat = 0, startDoy = START_DOY): { state: GameState; world: World } {
+export function newWorld(seed: number, boat = 0, startDoy = START_DOY, world?: World): { state: GameState; world: World } {
   const doy = startDoy + 7 * boat;
-  const g = newGame(seed, doy);
+  const g = newGame(seed, doy, undefined, world);
   const start = regionAt(g.world, g.world.start);
   const candidates = rollCandidates(seed, 1, boat, []);
   g.state.log = [];
@@ -116,8 +116,9 @@ export function newWorld(seed: number, boat = 0, startDoy = START_DOY): { state:
 
 /** A fresh run: spring, an axe, the clothes on your back and a day's food. */
 // The start region's camp is the landing shore (gen.ts findStart).
-export function newGame(seed: number, startDoy = START_DOY, person?: Person): { state: GameState; world: World } {
-  const world = generateWorld(seed);
+export function newGame(seed: number, startDoy = START_DOY, person?: Person, given?: World): { state: GameState; world: World } {
+  // A world already solved (the loading bar's worker) is used as it stands; otherwise one is made here.
+  const world = given ?? generateWorld(seed);
   const start = regionAt(world, world.start);
   const first = firstRecord(seed, startDoy, person);
   const state: GameState = {

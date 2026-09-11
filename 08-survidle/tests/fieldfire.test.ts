@@ -17,7 +17,7 @@ import { regionState } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import type { TaskId } from "../src/sim/types";
 import { intentOption, startIntent } from "../src/sim/intent";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { siteCamp } from "./siting-helpers";
 import { GOALS, introduceGoals } from "../src/sim/goals";
 import { ensureGround } from "../src/sim/weather";
@@ -257,7 +257,7 @@ describe("a fire where you stand", () => {
   });
   it("round-trips the player-local fire through a save", () => {
     const { state } = lightField();
-    expect(deserialize(serialize(state))?.state.player.fieldFire).toEqual(state.player.fieldFire);
+    expect(readSave(serialize(state))?.state.player.fieldFire).toEqual(state.player.fieldFire);
   });
   it("offers a field light step without trying to build a permanent pit", () => {
     const { state, world } = field();

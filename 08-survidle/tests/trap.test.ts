@@ -11,7 +11,7 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { check, startTask } from "../src/sim/tasks";
 import { ICE_SHORE_CM } from "../src/sim/water";
 import { ensureGround } from "../src/sim/weather";
@@ -236,7 +236,7 @@ describe("the basket trap", () => {
     const g = readyToSet();
     setTrap(g);
     g.st.trap!.kg = 2.4;
-    const file = deserialize(serialize(g.state))!;
+    const file = readSave(serialize(g.state))!;
     const region = file.state.regions[g.state.player.region];
     expect(region.trap).toMatchObject({ cell: g.cell, kg: 2.4 });
     expect(region.trap!.fish).toEqual(g.obs.fish);

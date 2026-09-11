@@ -27,17 +27,28 @@ export function awaySeconds(state: GameState): number {
   return state.awayHours * 3600;
 }
 
-export interface SaveFile { version: 9; savedAt: number; state: GameState }
+export interface SaveFile { version: 10; savedAt: number; state: GameState }
+
+/** A save written for a world this build can no longer make, with the sentence to show for it. */
+export interface RefusedSave { refused: string }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  const file: SaveFile = { version: 9, savedAt: now, state };
+  const file: SaveFile = { version: 10, savedAt: now, state };
   return JSON.stringify(file);
 }
 
-export function deserialize(text: string): SaveFile | null {
+/**
+ * A save carries no world, only its seed, so a save whose seed means a
+ * different map cannot be loaded into this one: the run would stand on
+ * ground that is not the ground it was saved on. Such a save is refused
+ * with its reason rather than read.
+ */
+export function deserialize(text: string): SaveFile | RefusedSave | null {
   try {
     const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
-    if (!(file?.version >= 3 && file?.version <= 9) || !file.state || typeof file.savedAt !== "number") return null;
+    if (typeof file?.version !== "number" || !file.state || typeof file.savedAt !== "number") return null;
+    if (file.version < 10) return { refused: "This save is from a world made by an older map and cannot be loaded; a new world begins." };
+    if (file.version !== 10) return null;
     migrate(file.state, file.version);
     return file as unknown as SaveFile;
   } catch {
@@ -50,7 +61,7 @@ export function deserialize(text: string): SaveFile | null {
  * run in progress survives a new structure the same way it survives a new
  * region: by not having it yet.
  */
-export function migrate(state: GameState, version = 9): void {
+export function migrate(state: GameState, version = 10): void {
   state.startDoy ??= START_DOY;
   migrateWeather(state);
   state.awayHours ??= AWAY_HOURS_DEFAULT;
@@ -461,9 +472,25 @@ export function saveGame(state: GameState, storage: Storage = localStorage, now 
   storage.setItem(SAVE_KEY, serialize(state, now));
 }
 
-export function loadGame(storage: Storage = localStorage): SaveFile | null {
+/**
+ * The save a text holds, or null where there is none to read: unreadable, or
+ * refused. Callers that must tell the player why it was refused read
+ * `deserialize` itself, which keeps the reason.
+ */
+export function readSave(text: string): SaveFile | null {
+  const file = deserialize(text);
+  return file && "state" in file ? file : null;
+}
+
+/** A refused save loads as nothing; the caller is told why so the new run can say it. */
+export function loadGame(storage: Storage = localStorage, onRefused?: (reason: string) => void): SaveFile | null {
   const text = storage.getItem(SAVE_KEY);
-  return text ? deserialize(text) : null;
+  const file = text ? deserialize(text) : null;
+  if (file && "refused" in file) {
+    onRefused?.(file.refused);
+    return null;
+  }
+  return file;
 }
 
 export function clearSave(storage: Storage = localStorage): void {

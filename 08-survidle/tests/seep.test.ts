@@ -9,7 +9,7 @@ import { addOrder } from "../src/sim/orders";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { SEEP, SEEP_DRY_DAYS, SEEP_LIFE_DAYS, seepGround, seepNeedsRedig, seepStopped, stepSeeps } from "../src/sim/seep";
 import { check, startTask } from "../src/sim/tasks";
 import { drink, fillVessels, FREEZE_C, sourceLitres, waterSource } from "../src/sim/water";
@@ -117,7 +117,7 @@ describe("a seep", () => {
     expect(state.seeps[cell].litres).toBeGreaterThan(0);
     const raw = JSON.parse(serialize(state));
     delete raw.state.seeps;
-    expect(deserialize(JSON.stringify(raw))!.state.seeps).toEqual({});
+    expect(readSave(JSON.stringify(raw))!.state.seeps).toEqual({});
   });
 });
 

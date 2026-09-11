@@ -3,7 +3,7 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, pile } from "../src/sim/inventory";
 import { advance } from "../src/sim/advance";
 import { newGame } from "../src/sim/newgame";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { clearShopping, shoppingList, shoppingSourceSpots, shoppingTarget, trackShopping } from "../src/sim/shopping";
 import { heathCell, placeAt } from "../src/sim/position";
 import { beginTask } from "../src/sim/tasks";
@@ -20,7 +20,7 @@ describe("the tracked shopping target", () => {
 
     const raw = JSON.parse(serialize(state)) as { state: Record<string, unknown> };
     delete raw.state.shopping;
-    const loaded = deserialize(JSON.stringify(raw));
+    const loaded = readSave(JSON.stringify(raw));
     expect(loaded).not.toBeNull();
     expect((loaded!.state as unknown as { shopping?: unknown }).shopping).toBeNull();
   });

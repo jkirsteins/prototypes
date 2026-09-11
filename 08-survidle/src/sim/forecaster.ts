@@ -5,6 +5,7 @@
  * headless harness, the tests).
  */
 import type { World } from "../world/gen";
+import type { SolvedWorld } from "../world/solve";
 import { forecast, type ForecastRow, type HorizonId } from "./forecast";
 import { current } from "./record";
 import type { GameState } from "./types";
@@ -12,7 +13,10 @@ import type { GameState } from "./types";
 export interface ViewRow extends ForecastRow { stale: boolean }
 export interface ForecastView { id: number; rows: Partial<Record<HorizonId, ViewRow>> }
 
-export interface ForecastRequest { kind: "forecast"; id: number; state: GameState }
+export type ForecastRequest =
+  | { kind: "forecast"; id: number; state: GameState }
+  /** The solved arrays the main thread already has, so the worker never solves the world a second time. */
+  | { kind: "world"; seed: number; solved: SolvedWorld };
 export interface ForecastReply { kind: "row"; id: number; row: ForecastRow }
 
 export function emptyView(): ForecastView {
@@ -53,6 +57,8 @@ export function noteMonthRow(state: GameState, row: ForecastRow): boolean {
 
 export interface Forecaster {
   request(state: GameState): void;
+  /** The world the forecast runs in, sent on as arrays where a worker holds its own copy. */
+  setWorld(world: World): void;
   view(): ForecastView;
   /** Called with each row from the latest request as it lands. */
   onRow?: (row: ForecastRow) => void;
@@ -63,6 +69,8 @@ export interface Forecaster {
 export function createForecaster(world: World, worker?: Worker, runs?: number): Forecaster {
   const view = emptyView();
   let next = 0;
+  // The world the synchronous path forecasts in; a worker keeps its own, built from the arrays setWorld sends.
+  let active = world;
   const f: Forecaster = {
     request(state) {
       const id = ++next;
@@ -71,10 +79,19 @@ export function createForecaster(world: World, worker?: Worker, runs?: number): 
         const msg: ForecastRequest = { kind: "forecast", id, state };
         worker.postMessage(msg);
       } else {
-        for (const row of forecast(state, world, runs)) {
+        for (const row of forecast(state, active, runs)) {
           applyRow(view, id, row);
           f.onRow?.(row);
         }
+      }
+    },
+    // The arrays are copied, not transferred: the main thread reads the same world all run.
+    setWorld(w) {
+      if (worker) {
+        const msg: ForecastRequest = { kind: "world", seed: w.seed, solved: w.solved };
+        worker.postMessage(msg);
+      } else {
+        active = w;
       }
     },
     view: () => view,

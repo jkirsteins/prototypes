@@ -4,7 +4,7 @@ import { activeGoals, goalDeed, goalDef, goalSteps, GOALS, introduceGoals, newGo
 import { ITEM_NAMES, RECIPE_IDS, RECIPES, STRUCTURE_IDS, STRUCTURES, TOOL_IDS, TOOLS } from "../src/sim/items";
 import { newGame, newPerson } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { resetTeaching } from "../src/sim/teach";
 import { TASK_IDS, type GoalId, type Season } from "../src/sim/types";
 
@@ -404,7 +404,7 @@ describe("goals are the world's, not a life's", () => {
     const { state } = newGame(3);
     const raw = JSON.parse(serialize(state)) as { version: number; state: Record<string, unknown> };
     delete raw.state.goals;
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     expect(file.state.goals).toEqual(newGoals(calendar(state.minute, state.startDoy).season));
   });
 
@@ -414,7 +414,7 @@ describe("goals are the world's, not a life's", () => {
     state.goals.queue = ["cook", "snare" as GoalId];
     const raw = JSON.parse(serialize(state)) as { state: { goals: Record<string, unknown> } };
     delete raw.state.goals.introduced;
-    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const loaded = readSave(JSON.stringify(raw))!.state;
     expect(activeGoals(loaded, calendar(loaded.minute, loaded.startDoy))).toEqual(["keptNight"]);
     expect(loaded.goals.done.drink).toBe(true);
     expect(loaded.goals.done.bed).toBe(true);
@@ -432,7 +432,7 @@ describe("goals are the world's, not a life's", () => {
     const raw = JSON.parse(serialize(state)) as { state: { goals: Record<string, unknown> } };
     delete raw.state.goals.chapter3HomeRegion;
 
-    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const loaded = readSave(JSON.stringify(raw))!.state;
 
     expect(loaded.goals.chapter3HomeRegion).toBe(home);
   });
@@ -444,7 +444,7 @@ describe("goals are the world's, not a life's", () => {
     state.regions[origin] = structuredClone(state.regions[target]);
     state.regions[origin].campCell = 123;
     state.task = { id: "explore", arg: `region:${target}`, progress: 4, duration: 10, repeat: false };
-    const loaded = deserialize(serialize(state))!.state;
+    const loaded = readSave(serialize(state))!.state;
     expect(loaded.task?.originRegion).toBe(origin);
   });
 });

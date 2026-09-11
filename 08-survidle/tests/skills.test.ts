@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { newGame } from "../src/sim/newgame";
 import { addItem, hasTool, qty, tool } from "../src/sim/inventory";
 import { cellOf, placeAtSpot } from "../src/sim/position";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import {
   chopSticks, craftSuccess, effectiveNeeds, EXTRAS, fishKg, gap, gapInjury, huntExtras, injuryChance,
   level, levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel, masteryMinutes, newSkills, poolCapacity,
@@ -109,7 +109,7 @@ describe("what trains what", () => {
     for (const id of SKILL_IDS) expect(state.skills[id]).toEqual({ xp: 0, mastery: {}, pool: 0 });
     const raw = JSON.parse(serialize(state, 1));
     delete raw.state.skills;
-    const file = deserialize(JSON.stringify(raw));
+    const file = readSave(JSON.stringify(raw));
     expect(file!.state.skills).toEqual(newSkills());
   });
 });

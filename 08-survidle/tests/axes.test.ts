@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { addItem, axeInHand, axeNear, freshTool, pile, wearTool } from "../src/sim/inventory";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { gap } from "../src/sim/skills";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
@@ -99,7 +99,7 @@ describe("stone axe recipes", () => {
   it("carries an old save's axe mastery over to the celt", () => {
     const { state } = newGame(17);
     state.skills.crafting.mastery["craft:axe"] = 300;
-    const back = deserialize(serialize(state));
+    const back = readSave(serialize(state));
     expect(back!.state.skills.crafting.mastery["craft:axe"]).toBeUndefined();
     expect(back!.state.skills.crafting.mastery["craft:stoneAxe"]).toBe(300);
   });

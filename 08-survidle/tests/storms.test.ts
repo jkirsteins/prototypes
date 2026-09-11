@@ -5,7 +5,7 @@ import { newGame } from "../src/sim/newgame";
 import { feltTemperature, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import type { Protection, Weather } from "../src/sim/types";
 import { ambientTemperature, stepWeather } from "../src/sim/weather";
 import { galeProtection, isLee, profileOf, protectionOf } from "../src/sim/shelter";
@@ -52,13 +52,13 @@ describe("rain and snow storms", () => {
     state.weather.offset = offset;
     const raw = JSON.parse(serialize(state));
     raw.state.weather.storm = { from: 60, until: 420, warned: true };
-    const back = deserialize(JSON.stringify(raw))!.state;
+    const back = readSave(JSON.stringify(raw))!.state;
     expect(back.weather.storm).toEqual({ id: 1, source: "natural", kind, from: 60, until: 420, warned: true });
     expect(back.rng).toBe(state.rng);
     expect(back.goals).toEqual(state.goals);
     expect(back.shopping).toEqual(state.shopping);
     back.weather.offset *= -1;
-    expect(deserialize(serialize(back))!.state.weather.storm?.kind).toBe(kind);
+    expect(readSave(serialize(back))!.state.weather.storm?.kind).toBe(kind);
   });
 
   it("keeps freezing precipitation in snow at the zero-degree boundary", () => {
@@ -70,7 +70,7 @@ describe("rain and snow storms", () => {
       const raw = JSON.parse(serialize(state));
       raw.state.weather.offset = zeroOffset + delta;
       raw.state.weather.storm = { from, until: 420, warned: false };
-      expect(deserialize(JSON.stringify(raw))!.state.weather.storm?.kind).toBe(kind);
+      expect(readSave(JSON.stringify(raw))!.state.weather.storm?.kind).toBe(kind);
     }
   });
 
@@ -296,7 +296,7 @@ describe("ordinary gale generation", () => {
 
   it("replays gale windows across a save with the same weather and random state", () => {
     const { state } = newGame(17);
-    const back = deserialize(serialize(state))!.state;
+    const back = readSave(serialize(state))!.state;
     const a = new Rng(5), b = new Rng(5);
     let gales = 0;
     for (let day = 1; day <= 365; day++) {

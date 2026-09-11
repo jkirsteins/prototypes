@@ -11,7 +11,7 @@ import { newGame } from "../src/sim/newgame";
 import { body } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot, rockCell } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
-import { catchUp, deserialize, serialize } from "../src/sim/save";
+import { catchUp, readSave, serialize } from "../src/sim/save";
 import { beginTask, startTask, stopTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 import { ordersHtml } from "../src/ui/panels";
@@ -54,7 +54,7 @@ describe("the order record", () => {
     }
     delete raw.state.intent.orderId;
     delete raw.state.intent.windDown;
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     const st = file.state.regions[file.state.player.region];
     // A save from before the list existed at all gets both care rows the same
     // way one from before either row existed does.
@@ -759,7 +759,7 @@ describe("the away report", () => {
     const { state, world } = g;
     const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
     advance(state, world, 5);
-    const file = deserialize(serialize(state))!;
+    const file = readSave(serialize(state))!;
     const s2 = file.state;
     expect(s2.intent?.orderId).toBe(a.id);
     catchUp(s2, world, 120);

@@ -11,7 +11,7 @@ import { newGame } from "../src/sim/newgame";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { check, stepTask, stopTask , isShortAtCamp } from "../src/sim/tasks";
 import { setSkillLevel } from "../src/sim/horizon";
 import { SKILL_IDS } from "../src/sim/skills";
@@ -49,7 +49,7 @@ describe("the intent record", () => {
     const raw = JSON.parse(text);
     delete raw.state.intent;
     raw.state.plan = { name: "Haul to camp", steps: [], loop: null, sourceCell: null };
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     expect(file.state.intent).toBeNull();
     expect("plan" in file.state).toBe(false);
   });
@@ -591,7 +591,7 @@ describe("saves", () => {
     const { state, world } = g;
     startIntent(state, world, cal, rng(), req("sticks", { until: { kind: "forever" } }));
     go(g, 5);
-    const file = deserialize(serialize(state))!;
+    const file = readSave(serialize(state))!;
     expect(file.state.intent?.task).toBe("sticks");
     const back = { state: file.state, world };
     go(back, 120);

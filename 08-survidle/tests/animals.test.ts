@@ -5,7 +5,7 @@ import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { isVoiceOnly, SPECIES_DEFS, SPECIES_IDS, type Species } from "../src/sim/species";
 import { fillPopulations, regionState, startingPop } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { generateWorld, regionAt, type World } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { ensureGround, groundAt, ICE_THIN_CM } from "../src/sim/weather";
@@ -58,7 +58,7 @@ describe("animals", () => {
     const id = state.player.region;
     const raw = JSON.parse(serialize(state, 1));
     raw.state.regions[id].pop = { hare: 5, grouse: 7, deer: 3, elk: 1, fish: 9 };
-    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const loaded = readSave(JSON.stringify(raw))!.state;
     const world = generateWorld(loaded.seed);
     fillPopulations(loaded, world);
     const pop = loaded.regions[id].pop as Record<string, number>;

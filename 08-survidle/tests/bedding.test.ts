@@ -7,7 +7,7 @@ import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import { feltTemperature, stepPlayer } from "../src/sim/player";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { levelMinutes } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { campHtml, gearHtml } from "../src/ui/panels";
@@ -166,7 +166,7 @@ describe("bough bed and blanket in play", () => {
       r.structureAge = {};
       r.build = {};
     }
-    const file = deserialize(JSON.stringify(raw));
+    const file = readSave(JSON.stringify(raw));
     expect(file).not.toBeNull();
     const st = regionState(file!.state, world, file!.state.player.region);
     expect(campSite(st)?.structures.boughBed ?? false).toBe(false);

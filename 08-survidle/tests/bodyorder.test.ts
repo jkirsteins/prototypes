@@ -14,7 +14,7 @@ import { regionState } from "../src/sim/regionstate";
 import { siteCamp } from "./siting-helpers";
 import { Rng } from "../src/rng";
 import { hurryKind } from "../src/ui/hurry";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { testAtmosphere, testRain } from "./weather-helpers";
 import { cellAt, regionAt } from "../src/world/gen";
 import { runOrders } from "../src/sim/orders";
@@ -63,7 +63,7 @@ describe("the body row", () => {
     for (const st of Object.values(raw.state.regions) as Record<string, unknown>[]) {
       st.orders = [];
     }
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     const list = ordersHere(file.state, world);
     expect(isCampRow(list[0])).toBe(true);
     expect(isBodyRow(list[1])).toBe(true);
@@ -75,7 +75,7 @@ describe("the body row", () => {
     for (const st of Object.values(raw.state.regions) as { orders: { kind: string }[] }[]) {
       st.orders = st.orders.filter((o: { kind: string }) => o.kind !== "camp");
     }
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     const list = ordersHere(file.state, world);
     expect(list.map((o) => o.kind)).toEqual(["camp", "body"]);
   });

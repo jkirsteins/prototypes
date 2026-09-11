@@ -9,7 +9,7 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder, keepTarget } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { beginTask, check } from "../src/sim/tasks";
 import { siteCamp } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
@@ -105,11 +105,11 @@ describe("tools as items", () => {
     expect(itemLabel("fishingSpear", 2)).toBe("2 fishing spears");
   });
 
-  it("saves are version 9 and a version 3 file still loads", () => {
+  it("saves are version 10 and a version 3 file is refused", () => {
     const { state } = newGame(17);
     const raw = JSON.parse(serialize(state));
-    expect(raw.version).toBe(9);
+    expect(raw.version).toBe(10);
     raw.version = 3;
-    expect(deserialize(JSON.stringify(raw))).not.toBeNull();
+    expect(readSave(JSON.stringify(raw))).toBeNull();
   });
 });

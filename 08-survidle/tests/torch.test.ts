@@ -8,7 +8,7 @@ import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, firelit, stepPlayer } from "../src/sim/player";
 import { placeAtSpot } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { MASTERY_KEYS, masteryKey, skillOf } from "../src/sim/skills";
 import { check, putOutTorch, startTask, stepTask } from "../src/sim/tasks";
 import { activeEquipment, compactEquipmentHtml } from "../src/ui/equipment";
@@ -44,7 +44,7 @@ describe("torch, the item", () => {
     expect(MASTERY_KEYS.crafting).toContain("craft:torch");
     const raw = JSON.parse(serialize(state, 1));
     delete raw.state.player.torch;
-    const file = deserialize(JSON.stringify(raw));
+    const file = readSave(JSON.stringify(raw));
     expect(file!.state.player.torch).toEqual({ lit: false, minutes: 0 });
   });
 });

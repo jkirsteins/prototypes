@@ -3,7 +3,7 @@ import { advance } from "../src/sim/advance";
 import { calendar, fmtDate, minutesUntilDawn, START_DOY } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { setUpReference } from "../src/sim/reference";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { berrySeason } from "../src/sim/tasks";
 
 describe("a start day", () => {
@@ -50,6 +50,6 @@ describe("a start day", () => {
     expect(ref.state.startDoy).toBe(235);
     const raw = JSON.parse(serialize(ref.state));
     delete raw.state.startDoy;
-    expect(deserialize(JSON.stringify(raw))!.state.startDoy).toBe(START_DOY);
+    expect(readSave(JSON.stringify(raw))!.state.startDoy).toBe(START_DOY);
   });
 });

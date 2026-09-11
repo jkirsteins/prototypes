@@ -25,6 +25,11 @@ export default defineConfig({
   },
   base: "/prototypes/08/",
   build: {
+    // main.ts awaits the world before the run starts, at the top level of the
+    // module. Vite's default target predates top-level await; a module worker,
+    // which the solve and the forecast both are, needs the same browsers this
+    // asks for.
+    target: "es2022",
     rollupOptions: {
       // faces.html is the face self-test page, reached from the game by ?faces=1.
       // sky.html is the same for the weather widget's skies.
