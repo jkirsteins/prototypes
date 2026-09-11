@@ -140,3 +140,15 @@ it("keeps keyboard traversal inside the dialog and closes on Escape", () => {
   opportunityCatalogKeyboard(dialog, new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
   expect(dialog.hidden).toBe(true);
 });
+
+it("returns Back to the page that now holds the leaf after a breakpoint change", () => {
+  const { state } = newGame(3);
+  const ui = newUiState();
+  discoverOpportunity(state.opportunities, "hunt:deer", 1, false);
+  opportunityCatalogAction(state, ui, "opportunity-detail", "hunt:deer", 8);
+  const desktop = ui.opportunityCatalog.page;
+  expect(opportunityCatalogHtml(state, { ...ui.opportunityCatalog, detail: null }, 8)).toContain("Hunt roe deer");
+  opportunityCatalogAction(state, ui, "opportunity-back", "", 6);
+  expect(ui.opportunityCatalog.page).not.toBe(desktop);
+  expect(opportunityCatalogHtml(state, ui.opportunityCatalog, 6)).toContain("Hunt roe deer");
+});

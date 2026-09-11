@@ -113,7 +113,15 @@ export function opportunityCatalogAction(state: GameState, ui: UiState, action: 
         catalog.detail = key;
       }
       break;
-    case "opportunity-back": catalog.detail = null; break;
+    case "opportunity-back": {
+      // The page that held the leaf may have moved while the detail was open:
+      // a narrower viewport pages the list differently. Recomputing from the
+      // leaf keeps Back landing on the row it came from.
+      const index = catalog.detail ? catalogRows(state, catalog.category).findIndex((row) => row.key === catalog.detail) : -1;
+      if (index >= 0) catalog.page = Math.floor(index / pageSize);
+      catalog.detail = null;
+      break;
+    }
     case "opportunity-current": setCurrentOpportunity(state.opportunities, key); break;
   }
   catalog.page = catalogPage(state, catalog.category, catalog.page, pageSize).page;

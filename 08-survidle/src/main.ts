@@ -29,9 +29,10 @@ import { campCellOf, cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
+import { recordOpportunityEvent } from "./sim/opportunities";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
-import type { GameState, ItemId, OpportunityKey, TaskId } from "./sim/types";
+import type { GameState, ItemId, OpportunityEvent, OpportunityKey, TaskId } from "./sim/types";
 import { insertWalkAtTop } from "./sim/walkorders";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature, localWeather } from "./sim/weather";
@@ -409,7 +410,10 @@ function onClick(ev: Event) {
   if (!target) return;
   const act = target.dataset.act;
   const previousDetail = ui.opportunityCatalog.detail;
-  if (act?.startsWith("opportunity-") && !ui.opportunityCatalog.open) opportunityOpener = target;
+  // Only a control outside the overlay can be returned to: the overlay keeps
+  // its markup while hidden, so a modal's own OK button stays connected and
+  // would swallow the focus the dismissal is meant to hand back.
+  if (act?.startsWith("opportunity-") && !ui.opportunityCatalog.open && !target.closest("#overlay")) opportunityOpener = target;
   const restoreScroll = anchorScroll(target);
   const cal = calendar(state.minute, state.startDoy);
   const rng = new Rng(state.rng);
@@ -1002,6 +1006,7 @@ declare global {
     startleStep?(): void;
     startleAdvance?(minutes: number): void;
     startleEnd?(): void;
+    opportunityEvent?(event: OpportunityEvent): void;
   } }
 }
 window.survidle = {
@@ -1042,4 +1047,11 @@ if (import.meta.env.DEV) {
     render();
   };
   window.survidle.startleEnd = () => startleRestore?.();
+  // Browser checks need a real perception or deed without waiting for the
+  // world to hand one over. It goes through the same seam the simulation
+  // uses, so discovery, credit and the notice queue behave as they do in play.
+  window.survidle.opportunityEvent = (event) => {
+    recordOpportunityEvent(state, event, world);
+    render();
+  };
 }

@@ -1,7 +1,8 @@
 # Goal UX review shots
 
-Regenerate against `?seed=3` on a running dev server with `npm run goal-ux`.
-The verifier checks 1440x900 desktop and 390x844 mobile layouts, explicit
+History only: goals became opportunities, and the current shots and verifier
+live in `docs/opportunity-ux-shots` behind `npm run opportunity-ux`.
+The verifier that took these shots checked 1440x900 desktop and 390x844 mobile layouts, explicit
 goal-state wording, compact welcome copy, the water note, and the absence of
 old progress chrome.
 
