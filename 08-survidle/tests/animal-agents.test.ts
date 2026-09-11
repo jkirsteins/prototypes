@@ -28,7 +28,7 @@ import { FINE_CHUNK } from "../src/world/cells";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 import type { World } from "../src/world/gen";
 import type { Terrain } from "../src/sim/types";
-import { PATCH_M } from "../src/world/spatial";
+import { PATCH_M, patchId, patchXY } from "../src/world/spatial";
 
 
 afterEach(() => setWildlifeEventSink(null));
@@ -46,6 +46,14 @@ function disturbanceScene() {
   const startCell = regionAt(world, state.player.region).cells.find((cell) => passable(cellAt(world, cell).terrain)
     && neighbours(world, cell).length === 4
     && neighbours(world, cell).every((n) => cellAt(world, n).region === state.player.region && passable(cellAt(world, n).terrain)))!;
+  // A herd flees hundreds of metres, which is many 50 m patches. This seed
+  // puts a region boundary 150 m west of the start, so the scene states the
+  // ground the flight crosses: the same terrain, all of it this region's.
+  const { x, y } = patchXY(startCell);
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -6; dx <= 1; dx++) {
+    const patch = patchId(x + dx, y + dy);
+    setGround(world, patch, cellAt(world, patch).terrain, state.player.region);
+  }
   deer.active!.cell = startCell;
   const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, startCell)!)!;
   deer.active!.position = point;
@@ -587,6 +595,8 @@ describe("large animal agents", () => {
     const wolf = state.wildlife.subjects.find((s) => s.species === "wolf")!;
     const center = light === "campfire" ? campCell(st) : cellOf(state, world);
     const distance = (cell: number) => Math.abs((cell % world.w) - (center % world.w)) + Math.abs(Math.floor(cell / world.w) - Math.floor(center / world.w));
+    // Steering is a distance in metres now, not a count of grid steps.
+    const metresFrom = (cell: number) => Math.hypot(patchXY(cell).x - patchXY(center).x, patchXY(cell).y - patchXY(center).y) * PATCH_M;
     const source = regionAt(world, state.player.region).cells.find((cell) => passable(cellAt(world, cell).terrain) && distance(cell) === 3 && neighbours(world, cell).some((n) => passable(cellAt(world, n).terrain) && cellAt(world, n).region === state.player.region && distance(n) === 2));
     expect(source).toBeDefined();
     wolf.active!.cell = source!;
@@ -598,7 +608,7 @@ describe("large animal agents", () => {
     state.minute = 10;
     stepWildlife(state, world, calendar(state.minute, state.startDoy), new Rng(2), 10, "detailed");
     expect(state.wildlife.subjects).toContain(wolf);
-    expect(distance(wolf.active!.travel?.cell ?? wolf.active!.cell)).toBeGreaterThanOrEqual(3);
+    expect(metresFrom(wolf.active!.travel?.cell ?? wolf.active!.cell)).toBeGreaterThanOrEqual(metresFrom(source!));
 
     st.fire.lit = false;
     state.player.torch.lit = false;
@@ -608,7 +618,7 @@ describe("large animal agents", () => {
     state.minute = 20;
     stepWildlife(state, world, calendar(state.minute, state.startDoy), new Rng(2), 10, "detailed");
     const destination = wolf.active!.travel as { cell: number } | null;
-    expect(distance(destination?.cell ?? wolf.active!.cell)).toBe(2);
+    expect(metresFrom(destination?.cell ?? wolf.active!.cell)).toBeLessThan(metresFrom(source!));
   });
 
   it("resolves wolf pursuit from positions and decrements prey once", () => {

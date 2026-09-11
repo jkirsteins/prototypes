@@ -9,7 +9,7 @@ import { skillLevel, oddsFactor } from "./skills";
 import { huntedLand, SPECIES_DEFS, type Species } from "./species";
 import type { Carcass, CarcassYields, GameState } from "./types";
 import { cellAt, regionAt, type RegionDef, type World } from "../world/gen";
-import { parentKey, parentXY } from "../world/spatial";
+import { parentKey, parentXY, patchXY } from "../world/spatial";
 import { iceAt, localWeather } from "./weather";
 import { noteHuntSpoiledKcal } from "./hunt-audit";
 import { FOODS } from "./items";
@@ -326,8 +326,7 @@ export function huntCandidates(state: GameState, world: World, regions: readonly
   const here = cellOf(state, world);
   const chosen = new Set<number>([here]);
   const nearest = new Map<string, { cell: number; distance: number }>();
-  const hx = here % world.w;
-  const hy = Math.floor(here / world.w);
+  const { x: hx, y: hy } = patchXY(here);
   for (const region of regions) {
     for (const spot of region.spots) chosen.add(spot.cell);
     for (const cell of region.cells) {
