@@ -91,10 +91,10 @@ describe("knownRoute", () => {
 describe("remaining walking time", () => {
   it("counts fine-patch minute steps without moving the route", () => {
     const { world } = fixture();
-    const position = { x: 1.5, y: 1.5 };
+    const position = { xM: 75, yM: 75 };
     const path = [patchId(2, 1), patchId(3, 1)];
     expect(remainingWalkMinutes(world, position, path, 3, "none")).toBe(2);
-    expect(position).toEqual({ x: 1.5, y: 1.5 });
+    expect(position).toEqual({ xM: 75, yM: 75 });
     expect(path).toEqual([patchId(2, 1), patchId(3, 1)]);
   });
 
@@ -102,7 +102,7 @@ describe("remaining walking time", () => {
     const { world, terrain } = fixture();
     terrain.fill(TERRAIN_INDEX.water);
     // 50 m at 3 km/h * 0.8 takes 1.25 minutes, completing in the second minute.
-    expect(remainingWalkMinutes(world, { x: 1.5, y: 1.5 }, [patchId(2, 1)], 3, ice)).toBe(2);
-    expect(remainingWalkMinutes(world, { x: 1.5, y: 1.5 }, [patchId(2, 1)], 3, "none")).toBe(Infinity);
+    expect(remainingWalkMinutes(world, { xM: 75, yM: 75 }, [patchId(2, 1)], 3, ice)).toBe(2);
+    expect(remainingWalkMinutes(world, { xM: 75, yM: 75 }, [patchId(2, 1)], 3, "none")).toBe(Infinity);
   });
 });

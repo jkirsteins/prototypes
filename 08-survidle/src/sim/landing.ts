@@ -81,7 +81,7 @@ export function landingCell(world: World, oldCamp: number, seed: number, index: 
 export function layDownPack(state: GameState, world: World): void {
   const p = state.player;
   // A drowning lays the pack on the water cell itself; the lake keeps it, which is intended.
-  const cell = Math.floor(p.y) * world.w + Math.floor(p.x);
+  const cell = cellOf(state, world);
   const to = pile(state, cell);
   for (const k of Object.keys(p.pack.items) as ItemId[]) {
     const n = p.pack.items[k] ?? 0;

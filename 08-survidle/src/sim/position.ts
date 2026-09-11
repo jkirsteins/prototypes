@@ -1,12 +1,12 @@
 import { localWeather } from "./weather";
 /**
- * Where the player is, in cells, and what that means: which region, which
+ * Where the player is, in metres, and what that means: which region, which
  * named spot if any, what ground is under foot, and how far camp is. The
  * UI never shows coordinates; it shows what these functions say.
  */
-import { PATCH_KM } from "../world/spatial";
+import { type MetricPoint, PATCH_M, type PatchId, patchCenter, patchId } from "../world/spatial";
 import { type Cell, cellAt, neighbours, regionAt, regionOf, waterKindOf, type World } from "../world/gen";
-import { routeKm } from "../world/route";
+import { remainingKm, routeKm } from "../world/route";
 import { calendar } from "./calendar";
 import { enterRegion, VISITED } from "./regionstate";
 import { survivorRoute } from "./routing";
@@ -15,15 +15,21 @@ import { walkableIce } from "./weather";
 import type { GameState, IceMode, SpotId, Terrain } from "./types";
 import { cellSurface, surfaceLocation } from "./cellstatus";
 
-export function cellIndex(world: World, x: number, y: number): number {
-  const cx = Math.min(world.w - 1, Math.max(0, Math.floor(x)));
-  const cy = Math.min(world.h - 1, Math.max(0, Math.floor(y)));
-  return cy * world.w + cx;
+/** The fine patch containing a metre point, clamped to the world's edge. */
+export function patchAt(world: World, point: MetricPoint): PatchId {
+  const x = Math.min(world.w - 1, Math.max(0, Math.floor(point.xM / PATCH_M)));
+  const y = Math.min(world.h - 1, Math.max(0, Math.floor(point.yM / PATCH_M)));
+  return patchId(x, y);
 }
 
-/** The cell under the player's feet. */
-export function cellOf(state: GameState, world: World): number {
-  return cellIndex(world, state.player.x, state.player.y);
+/** The fine patch under the player's feet. */
+export function patchOf(state: GameState, world: World): PatchId {
+  return patchAt(world, state.player);
+}
+
+/** The name most of the sim still calls patchOf by; the same fine patch, no conversion. */
+export function cellOf(state: GameState, world: World): PatchId {
+  return patchOf(state, world);
 }
 
 /**
@@ -36,17 +42,30 @@ export function campCellOf(state: GameState, _world: World, region = state.playe
   return state.regions[region]?.campCell ?? null;
 }
 
-export function cellCenter(world: World, idx: number): { x: number; y: number } {
-  return { x: (idx % world.w) + 0.5, y: Math.floor(idx / world.w) + 0.5 };
+/** Puts the player in the middle of a fine patch and updates the region. */
+export function placeAtPatch(state: GameState, world: World, patch: PatchId): void {
+  const c = patchCenter(patch);
+  state.player.xM = c.xM;
+  state.player.yM = c.yM;
+  setRegion(state, world, regionOf(world, patch % world.w, Math.floor(patch / world.w)));
+  seeFrom(state, world, calendar(state.minute, state.startDoy), patch);
 }
 
-/** Puts the player in the middle of a cell and updates the region. */
-export function placeAt(state: GameState, world: World, idx: number): void {
-  const c = cellCenter(world, idx);
-  state.player.x = c.x;
-  state.player.y = c.y;
-  setRegion(state, world, regionOf(world, idx % world.w, Math.floor(idx / world.w)));
-  seeFrom(state, world, calendar(state.minute, state.startDoy), idx);
+/** The name most of the sim still calls placeAtPatch by. */
+export function placeAt(state: GameState, world: World, patch: PatchId): void {
+  placeAtPatch(state, world, patch);
+}
+
+/**
+ * Puts the player at an exact metre point, wherever inside a patch that
+ * falls, and updates the region from the patch that then holds them.
+ */
+export function placeAtMetric(state: GameState, world: World, point: MetricPoint): void {
+  const patch = patchAt(world, point);
+  state.player.xM = point.xM;
+  state.player.yM = point.yM;
+  setRegion(state, world, regionOf(world, patch % world.w, Math.floor(patch / world.w)));
+  seeFrom(state, world, calendar(state.minute, state.startDoy), patch);
 }
 
 /** Records a change of region, discovering it on first entry. */
@@ -134,16 +153,16 @@ export function kmBetween(state: GameState, world: World, a: number, b: number, 
 }
 
 /** Straight-line km, for descriptions where a route is not needed. */
-export function straightKm(world: World, a: number, b: number): number {
-  const pa = cellCenter(world, a);
-  const pb = cellCenter(world, b);
-  return Math.hypot(pa.x - pb.x, pa.y - pb.y) * PATCH_KM;
+export function straightKm(_world: World, a: number, b: number): number {
+  const pa = patchCenter(a);
+  const pb = patchCenter(b);
+  return Math.hypot(pa.xM - pb.xM, pa.yM - pb.yM) / 1000;
 }
 
 /** "at camp", "in the spruce, 0.4 km from camp", "on the way to Stensund, 2.1 km to go". */
 export function describeWhere(state: GameState, world: World): string {
   if (state.route?.path.length) {
-    return `on the way to ${state.route.label}, ${routeKm(state.route.path, cellOf(state, world)).toFixed(1)} km to go`;
+    return `on the way to ${state.route.label}, ${remainingKm(state.route.path, state.player).toFixed(1)} km to go`;
   }
   const spot = spotHere(state, world);
   if (spot === "camp") return "at camp";

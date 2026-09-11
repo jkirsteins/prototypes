@@ -66,7 +66,7 @@ describe("the landing", () => {
     siteFor(st, st.campCell!).structures.leanTo = true;
     addItem(pile(state, st.campCell!), "firewood", 10);
     advance(state, world, 20 * 1440);
-    const deathCell = Math.floor(state.player.y) * world.w + Math.floor(state.player.x);
+    const deathCell = cellOf(state, world);
     die(state, "froze", regionAt(world, state.player.region).name);
     const packMeat = qty(state.player.pack, "driedMeat");
     state.advanceCarry = 0.5;

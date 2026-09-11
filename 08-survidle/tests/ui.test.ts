@@ -14,6 +14,7 @@ import { addOrder, moveOrder } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { fatLandmarks } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
+import { PATCH_M, patchXY } from "../src/world/spatial";
 import { current } from "../src/sim/record";
 import { discovery, regionState, SEEN, siteFor } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
@@ -246,14 +247,13 @@ describe("panels", () => {
     ui.zoom = 0;
     const detail = LEVELS[ui.zoom].detail;
     const cell = cellOf(state, world);
-    const x = Math.floor(state.player.x);
-    const y = Math.floor(state.player.y);
-    state.player.x = x + 0.51;
-    state.player.y = y + 0.51;
+    const { x, y } = patchXY(cell);
+    state.player.xM = (x + 0.51) * PATCH_M;
+    state.player.yM = (y + 0.51) * PATCH_M;
     expect(playerVisualSlot(state, detail)).toBe(3 * detail + 3);
     const centred = mapKey(state, world, ui, calendar(0));
 
-    state.player.x = x + 0.99;
+    state.player.xM = (x + 0.99) * PATCH_M;
     expect(cellOf(state, world)).toBe(cell);
     expect(playerVisualSlot(state, detail)).toBe(3 * detail + 5);
     expect(mapKey(state, world, ui, calendar(0))).not.toBe(centred);

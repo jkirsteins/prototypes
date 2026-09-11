@@ -1,13 +1,13 @@
 import { localWeather } from "./weather";
 import { Rng } from "../rng";
 import { fmtDuration, shareWord } from "../units";
-import { PATCH_KM } from "../world/spatial";
+import { type PatchId, patchCenter, patchXY } from "../world/spatial";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, neighbours, regionAt, spotOf, type World } from "../world/gen";
 import { ICE_SPEED, passable, routeKm, TERRAIN_SPEED } from "../world/route";
 import { itemLabel, loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
-import { dayNumber, type Calendar } from "./calendar";
+import { calendar, dayNumber, type Calendar } from "./calendar";
 import { cellPossibilities, leaveCamp, needsMending, rackCapacity } from "./camp";
 import { cue } from "./cues";
 import { exploreRoute, exploreRouteCandidates, frontierRoute, routeConditions, survivorRoute, survivorRouteMinutes } from "./routing";
@@ -34,7 +34,7 @@ import {
 } from "./skills";
 import { sleepMinutes } from "./sleep";
 import {
-  atCamp, campCellOf, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
+  atCamp, campCellOf, cellOf, forestCell, heathCell, hereTerrain, patchAt,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
 import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
@@ -271,10 +271,10 @@ export function whereIs(state: GameState, world: World, cell: number): string {
   if (campCellOf(state, world, region) !== null && cell === campCellOf(state, world, region)) return `${SPOT_WORDS.camp}${inRegion}`;
   const spot = r.spots.find((s) => s.id !== "camp" && s.cell === cell);
   if (spot) return `${SPOT_WORDS[spot.id]}${inRegion}`;
-  const here = cellCenter(world, cellOf(state, world));
-  const there = cellCenter(world, cell);
-  const dx = there.x - here.x;
-  const dy = there.y - here.y;
+  const here = patchCenter(cellOf(state, world));
+  const there = patchCenter(cell);
+  const dx = there.xM - here.xM;
+  const dy = there.yM - here.yM;
   const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "east" : "west") : dy > 0 ? "south" : "north";
   return `a spot ${straightKm(world, cellOf(state, world), cell).toFixed(1)} km ${dir}${inRegion}`;
 }
@@ -1345,6 +1345,15 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   return true;
 }
 
+/**
+ * Starts a walk to one exact fine patch, the way a map click does, through
+ * the same beginTask every other walk uses. False when the walk is refused -
+ * no route the survivor knows, a pack too heavy, already standing there.
+ */
+export function beginWalkToPatch(state: GameState, world: World, to: PatchId): boolean {
+  return beginTask(state, world, calendar(state.minute, state.startDoy), "walk", `cell:${to}`);
+}
+
 /** Fills the pack to the hard limit from the pile here, heaviest things first. */
 export function loadPack(state: GameState, world: World): Partial<Record<ItemId, number>> {
   const from = herePile(state, world);
@@ -1663,13 +1672,13 @@ function walkAlong(state: GameState, world: World, cal: Calendar, rng: Rng, dt: 
       log(state, "The way ahead is no longer passable.", "bad");
       return false;
     }
-    const next = cellCenter(world, cell);
-    const dx = next.x - p.x;
-    const dy = next.y - p.y;
-    const distKm = Math.hypot(dx, dy) * PATCH_KM;
+    const next = patchCenter(cell);
+    const dx = next.xM - p.xM;
+    const dy = next.yM - p.yM;
+    const distKm = Math.hypot(dx, dy) / 1000;
     if (km >= distKm) {
-      p.x = next.x;
-      p.y = next.y;
+      p.xM = next.xM;
+      p.yM = next.yM;
       setRegion(state, world, cellAt(world, cell).region);
       seeFrom(state, world, cal, cell);
       route.walked.push(route.path.shift()!);
@@ -1687,9 +1696,10 @@ function walkAlong(state: GameState, world: World, cal: Calendar, rng: Rng, dt: 
       }
     } else {
       const f = km / distKm;
-      p.x += dx * f;
-      p.y += dy * f;
-      setRegion(state, world, cellAt(world, cellIndex(world, p.x, p.y)).region);
+      p.xM += dx * f;
+      p.yM += dy * f;
+      // The patch under foot changes on its boundary, not at the next centre.
+      setRegion(state, world, cellAt(world, patchAt(world, p)).region);
       state.stats.km += km;
       km = 0;
     }
@@ -2052,6 +2062,12 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
   }
 }
 
+/** A patch's centre in lattice units, the units a region's own centroid is in. */
+function latticeCentre(patch: PatchId): { x: number; y: number } {
+  const { x, y } = patchXY(patch);
+  return { x: x + 0.5, y: y + 0.5 };
+}
+
 /**
  * Every unmapped, named region, nearest bearing first: the true centre
  * (RegionDef's own cx, cy - the centroid a campCell only stands near) lies
@@ -2060,8 +2076,8 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
  * keep the lower id, so the order never wavers between two scored the same.
  */
 function homeRegionsByBearing(state: GameState, world: World, from: number, home: number): number[] {
-  const here = cellCenter(world, from);
-  const there = cellCenter(world, home);
+  const here = latticeCentre(from);
+  const there = latticeCentre(home);
   const toHome = Math.atan2(there.y - here.y, there.x - here.x);
   const scored: { id: number; diff: number }[] = [];
   for (const key of Object.keys(state.discovered)) {

@@ -21,6 +21,7 @@ import { atmosphereAt, conditionsAt, conditionsWithGround, DEEP_SNOW_CM, groundA
 import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
 import { WORLD_H, WORLD_W } from "../world/terrain";
 import { CELL_KM } from "../units";
+import { PATCH_M } from "../world/spatial";
 import { activeWildlifeStartles, esc, type UiState } from "./render";
 import { elevationAt, offshoreAt, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
@@ -283,8 +284,8 @@ function visualSlotStyle(slot: number, detail: number): string {
 
 /** The survivor's continuous simulation position projected into the visual field. */
 export function playerVisualSlot(state: GameState, detail: number): number {
-  const x = Math.min(detail - 1, Math.max(0, Math.floor((state.player.x - Math.floor(state.player.x)) * detail)));
-  const y = Math.min(detail - 1, Math.max(0, Math.floor((state.player.y - Math.floor(state.player.y)) * detail)));
+  const x = Math.min(detail - 1, Math.max(0, Math.floor(((state.player.xM % PATCH_M) / PATCH_M) * detail)));
+  const y = Math.min(detail - 1, Math.max(0, Math.floor(((state.player.yM % PATCH_M) / PATCH_M) * detail)));
   return y * detail + x;
 }
 
@@ -296,8 +297,8 @@ function glyphHtml(glyph: string): string {
 export function viewOrigin(state: GameState, world: World, zoom: number): { x0: number; y0: number } {
   const l = levelAt(zoom);
   const z = l.cells;
-  const px = Math.floor(state.player.x);
-  const py = Math.floor(state.player.y);
+  const px = Math.floor(state.player.xM / PATCH_M);
+  const py = Math.floor(state.player.yM / PATCH_M);
   const spanX = l.w * z;
   const spanY = l.h * z;
   let x0 = px - Math.floor(spanX / 2);
@@ -982,8 +983,8 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     for (const animal of visibleWildlife(state, world, cal)) {
       const point = metricPointForWildlife(state, world, animal);
       if (!point) continue;
-      const x = (point.xM / CELL_M - x0) * l.px;
-      const y = (point.yM / CELL_M - y0) * l.line;
+      const x = (point.xM / PATCH_M - x0) * l.px;
+      const y = (point.yM / PATCH_M - y0) * l.line;
       if (x < 0 || y < 0 || x > l.w * l.px || y > l.h * l.line) continue;
       animalAnchors.set(animal.id, { x, y });
       const recognized = state.wildlife.recognized[animal.id];
@@ -998,8 +999,8 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const insetX = Math.min(24, (viewport.right - viewport.left) / 2);
   const insetY = Math.min(24, (viewport.bottom - viewport.top) / 2);
   const startleMarkup = startles.map(({ event, startedAtMs, key }) => {
-    const gx = (event.source.xM / CELL_M - x0) / z;
-    const gy = (event.source.yM / CELL_M - y0) / z;
+    const gx = (event.source.xM / PATCH_M - x0) / z;
+    const gy = (event.source.yM / PATCH_M - y0) / z;
     // Seen reactions follow the subject's rendered glyph, which may already
     // have escaped its original cell. Hearing never consults hidden wildlife.
     const animal = event.perception.kind === "seen" ? animalAnchors.get(event.subjectId) : undefined;
@@ -1013,7 +1014,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       let hash = 0;
       for (const char of event.id) hash = (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0;
       const angle = (hash % 360) * Math.PI / 180;
-      const radius = Math.min(30, Math.max(0, event.uncertaintyM)) / (CELL_M * z);
+      const radius = Math.min(30, Math.max(0, event.uncertaintyM)) / (PATCH_M * z);
       jitterX = Math.cos(angle) * radius * l.px;
       jitterY = Math.sin(angle) * radius * l.line;
     }

@@ -27,9 +27,8 @@ import { FINE_CHUNK } from "../src/world/cells";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 import type { World } from "../src/world/gen";
 import type { Terrain } from "../src/sim/types";
-import { CELL_KM } from "../src/units";
+import { PATCH_M } from "../src/world/spatial";
 
-const CELL_M = CELL_KM * 1000;
 
 afterEach(() => setWildlifeEventSink(null));
 
@@ -50,9 +49,9 @@ function disturbanceScene() {
   const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, startCell)!)!;
   deer.active!.position = point;
   deer.active!.travel = null;
-  // The fixture puts the survivor one metre from this herd's stable coarse estimate.
-  state.player.x = (point.xM + 1) / CELL_M;
-  state.player.y = point.yM / CELL_M;
+  // The fixture puts the survivor one metre from this herd's stable estimated point.
+  state.player.xM = point.xM + 1;
+  state.player.yM = point.yM;
   state.minute = 1;
   state.wildlife.lastSpatialTick = 0;
   state.weather.precip = "none";
@@ -75,8 +74,8 @@ function hiddenDisturbanceScene() {
   const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, startCell)!)!;
   // This herd is near its cell's south edge. From the next cell at midnight
   // its departure is close enough to hear but its ground is out of sight.
-  state.player.x = point.xM / CELL_M;
-  state.player.y = Math.floor(point.yM / CELL_M) + 1.01;
+  state.player.xM = point.xM;
+  state.player.yM = point.yM + PATCH_M;
   setGround(world, cellOf(state, world), "spruce");
   state.minute = 960;
   const cal = calendar(state.minute, state.startDoy);
@@ -145,8 +144,8 @@ describe("immediate wildlife disturbance", () => {
     evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
     const escaped = deer.active!.cell;
     const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, escaped)!)!;
-    state.player.x = point.xM / CELL_M;
-    state.player.y = point.yM / CELL_M;
+    state.player.xM = point.xM;
+    state.player.yM = point.yM;
     state.minute = 2;
     evaluateWildlifeDisturbance(state, world, calendar(2), true, seesStartle);
     expect(deer.active!.lastDetectionMinute).toBe(2);
@@ -226,9 +225,9 @@ describe("immediate wildlife disturbance", () => {
     const target = neighbours(world, startCell)[0];
     state.task = { id: "walk", arg: `cell:${target}`, progress: 0, duration: 20, repeat: false };
     state.route = { target, path: [target], walked: [startCell], label: "nearby", ice: "none", lastLand: startCell };
-    const before = { x: state.player.x, y: state.player.y };
+    const before = { xM: state.player.xM, yM: state.player.yM };
     advance(state, world, 1, { wildlife: "detailed", live: true });
-    expect({ x: state.player.x, y: state.player.y }).not.toEqual(before);
+    expect({ xM: state.player.xM, yM: state.player.yM }).not.toEqual(before);
     expect(state.wildlife.lastSpatialTick).toBe(0);
     expect(deer.active!.intent).toBe("flee");
     expect(deer.active!.cell).toBe(startCell);
@@ -309,16 +308,16 @@ describe("immediate wildlife disturbance", () => {
     const { state, world, deer, cal } = disturbanceScene();
     evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
     const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
-    state.player.x = (point.xM + 500) / CELL_M;
-    state.player.y = point.yM / CELL_M;
+    state.player.xM = point.xM + 500;
+    state.player.yM = point.yM;
     state.minute = 30;
     evaluateWildlifeDisturbance(state, world, calendar(30), true, noDetection);
     expect(deer.active!.intent).toBe("flee");
-    state.player.x = point.xM / CELL_M;
+    state.player.xM = point.xM;
     state.minute = 31;
     evaluateWildlifeDisturbance(state, world, calendar(31), true, noDetection);
     expect(deer.active!.intent).toBe("flee");
-    state.player.x = (point.xM + 500) / CELL_M;
+    state.player.xM = point.xM + 500;
     evaluateWildlifeDisturbance(state, world, calendar(31), true, noDetection);
     expect(deer.active).toMatchObject({ alarm: 0, intent: "wander", escapeStartedMinute: null, escapeRemainingM: 0 });
   });
@@ -364,8 +363,8 @@ describe("immediate wildlife disturbance", () => {
     const x = startCell % world.w;
     const y = Math.floor(startCell / world.w);
     const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, startCell)!)!;
-    state.player.x = x + (point.xM / CELL_M - x < 0.5 ? 0.999 : 0.001);
-    state.player.y = y + (point.yM / CELL_M - y < 0.5 ? 0.999 : 0.001);
+    state.player.xM = (x + (point.xM / PATCH_M - x < 0.5 ? 0.999 : 0.001)) * PATCH_M;
+    state.player.yM = (y + (point.yM / PATCH_M - y < 0.5 ? 0.999 : 0.001)) * PATCH_M;
     deer.active!.rest = 100;
     state.minute = 10;
     stepWildlife(state, world, calendar(10), new Rng(2), 1, "detailed");
@@ -392,11 +391,11 @@ describe("immediate wildlife disturbance", () => {
     evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
     const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
     state.minute = 31;
-    state.player.x = (point.xM + 500) / CELL_M;
-    state.player.y = point.yM / CELL_M;
+    state.player.xM = point.xM + 500;
+    state.player.yM = point.yM;
     evaluateWildlifeDisturbance(state, world, calendar(31), true, noDetection);
     state.minute = 32;
-    state.player.x = point.xM / CELL_M;
+    state.player.xM = point.xM;
     evaluateWildlifeDisturbance(state, world, calendar(32), true, seesStartle);
     expect(deer.active!.escapeEpisode).toBe(2);
     expect(events).toHaveLength(2);

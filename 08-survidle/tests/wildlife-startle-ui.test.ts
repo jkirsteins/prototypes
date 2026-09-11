@@ -11,9 +11,8 @@ import { enqueueWildlifeStartle, newUiState, resetPanels, setPanel } from "../sr
 import { cellAt, neighbours } from "../src/world/gen";
 import { passable } from "../src/world/route";
 import { css, rule } from "./css";
-import { CELL_KM } from "../src/units";
+import { PATCH_M } from "../src/world/spatial";
 
-const CELL_M = CELL_KM * 1000;
 
 function scene() {
   const { state, world } = newGame(79);
@@ -22,7 +21,7 @@ function scene() {
   const cal = calendar(state.minute, state.startDoy);
   const event: WildlifeStartleEvent = {
     id: "hidden-subject-987654321:episode-1", subjectId: 987654321,
-    source: { xM: (Math.floor(state.player.x) + 5.5) * CELL_M, yM: (Math.floor(state.player.y) + 0.5) * CELL_M },
+    source: { xM: (Math.floor(state.player.xM / PATCH_M) + 5.5) * PATCH_M, yM: (Math.floor(state.player.yM / PATCH_M) + 0.5) * PATCH_M },
     bearingRad: 0, distanceM: 1500, uncertaintyM: 40,
     perception: { kind: "heard", identification: "unknown", uncertaintyM: 40 },
     terrain: "spruce", body: "light", group: "group", logText: "Something crashes away.",
@@ -44,7 +43,7 @@ describe("transient wildlife map cues", () => {
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
     const cue = document.querySelector(".wildlife-startle")!;
     expect(cue?.className).toBe("wildlife-startle heard");
-    const sourceCell = Math.floor(event.source.yM / CELL_M) * world.w + Math.floor(event.source.xM / CELL_M);
+    const sourceCell = Math.floor(event.source.yM / PATCH_M) * world.w + Math.floor(event.source.xM / PATCH_M);
     expect(document.querySelector(`[data-map-cell="${sourceCell}"]`)?.classList.contains("fog")).toBe(true);
     expect(cue?.parentElement?.classList.contains("grid")).toBe(true);
     expect(cue?.textContent).toBe("!");
@@ -73,7 +72,7 @@ describe("transient wildlife map cues", () => {
   it.each([0, 1, DEFAULT_ZOOM])("preserves the player glyph and original animation start from zoom %i", (zoom) => {
     const { state, world, ui, cal, event } = scene();
     ui.zoom = zoom;
-    event.source = { xM: state.player.x * CELL_M, yM: state.player.y * CELL_M };
+    event.source = { xM: state.player.xM, yM: state.player.yM };
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
     const first = document.querySelector(".wildlife-startle")!;
@@ -103,7 +102,7 @@ describe("transient wildlife map cues", () => {
     const subject = state.wildlife.subjects.find((s) => s.active)!;
     subject.active!.cell = neighbours(world, cellOf(state, world)).find((c) => passable(cellAt(world, c).terrain) && cellAt(world, c).region === state.player.region)!;
     const cell = cellAt(world, subject.active!.cell);
-    event.source = { xM: (cell.x + 0.5) * CELL_M, yM: (cell.y + 0.5) * CELL_M };
+    event.source = { xM: (cell.x + 0.5) * PATCH_M, yM: (cell.y + 0.5) * PATCH_M };
     event.subjectId = subject.id;
     event.perception = { kind: "seen", identification: "species" };
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1000));
@@ -130,7 +129,7 @@ describe("transient wildlife map cues", () => {
     const { state, world, ui, cal, event } = scene();
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const level = levelAt(ui.zoom);
-    event.source = { xM: (x0 + level.w + 10) * CELL_M, yM: (y0 + 4.5) * CELL_M };
+    event.source = { xM: (x0 + level.w + 10) * PATCH_M, yM: (y0 + 4.5) * PATCH_M };
     event.uncertaintyM = 0;
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
@@ -150,7 +149,7 @@ describe("transient wildlife map cues", () => {
       { left: 266, top: 232, right: 566, bottom: 392 },
     );
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
-    event.source = { xM: (x0 + 68.5) * CELL_M, yM: (y0 + 20.5) * CELL_M };
+    event.source = { xM: (x0 + 68.5) * PATCH_M, yM: (y0 + 20.5) * PATCH_M };
     event.uncertaintyM = 0;
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
@@ -178,7 +177,7 @@ describe("transient wildlife map cues", () => {
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     // A source near the top of a detailed cell is visible, but its raised cue
     // needs clamping to keep the pop and rise inside the viewport.
-    event.source = { xM: (x0 + 6.5) * CELL_M, yM: (y0 + row + 0.2) * CELL_M };
+    event.source = { xM: (x0 + 6.5) * PATCH_M, yM: (y0 + row + 0.2) * PATCH_M };
     event.bearingRad = -Math.PI / 2;
     event.uncertaintyM = 0;
     enqueueWildlifeStartle(ui, event, 1000);

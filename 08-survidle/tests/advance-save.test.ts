@@ -163,8 +163,8 @@ describe("save", () => {
     const deer = loaded.wildlife.subjects[0];
     const point = resolveSpatialEstimate(loaded.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
     // Remain 500 m away, beyond both detection and settlement ranges.
-    loaded.player.x = (point.xM + 500) / 300;
-    loaded.player.y = point.yM / 300;
+    loaded.player.xM = point.xM + 500;
+    loaded.player.yM = point.yM;
     loaded.minute = 29;
     evaluateWildlifeDisturbance(loaded, world, calendar(29, loaded.startDoy), true);
     expect(deer.active!.intent).toBe("flee");

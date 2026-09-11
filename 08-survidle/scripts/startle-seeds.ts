@@ -1,6 +1,6 @@
 /** Bounded, seeded encounter fixtures on unmodified generated terrain. */
 import { Rng, derive } from "../src/rng";
-import { CELL_KM } from "../src/units";
+import { PATCH_M } from "../src/world/spatial";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
@@ -49,8 +49,8 @@ function configureScene(scene: StartleScene, scenario: StartleScenario): void {
   state.weather.precip = "none";
   state.weather.clear = true;
   state.weather.snowCm = scenario.kind === "snow" ? 10 : 0;
-  state.player.x = scenario.x;
-  state.player.y = scenario.y;
+  state.player.xM = scenario.x * PATCH_M;
+  state.player.yM = scenario.y * PATCH_M;
   state.task = null;
   state.route = null;
   state.intent = null;
@@ -71,8 +71,8 @@ export function prepareStartleScenario(scenario: StartleScenario): StartleScene 
 /** One explicit movement sample, through the production encounter and live event path. */
 export function stepStartleScenario(scene: StartleScene, scenario: StartleScenario, live = false): void {
   const { state, world } = scene;
-  state.player.x = scenario.approachX;
-  state.player.y = scenario.approachY;
+  state.player.xM = scenario.approachX * PATCH_M;
+  state.player.yM = scenario.approachY * PATCH_M;
   const cell = cellOf(state, world);
   state.route = { target: cell, path: [cell], walked: [scenario.survivorCell], label: "Approach", ice: "none", lastLand: cell };
   evaluateWildlifeDisturbance(state, world, calendar(state.minute, state.startDoy), live);
@@ -127,8 +127,8 @@ export function findStartleScenario(kind: StartleScenarioKind, firstSeed = 1, la
     }).slice(0, 16);
     for (const startCell of cells) {
       const point = resolveSpatialEstimate(seed, subject.id, metricAreaForCell(world, startCell)!)!;
-      const sx = point.xM / (CELL_KM * 1000);
-      const sy = point.yM / (CELL_KM * 1000);
+      const sx = point.xM / PATCH_M;
+      const sy = point.yM / PATCH_M;
       for (const offset of [0.15, 0.35, 0.6, 0.9]) {
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const approachX = sx + dx * offset;

@@ -557,10 +557,10 @@ export interface RegionState {
 export interface Player {
   /** Day index of the dawn preceding the last sky reading; null until read. */
   skyReadDay: number | null;
-  /** Position in cell units; the cell under foot is floor(x), floor(y). */
-  x: number;
-  y: number;
-  /** The region of the cell under foot, kept current by every move. */
+  /** Position in metres from the world's north-west corner; the patch under foot is whichever contains that point. */
+  xM: number;
+  yM: number;
+  /** The region of the patch under foot, kept current by every move. */
   region: number;
   health: number;
   /** The stomach's fullness, 0..KCAL_FULL: the signal that drives hunger, satiety and the Food bar. Eating fills it, time empties it; it holds no energy of its own. */

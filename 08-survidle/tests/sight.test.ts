@@ -8,6 +8,7 @@ import { newGame } from "../src/sim/newgame";
 import { campfireVisible, opticalCandidateRangeCells, opticalSampler, seeFrom, sightRangeCells, visibleCells } from "../src/sim/sight";
 import { setSkillLevel } from "../src/sim/horizon";
 import { placeAt } from "../src/sim/position";
+import { PATCH_M } from "../src/world/spatial";
 import { current } from "../src/sim/record";
 import type { GameState } from "../src/sim/types";
 import { visibleWildlife } from "../src/sim/wildlife-agents";
@@ -74,8 +75,8 @@ function openWorld(): { state: GameState; world: World; vantage: number } {
   world.fineChunks.set(0, { cx: 0, cy: 0, terrain, region,
     samples: terrain.length, parentSummaries: new Map() });
   const vantage = 16 * world.w + 16;
-  state.player.x = 16.5;
-  state.player.y = 16.5;
+  state.player.xM = 16.5 * PATCH_M;
+  state.player.yM = 16.5 * PATCH_M;
   state.player.region = 0;
   state.weather.ground[0] = { updatedHour: 0, snowCm: 0, surfaceWaterMm: 0,
     soilMoisture: 0.3, frost: 0, iceCm: 0, dryHours: 0, temperatureSum: 0, temperatureHours: 0 };

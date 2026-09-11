@@ -11,7 +11,7 @@ import { FINE_CHUNK, newWorld } from "../src/world/cells";
 import * as cells from "../src/world/cells";
 import { regionAt } from "../src/world/gen";
 import * as fineTerrain from "../src/world/fine-terrain";
-import { patchId } from "../src/world/spatial";
+import { PATCH_M, patchId } from "../src/world/spatial";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 import { testAtmosphere } from "./weather-helpers";
 
@@ -35,8 +35,8 @@ function fixture(blocked: boolean) {
   world.regions.set(region.id, region);
   world.fineChunks.set(0, { cx: 0, cy: 0, terrain, region: ownership, samples: terrain.length, parentSummaries: new Map() });
   const state = game.state;
-  state.player.x = 14.5;
-  state.player.y = 14.5;
+  state.player.xM = 14.5 * PATCH_M;
+  state.player.yM = 14.5 * PATCH_M;
   state.mapped = {};
   const fields = fineTerrain.fieldsAtPatch(world.seed, region.campCell);
   vi.spyOn(fineTerrain, "fieldsAtPatch").mockReturnValue({ ...fields, elevationM: 0 });

@@ -3,6 +3,7 @@ import { generateWorld, regionAt, type World } from "../world/gen";
 import { calendar, fmtDate, START_DOY } from "./calendar";
 import { newGoals } from "./goals";
 import { AWAY_HOURS_DEFAULT } from "../units";
+import { patchCenter } from "../world/spatial";
 import { addItem, emptyInventory } from "./inventory";
 import { FOODS, KCAL_FULL } from "./items";
 import { creditYield } from "./ledger";
@@ -28,13 +29,13 @@ export const START_KCAL = KCAL_FULL * (5 / 6);
 /** Dried meat in the arrival pack, in kilos. */
 export const ARRIVAL_DRIED_MEAT_KG = 1;
 
-function freshPlayer(person: Person, world: World, cell: number, region: number): Player {
+function freshPlayer(person: Person, cell: number, region: number): Player {
   const pack = emptyInventory();
   addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
   return {
     skyReadDay: null,
-    x: (cell % world.w) + 0.5,
-    y: Math.floor(cell / world.w) + 0.5,
+    xM: patchCenter(cell).xM,
+    yM: patchCenter(cell).yM,
     region,
     health: 100,
     kcal: START_KCAL,
@@ -74,7 +75,7 @@ function freshPlayer(person: Person, world: World, cell: number, region: number)
 /** Fills the person half of a state: the body, its kit, its skills and its empty log. The world half is untouched. */
 export function newPerson(state: GameState, world: World, cell: number, region: number): void {
   resetWildlifeKnowledge(state);
-  state.player = freshPlayer(personOf(state), world, cell, region);
+  state.player = freshPlayer(personOf(state), cell, region);
   state.task = null;
   state.log = [];
   state.dead = null;
@@ -127,7 +128,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     minute: 0,
     advanceCarry: 0,
     rng: derive(seed, 99),
-    player: freshPlayer(first.person, world, start.campCell, world.start),
+    player: freshPlayer(first.person, start.campCell, world.start),
     regions: {},
     discovered: {},
     mapped: {},

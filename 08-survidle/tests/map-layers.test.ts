@@ -179,7 +179,7 @@ describe("the map's compositing layers", () => {
     state.weather.snowCm = 10;
     enqueueWildlifeStartle(ui, {
       id: "layer-startle", subjectId: 999,
-      source: { xM: state.player.x * 300, yM: state.player.y * 300 },
+      source: { xM: state.player.xM, yM: state.player.yM },
       bearingRad: 0, distanceM: 45, uncertaintyM: 0,
       perception: { kind: "heard", identification: "unknown", uncertaintyM: 0 },
       terrain: "spruce", body: "light", group: "group", logText: "Something crashes away.",

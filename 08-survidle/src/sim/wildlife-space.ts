@@ -1,10 +1,11 @@
 import { Rng, derive } from "../rng";
-import { CELL_KM } from "../units";
+import { type MetricPoint, PATCH_M } from "../world/spatial";
 import { WORLD_H, WORLD_W } from "../world/gen";
 import type { World } from "../world/gen";
 import type { GameState, WildlifeSubject } from "./types";
 
-export interface MetricPoint { xM: number; yM: number }
+/** The one metric point, defined by the lattice; wildlife shares the survivor's space. */
+export type { MetricPoint };
 
 export type SpatialEstimate =
   | { kind: "exact"; point: MetricPoint }
@@ -37,9 +38,9 @@ function hash(value: string): number {
 }
 
 export function metricPointForPlayer(state: GameState, _world: World): MetricPoint | null {
-  if (!Number.isFinite(state.player.x) || !Number.isFinite(state.player.y)) return invalid("wildlife player position must be finite");
-  const metresPerCell = CELL_KM * 1000;
-  return { xM: state.player.x * metresPerCell, yM: state.player.y * metresPerCell };
+  // The survivor's position is already the metric point; nothing to convert.
+  if (!finitePoint(state.player)) return invalid("wildlife player position must be finite");
+  return { xM: state.player.xM, yM: state.player.yM };
 }
 
 export function metricAreaForCell(world: World, cell: number): SpatialEstimate | null {
@@ -48,25 +49,23 @@ export function metricAreaForCell(world: World, cell: number): SpatialEstimate |
   }
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
-  const metresPerCell = CELL_KM * 1000;
   return {
     kind: "area",
     key: `cell:${x},${y}`,
-    min: { xM: x * metresPerCell, yM: y * metresPerCell },
-    max: { xM: (x + 1) * metresPerCell, yM: (y + 1) * metresPerCell },
+    min: { xM: x * PATCH_M, yM: y * PATCH_M },
+    max: { xM: (x + 1) * PATCH_M, yM: (y + 1) * PATCH_M },
   };
 }
 
 /** Stable fallback used while loading saves written before exact wildlife positions. */
 export function metricPointForStoredCell(seed: number, subjectId: number, cell: number): MetricPoint | null {
   if (!Number.isInteger(cell) || cell < 0 || cell >= WORLD_W * WORLD_H) return invalid("wildlife stored cell must be valid");
-  const metresPerCell = CELL_KM * 1000;
   const x = cell % WORLD_W;
   const y = Math.floor(cell / WORLD_W);
   return resolveSpatialEstimate(seed, subjectId, {
     kind: "area", key: `cell:${x},${y}`,
-    min: { xM: x * metresPerCell, yM: y * metresPerCell },
-    max: { xM: (x + 1) * metresPerCell, yM: (y + 1) * metresPerCell },
+    min: { xM: x * PATCH_M, yM: y * PATCH_M },
+    max: { xM: (x + 1) * PATCH_M, yM: (y + 1) * PATCH_M },
   });
 }
 
@@ -83,9 +82,8 @@ export function metricPointForWildlife(state: GameState, world: World, subject: 
 /** Grid conversion stays at this adapter boundary; callers reason in metres. */
 export function cellForMetricPoint(world: World, point: MetricPoint): number | null {
   if (!finitePoint(point)) return invalid("wildlife metric position must be finite");
-  const metresPerCell = CELL_KM * 1000;
-  const x = Math.floor(point.xM / metresPerCell);
-  const y = Math.floor(point.yM / metresPerCell);
+  const x = Math.floor(point.xM / PATCH_M);
+  const y = Math.floor(point.yM / PATCH_M);
   if (x < 0 || y < 0 || x >= world.w || y >= world.h) return null;
   return y * world.w + x;
 }

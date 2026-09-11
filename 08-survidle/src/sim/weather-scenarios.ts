@@ -1,7 +1,8 @@
 import { calendar, type Calendar } from "./calendar";
 import { markKnown } from "./mapped";
 import { newGame } from "./newgame";
-import { cellCenter, setRegion } from "./position";
+import { setRegion } from "./position";
+import { patchCenter } from "../world/spatial";
 import { visibleCells } from "./sight";
 import type { GameState } from "./types";
 import { ensureGround } from "./weather";
@@ -37,9 +38,9 @@ export function weatherShotSimulation(name: WeatherShotName): Omit<WeatherShotFi
   state.minute = definition.minute;
   state.weather.elapsedMinutes = 0;
   const cell = definition.y * world.w + definition.x;
-  const center = cellCenter(world, cell);
-  state.player.x = center.x;
-  state.player.y = center.y;
+  const center = patchCenter(cell);
+  state.player.xM = center.xM;
+  state.player.yM = center.yM;
   setRegion(state, world, regionPeek(world, definition.x, definition.y));
   ensureGround(state, world, state.player.region);
   const cal = calendar(state.minute, state.startDoy);

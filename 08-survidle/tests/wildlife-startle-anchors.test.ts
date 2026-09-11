@@ -11,9 +11,8 @@ import { enqueueWildlifeStartle, newUiState, resetPanels, setPanel } from "../sr
 import { cellAt, neighbours } from "../src/world/gen";
 import { passable } from "../src/world/route";
 import { metricPointForStoredCell } from "../src/sim/wildlife-space";
-import { CELL_KM } from "../src/units";
+import { PATCH_M } from "../src/world/spatial";
 
-const CELL_M = CELL_KM * 1000;
 
 function scene(zoom: number) {
   const { state, world } = newGame(79);
@@ -25,7 +24,7 @@ function scene(zoom: number) {
   ui.zoom = zoom;
   const event: WildlifeStartleEvent = {
     id: "anchor-event-987654321", subjectId: animal.id,
-    source: { xM: state.player.x * CELL_M, yM: state.player.y * CELL_M },
+    source: { xM: state.player.xM, yM: state.player.yM },
     bearingRad: 0, distanceM: 45, uncertaintyM: 0,
     perception: { kind: "seen", identification: "ungulate" },
     terrain: "pine", body: "light", group: "group", logText: "Hooves crash away.",
@@ -76,7 +75,7 @@ describe("wildlife cue anchors", () => {
   it.each([0, 1])("uses the animal's exact position when it shares ground with the player at zoom %i", (zoom) => {
     const { state, animal, ui, event, draw } = scene(zoom);
     animal.active!.intent = "rest";
-    animal.active!.position = { xM: state.player.x * CELL_M, yM: state.player.y * CELL_M };
+    animal.active!.position = { xM: state.player.xM, yM: state.player.yM };
     enqueueWildlifeStartle(ui, event, 1000);
     draw();
     const glyph = document.querySelector<HTMLElement>(`[data-wildlife-id="${animal.id}"]`)!;
@@ -90,7 +89,7 @@ describe("wildlife cue anchors", () => {
     animal.active = null;
     state.mapped = {};
     event.subjectId = 987654321;
-    event.source = { xM: (Math.floor(state.player.x) + 0.2) * CELL_M, yM: (Math.floor(state.player.y) + 0.75) * CELL_M };
+    event.source = { xM: (Math.floor(state.player.xM / PATCH_M) + 0.2) * PATCH_M, yM: (Math.floor(state.player.yM / PATCH_M) + 0.75) * PATCH_M };
     event.perception = kind === "seen" ? { kind, identification: "unknown" } : { kind, identification: "unknown", uncertaintyM: 0 };
     enqueueWildlifeStartle(ui, event, 1000);
     draw();
@@ -112,7 +111,7 @@ describe("wildlife cue anchors", () => {
     const { state, world, animal, ui, event, draw } = scene(0);
     animal.active!.cell = neighbours(world, cellOf(state, world)).find((cell) =>
       passable(cellAt(world, cell).terrain) && cellAt(world, cell).region === state.player.region)!;
-    event.source = { xM: (Math.floor(state.player.x) + 0.2) * CELL_M, yM: (Math.floor(state.player.y) + 0.75) * CELL_M };
+    event.source = { xM: (Math.floor(state.player.xM / PATCH_M) + 0.2) * PATCH_M, yM: (Math.floor(state.player.yM / PATCH_M) + 0.75) * PATCH_M };
     event.perception = { kind: "heard", identification: "unknown", uncertaintyM: 0 };
     enqueueWildlifeStartle(ui, event, 1000);
     draw();

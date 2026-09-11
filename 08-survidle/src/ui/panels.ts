@@ -40,7 +40,7 @@ import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, w
 import { atmosphereAt, forecastText, groundAt, iceMode, type LocalConditions, localStorm, localWeather, stormComing, stormNow } from "../sim/weather";
 import { fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { cellAt, regionAt, speciesHere, type World } from "../world/gen";
-import { routeKm } from "../world/route";
+import { remainingKm } from "../world/route";
 import { hurryKind, type HurryState } from "./hurry";
 import { esc, type UiState } from "./render";
 import { shoppingPlaceCueHtml } from "./shopping";
@@ -666,7 +666,7 @@ const CARE_ROUTE_PURPOSE = {
 function walkingStep(state: GameState, world: World, cal: Calendar, suffix = ""): string {
   if (!state.route) return "walking";
   const manner = walkManner(state, world, cal);
-  return `${manner} ${routeKm(state.route.path, cellOf(state, world)).toFixed(1)} km${suffix}`;
+  return `${manner} ${remainingKm(state.route.path, state.player).toFixed(1)} km${suffix}`;
 }
 
 function activityStep(state: GameState, world: World, cal: Calendar): string {

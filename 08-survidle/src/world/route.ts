@@ -3,7 +3,7 @@ import type { IceMode, Terrain } from "../sim/types";
 import { terrainOf, type World } from "./cells";
 import { fieldsAtPatch } from "./fine-terrain";
 import { filterReachableFineCandidates, findHierarchicalRoute, type TraversalProfile } from "./fine-route";
-import { PATCH_KM, type PatchId, patchXY } from "./spatial";
+import { type MetricPoint, PATCH_KM, PATCH_M, type PatchId, patchCenter, patchXY } from "./spatial";
 
 /** Walking speed on this ground relative to open forest. */
 export const TERRAIN_SPEED: Record<Terrain, number> = {
@@ -127,6 +127,24 @@ export function routeKm(path: readonly PatchId[], from: PatchId): number {
   return km;
 }
 
+/**
+ * What is left of a walk from exactly where the feet are: the metre point to
+ * the next patch centre, then the rest of the path. A survivor mid-edge has
+ * already covered part of that first edge, which a patch origin cannot say.
+ */
+export function remainingKm(path: readonly PatchId[], from: MetricPoint): number {
+  if (!path.length) return 0;
+  const next = patchCenter(path[0]);
+  let km = Math.hypot(next.xM - from.xM, next.yM - from.yM) / 1000;
+  let previous = patchXY(path[0]);
+  for (let i = 1; i < path.length; i++) {
+    const step = patchXY(path[i]);
+    km += Math.hypot(step.x - previous.x, step.y - previous.y) * PATCH_KM;
+    previous = step;
+  }
+  return km;
+}
+
 /** Terrain-adjusted walking time from an explicit starting patch. */
 export function routeMinutes(world: World, path: readonly PatchId[], from: PatchId, baseKmh: number, ice: RouteIce = "none"): number {
   let minutes = 0;
@@ -144,26 +162,25 @@ export function routeMinutes(world: World, path: readonly PatchId[], from: Patch
  * Mutates the position and remaining path. A false visit result stops at that
  * point, so a real walk can stop immediately when the ice gives way. */
 export function walkPath(
-  world: World, position: { x: number; y: number }, path: number[], km: number,
+  position: MetricPoint, path: number[], km: number,
   visit?: (cell: number, movedKm: number, arrived: boolean) => boolean | undefined,
 ): void {
   while (km > 1e-9 && path.length) {
     const cell = path[0];
-    const x = cell % world.w + 0.5;
-    const y = Math.floor(cell / world.w) + 0.5;
-    const dx = x - position.x;
-    const dy = y - position.y;
-    const distKm = Math.hypot(dx, dy) * PATCH_KM;
+    const next = patchCenter(cell);
+    const dx = next.xM - position.xM;
+    const dy = next.yM - position.yM;
+    const distKm = Math.hypot(dx, dy) / 1000;
     if (km >= distKm) {
-      position.x = x;
-      position.y = y;
+      position.xM = next.xM;
+      position.yM = next.yM;
       path.shift();
       km -= distKm;
       if (visit?.(cell, distKm, true) === false) return;
     } else {
       const fraction = km / distKm;
-      position.x += dx * fraction;
-      position.y += dy * fraction;
+      position.xM += dx * fraction;
+      position.yM += dy * fraction;
       visit?.(cell, km, false);
       km = 0;
     }
@@ -175,15 +192,15 @@ export function walkPath(
  * route centre. Uses the same geometry as real movement, on private copies;
  * it predicts neither future weather nor random falls through thin ice. */
 export function remainingWalkMinutes(
-  world: World, position: { x: number; y: number }, path: number[], baseKmh: number, ice: IceMode,
+  world: World, position: MetricPoint, path: number[], baseKmh: number, ice: IceMode,
 ): number {
-  const feet = { x: position.x, y: position.y };
+  const feet = { xM: position.xM, yM: position.yM };
   const remaining = [...path];
   let minutes = 0;
   while (remaining.length) {
-    const speed = baseKmh * speedOf(terrainOf(world, Math.floor(feet.x), Math.floor(feet.y)), ice);
+    const speed = baseKmh * speedOf(terrainOf(world, Math.floor(feet.xM / PATCH_M), Math.floor(feet.yM / PATCH_M)), ice);
     if (speed <= 0) return Number.POSITIVE_INFINITY;
-    walkPath(world, feet, remaining, speed / 60);
+    walkPath(feet, remaining, speed / 60);
     minutes++;
   }
   return minutes;

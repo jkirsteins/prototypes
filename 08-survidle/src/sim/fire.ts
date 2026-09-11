@@ -201,7 +201,7 @@ export function lightingInRain(w: Weather, ambient: number, roofOverPit: boolean
 }
 
 /** True when a log split here and now comes out wet: rain, or rain within six hours. */
-export function splitIsWet(state: GameState, world: World, cell = Math.floor(state.player.y) * world.w + Math.floor(state.player.x)): boolean {
+export function splitIsWet(state: GameState, world: World, cell = cellOf(state, world)): boolean {
   if (localWeather(state, world, cell).precip !== "none") return true;
   return regionState(state, world, cellAt(world, cell).region).logsWet < WET_AFTER_RAIN_MINUTES;
 }

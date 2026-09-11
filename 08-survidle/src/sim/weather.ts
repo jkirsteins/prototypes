@@ -2,6 +2,7 @@ import type { Rng } from "../rng";
 import { fmtDuration } from "../units";
 import { regionPeek, type World } from "../world/gen";
 import { LATTICE, LATTICE_W } from "../world/terrain";
+import { patchAtMetric } from "../world/spatial";
 import { calendar, START_MINUTE_OF_DAY, type Calendar } from "./calendar";
 import { sampleAtmosphere } from "./climate";
 import { hasQuirk } from "./fears";
@@ -166,7 +167,7 @@ export function conditionsAt(state: GameState, world: World, _cal: Calendar, cel
 }
 
 /** Current-cell adapter for old Weather-shaped calculations. Never drives atmosphere or ground updates. */
-export function localWeather(state: GameState, world: World, cell = Math.floor(state.player.y) * world.w + Math.floor(state.player.x)): Weather & { temperatureC: number; dryHours: number } {
+export function localWeather(state: GameState, world: World, cell = patchAtMetric(state.player)): Weather & { temperatureC: number; dryHours: number } {
   const a = conditionsAt(state, world, calendar(state.minute, state.startDoy), cell);
   const scheduled = state.weather.storm;
   const scheduledKind = scheduled && state.minute >= scheduled.from && state.minute < scheduled.until ? scheduled.kind : null;

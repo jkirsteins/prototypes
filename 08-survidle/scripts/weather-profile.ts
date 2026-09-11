@@ -7,7 +7,7 @@ import { calendar } from "../src/sim/calendar";
 import { sampleAtmosphere } from "../src/sim/climate";
 import { setSkillLevel } from "../src/sim/horizon";
 import { newGame } from "../src/sim/newgame";
-import { placeAt } from "../src/sim/position";
+import { cellOf, placeAt } from "../src/sim/position";
 import { opticalCandidateRangeCells, visibleCells, sightRangeCells } from "../src/sim/sight";
 import { atmosphereAt, ensureGround } from "../src/sim/weather";
 import { current } from "../src/sim/record";
@@ -133,14 +133,14 @@ export function profileWeather(seed = 17, options: WeatherProfileOptions = {}): 
   workloads.push(measured("atmosphere samples", atmosphereSamples, () =>
     atmosphereChecksum(base.world, atmosphereSamples, 18 * 60)));
 
-  const currentCell = Math.floor(base.state.player.y) * base.world.w + Math.floor(base.state.player.x);
+  const currentCell = cellOf(base.state, base.world);
   workloads.push(measured("memoized current atmosphere", atmosphereSamples, () => {
     let sum = 0;
     for (let i = 0; i < atmosphereSamples; i++) sum += atmosphereAt(base.state, base.world, currentCell, 0).temperatureC;
     return sum.toFixed(6);
   }));
 
-  const sightCell = options.quick ? Math.floor(base.state.player.y) * base.world.w + Math.floor(base.state.player.x) : highestFell(base.world);
+  const sightCell = options.quick ? cellOf(base.state, base.world) : highestFell(base.world);
   if (!options.quick) {
     current(base.state).person.axes.eyes = 2;
     setSkillLevel(base.state, "wayfinding", 20);

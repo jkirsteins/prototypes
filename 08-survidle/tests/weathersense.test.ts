@@ -15,6 +15,7 @@ import * as weather from "../src/sim/weather";
 import { filterRows } from "../src/ui/dopanel";
 import { addItem, qty } from "../src/sim/inventory";
 import { cellOf, placeAt } from "../src/sim/position";
+import { patchCenter } from "../src/world/spatial";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { cellAt, regionAt } from "../src/world/gen";
 import { protectionOf } from "../src/sim/shelter";
@@ -227,7 +228,7 @@ describe("weather sense", () => {
     delete (state.player as Partial<typeof state.player>).skyReadDay;
     expect(deserialize(serialize(state))?.state.player.skyReadDay).toBeNull();
     state.player.skyReadDay = 0;
-    newPerson(state, world, Math.floor(state.player.y) * world.w + Math.floor(state.player.x), state.player.region);
+    newPerson(state, world, cellOf(state, world), state.player.region);
     expect(state.player.skyReadDay).toBeNull();
   });
 
@@ -311,7 +312,7 @@ describe("the storm choice", () => {
     expect(cellOf(control.state, control.world)).toBe(control.camp);
     advance(control.state, control.world, 3);
     expect(control.state.route).toBeNull();
-    expect(control.state.player.x).toBe(control.camp % control.world.w + 0.5);
+    expect(control.state.player.xM).toBe(patchCenter(control.camp).xM);
 
     const { state, world, camp, path } = rockReturn();
     expect(minutesToCamp(state, world, calendar(0))).toBeCloseTo(10.909);

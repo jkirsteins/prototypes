@@ -3,8 +3,7 @@
  * and uncapped, unlike the log. The journal, the epitaph and the away
  * report read it; nothing reads the log for history.
  */
-import { PATCH_KM } from "../world/spatial";
-import { WORLD_W } from "../world/terrain";
+import { patchCenter } from "../world/spatial";
 import { calendar } from "./calendar";
 import { qty } from "./inventory";
 import { FOODS, type FoodId } from "./items";
@@ -64,7 +63,8 @@ export function fillDied(state: GameState, cause: DeathCause, regionName: string
   let campFoodKcal = 0;
   if (camp) for (const f of Object.keys(FOODS) as FoodId[]) campFoodKcal += qty(camp, f) * FOODS[f].kcalPerKg;
   // No camp made, no distance from one: the survivor died wherever they stood.
-  const km = campCell === null ? 0 : Math.hypot(p.x - ((campCell % WORLD_W) + 0.5), p.y - (Math.floor(campCell / WORLD_W) + 0.5)) * PATCH_KM;
+  const campPoint = campCell === null ? null : patchCenter(campCell);
+  const km = campPoint === null ? 0 : Math.hypot(p.xM - campPoint.xM, p.yM - campPoint.yM) / 1000;
   const rec = current(state);
   const last = [...rec.events].reverse().find((e) => e.kind === "threshold");
   const died: Died = {
