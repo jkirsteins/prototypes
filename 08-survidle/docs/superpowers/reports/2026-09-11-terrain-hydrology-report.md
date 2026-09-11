@@ -962,3 +962,34 @@ Seed 42, 20 days, `npx vite-node scripts/reference.ts 42 20`, three runs each:
 The run's outcome is unchanged (alive and fed at day 20, reached day 21), and
 under a CPU profile A* is no longer the hot spot in the chain - what remains of
 the 11 s is world generation.
+
+## World cache (task 4)
+
+`src/world/worldstore.ts` adds an IndexedDB cache (`survidle-worlds` database,
+`worlds` store, keyed by `worldKey(seed, w, h)` which bakes in
+`GENERATOR_VERSION`) so `loadWorld` in `src/world/worldloader.ts` can skip the
+worker solve on a returning seed: `readSolved` first, and on a miss the worker
+path as before followed by `void writeSolved(key, m.solved)` from the main
+thread's copy. On open, any record whose key does not end with the live
+`-v${GENERATOR_VERSION}` is swept. Failures (no IndexedDB, quota, a version
+error) resolve to `null`/`void` rather than throwing; the module accepts an
+injected `{ get, put }` store (`setWorldStore`) so `tests/worldstore.test.ts`
+covers the key and the round trip of the seven typed arrays without needing
+IndexedDB in happy-dom.
+
+Timed over CDP against a headless Chrome on a fresh profile, dev server,
+`http://127.0.0.1:5173/prototypes/08/?seed=42` (measured from `window.survidle.world`
+appearing, since the static `#loading` markup ships pre-filled with the first
+stage name and `hidden`, so bar visibility alone is not a reliable marker):
+
+| load | time |
+|---|---|
+| first load (worker solve, fresh IndexedDB) | 8.8 s from browser launch (bar ran raising the land -> wearing the valleys -> filling the lakes -> cutting the fjords -> naming the ground) |
+| reload (cache hit) | 2.4-2.8 s from the reload call, stage jumps straight to "reading the ground" |
+
+The reload numbers are dominated by the Vite dev server re-fetching and
+retransforming the module graph, not by `readSolved`/`generateWorld` - the
+worker's five-stage solve never runs on the reload in either trial, and
+`indexedDB.databases()` from the console lists `survidle-worlds` throughout. A
+production build (no per-module dev-server round trips) would read faster
+still; that was not separately measured here.

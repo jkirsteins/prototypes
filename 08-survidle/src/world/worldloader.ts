@@ -7,12 +7,19 @@ import { generateWorld, type World } from "./gen";
 import { type SolveProgress, STAGES } from "./solve";
 import type { SolveMessage } from "./solve.worker";
 import { WORLD_H, WORLD_W } from "./terrain";
+import { readSolved, worldKey, writeSolved } from "./worldstore";
 
-export function loadWorld(seed: number, onProgress: SolveProgress = () => {}): Promise<World> {
+export async function loadWorld(seed: number, onProgress: SolveProgress = () => {}): Promise<World> {
   // Vitest's DOM shim may define Worker; the tests want the synchronous cache either way.
   if (typeof Worker === "undefined" || import.meta.env.MODE === "test") {
     onProgress("reading the ground", 0);
-    return Promise.resolve(generateWorld(seed));
+    return generateWorld(seed);
+  }
+  const key = worldKey(seed, WORLD_W, WORLD_H);
+  const cached = await readSolved(key);
+  if (cached) {
+    onProgress("reading the ground", 1);
+    return generateWorld(seed, cached);
   }
   return new Promise((resolve, reject) => {
     // A slow world beats no world: a worker that will not start or that dies
@@ -38,7 +45,10 @@ export function loadWorld(seed: number, onProgress: SolveProgress = () => {}): P
       if (m.kind === "progress") onProgress(m.stage, m.fraction);
       else {
         worker.terminate();
-        resolve(generateWorld(seed, m.solved));
+        const world = generateWorld(seed, m.solved);
+        // The arrays were transferred to the main thread; write from that copy now that generateWorld holds it.
+        void writeSolved(key, m.solved);
+        resolve(world);
       }
     };
     worker.onerror = () => {
