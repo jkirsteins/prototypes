@@ -465,7 +465,11 @@ spec `2026-09-11-survidle-save-sync-design.md`), then the phone check-in
 page on top of it once P's camp view and camp sheet stand (the same
 section: a second entry page over the same engine, no map), and the south if the round's first deaths are not followed by a restart
 (the section of that name below: the landing month first, then the map
-extended south);
+extended south); beside that sequence, on their own branches, the
+terrain pair in a fixed order (the section "The terrain merge order"
+under the idle loop: the hydrology first, then the close zoom rewritten
+to refine it), and rivers, sub-project 2, once both are on main (spec
+`2026-09-11-survidle-rivers-design.md`);
 then the second half of I (the found places, and the card reading the
 earned traits as their items land);
 then the rest of F in impact order (latitude by row with the
@@ -678,6 +682,20 @@ reads "fog, 200 m". Seeing through it, and getting lost in it, are
 sub-project 6.
 
 ### 2. Rivers (flavour, no slot)
+
+Specced 2026-09-11 in `2026-09-11-survidle-rivers-design.md`, not
+built. The spec takes over the bullets below and targets the merged
+terrain pair (the section "The terrain merge order" under the idle
+loop); nothing of it is built until the terrain hydrology and the
+authoritative close zoom are both on main. Where the spec departs from
+the bullets: a bridge is a felled tree over a stream of 6 m or less
+and there is no river bridge at all; a ford is read from the channel's
+depth and speed at today's flow, not a flag; floods come from the
+snowmelt and rain the climate model already integrates, with the
+spring peak measured against SMHI's Norrland record; swimming is a
+skill and cold water is its limit; river ice is the lake's thickness
+read through the water's speed, so rapids stay open. The weir, the
+salmon run and springs stay out, with C and D.
 
 **Curve.** No row, no band, no tier: flavour. Expected to move nothing,
 which is why it has no slot. The salmon run, when it lands, is a fishing
@@ -2167,6 +2185,44 @@ because Durable Object storage is strongly consistent and KV is not,
 and "close the laptop, open the phone" falls inside KV's window. No
 push and no accounts.
 
+**What the terrain work fixes for the sync.** The solved world is 44 MB
+of typed arrays per seed, held in IndexedDB as a cache and never in
+the save; localStorage's 5 MB cannot hold it and must not try. The
+save stays the seed plus sparse state, 8 to 14 KB today, and the
+store caps a save at 1 MB. Four constraints follow, and the sync spec
+must state each of them:
+
+- **The world is never synced.** The other device solves the same seed.
+  Losing the cache costs one solve, about 5 s on a desktop and an
+  expected 15 s on a phone, and nothing else. Safari drops a site's
+  script-written storage after seven days without a visit, so a
+  returning phone player solves again; a cache may be dropped, a save
+  may not.
+- **One seed, one world, on every engine.** The sync is only correct if
+  two devices produce bit-identical worlds from one seed. The solve
+  already holds to integer noise and correctly rounded arithmetic, with
+  a test that greps for the banned functions; the 50 m refinement that
+  the close zoom adds on top inherits the same rule. A generator that
+  breaks it makes the phone's rivers run somewhere else.
+- **The generator version travels with the save.** A device on an
+  older build refuses the save rather than solving a different world
+  under it. The save version check exists; the generator version joins
+  the handshake beside it.
+- **The fine save stays under the cap.** Close zoom's knowledge
+  bitfields cost about 1.2 KB per touched chunk per state, so a broad
+  exploration of fifty chunks is about 120 KB. The cap holds with room;
+  a save that approaches it is a bug, not a reason to raise the cap.
+
+Serving solved worlds from the store, an R2 object per seed and
+generator version at perhaps 10 MB compressed, is the named escape
+hatch if the phone solve turns out painful. It is not built until the
+phone solve is measured, because it adds a moving part the sync
+deliberately avoids and couples client and store versions harder.
+
+Follow-up, not done: the sync spec's handshake and store sections do
+not yet state these four; they are added when the sync is built, and
+the generator version joins the save version in `PUT /save`'s check.
+
 **The phone check-in page** is the second half, and waits for both the
 sync and P. The phone is a companion to a desktop run, not a smaller
 copy of it: everything on it must feed a decision made at a check-in,
@@ -2178,6 +2234,54 @@ second Vite entry page over the same engine, reached by the sync link.
 It waits for P because P's camp view and camp sheet are the check-in
 it would otherwise invent; built after them it is the camp view shaped
 for a phone. Not specced.
+
+### The terrain merge order
+
+Two branches rebuild the ground and they collide: the terrain
+hydrology (`2026-09-11-survidle-terrain-hydrology-design.md`, the
+solved 300 m world with heights in metres, drainage, discharge, lakes
+in real depressions, rivers and fords) and the authoritative close zoom
+(`2026-09-10-survidle-authoritative-close-zoom-design.md`, a 50 m
+lattice as the canonical world with lazy chunks and exact routing).
+They touch the same eleven world-core files and neither can be merged
+over the other without rework. The order is fixed, decided 2026-09-11:
+
+1. **Hydrology merges first.** Water is global: a river at a spot is
+   the sum of all rain uphill of it, a lake's surface is set by a rim
+   that may be 10 km away, and sea is by connection to the ocean. None
+   of that can be a pure function of one position, which is what the
+   close zoom's fine terrain is; its water today is a noise threshold
+   with no rim and no outlet, and it cannot make a river at all. A
+   50 m whole-world solve is not the answer either: 84 million
+   patches, about 840 MB and minutes per flood pass, for no more
+   realism, since the erosion physics lives at 1.2 km and everything
+   below it is interpolation plus noise on both branches.
+2. **The close zoom merges main and rewrites its fine terrain to
+   refine the solved skeleton.** Height and water are top-down: the
+   36 patches of a cell average to its height, a chunk-local flood
+   drains to the parents' outlets, the channel is where the parent's
+   discharge runs on the fine surface, a lake patch is below the
+   parent's surface and connected. Forest, bog and rock stay
+   bottom-up. Its invariants reword rather than hold: the solve bar
+   stays at about 5 s and is never chased to 2, and "no whole-world
+   array" becomes "no whole-world fine array" with the 300 m arrays
+   the named exception. Its fine generator drops `Math.exp` for the
+   solve's integer-noise determinism rule, which the save sync depends
+   on. The rewrite is cheaper than what it replaces: the field
+   generator measured 146 us a patch and 1.3 s a chunk uncached; a
+   refinement from four coarse heights and a noise octave should be
+   tens of milliseconds a chunk.
+3. **Rivers, sub-project 2, on the merged pair.** Its spec names the
+   contract the rewrite must deliver and does not start until the two
+   contract tests pass: discharge conserved through a chunk, water
+   running downhill on the fine surface.
+
+Two numbers are still untimed and are measured before they are quoted
+again: the cached world read on a production build (the report's
+2.4 to 2.8 s reload was the Vite dev server, not the cache), and the
+phone solve (expected about 15 s, three times the desktop's). If the
+phone solve is painful, the escape hatch is the one the save sync
+section names.
 
 ### The south
 
