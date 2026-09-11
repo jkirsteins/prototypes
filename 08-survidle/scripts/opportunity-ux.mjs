@@ -92,12 +92,14 @@ async function main() {
     // Measure every batch on its way out rather than dismissing it blind: the
     // widest presentation the flow actually produces is the one whose layout
     // has to hold, and it is not always the single-leaf one.
+    let widestMeasured = 0;
     const finishPresentations = async () => {
       let widest = 0;
       for (let attempt = 0; attempt < 60; attempt++) {
         if (await evaluate("Boolean(document.querySelector('#overlay:not([hidden]) .opportunity-modal'))")) {
           const leaves = await evaluate("document.querySelectorAll('#overlay .opportunity-discovery').length");
           if (leaves > widest) widest = leaves;
+          if (leaves > widestMeasured) widestMeasured = leaves;
           assert(await layoutOk(), `presentation of ${leaves} discoveries overflows`);
         }
         await click('#overlay [data-act="opportunity-modal-ok"]');
@@ -125,18 +127,14 @@ async function main() {
     assert(await evaluate(`document.querySelector('#overlay .opportunity-modal h1')?.textContent === 'Opportunities'`), "opportunity modal has no global heading");
     assert(await layoutOk(), "desktop first-opportunity layout overflows");
 
-    // The opening is the site leaf plus whatever the landing ground makes
-    // possible. Every day-one tool recipe and shelter is seeded silently at
-    // world creation, so the fifteen-leaf capability wall never reaches a
-    // modal; the widest real batch is the forage the ground identified.
+    // The opening says one thing: choose where to live. Day-one recipes and
+    // shelters are seeded at world creation and the landing ground's forage is
+    // known the moment the run starts, so neither reaches a modal.
     const opening = await noticeBatches();
-    assert(opening.length > 0 && opening[0].join(",") === "site", `site is not the first presentation (${JSON.stringify(opening)})`);
-    const walled = opening.flat().filter((key) => key.startsWith("make:") || key.startsWith("build:"));
-    assert(walled.length === 0, `the opening announced day-one capabilities: ${walled.join(", ")}`);
-    const widestOpening = Math.max(...opening.map((batch) => batch.length));
-    assert(widestOpening >= 2, `the opening produced no multi-leaf batch to measure (${JSON.stringify(opening)})`);
-    const measuredOpening = await finishPresentations();
-    assert(measuredOpening >= widestOpening, `the widest opening batch (${widestOpening}) was never measured (saw ${measuredOpening})`);
+    assert(opening.length === 1 && opening[0].join(",") === "site", `the site leaf is not the only opening presentation (${JSON.stringify(opening)})`);
+    const inherited = opening.flat().filter((key) => key.startsWith("make:") || key.startsWith("build:") || key.startsWith("forage:"));
+    assert(inherited.length === 0, `the opening announced what the run started knowing: ${inherited.join(", ")}`);
+    await finishPresentations();
     await waitFor(`document.querySelector('#opportunities h2')?.textContent === 'Opportunities'`, "current opportunities heading missing");
     assert(await stateValue(`s.opportunities.current === 'site'`), "the authored first opportunity is not current");
     assert(await evaluate(`document.querySelectorAll('#opportunities [data-act="opportunity-detail"]').length === 1`), "panel does not show exactly one leaf");
@@ -265,6 +263,15 @@ async function main() {
     assert(await click('#opportunities [data-act="opportunity-open"]'), "no-current state lost the catalog entry point");
     await waitFor(`Boolean(document.querySelector('#overlay .opportunity-catalog'))`, "catalog did not open from the no-current panel");
     assert(await click('#overlay [data-act="opportunity-close"]'), "catalog close missing in the no-current state");
+
+    // The layout gate needs a real multi-leaf presentation, and the opening no
+    // longer carries one. Reading a water names every fish in it at once,
+    // which is the production route that still batches several leaves.
+    await fire({ kind: "waterRead", species: ["perch", "roach", "pike"] });
+    await waitFor(`Boolean(document.querySelector('#overlay:not([hidden]) .opportunity-modal'))`, "reading the water announced nothing");
+    assert(await evaluate(`document.querySelectorAll('#overlay .opportunity-discovery').length === 3`), "reading the water did not batch its three fish");
+    await finishPresentations();
+    assert(widestMeasured >= 3, `no multi-leaf presentation was measured anywhere in the flow (widest ${widestMeasured})`);
 
     // Nothing the run perceived leaked a species it never met.
     const finalMarkup = (await panelMarkup()) + (await overlayMarkup());
