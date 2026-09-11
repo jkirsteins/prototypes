@@ -69,8 +69,13 @@ async function main() {
       const box = document.querySelector('#overlay .opportunity-modal, #overlay .box');
       if (!box) return false;
       const rect = box.getBoundingClientRect();
-      const overlay = document.querySelector('#overlay').getBoundingClientRect();
-      return document.documentElement.scrollWidth <= innerWidth + 1 && rect.left >= 0 && rect.right <= innerWidth && overlay.top >= 0 && overlay.bottom <= innerHeight;
+      const overlay = document.querySelector('#overlay');
+      // #overlay is fixed with inset: 0, so its own rect always equals the
+      // viewport regardless of content. The real overflow signal is whether
+      // the overlay's scrollable content exceeds its own box (it now scrolls
+      // vertically for a tall modal/catalog) and whether the box itself sits
+      // fully inside the viewport at rest.
+      return document.documentElement.scrollWidth <= innerWidth + 1 && rect.left >= 0 && rect.right <= innerWidth && overlay.scrollHeight <= overlay.clientHeight + 1 && rect.top >= 0 && rect.bottom <= innerHeight;
     })()`);
     const overlayText = () => evaluate("document.querySelector('#overlay')?.textContent ?? ''");
     const finishPresentations = async () => {
