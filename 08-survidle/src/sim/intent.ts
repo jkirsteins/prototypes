@@ -28,7 +28,7 @@ import { walkableIce } from "./weather";
 import { type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
 import { check, isShortAtCamp, loadPack, setAside, type InitialWalk, type TaskOption, whereIs } from "./tasks";
-import { bestHuntCell, hasRecentHuntSign, huntEstimate } from "./hunting";
+import { bestHuntCell, hasRecentHuntSign, worthHunting } from "./hunting";
 import { knownBearDen } from "./wildlife-agents";
 import { noteHauledHuntFood } from "./hunt-audit";
 import type {
@@ -136,11 +136,11 @@ export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
  */
 function anyHuntCell(state: GameState, world: World, cal: Calendar, where: Where): { cell: number; note: string } {
   const r = regionAt(world, state.player.region);
-  const weigh = (cell: number) => huntEstimate(state, world, cal, cell).kgPerHour;
+  const weigh = (cell: number) => worthHunting(state, world, cal, cell);
   if (typeof where === "string" && where !== "nearest") {
     const s = spotOf(r, where);
-    if (s && weigh(s.cell) > 0) return { cell: s.cell, note: "" };
-    return { cell: nearestCell(state, world, (cell) => weigh(cell) > 0), note: `${SPOT_WORDS[where]} does not suit; going to the nearest hunting ground instead` };
+    if (s && weigh(s.cell)) return { cell: s.cell, note: "" };
+    return { cell: nearestCell(state, world, weigh), note: `${SPOT_WORDS[where]} does not suit; going to the nearest hunting ground instead` };
   }
   return { cell: bestHuntCell(state, world, cal), note: "" };
 }

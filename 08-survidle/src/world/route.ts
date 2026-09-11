@@ -107,11 +107,12 @@ export function knownRoute(
   const route = astar(world, from, to, ice, avoidFell, known);
   // Local weather revisions can create a fresh key every minute while
   // travelling, so the cache is bounded. It has to be wide enough to hold one
-  // chooser's whole sweep, though: the hunting chooser measures a route to
-  // every mapped cell of the region and its neighbours, twice - once from here
-  // and once to camp - which is thousands of entries in one decision, and a
-  // narrower cache evicted the start of a sweep before the end of it and
-  // searched the same routes again on the next one.
+  // caller's whole sweep, though, or the start of a sweep is evicted before
+  // the end of it and searched again on the next one. The widest sweep left is
+  // `exploreFrontier` in src/sim/tasks.ts: one route per frontier cell of the
+  // region, bounded only by how many cells the region has, so a few hundred
+  // entries in one decision. Everything else asks for tens - the hunting
+  // chooser's shortlist is two routes for each of HUNT_SHORTLIST cells.
   if (cache.size >= KNOWN_ROUTE_CACHE) cache.delete(cache.keys().next().value!);
   cache.set(key, route);
   return route ? route.slice() : null;

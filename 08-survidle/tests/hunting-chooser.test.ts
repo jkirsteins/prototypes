@@ -46,10 +46,12 @@ describe("the hunting chooser", () => {
     expect(searches.size).toBeLessThanOrEqual(HUNT_SHORTLIST * 2 + 2);
   });
 
-  // Level 1 reads as pure proximity and level 20 as pure expected return, so
-  // the pair covers both ends of the score the shortlist has to preserve. The
-  // expert's choice is not the cell underfoot, so the agreement has teeth.
-  it.each([1, 20])("picks the cell the whole-region sweep picks at hunting level %i", (level) => {
+  // Level 1 reads as pure proximity and level 20 as pure expected return; both
+  // are monotone in a single term, so neither can feel the normalisers widening
+  // from the region to the shortlist. Level 10 mixes the two terms and is the
+  // case that can. The expert's choice is not the cell underfoot, so the
+  // agreement has teeth there too.
+  it.each([1, 10, 20])("picks the cell the whole-region sweep picks at hunting level %i", (level) => {
     const { state, world } = newGame(42);
     mapRegion(state, world, state.player.region);
     setSkillLevel(state, "hunting", level);

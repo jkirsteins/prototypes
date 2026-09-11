@@ -355,6 +355,17 @@ export function huntEstimate(state: GameState, world: World, cal: Calendar, cell
 }
 
 /**
+ * Whether this hunter has anything worth hunting at a cell. The walk only
+ * scales how good the ground is, never whether it is worth anything at all -
+ * a distance sits in the denominator of every species' value and cannot turn
+ * a positive one to zero - so the question is answered without measuring a
+ * step, which lets a scan ask it of a whole region.
+ */
+export function worthHunting(state: GameState, world: World, cal: Calendar, cell: number, observable?: ReadonlySet<number>): boolean {
+  return huntEstimate(state, world, cal, cell, observable, { toCell: 0, toCamp: 0 }).kgPerHour > 0;
+}
+
+/**
  * Best ground first: nearness for a beginner, expected usable meat an hour for
  * an expert, each read against the best of the field rather than on an
  * absolute scale. Both of the chooser's passes rank the same way, so the sift

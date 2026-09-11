@@ -59,13 +59,16 @@ export function survivorRoute(
  * can answer null, and one flood answers for all of them.
  *
  * The standing cell is in the set whether or not it is passable, the way a
- * route to where you already stand is empty rather than null.
+ * route to where you already stand is empty rather than null. `avoidFell`
+ * means what it means to a route: a walker who will not go up on the fell
+ * cannot reach what only the fell leads to.
  */
-export function reachableFrom(state: GameState, world: World, from: number, ice: IceMode = "none"): Set<number> {
+export function reachableFrom(state: GameState, world: World, from: number, ice: IceMode = "none", avoidFell = false): Set<number> {
   const conditions = routeConditions(state, world, ice);
   const walkable = (cell: number): boolean => {
     if (conditions.blockedAt?.(cell)) return false;
     const terrain = terrainOf(world, cell % world.w, Math.floor(cell / world.w));
+    if (avoidFell && terrain === "fell") return false;
     return passable(terrain, conditions.iceAt(cell), fordAt(world, cell));
   };
   const seen = new Set<number>([from]);
