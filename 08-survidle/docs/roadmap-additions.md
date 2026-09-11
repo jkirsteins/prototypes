@@ -869,3 +869,11 @@ None of these blocks anything; each is a polish item or a question.
 - `scripts/opportunity-ux.mjs` asserts the opening queue at one moment and
   the next-page click only by node existence; the unit tests cover both
   claims over the whole queue, so the browser checks are belt and braces.
+- Test hygiene, four places where a test proves less than it reads: the
+  authored-journey reachability test accepts any matching step rather than
+  every ordinary step; collection subset coverage asserts generated
+  membership, not a working discovery and credit route per member; the
+  seasonal legacy-selection test pins the selected leaf but not its
+  discovery notice; the starlight walk-sign test does not pin that its
+  midnight is brighter than pitch dark, so an overcast moonless night turns
+  it into a copy of the dark case.
