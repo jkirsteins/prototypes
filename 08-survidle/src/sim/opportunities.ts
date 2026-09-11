@@ -64,7 +64,7 @@ export function checkWinterStores(state: GameState): void {
 export const KEPT_DAYS = 3;
 
 const NOTES: Partial<Record<StaticOpportunityId, string>> = {
-  drink: "Below 1 litre, the survivor drinks automatically from water at hand. If travel is needed, Self-care handles it through the activity queue.",
+  drink: "Below 1 litre, Self-care drinks from water at hand, or walks to some, on the minutes the activity queue gives it.",
   firewood: "Dead wood burns without felling a tree.",
   fire: "Fire needs a site, fuel, and ignition.",
   bed: "A bed keeps sleep off the cold ground.",
