@@ -1485,13 +1485,13 @@ button.act small.gives, span.act small.gives,
   background: var(--water-lit);
   opacity: 0;
   will-change: opacity;
-  animation: water-ripple 2.5s ease-in-out infinite;
+  animation: water-ripple 5s ease-in-out infinite;
   /* ?shimmer= on the page sets the speed factor on the root; the delay scales with it so the pattern keeps its shape. */
   animation-delay: calc(var(--water-delay) / var(--water-shimmer-speed, 1));
 }
-.grid .c.water-live .water-ripple-1 { animation-duration: calc(2.5s / var(--water-shimmer-speed, 1)); }
-.grid .c.water-live .water-ripple-2 { animation-duration: calc(1.875s / var(--water-shimmer-speed, 1)); }
-.grid .c.water-live .water-ripple-3 { animation-duration: calc(4s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-1 { animation-duration: calc(5s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-2 { animation-duration: calc(3.75s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-3 { animation-duration: calc(8s / var(--water-shimmer-speed, 1)); }
 @keyframes water-ripple {
   0%, 100% { opacity: 0; }
   50% { opacity: var(--water-peak, 0.4); }

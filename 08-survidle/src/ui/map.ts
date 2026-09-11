@@ -239,9 +239,9 @@ function detailHash(seed: number, x: number, y: number, n: number): number {
  * stylesheet's three overlay durations are these periods. Presentation only.
  */
 export const WATER_RIPPLES = [
-  { direction: 0.35, wavelength: 4, periodS: 2.5 },
-  { direction: 2.27, wavelength: 2.5, periodS: 1.875 },
-  { direction: 4.54, wavelength: 6, periodS: 4 },
+  { direction: 0.35, wavelength: 4, periodS: 5 },
+  { direction: 2.27, wavelength: 2.5, periodS: 3.75 },
+  { direction: 4.54, wavelength: 6, periodS: 8 },
 ] as const;
 
 /**

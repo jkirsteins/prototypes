@@ -302,7 +302,7 @@ describe("the map's compositing layers", () => {
     expect(overlay).toContain("z-index: -1");
     expect(overlay).toContain("pointer-events: none");
     expect(overlay).toContain("will-change: opacity");
-    expect(overlay).toContain("animation: water-ripple 2.5s ease-in-out infinite");
+    expect(overlay).toContain("animation: water-ripple 5s ease-in-out infinite");
     // A test aid: ?shimmer= scales the speed through one root property; the delay scales with it so the pattern keeps its shape.
     expect(overlay).toContain("animation-delay: calc(var(--water-delay) / var(--water-shimmer-speed, 1))");
     expect(readFileSync("src/main.ts", "utf8")).toContain('params.get("shimmer")');
