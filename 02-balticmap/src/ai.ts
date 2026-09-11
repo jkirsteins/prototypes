@@ -1181,7 +1181,9 @@ export const MAX_AI_PLAYS = 16;
  *  mysteriously skipped turns nobody can diagnose. Reaching this is a bug in
  *  whatever chose the action, not a rule of the game: the console line names the
  *  seat and what it proposed so the picker can be found. */
-function endOrGiveUp(state: GameState, proposed: AiAction | null): GameState {
+export function endOrGiveUp(
+  state: GameState, proposed: AiAction | null,
+): GameState {
   const ended = endTurn(state);
   if (ended.phase !== "playing" || !turnOpen(ended)) return ended;
   const p = ended.players[ended.current];

@@ -11,7 +11,9 @@ import {
 import { playableSet, validTargetsFor } from "./playability";
 import { duelStakes } from "./gauntlet";
 import { seededRng } from "./rng";
-import { aiTakeTurn, chooseAction, MAX_AI_PLAYS } from "./ai";
+import {
+  aiTakeTurn, chooseAction, endOrGiveUp, MAX_AI_PLAYS, type AiAction,
+} from "./ai";
 import { fullRealmOf } from "./relations";
 import { REGIONS, setActiveRegion } from "./regions";
 
@@ -524,6 +526,7 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     // before it is applied. `aiTakeTurn`'s other arm is the unlimited rule
     // set, which the sim never runs.
     let acted = state;
+    let refused: AiAction | null = null;
     for (let plays = 0; acted.phase === "playing" && plays < MAX_AI_PLAYS; plays++) {
       // The state before the play, kept so the metrics below read the board
       // the policy decided on. A GameState is immutable, so asking it after
@@ -540,7 +543,10 @@ export function runWorld(opts: WorldOptions): WorldSummary {
             });
       // A refused play returns the state unchanged. Counting it would inflate
       // the play share with a card that never left the hand.
-      if (next === before) break;
+      if (next === before) {
+        refused = action;
+        break;
+      }
       if (action.type === "play") {
         const cardId = before.players[before.current].hand[action.cardIndex];
         playsByCard[cardId] = (playsByCard[cardId] ?? 0) + 1;
@@ -555,6 +561,21 @@ export function runWorld(opts: WorldOptions): WorldSummary {
       acted = next;
       if (!turnOpen(acted)) break;
     }
+    // The same end `aiTakeTurn` gives a seat, and the reason it cannot be left
+    // to `advance`: a card carrying a repeating keyword re-opens the turn, and
+    // `advance` refuses to move past a turn that is still open. A seat that
+    // played a raid into a hand holding no second raid therefore stopped here
+    // with `turnOpen` true, `advance` handed the state straight back, and this
+    // loop span on it forever - measured on the first turn of seed 1, and on
+    // `feature/run-structure` before any of this, which is why `npm run
+    // balance` could not be run at all.
+    //
+    // Through `endOrGiveUp` rather than a second spelling of it: a harness
+    // that keeps its own copy of how a turn ends is a harness that agrees with
+    // the app until the day it does not. It shouts on a seat that cannot end
+    // its turn at all, which is the same guard the app has and the reason this
+    // is a recovery rather than a silent skip.
+    acted = endOrGiveUp(acted, refused);
     if (!acted.playedThisTurn) {
       throw new Error(
         `stuck turn: seed ${opts.seed}, turn ${state.turn}, actor ${actor}, ` +

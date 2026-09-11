@@ -567,9 +567,55 @@ So the honest state is: the loop works, the acts work, the expedition works, and
 the difficulty is set by a rule the player asked for rather than by a number
 anybody has tuned. The dials, cheapest first: make a lost boss duel cost the
 stake rather than the run; give the rest more than one boon; lower
-`BOSS_CEILING_PER_ACT`. **`npm run balance` has still not been run against any
-of this** - `npm run sweep` is what produced every number above, and it measures
-survival rather than card balance.
+`BOSS_CEILING_PER_ACT`.
+
+## The balance suite, which could not be run at all and now can
+
+`npm run balance` hung. Not slowly - forever, on the first turn of the first
+world of seed 1, and **on `feature/run-structure` before any of this work**:
+a raid re-opens the turn for another of its class, the hand holds no second
+raid, and `runWorld`'s inlined play loop stopped there with the turn still
+open. `advance` refuses to move past an open turn, so it handed the same state
+back and the loop span on it. `runGame` never hit it because it delegates to
+`aiTakeTurn`, which ends with `endOrGiveUp`; `runWorld` inlines the loop for
+its targeting metrics and had no such end. It ends its turns through the same
+`endOrGiveUp` now - exported rather than copied, per the standing rule about a
+harness keeping its own copy of what the app does. The suite takes 78 seconds.
+
+What it then says, against the same suites run on `feature/run-structure` with
+only that hang fixed. Every pacing metric moved TOWARD its committed band and
+none moved away - nine band misses on the parent, three here:
+
+| metric | parent | this branch | band |
+| --- | --- | --- | --- |
+| world-mixed `medianEndTurn` | 29.5 | 63.5 | 66..165 |
+| flailing `subjugatedShare` | 0.23 | in band | 0.64..0.94 |
+| flailing `medianFirstSubjugation` | 22.5 | 25 | 44..110 |
+| flailing `defeatShare` | 0.23 | 0.67 | 0.83..1 |
+| flailing `medianDefeatTurn` | 41 | in band | 65..150 |
+| competent `subjugatedShare` | 0.29 | in band | 0.54..0.84 |
+| competent `defeatShare` | 0.29 | 0.62 | 0.81..1 |
+| competent `medianDefeatTurn` | 36 | in band | 66..150 |
+
+That is the answer to the one thing the plan said only the balance suite could
+settle - the clock's removal. Runs got LONGER and defeats got COMMONER, which
+is the direction the bands were written for, and the median world is now three
+turns short of the band's floor rather than half of it.
+
+Three misses are left and they are not this work's to close: the two
+`defeatShare` numbers sit around 0.6 against a band of 0.81+, and the first
+subjugation still lands at turn 25 against a floor of 44. The bands were
+committed against the pre-refactor game.
+
+`npm run balance` therefore still EXITS NON-ZERO, and a reader should not take
+that as this branch failing a gate: `npm test` excludes these suites by design,
+and one of the four failures is older than the gauntlet - `sim map` asserting a
+minimum defense ceiling of 20 and getting 2, which fails identically on the
+parent and has nothing to do with duels.
+
+`npm run sweep` is the other half and it measures survival rather than balance:
+60 runs, 0 stuck seats, 0 AI give-ups, 3 victories, 43 defeats, 14 unresolved
+at a 150-turn cap (23.3%), median 110 turns.
 
 ## What the sim measures, and what it therefore does not
 
@@ -646,9 +692,13 @@ The rule that came out of the third one is in `AGENTS.md` under the off-map
 section: a faction with no region needs a line per table the map builds from
 `data.regions`, and none of them is a type error.
 
+The power's own raid arrow was watched too, and it was broken by the same
+missing rings: it now comes out of the purple mass at 4 STR and stands on the
+coast of the landing it is aimed at, which is the telegraph the design leans
+on.
+
 Still unwatched: a champion reading as a champion rather than as a neighbour
-with more health, one of the power's own raid arrows landing on a coast, and
-Iberia in any form.
+with more health, and Iberia in any form.
 
 ## Smaller things
 
