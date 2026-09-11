@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -18,6 +18,9 @@ import { testAtmosphere } from "./weather-helpers";
 const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
 /** Minutes since the run start for a clock hour on day one. */
 const at = (hour: number) => calendar((hour - 8) * 60);
+
+// A test that installs a controlled atmosphere owns it only for its own case.
+afterEach(() => vi.restoreAllMocks());
 
 describe("forecast knowledge in the weather wall", () => {
   it.each(["snow", "gale"] as const)("reads stored %s only at an earned stage, without leaking it into stage-one markup", (kind) => {

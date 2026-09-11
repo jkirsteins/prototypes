@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { mapRegion } from "../src/sim/mapped";
@@ -14,6 +14,9 @@ import { css, rule } from "./css";
 import { neighbourLandCell } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
 import { ensureGround } from "../src/sim/weather";
+
+// A test that installs a controlled atmosphere owns it only for its own case.
+afterEach(() => vi.restoreAllMocks());
 
 describe("the map's compositing layers", () => {
   it("turns frozen water from liquid blue into distinct thin and safe ice surfaces", () => {

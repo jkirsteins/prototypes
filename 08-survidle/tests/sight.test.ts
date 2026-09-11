@@ -123,11 +123,14 @@ describe("sight", () => {
       }
     }
     // The template's crest is about 1800 m at 61 N and its relief adds a few
-    // hundred, so no ground reaches 3000 m. A vantage that high sees 3.57 *
-    // sqrt(3000) km, which is 651 cells of 300 m, and sharp eyes and an expert
-    // reading of the ground each add half again.
+    // hundred, so no ground reaches 3000 m. The horizon of the highest ground
+    // there is - 3.57 * sqrt(m) km, in cells of 300 m - is what the range may
+    // not pass, with sharp eyes and an expert reading of the ground each adding
+    // half again. Prominence is height above the lowest ground within 20 km, so
+    // it can only be less than the height itself.
     expect(highest).toBeLessThan(3000);
-    expect(sightRangeCells(state, world, NOON, high)).toBeLessThanOrEqual(Math.ceil(651 * 1.5 * 1.5));
+    const ceiling = Math.ceil((3.57 * Math.sqrt(highest)) / CELL_KM * 1.5 * 1.5);
+    expect(sightRangeCells(state, world, NOON, high)).toBeLessThanOrEqual(ceiling);
   });
 
   it("uses one physical radius in cardinal and diagonal directions", () => {

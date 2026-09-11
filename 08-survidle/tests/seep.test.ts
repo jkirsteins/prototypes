@@ -7,7 +7,7 @@ import { addItem, freshTool, pile, qty } from "../src/sim/inventory";
 import { mapRegion } from "../src/sim/mapped";
 import { addOrder } from "../src/sim/orders";
 import { newGame } from "../src/sim/newgame";
-import { placeAt } from "../src/sim/position";
+import { placeAt, watersideCell } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { readSave, serialize } from "../src/sim/save";
 import { SEEP, SEEP_DRY_DAYS, SEEP_LIFE_DAYS, seepGround, seepNeedsRedig, seepStopped, stepSeeps } from "../src/sim/seep";
@@ -18,20 +18,26 @@ import { cellAt, neighbours, regionAt, type World } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 import { ensureGround } from "../src/sim/weather";
 import { testAtmosphere } from "./weather-helpers";
+import { regionsOutward } from "./world-facts";
 
 beforeEach(() => testAtmosphere({ temperatureC: 10 }));
 afterEach(() => vi.restoreAllMocks());
 
 const cal = calendar(0);
 
-/** The first cell in the start region matching the terrain test, given the cell's terrain and its neighbours'. */
+/**
+ * The first cell matching the terrain test in the start region or the regions
+ * around it, given the cell's terrain and its neighbours'. A landing region of
+ * 4 km on a shore need not hold spruce away from the water at all.
+ */
 function findCell(world: World, ok: (t: string, nb: string[]) => boolean): number {
-  const r = regionAt(world, world.start);
-  for (const c of r.cells) {
-    const nb = neighbours(world, c).map((n) => cellAt(world, n).terrain);
-    if (ok(cellAt(world, c).terrain, nb)) return c;
+  for (const id of regionsOutward(world, world.start, 200)) {
+    for (const c of regionAt(world, id).cells) {
+      const nb = neighbours(world, c).map((n) => cellAt(world, n).terrain);
+      if (ok(cellAt(world, c).terrain, nb)) return c;
+    }
   }
-  throw new Error("no such cell in the start region");
+  throw new Error("no such cell near the start region");
 }
 /** The first wet cell of the start region: damp spruce on the reference seeds, whose start regions are forest with no bog. */
 function wetCell(world: World): number {
@@ -43,10 +49,12 @@ function wetCell(world: World): number {
 describe("seep ground", () => {
   it("is bog on a bog, damp in spruce, and nothing on pine or a shore", () => {
     const { world } = newGame(17);
-    // The start regions are forest with no bog of their own; find one in the world.
+    // The start regions are forest with no bog of their own; find one in the
+    // world. Away from water of every kind, a brook on the cell included: a
+    // seep is for ground with no water on it, and most bog carries a stream.
     let bog = -1;
     for (let idx = 0; idx < world.w * world.h && bog < 0; idx += 7) {
-      if (cellAt(world, idx).terrain === "bog" && !neighbours(world, idx).some((n) => cellAt(world, n).terrain === "water")) bog = idx;
+      if (cellAt(world, idx).terrain === "bog" && !watersideCell(world, idx, "any")) bog = idx;
     }
     if (bog >= 0) expect(seepGround(world, bog)).toBe("bog");
     expect(seepGround(world, findCell(world, (t, nb) => t === "spruce" && !nb.includes("water")))).toBe("damp");

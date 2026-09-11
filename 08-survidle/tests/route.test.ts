@@ -65,8 +65,11 @@ describe("remaining walking time", () => {
   it("counts the actual mixed-terrain minute steps without moving the route", () => {
     expect(routes.remainingWalkMinutes).toBeTypeOf("function");
     // A hand-made world, so the two speeds the count is made of are named here
-    // rather than found wherever the generator puts a terrain edge: 300 m of
-    // meadow at 3 km/h times 1.1, then 300 m of bog at 3 km/h times 0.7.
+    // rather than found wherever the generator puts a terrain edge. The walker
+    // starts in the middle of a meadow cell and the path is two cell centres
+    // west, the second of them bog: 450 m of meadow at 3 km/h times 1.1, then
+    // 150 m of bog at 3 km/h times 0.7, counted in whole minutes at the speed
+    // of the cell the feet are in.
     const world = flatWorld({ w: 8, h: 3, terrain: "meadow" });
     paintWorld(world, [9], "bog");
     const position = { x: 3.5, y: 1.5 };

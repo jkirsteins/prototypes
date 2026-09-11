@@ -15,6 +15,10 @@ describe("simulation-backed weather screenshot fixtures", () => {
     const snow = weatherShotSimulation("persisted-snow");
 
     expect(clear.definition).toMatchObject({ seed: 17, minute: 1440, x: 1696, y: 880 });
+    // The comparison pair is one rock cell read twice, in clear air and under a
+    // dense band; the terrain is part of the fixture, not an accident of it.
+    expect(terrainOf(clear.world, clear.definition.x, clear.definition.y)).toBe("rock");
+    expect(weatherShotSimulation("obscured").cell).toBe(clear.cell);
     expect(conditionsAt(clear.state, clear.world, clear.cal, clear.cell).extinctionPerKm).toBeLessThan(0.3);
     expect(conditionsAt(rain.state, rain.world, rain.cal, rain.cell).rainMmPerHour).toBeGreaterThan(10);
     expect(conditionsAt(fog.state, fog.world, fog.cal, fog.cell).fog).toBeGreaterThan(0.35);

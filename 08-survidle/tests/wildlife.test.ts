@@ -32,6 +32,10 @@ function sample(seed: number, stride = STRIDE): RegionDef[] {
   return out;
 }
 
+/** The share of a region that is ground this species lives on, lake and sea told apart from the terrain shares. */
+const shareOf = (r: RegionDef, s: Species) => (Object.keys(SPECIES_DEFS[s].habitat) as Habitat[])
+  .reduce((sum, h) => sum + (h === "lake" ? r.lake : h === "sea" ? r.sea : r.frac[h]), 0);
+
 describe("wildlife capacity", () => {
   it("range noise is spread so that a range of r covers about r of the country", () => {
     let over65 = 0;
@@ -83,10 +87,17 @@ describe("wildlife capacity", () => {
     }
   });
 
-  it("keeps woodland birds off the fell and lake fish out of the sea", () => {
+  it("gives a species no capacity where its ground is missing, and keeps lake fish out of the sea", () => {
     for (const seed of SEEDS) {
       for (const r of sample(seed)) {
-        if (r.frac.fell >= 0.8) for (const s of ["capercaillie", "hazelGrouse", "cuckoo", "squirrel", "perch", "pike"] as Species[]) expect(r.capacity[s], `${s} on fell`).toBeUndefined();
+        // The ground a species lives on gates it: none of that ground, none of
+        // the species, whatever else the region holds. A fell region is not the
+        // test of that any more - the spine carries tarns, and copses in its
+        // corries, so an eighty per cent fell region can hold lake fish and a
+        // few woodland birds and be right to.
+        for (const s of SPECIES_IDS) {
+          if (shareOf(r, s) === 0) expect(r.capacity[s], `${s} where it has no ground`).toBeUndefined();
+        }
         if (r.sea > 0 && r.lake === 0) expect(r.capacity.perch, "perch in the sea").toBeUndefined();
         if (r.frac.water === 0) for (const s of ["perch", "cod", "mallard", "loon"] as Species[]) expect(r.capacity[s], `${s} with no water`).toBeUndefined();
         expect(r.lake + r.sea).toBeCloseTo(r.frac.water, 9);
