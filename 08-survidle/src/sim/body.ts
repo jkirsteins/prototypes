@@ -17,7 +17,7 @@ import { calendar, type Calendar } from "./calendar";
 import { feedFire } from "./camp";
 import { fireAt, fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
 import { AXES, axeInHand, hasTool, pile, pileAt, qty, takeUp, toolNear, transfer, weight } from "./inventory";
-import type { StormPlanInputs, StormPlanOption, StormPlanSnapshot } from "./goals";
+import type { StormPlanInputs, StormPlanOption, StormPlanSnapshot } from "./opportunities";
 import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { log } from "./log";
@@ -929,12 +929,18 @@ function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" |
     // A walk home to lie down by day says what it is, the way the sleep step does.
     const why = need === "sleep" ? (cal.isNight ? " for the night" : " to doze") : need === "cold" ? " to warm up" : " for the evening";
     if (camp !== null && check(state, world, cal, "walk", `cell:${camp}`).ok) return walkStep(state, world, camp, why);
+    // The two read alike to the runner and not to the player: "no way to
+    // camp" told a tester who had never made one that he had a camp he could
+    // not reach, and he spent the rest of the session trying to get there.
+    const because = camp === null ? "no camp yet" : "no way to camp";
     const s: Step = need === "sleep"
-      ? { id: "sleep", step: "sleeping where {you} {stand}; no way to camp" }
+      ? { id: "sleep", step: `sleeping where {you} {stand}; ${because}` }
       : need === "cold"
-        ? { id: "rest", step: "resting to warm up; no way to camp" }
-        : { id: "rest", step: "resting after the day's work; no way to camp" };
-    if (!dry && !isRunning(state, s) && need === "sleep") log(state, "No way to camp from here. {You} {sleep} where {you} {are}.", "bad");
+        ? { id: "rest", step: `resting to warm up; ${because}` }
+        : { id: "rest", step: `resting after the day's work; ${because}` };
+    if (!dry && !isRunning(state, s) && need === "sleep") {
+      log(state, camp === null ? "No camp yet. {You} {sleep} where {you} {are}." : "No way to camp from here. {You} {sleep} where {you} {are}.", "bad");
+    }
     return s;
   }
   const fs = fireStep(state, world, cal, camp!);

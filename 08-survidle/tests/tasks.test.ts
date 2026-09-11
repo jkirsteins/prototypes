@@ -214,6 +214,7 @@ describe("tasks", () => {
     startTask(state, world, cal, "build", "leanTo");
     done(g);
     expect(campSite(st)!.structures.leanTo).toBe(true);
+    expect(state.opportunities.completedAt["build:leanTo"]).toBe(state.minute);
   });
 
   it("turns a successful hunt into field work before any meat is recovered", () => {

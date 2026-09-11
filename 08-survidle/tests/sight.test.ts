@@ -14,7 +14,7 @@ import { visibleWildlife } from "../src/sim/wildlife-agents";
 import { cellAt, heightAt, regionAt, type World } from "../src/world/gen";
 import { testAtmosphere } from "./weather-helpers";
 import { flatWorld, paintWorld } from "./world-fixture";
-import { regionsOutward, terrainCellNear } from "./world-facts";
+import { regionsOutward } from "./world-facts";
 
 const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
@@ -52,9 +52,66 @@ function openRun(world: World, region: number, n: number): { vantage: number; en
   throw new Error(`region ${region} has no ${n}-cell open run`);
 }
 
-/** A closed-spruce cell in `region` or in the nearest region around it that has one. */
+/**
+ * A spruce cell near `region` deep enough in the wood that all eight cells
+ * around it are wood too: no edge to walk to and look out from. A region of
+ * 4 km may hold no such cell, so the search widens outward from home.
+ */
 function spruceCell(world: World, region: number): number {
-  return terrainCellNear(world, region, "spruce").cell;
+  const wooded = (c: number) => FOREST.has(cellAt(world, c).terrain);
+  const closed = (c: number) => {
+    if (cellAt(world, c).terrain !== "spruce") return false;
+    const x = c % world.w;
+    const y = Math.floor(c / world.w);
+    if (x < 1 || y < 1 || x >= world.w - 1 || y >= world.h - 1) return false;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && !wooded(c + dy * world.w + dx)) return false;
+    return true;
+  };
+  for (const id of regionsOutward(world, region, 400)) {
+    const idx = regionAt(world, id).cells.find(closed);
+    if (idx !== undefined) return idx;
+  }
+  throw new Error(`no region within reach of ${region} has a spruce cell closed on every side`);
+}
+
+const FOREST = new Set(["spruce", "pine", "birch"]);
+
+/**
+ * A forest cell on a shore: `n` water cells run straight from it in one
+ * cardinal direction, and the far bank past them is land. Searched over the
+ * whole start region and its neighbours, since a shore run this long is rarer
+ * than a spruce cell.
+ */
+function forestShore(world: World, region: number, n: number): { vantage: number; water: number[]; farBank: number } {
+  const { cells } = regionAt(world, region);
+  const cx = Math.round(cells.reduce((s, c) => s + (c % world.w), 0) / cells.length);
+  const cy = Math.round(cells.reduce((s, c) => s + Math.floor(c / world.w), 0) / cells.length);
+  for (let y = cy - 30; y <= cy + 30; y++) {
+    for (let x = cx - 30; x <= cx + 30; x++) {
+      if (x < 1 || y < 1 || x >= world.w - 1 || y >= world.h - 1) continue;
+      const idx = y * world.w + x;
+      if (!FOREST.has(cellAt(world, idx).terrain)) continue;
+      for (const [dx, dy] of DIRS) {
+        const water: number[] = [];
+        for (let i = 1; i <= n; i++) {
+          const nx = x + dx * i;
+          const ny = y + dy * i;
+          if (nx < 0 || ny < 0 || nx >= world.w || ny >= world.h) break;
+          const nidx = ny * world.w + nx;
+          if (cellAt(world, nidx).terrain !== "water") break;
+          water.push(nidx);
+        }
+        if (water.length < n) continue;
+        const bx = x + dx * (n + 1);
+        const by = y + dy * (n + 1);
+        if (bx < 0 || by < 0 || bx >= world.w || by >= world.h) continue;
+        const farBank = by * world.w + bx;
+        if (cellAt(world, farBank).terrain === "water") continue;
+        return { vantage: idx, water, farBank };
+      }
+    }
+  }
+  throw new Error(`region ${region} has no forest cell with ${n} water cells running from it`);
 }
 
 // Seed 1's start region, at solar noon on landing day (1 April): bright enough that light never gates the range.
@@ -418,6 +475,18 @@ describe("sight", () => {
     const visible = visibleCells(state, world, night, vantage);
     expect(visible.has(vantage)).toBe(true);
     expect(visible.has(end)).toBe(false);
+  });
+
+  it("trees at the water's edge see across the lake", () => {
+    const { state, world } = newGame(1);
+    testAtmosphere({ extinctionPerKm: 0.06 });
+    const { vantage, water, farBank } = forestShore(world, state.player.region, 4);
+    forget(state);
+    seeFrom(state, world, NOON, vantage);
+    // The ring gives the first water cell for free; the open water past it is
+    // what standing at the edge of the wood is worth.
+    for (const cell of water.slice(1)) expect(isKnown(state, cell)).toBe(true);
+    expect(isKnown(state, farBank)).toBe(true);
   });
 
   it("stops at the first blocking canopy", () => {

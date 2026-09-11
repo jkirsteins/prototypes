@@ -88,6 +88,31 @@ is why B is not optional, why every away death has to be one the
 forecast showed, and why the re-run rate is the first bar above.
 Punishing is the aim; unfair is the failure mode.
 
+**Nature is the enemy.** How we arrived here: an idle game needs a
+ratchet, a number that only goes up and whose rate the player improves,
+and a hook, a reason the next return is worth making. Survival supplies
+neither on its own. It is homeostasis: when it works nothing happens,
+the check-in shows a log, and an away death is the opposite of a payoff.
+The genre's usual ratchet is intensification, the same click worth more,
+and every intensifying number here breaks a real quantity: a day's food
+is about 3,000 kilocalories, a working day is ten hours, a hectare of
+taiga yields what it yields. So the ratchet has to be extension. What we
+consider as the numbers that go up: ground kept in use, months banked in
+the larder, country known, generations in the lineage, and the
+forecast's odds of living. Each is real, each is bounded by one person's
+labour and by upkeep rather than by a rule, and each needs something to
+push back on it or it is a trophy. That something is the north. There
+are no other humans in this world and there never will be; every threat,
+every raid on the larder and every stretch of ground the forest takes
+back is nature acting, and every structure, store, trail and stretch of
+worked ground is a stake held against it. When an item needs an
+antagonist - something that takes territory, something that comes for
+what is stored, something that makes a border mean anything - it is the
+land, the weather and the animals, never a rival, a raider or a
+neighbour. The hook is the same opposition read on return: what the
+north took while the tab was closed, and what held. Item P is where this
+is built.
+
 Calibration targets for the sim, to steer by rather than to hit exactly:
 
 - A first run dies inside 20 days. A player who has learned the loop
@@ -434,8 +459,11 @@ a producer, a camp that holds and was chosen, orders, a forecast that
 makes away risk legible, a person to lose), so twenty testers go in there, as a kill-or-continue check of the hybrid and
 not the commercial gate, before any content deepens a loop that has not
 earned it; then the save sync if the round asks for it (the section of
-that name below: a code on the settings panel and the two-device rule),
-and the south if the round's first deaths are not followed by a restart
+that name below: a sync code, a Cloudflare Worker with one Durable Object
+per code, and a lease that lets one device run the world at a time;
+spec `2026-09-11-survidle-save-sync-design.md`), then the phone check-in
+page on top of it once P's camp view and camp sheet stand (the same
+section: a second entry page over the same engine, no map), and the south if the round's first deaths are not followed by a restart
 (the section of that name below: the landing month first, then the map
 extended south);
 then the second half of I (the found places, and the card reading the
@@ -2122,11 +2150,34 @@ save put to a key-value store on every save and fetched on every open,
 Cloudflare's free tier being enough; and Steam cloud for the Steam
 build. The storage is trivial. The item is the two-device rule: a tab
 left open on the desktop and a phone check-in both run the simulation
-forward and diverge, the same problem two tabs have today. Last writer
-by save time wins, the loser reloads and takes over, and the away
-report says which happened. It lands after the round, if the round's
-testers ask for the phone, and not before, so that the round is
-recruited as single-device and the asking is a finding.
+forward and diverge, the same problem two tabs have today. It lands
+after the round, if the round's testers ask for the phone, and not
+before, so that the round is recruited as single-device and the asking
+is a finding.
+
+Specced 2026-09-11 in `2026-09-11-survidle-save-sync-design.md`, not
+built. The spec replaces "last writer by save time wins": with
+permadeath it lets the survivor die on one device and live on the
+other. Instead one device holds a lease and runs the world; any other
+device shows the latest save read-only and can take over, and the old
+holder learns it at once over a WebSocket and stops. No device ever
+advances the world from a save that is not the store's latest. The
+store is a Cloudflare Worker with one Durable Object per sync code,
+because Durable Object storage is strongly consistent and KV is not,
+and "close the laptop, open the phone" falls inside KV's window. No
+push and no accounts.
+
+**The phone check-in page** is the second half, and waits for both the
+sync and P. The phone is a companion to a desktop run, not a smaller
+copy of it: everything on it must feed a decision made at a check-in,
+so there is no map and no Do catalog. What it carries: the camp
+sheet's two numbers and the away report read against it, the Ahead
+rows, reordering the order list, the once orders startable now, the
+self-care row, the away dial, and acting on an opportunity. It is a
+second Vite entry page over the same engine, reached by the sync link.
+It waits for P because P's camp view and camp sheet are the check-in
+it would otherwise invent; built after them it is the camp view shaped
+for a phone. Not specced.
 
 ### The south
 
@@ -4162,6 +4213,181 @@ food, lower noise helps hunting, and lower injury protects later work. No
 combination may erase footwear, Strength differences, winter danger or terrain
 costs. After implementation, rerun the April, winter, year, lineage and
 forecast probes before accepting the curve.
+
+### P. The camp and the stake
+
+**Curve.** Horizon rows 4 and 5: the camp sheet is what a heir reads on
+return, and the stores and the raised cache are what let a producers
+camp reach the away cap without being emptied by a bear. Survivor rows 2
+and 4 to 6: row 2's surplus is what the sheet makes visible, and rows 4
+to 6 read "the camp is a machine, and everything it makes is for going
+somewhere it could not," which is the stake. Tiers: the raised cache at
+Building 10 beside the cabin. Expected: parts 1 to 3 move no sim number
+and are measured by the tester round, on the 09-10 record's control
+question and the gate's hours of attention; parts 4 to 6 lower the
+producers row unless the cache stands and the pack is kept off, and the
+reference player is re-run to show it.
+
+Raised 2026-09-11 from the two playtests and the mental model in "What
+we are optimising for"; the diagnosis, the games taken from and the ideas
+refused are in `docs/roadmap-additions.md` under "Nature is the enemy".
+Six parts, in build order, then four held for later.
+
+**1. Two views, camp and survivor.** A top-level view switch, not a map
+control. Camp view centres on the camp, shows what stands and what is
+stored, and carries the camp-scoped orders: build, keeps on stores, the
+trap line, the fire, hauling. Survivor view is the page as it is, with
+the body-scoped and field-scoped orders: gear, travel, hunt, forage,
+explore. One order list; the view chooses which end of it is shown.
+Camp view needs a camp picker, which is also how a second camp founded by
+accident (09-07, notes 223-224) becomes a feature, and it must still show
+danger to the survivor. The reason to build it: camp view is what the
+player does while the survivor sleeps or is away. The 09-10 tester spent
+sixteen minutes looking for a wake button; the answer is not an override
+but something to do with those minutes.
+
+**2. Placed improvements.** A camp improvement is placed on the map as a
+ghost awaiting its build, not only added to the queue. Most of it
+exists: `src/sim/tasks.ts` writes `build[sid] = 0.001` on the camp site
+the moment a build order starts, `Site.build` keeps progress between
+visits, `RegionState.sites` is keyed by cell, and orders carry a target
+cell in `req.where`. The work is to let placement choose the cell, create
+the entry at placement rather than at start, and draw it. Four rules: a
+ghost carries its blockers (needs 40 logs, have 12; needs Building 10; on
+peat, wants a platform); a ghost and its order are one object, so
+reordering, cancelling and rank show on both; placement is where the
+ground model teaches itself, since the cost changes as the ghost moves
+over peat, rock and snow; and only things that occupy ground get a
+ghost, so hanging meat on the rack stays a plain order. Ghosts and
+part-built structures survive death: a heir inherits the predecessor's
+intent, which answers the 09-07 record's design question 4, a day-5 death
+leaving a camp not worth inheriting. This is the answer to that record's
+design question 6, what the map is for.
+
+**3. The camp sheet: producers and stores.** One sheet listing each
+producer with its rate (`PRODUCERS` in `src/sim/capabilities.ts`: snares,
+drying rack, basket trap, water trough, seep; snares are resource
+colonies of the camp and stay visible from it) and each store with held,
+cap and what is spoiling: rack space, the woodpile, vessels, a cellar or
+cache when built. No abstract capacity number; the caps are the ones the
+sim has, `RACK_MAX_KG` times `site.racks`, `MAX_SNARES`, the vessels'
+litres, and `capabilities.ts` already words them as `limits`. Each store
+gets one rung of expansion. Caps are lossy, not merely full: meat spoils,
+an unchecked trap line loses its catch after `SNARE_CATCH_MAX_AGE`, the
+fire dies, water freezes, so the return is pressed for by the north and
+not by a timer. Two headline numbers, both camp-scoped and both honest:
+person-days of food banked, and the forecast's odds at a horizon, which
+B computes as "7 of 10". The away report reads against this sheet: the
+snares took four hares and lost two, the rack is full and two days off
+drying.
+
+**4. The stake, and nature reclaiming it.** A painted area on the map
+measuring how much ground the survivor holds against the north. One rule
+for what colours a cell: used in the last N days, where used means
+walked, worked, trapped, built on or fetched from; the camp core is
+permanent while a structure stands. The paint fades on the fog's own
+clock (tier 3, "visited once, since forgotten", is already nature taking
+knowledge back). Ground whose upkeep has fallen under a threshold, or
+whose structures have collapsed for want of it, turns half-painted: a
+reminder of territory once held and lost. The upkeep is already priced,
+`STRUCTURE_LIFE_DAYS` and the two-thirds re-roofing rule, so the stake's
+size is bounded by one person's labour and not by a number. The painted
+area is the game's territorial ratchet; it goes up only by keeping more
+ground in use. Extends 6.
+
+**5. Raids that scale with the larder, and the raised cache.** 4 already
+names bear, wolverine, fox and ravens taking meat from the rack, the
+pile and the shelter. The addition is the coupling: raid pressure rises
+with what is banked, so the ratchet in part 3 is what draws nature in,
+and growing the stake forces the next piece of capital. That capital is
+the raised cache, the Sami njalla or the Norwegian stabbur, a storehouse
+on a post; it is in 3's buildings list as "raised cache or cellar" and
+this gives it its threat.
+
+**6. A pack range that follows its prey.** Wolves live in patches and the
+winter loop thins the deer and elk; tie them together so a pack's range
+moves toward the camp in December, because its prey is gone, and eases in
+May. Drawn as a second paint, the danger paint, in its own colour: the
+stake is what the player holds, the danger paint is what holds against
+them, and one colour cannot say both. At night the fire's rings are the
+third edge, the heat border, already on the map. Extends 4.
+
+**Held for later, in this order.**
+
+- **Zone painting as control.** Scope standing orders to painted zones:
+  "fell trees, forever" in this woodlot; "keep camp at 20 kg berries"
+  from this heath; a no-go paint north of the river, which is the direct
+  answer to the 09-10 tester's turning point (the walk to bare rock,
+  notes 60-65, 131-132); a reserve paint over next winter's wood. This is
+  authored policy drawn on the map, the missing link between the order
+  list and the map. It reuses part 2's placement gesture, so it waits on
+  part 2; painting before ghosts is decoration.
+- **The seasonal round.** A follow-on to zone painting once the year loop
+  is looked at: paint where the survivor goes in which month, since the
+  territory is a different shape in winter (ice is a road, the bog is
+  crossable, the deer are thin) than in summer. Historically what a
+  northern round was; no other game draws it.
+- **A camp across several cells.** Not a mechanic of its own. Within the
+  cell first: the 3 by 3 and 6 by 6 subcell fields at close zoom are
+  presentational by design, so drawing the structures of `Site` into a
+  camp cell's subcells costs no simulation and answers the observer's
+  note that the 50 m zoom is ugly because nothing is simulated there
+  (09-10, note 123). Across cells it falls out of part 2 when a ghost is
+  placed on a neighbouring cell, and each annexed cell is a siting
+  decision: the rack by the water, the trap line on the heath, the
+  woodshed in the forest. Three rulings when it happens: the runner walks
+  home to `campCell` as now, hauling within the camp is free inside a
+  radius, and the fire warms one cell, so a sprawling camp is not
+  strictly better.
+- **The catchment and depletion overlay.** `hunt-pressure.ts` already
+  depletes game within `PRESSURE_RADIUS_KM` of activity, so the camp has
+  a footprint in the sim that nobody can see. Revealing it is cheap. It
+  is bounded by the ruling that one survivor cannot empty a shore or
+  heath, so it is a texture of part 4's paint and not a part of its own.
+
+### Q. The landing note
+
+**Curve.** Survivor row 1: what the heir starts with changes from "the
+dim map, landing near the old camp" to a note and a shore one valley
+over, and the ladder's row 1 reads so. No tier. Expected:
+no sim number moves; the heir gate holds at its current count with
+`runHeir` following the note instead of the dim map, which is the
+harness change the item owns. Slot: before P, after the terrain
+hydrology merge, since that moves shore cells, and before the next
+tester round, so the round measures the new landing. About a day.
+
+Raised 2026-09-11. A flavour mechanic, not a core one, and it must not
+grow: it has no tiers, no distance ladder and no carry. It exists because
+the heir's map today is every ancestor's wandering drawn dim, which dots
+the map and hands the heir a camp they have not found.
+
+Four rulings:
+
+1. A heir's map starts empty except what the landing shows. The
+   ancestors' ground is not drawn, and the route gate does not read it:
+   knowledge you cannot see is knowledge you do not have.
+2. The landing is a shore cell in a region adjacent to the camp's, never
+   the camp's own; two regions out only in a warm landing month, May to
+   September. Random within that. Two regions with spruce between can
+   cost a night out, and a winter night in wool with no roof can kill a
+   heir who has not yet seen the camp, which teaches nothing.
+3. The journal carries one note in three parts: the camp's region by
+   name, its direction from where you stand, one thing the region is
+   known for. Enough to pick a direction, not enough to skip the walk.
+   Inside the region, "Explore" is the existing button.
+4. When the camp cell first comes into view, the camp's region comes
+   back whole, and so does any region where something of the lineage
+   stands: a second camp, a trap line, a cache. Ground the ancestors only
+   walked stays unknown until this survivor walks it. Trails and snares
+   are on the land and can be followed; a route through a far valley is
+   not.
+
+The note is generated from the bearing to the camp's region and the
+region card:
+
+- "Camp is in Harelia, the valley to the south-west. Look for the lake."
+- "Camp is in Stensund, two valleys east along this shore."
+- "Camp is over the fell to the north, in Kaltio. Spruce country."
 
 ## Beyond the gate: the edge of the world
 

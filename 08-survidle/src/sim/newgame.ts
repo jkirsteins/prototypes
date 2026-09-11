@@ -1,7 +1,7 @@
 import { derive, Rng } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
 import { calendar, fmtDate, START_DOY } from "./calendar";
-import { newGoals } from "./goals";
+import { newOpportunities } from "./opportunities";
 import { AWAY_HOURS_DEFAULT } from "../units";
 import { addItem, emptyInventory } from "./inventory";
 import { FOODS, KCAL_FULL } from "./items";
@@ -87,8 +87,10 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
   state.ledger = [];
   creditYield(state, "kit", ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg);
   // A person coming into being looks around: the ground underfoot and
-  // whatever the eye reaches from it is the whole of what they know.
-  seeFrom(state, world, calendar(state.minute, state.startDoy), cell);
+  // whatever the eye reaches from it is the whole of what they know. It is
+  // what they arrive knowing rather than something they discovered, so the
+  // leaves it makes possible arrive without a word.
+  seeFrom(state, world, calendar(state.minute, state.startDoy), cell, false);
 }
 
 /** The first survivor's record for the direct path: a name for the sex the seed rolls, and the median person unless one is given. */
@@ -154,7 +156,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person, giv
     landing: null,
     spine: { fired: {}, announced: {} },
     manualSeen: false,
-    goals: newGoals(calendar(0, startDoy).season),
+    opportunities: newOpportunities(calendar(0, startDoy).season),
     shopping: null,
     taught: {},
     teachQueue: [],
@@ -169,10 +171,10 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person, giv
     precip: local.precip, clear: local.clear, offset: local.offset, snowCm: local.snowCm,
     rolledDay: local.rolledDay, dryDays: local.dryDays, wetDay: local.wetDay, iceCm: local.iceCm,
   });
-  seeFrom(state, world, calendar(state.minute, state.startDoy), start.campCell);
+  seeFrom(state, world, calendar(state.minute, state.startDoy), start.campCell, false);
   enterRegion(state, world, world.start);
   // A camp is chosen, and a choice needs the ground in front of you.
-  mapRegion(state, world, world.start);
+  mapRegion(state, world, world.start, false);
   if (startDoy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${start.name}. {You} {have} an axe, wool on {your} back and a kilo of dried meat.`);
   else log(state, `${fmtDate(calendar(0, startDoy))}. {You} {wake} at ${start.name} with an axe, wool on {your} back and a kilo of dried meat.`);
   return { state, world };

@@ -1,13 +1,12 @@
 import { Rng } from "../rng";
 import { regionAt, type World } from "../world/gen";
-import { autoEat } from "./actions";
 import { dailyAnimals } from "./animals";
 import { stormOptions } from "./body";
 import { calendar, DAILY_HOUR } from "./calendar";
 import { dailyCamp, stepCamp, stepEmergencyShelter, stepFoundCover } from "./camp";
 import { hourlyEvents } from "./events";
-import { recordStormMinute, stepGoalOpportunity, stormMetrics, validateScheduledGoalStorm } from "./goalopportunity";
-import { checkWinterStores, goalDeed } from "./goals";
+import { recordStormMinute, stepOpportunityContext, stormMetrics, validateScheduledOpportunityStorm } from "./opportunity-context";
+import { checkWinterStores, recordOpportunityEvent } from "./opportunities";
 import { hourlyWorld, iceUnderFoot } from "./hazards";
 import { runIntent } from "./intent";
 import { log } from "./log";
@@ -22,7 +21,6 @@ import type { GameState } from "./types";
 import type { WildlifeMode } from "./types";
 import { stepSeeps } from "./seep";
 import { advanceWildlifeMotion, dailyWildlife, stepWildlife } from "./wildlife-agents";
-import { autoDrink } from "./water";
 import { stepCarcasses } from "./hunting";
 import { conditionsAt, ensureGround, forecastKnowledge, forecastStage, forecastText, localStorm, localWeather, NO_FORECAST_KNOWLEDGE, sameForecastKnowledge, stormAirMatches, stormComing } from "./weather";
 
@@ -115,7 +113,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   stepFoundCover(state, dt);
   stepEmergencyShelter(state, world, dt);
 
-  if (!nobody) validateScheduledGoalStorm(state, world);
+  if (!nobody) validateScheduledOpportunityStorm(state, world);
   const previousStorm = state.weather.storm;
   const hadStorm = previousStorm !== null;
   const beforeKnowledge = previousStorm ? forecastKnowledge(state, previousStorm, previousMinute) : null;
@@ -157,7 +155,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
       const before = previousStorm?.id === knowledgeStorm.id && beforeKnowledge ? beforeKnowledge : { ...NO_FORECAST_KNOWLEDGE };
       const after = currentStorm?.id === knowledgeStorm.id ? forecastKnowledge(state, knowledgeStorm) : { ...NO_FORECAST_KNOWLEDGE };
       if (!sameForecastKnowledge(before, after)) {
-        goalDeed(state, { kind: "forecastChanged", minute: state.minute, stormId: knowledgeStorm.id, before, after, source: "passive" }, world);
+        recordOpportunityEvent(state, { kind: "forecastChanged", minute: state.minute, stormId: knowledgeStorm.id, before, after, source: "passive" }, world);
       }
     }
   }
@@ -172,7 +170,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   // the interval remains zero below.
   if (!nobody && currentStorm && previousMinute < currentStorm.from && state.minute >= currentStorm.from) {
     const plan = stormOptions(state, world, currentStorm);
-    goalDeed(state, { kind: "stormStarted", minute: state.minute, stormId: currentStorm.id, plan }, world);
+    recordOpportunityEvent(state, { kind: "stormStarted", minute: state.minute, stormId: currentStorm.id, plan }, world);
   }
 
   // Read after the task step above: a walk, an order or an intent can move
@@ -203,8 +201,11 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   let drains: Drains | null = null;
   if (!nobody) {
     drains = stepPlayer(state, world, cal, ambient, dt);
-    autoEat(state, world, rng);
-    autoDrink(state, world);
+    // Nothing eats or drinks here. Hunger and thirst are the self-care
+    // row's, served on the minutes the player's ranking gives that row: an
+    // eat on every step behind the row's back was what made the row read as
+    // a mystery, and a meal in the middle of a once order the player had
+    // not asked for.
     iceUnderFoot(state, world, rng);
     // Attribute exactly the overlap of this elapsed interval to where the
     // survivor ended it, after its task or movement has taken effect.
@@ -233,9 +234,9 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     // A season is reached by living into it. Landing inside one is not
     // reaching it, which is why the turnover and not the reading is the deed.
     const season = cal.season;
-    if (season !== state.goals.lastSeason) {
-      state.goals.lastSeason = season;
-      if (!nobody) goalDeed(state, { kind: "season", season });
+    if (season !== state.opportunities.lastSeason) {
+      state.opportunities.lastSeason = season;
+      if (!nobody) recordOpportunityEvent(state, { kind: "season", season });
     }
     if (!nobody) checkWinterStores(state);
     if (!nobody) current(state).forecast.push(null);
@@ -245,10 +246,10 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     die(state, causeFrom(drains), regionAt(world, state.player.region).name);
   }
   if (!nobody && previousStorm && state.weather.storm === null) {
-    goalDeed(state, {
+    recordOpportunityEvent(state, {
       kind: "stormEnded", minute: state.minute, stormId: previousStorm.id, stormKind: previousStorm.kind, survivorAlive: !state.dead,
       ...stormMetrics(state, previousStorm.id),
     });
   }
-  stepGoalOpportunity(state, world, cal, rng);
+  stepOpportunityContext(state, world, cal, rng);
 }

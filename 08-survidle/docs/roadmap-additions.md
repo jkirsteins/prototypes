@@ -1,8 +1,9 @@
 # Roadmap additions
 
-Items raised but not built, written here because the roadmap the specs cite
-(`the roadmap's gate table`, `roadmap item B`) is not in this repo. Move them
-into it when they meet.
+Items raised but not yet placed in the roadmap
+(`superpowers/specs/2026-09-03-survidle-realism-roadmap.md`). An item moves
+into it when it can carry a curve line, and this file then points at its
+letter.
 
 ## Walking skill
 
@@ -627,6 +628,48 @@ distributions. Until this is complete, the current kcal/day verdict is
 diagnostic and non-gating; do not tune hunting odds, carcass yields, food ecology
 or survival bands against it.
 
+### Re-source the large-game expectation, 2026-09-11
+
+**Raised** 2026-09-11, when the fresh-sign-on-foot seam moved the year gate
+from 2 of 5 to 4 of 5 seeds and the kills line to "over" on four seeds.
+
+The band itself is the weak number, not only the verdict that reads it.
+`APRIL.rows.largeGame` (300 to 1,500 kcal a day, experienced) is one row of
+the Swedish handbook's diversified expert day, whose total tops out at
+3,500 while a survivor who lives the year burns 3,000 to 4,500. Any run that
+reaches 1 April in this country therefore leans past the handbook's day on
+whatever the country offers, and inland that is elk. The row cannot tell a
+survivor eating what it killed from a stockpile; the runner still stops
+hunting at 30 food days and 14 fat days, so the kills track consumption.
+
+The reading to keep from 2026-09-11, at level 20 from 1 April: main c9e596cf
+read seeds 17, 19, 42, 79, 45 as froze day 12, starved day 317, alive, froze
+day 289, alive, with elk 0, 2, 4, 2, 2 and the large-game line under, in
+band, over, in band, in band. The branch read froze day 23, alive, alive,
+alive, alive with elk 2 (reindeer), 6, 6, 6, 3 and the line over on all but
+seed 45 at 1,700 to 2,300 a day, inside the handbook's total band. The
+mechanism is known: sign read while walking satisfies the "no fresh sign"
+legality gate for a named hunt, so the runner can hunt where it has walked.
+Reading tracks in passing is what a hunter does; the question the number
+raises is the kill rate, not the sign.
+
+Do, in this order:
+
+- Re-source the expectation from a boreal subsistence figure: large-game
+  kills per hunter-year with bow and traps for a lone adult in inland
+  boreal forest, with the source named beside the band the way `BURN` and
+  the plant hours are. Six elk a year in twenty square kilometres is the
+  claim to test. If the source supports a band in kills per year rather
+  than kcal per day, change the row's unit and the year report's line with
+  it.
+- Read kill-per-attempt on the fresh-sign seam with the existing hunt
+  diagnostic (the 153-day rerun above), main against the branch, before
+  touching odds or `WALK_SIGN_FACTOR`. More attempts at the same odds is the
+  runner knowing more ground; more kills per attempt would be a seam
+  defect.
+- Then, and only then, recalibrate under the evaluator rebuild above. A
+  number bent to bring the line into band is not a correction.
+
 ### Local-weather hunting integration
 
 **Raised** 2026-09-10, after reviewing the complete
@@ -723,3 +766,203 @@ translucent fog edge to soften the hard cutoff. It must be derived only from the
 known/unknown boundary, preserve the uniform time-of-day shade across the whole
 viewport, and never reveal terrain or marks in an unknown cell. Treat this as a
 P2 readability pass, with screenshots at day, night and rain before shipping.
+
+## Rendering on its own clock
+
+**Raised** 2026-09-11, while measuring the water shimmer's cost.
+
+**Addressed** 2026-09-11. Tiers 1 and 2 below are built: panels render
+every 100 ms, `setHidden` and the sky, speed-graph and tip writers compare
+before writing, and the tip draws on the pointer event. Measured on the
+same lake run: main thread 478 to 230 ms a second with the water still,
+script 157 to 32, the mutation census down from eleven per-frame writers to
+the speed path at ten a second. What remains: the water's 567 opacity
+overlays still cost about 160 ms a second because Chrome ticks every
+animation on the main thread whatever the compositing hints; the lever is
+one animation per cell with pre-summed keyframes through the Web Animations
+API. Tier 3, the engine in a worker, is untouched. The churn budget test
+still counts markup only, not attribute rewrites.
+
+The frame loop renders every panel on every animation frame and diffs the
+result, so the page pays style and layout at display rate whether or not
+anything changed. Measured in headless Chrome at 1x on a real run (seed
+12318, day 190, a lake of 189 water cells in view), with all water motion
+switched off: a style recalculation and a layout 60 times a second, paint
+at 74 ms of every second, and a main thread busy 478 ms of every second.
+The per-frame mutation census names the writers: the six panes' `hidden`
+attribute, the sky's `aria-label` and gradient centre, the weather panel's
+children and path, and the map tip's `hidden`, each rewritten 60 times a
+second though the value is almost always the one already there. The same
+run had hundreds of CSS animations alive at once: four glyph ripples per
+fog or rain cell, 120 sky rain drops, and now three ripple overlays per
+water cell.
+
+What it cost in practice: the first water ripple computed a colour per
+cell in place, which repainted every water cell every frame. Paint went
+from 74 to 366 ms a second at 1x, roughly four times that on a Retina
+screen, and the main thread to 94 percent busy. Frames dropped, a smooth
+ripple with dropped frames reads as pulsing, and hover queued behind the
+same work. Moving the ripple to opacity overlays the compositor animates
+by itself put paint back at baseline. The lesson generalises: nothing
+that moves every frame may run on the main thread.
+
+The shape to build has three tiers, each on its own clock:
+
+1. **Presentation motion** - water, fog, rain, cloud shadows, the mood
+   glyph - lives in CSS and runs on the compositor at display rate with no
+   script. Only transform and opacity animate; a colour or a glyph change
+   is a step, never a per-frame paint. Per-cell phases are seeded from
+   the world, as the water ripples are now, so a re-render writes the same
+   markup and the morph has nothing to do.
+2. **State rendering** runs on change or on a fixed cadence of about 10 Hz,
+   whichever is later, since nothing a panel shows moves faster than a
+   game minute. Every writer compares before it writes - the discipline
+   `setPanel` already applies to markup - so an unchanged pane, sky or tip
+   costs no mutation, no style invalidation and no layout. The weather
+   panel and the sky render on their own keys, as the weather panel already
+   does for its text but not for its path.
+3. **The engine** ticks at whatever rate the simulation needs, decoupled
+   from both; the forecaster already shows the pattern for moving that
+   work into a worker when it grows.
+
+Measure with the same per-frame census and the same headless budgets
+before and after, and extend the churn budget test to count attribute
+rewrites, not only markup: a panel that sets `hidden` to the value it
+already has every frame is churn. Acceptance is the lake run above idle at
+under 10 percent main-thread busy with the water rippling, and hover
+answering within a frame. Smaller follow-ons once the tiers exist: four
+glyph ripples per weather cell could be one element whose content steps,
+and sky rain could cap its drop count by viewport size.
+
+
+## Opportunities catalog follow-ons
+
+**Raised** 2026-09-11, from the reviews of the catalog work as it merged.
+None of these blocks anything; each is a polish item or a question.
+
+- The catalog's unknown rows carry `data-slot="<group>:<ordinal>"` for the
+  morph. No title or key leaks, but the ordinal maps to a species for
+  anyone reading the source with the species order in hand. The slot only
+  needs to be stable, not ordered.
+- Four sites emit opportunity notices with slightly different rules
+  (`discoverOpportunity`, `applyOpportunityEvent`, `discoverMany`,
+  `refreshOpportunities`). One `emitNotice` helper would keep them from
+  drifting. The same shape for the page-holding computation in
+  `ui/opportunity-catalog.ts`, which appears three times.
+- The narrow breakpoint lives twice, `main.ts` (`max-width: 700px`) and
+  `style.css` (`--opportunity-page-size: 6` under the same query). Nothing
+  asserts the two strings agree.
+- `.opportunity-body` has a fixed height and the dialog `overflow: visible`,
+  so a detail taller than the reserved body would paint over the button row
+  rather than scroll. The longest current note fits at 390 px with margin.
+- An all-unknown catalog page reads sparse: every unknown row carries an
+  empty group-heading span, and a fresh Wildlife tab is three pages of
+  identical `[?] Undiscovered opportunity` lines. What a first look at the
+  index should say is the author's call.
+- `DAY_ONE_CAPABILITY_KEYS` is a flat list. The first recipe or structure
+  that gets a real availability gate splits it into day-one and later
+  members; the comment says so, the type does not.
+- The walk-sign roll uses region density only, while the hunt path also
+  weights species by `habitatPrior`, so elk sign can be read on any
+  non-water terrain the region holds. Per-cell density recomputation on
+  every walked cell is also the first thing to cache if the whole-run
+  sims slow.
+- `scripts/opportunity-ux.mjs` asserts the opening queue at one moment and
+  the next-page click only by node existence; the unit tests cover both
+  claims over the whole queue, so the browser checks are belt and braces.
+- Test hygiene, four places where a test proves less than it reads: the
+  authored-journey reachability test accepts any matching step rather than
+  every ordinary step; collection subset coverage asserts generated
+  membership, not a working discovery and credit route per member; the
+  seasonal legacy-selection test pins the selected leaf but not its
+  discovery notice; the starlight walk-sign test does not pin that its
+  midnight is brighter than pitch dark, so an overcast moonless night turns
+  it into a copy of the dark case.
+
+## Nature is the enemy: the camp, the stake and the idle layer
+
+**Raised** 2026-09-11, in a design conversation on why the idle layer is
+the weakest part of the game after the 09-07 and 09-10 playtests. The
+mental model itself is now in the roadmap's "What we are optimising for"
+section. Everything below is a candidate; each carries a verdict, add,
+consider later, or do not add, and the reason.
+
+### The diagnosis
+
+Three things the idle genre depends on are missing, and neither playtest
+rejected idle as such:
+
+- **No ratchet.** Idle games run on a quantity that only goes up, whose
+  rate the player improves. Survival is homeostasis: when it works,
+  nothing happens. Skills are invisible hours, Lineage pays only on death,
+  and camp is a short ladder.
+- **No return moment.** `catchUp` in `src/sim/save.ts` returns a log and a
+  per-order tally. That is a report, not a payoff, and it can be "you
+  died while the tab was closed."
+- **Unauthored autonomy.** Both testers accepted indirect control (RimWorld
+  and Dwarf Fortress came up unprompted) and rejected acts they had not
+  written the rule for. The 09-10 tester's own line: those games have
+  indirect control without being idle games.
+
+The answer that keeps realism is **extension, not intensification**. The
+unrealistic ratchet makes one hectare yield more; the honest ones work
+more hectares, bank more months, know more country, carry more
+generations and cut the odds of dying. Four of those five are in the tree.
+Proposed as a rule for "Rules that hold across all eight" once an item
+below lands: no number in the game rises by making a fixed real quantity
+(a day's kilocalories, a working day, a hectare's yield) larger.
+
+### Games to play, and what to take from each
+
+- **Loop Hero.** No control over the hero at all; the player shapes the
+  world he walks and decides when to retreat with the loot. Autonomy is
+  pleasant because the player authored the environment. The nearest
+  shipped answer to the control contract question.
+- **Kittens Game.** The one mainstream idle game that is a survival idle.
+  Storage caps make returning necessary rather than permitted, and the
+  season is the check-in clock; winter kills kittens.
+- **This War of Mine.** The night scavenging run is an away period the
+  player authored, with a destination, a risk and a haul, and a report on
+  return that is a story. That is what "away" should mean here.
+- **RimWorld.** The work-priority tab and the thought ledger: state as an
+  itemised list of signed causes, thresholds drawn on the bar, the reason
+  attached to the greyed affordance, and an override that is always
+  available and visibly temporary.
+- **Oxygen Not Included.** The daily report as a return moment for a game
+  that never stops.
+- **Increlution.** A survival incremental with short runs, death, carried
+  knowledge and earned automation; this game's lineage model with the
+  attention curve already solved.
+- **Cultist Simulator.** Real time, a hunger timer that must be fed, and
+  nothing starts without the player placing it. The control contract from
+  the other direction.
+- **Frostpunk.** One meaningful decision a day and the rest is watching;
+  the heat map is a painted stake against the cold with no claimant.
+
+### Add, and consider later
+
+Moved into the roadmap as item P, "The camp and the stake": six parts in
+build order (the two views, placed improvements, the camp sheet, the
+stake, raids that scale with the larder, a pack range that follows its
+prey) and four held for later (zone painting as control, the seasonal
+round, a camp across several cells, the catchment overlay).
+
+### Do not add
+
+- **Political borders or claims.** A border needs pressure from outside,
+  and nature supplies it; there is nothing to claim ground from, so a
+  claim would be the first mechanic in the game that is not a real
+  quantity. The stake in 4 is what a border is here.
+- **Other people.** A camp that becomes a household solves the ceiling
+  completely and makes the game RimWorld. The premise is one survivor and
+  the roadmap's contract is written around it. Area and generations
+  first; this is a fork to name, not to drift into.
+- **An abstract storage capacity.** "Storage 200/400" would be the first
+  abstract number in the game. The caps exist and are real; surface them.
+- **Intensification ratchets.** Faster eating, longer days, richer
+  hectares, multipliers on yield. Every one breaks the model, and the
+  rule proposed under the diagnosis bans them.
+- **A wake button as the answer to sleep.** The camp view is the answer to
+  what those minutes are for. Whether sleep can be interrupted at all is
+  still the open half of the 09-10 record's proposed improvement 2 and
+  stays a control-contract question.

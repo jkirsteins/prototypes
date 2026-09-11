@@ -2,18 +2,20 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
-import { mapRegion } from "../src/sim/mapped";
+import { mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
-import { cellOf } from "../src/sim/position";
+import { cellCenter, cellOf, setRegion } from "../src/sim/position";
+import { visibleCells } from "../src/sim/sight";
+import { ensureGround } from "../src/sim/weather";
+import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
 import { activateWildlife } from "../src/sim/wildlife-agents";
-import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml } from "../src/ui/map";
+import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml, WATER_RIPPLES, waterRipplePeak, waterRipplePhases } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState } from "../src/ui/render";
-import { cellAt, neighbours } from "../src/world/gen";
+import { cellAt, neighbours, regionPeek } from "../src/world/gen";
 import { passable } from "../src/world/route";
 import { css, rule } from "./css";
 import { neighbourLandCell } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
-import { ensureGround } from "../src/sim/weather";
 
 // A test that installs a controlled atmosphere owns it only for its own case.
 afterEach(() => vi.restoreAllMocks());
@@ -297,6 +299,105 @@ describe("the map's compositing layers", () => {
     expect(rule(".grid.night .c.lit-0")).toContain("animation: flicker");
     expect(rule(".grid .c.mk-player.mood-walk")).toContain("animation: mood-toil");
     expect(rule(".grid .c.mk-player.mood-work")).toContain("animation: mood-toil");
+  });
+
+  it("lets seen liquid water shimmer on the wall clock, out of step per cell, and nothing else", () => {
+    // Rippling, faked for the eye: three smooth sine waves crossing the sheet
+    // in different directions, summed per cell. Wall clock, never simulation
+    // minutes, and a re-render writes the same attributes again.
+    // Each ripple is an overlay whose opacity the compositor animates, so a
+    // lake costs the main thread nothing per frame.
+    expect(rule(".grid .c.water-live")).toContain("isolation: isolate");
+    const overlay = rule(".grid .c.water-live .water-ripple");
+    expect(overlay).toContain("z-index: -1");
+    expect(overlay).toContain("pointer-events: none");
+    expect(overlay).toContain("will-change: opacity");
+    expect(overlay).toContain("animation: water-ripple 5s ease-in-out infinite");
+    // A test aid: ?shimmer= scales the speed through one root property; the delay scales with it so the pattern keeps its shape.
+    expect(overlay).toContain("animation-delay: calc(var(--water-delay) / var(--water-shimmer-speed, 1))");
+    expect(readFileSync("src/main.ts", "utf8")).toContain('params.get("shimmer")');
+    for (const [i, ripple] of WATER_RIPPLES.entries()) {
+      expect(rule(`.grid .c.water-live .water-ripple-${i + 1}`)).toContain(`animation-duration: calc(${ripple.periodS}s / var(--water-shimmer-speed, 1))`);
+    }
+    const frames = css.match(/@keyframes water-ripple[\s\S]*?\n}/)?.[0] ?? "";
+    expect(frames).toContain("0%, 100% { opacity: 0; }");
+    expect(frames).toContain("50% { opacity: calc(var(--water-peak, 0.4) * var(--water-gain, 1)); }");
+    // At the close rungs a cell is a big block, and the same peak would wash out its detail glyphs.
+    expect(rule(".grid.detailed .c.water-live .water-ripple")).toContain("--water-gain: 0.5");
+    expect(frames).not.toContain("background");
+    expect(frames).not.toContain("transform");
+    // Neighbours are near each other in phase: one drawn cell east moves each
+    // ripple by its own step, so the light travels instead of blinking, and a
+    // coarse block keeps the same step per drawn cell.
+    const turn = 2 * Math.PI;
+    const wrap = (d: number) => ((d + Math.PI) % turn + turn) % turn - Math.PI;
+    for (const [i, ripple] of WATER_RIPPLES.entries()) {
+      const expectedEast = wrap(Math.cos(ripple.direction) / ripple.wavelength * turn);
+      for (const [x, y] of [[12, 34], [175, 50], [700, 950]]) {
+        const east = wrap(waterRipplePhases(17, x + 1, y, 1)[i] - waterRipplePhases(17, x, y, 1)[i]);
+        expect(Math.abs(wrap(east - expectedEast))).toBeLessThanOrEqual(2);
+        const block = wrap(waterRipplePhases(17, x + 4, y, 4)[i] - waterRipplePhases(17, x, y, 4)[i]);
+        expect(Math.abs(wrap(block - expectedEast))).toBeLessThanOrEqual(2);
+      }
+    }
+    expect(waterRipplePhases(17, 12, 34, 1)).toEqual(waterRipplePhases(17, 12, 34, 1));
+    for (const p of waterRipplePhases(17, 12, 34, 1)) { expect(p).toBeGreaterThanOrEqual(0); expect(p).toBeLessThan(turn); }
+    expect(rule("@media (prefers-reduced-motion: reduce)")).toContain(".water-live");
+    // Each depth band shimmers within its own palette.
+    expect(rule(".grid .c.t-water")).toContain("--water-rest: #0a1633");
+    expect(rule(".grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0")).toContain("--water-rest: #102047");
+    expect(rule(".grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2")).toContain("--water-rest: #060d20");
+
+    // The frozen-water shore in midsummer: open coastal water in sight.
+    const summer = WEATHER_SHOTS["sunny-clouds"].minute;
+    const { x, y } = WEATHER_SHOTS["frozen-water"];
+    const { state, world } = newGame(17);
+    state.minute = summer;
+    state.weather.elapsedMinutes = 0;
+    const cell = y * world.w + x;
+    const center = cellCenter(world, cell);
+    state.player.x = center.x;
+    state.player.y = center.y;
+    setRegion(state, world, regionPeek(world, x, y));
+    ensureGround(state, world, state.player.region);
+    const cal = calendar(state.minute, state.startDoy);
+    state.mapped = {};
+    for (const seen of visibleCells(state, world, cal, cell)) markKnown(state, seen);
+    const ui = newUiState();
+    const first = mapHtml(world, state, ui, cal);
+    expect(mapHtml(world, state, ui, cal)).toBe(first);
+    const root = document.createElement("div");
+    root.innerHTML = first;
+    const liveCells = [...root.querySelectorAll<HTMLElement>(".c.water-live")];
+    expect(liveCells.length).toBeGreaterThan(20);
+    for (const [i, ripple] of WATER_RIPPLES.entries()) {
+      const delays = liveCells.map((el) => {
+        const overlays = el.querySelectorAll<HTMLElement>(".water-ripple");
+        expect(overlays).toHaveLength(3);
+        return Number(overlays[i].style.getPropertyValue("--water-delay").match(/^-(\d+(?:\.\d+)?)s$/)?.[1]);
+      });
+      for (const delay of delays) expect(delay).toBeGreaterThanOrEqual(0);
+      for (const delay of delays) expect(delay).toBeLessThan(ripple.periodS);
+      expect(new Set(delays).size).toBeGreaterThan(5);
+      // Each overlay peaks at its own brightness, so the sum is light on water and not one sheet sliding.
+      const peaks = liveCells.map((el) => Number(el.querySelectorAll<HTMLElement>(".water-ripple")[i].style.getPropertyValue("--water-peak")));
+      for (const peak of peaks) { expect(peak).toBeGreaterThanOrEqual(0.25); expect(peak).toBeLessThanOrEqual(0.5); }
+      expect(new Set(peaks).size).toBeGreaterThan(5);
+    }
+    expect(waterRipplePeak(17, 12, 34, 0)).toBe(waterRipplePeak(17, 12, 34, 0));
+    for (const el of liveCells) {
+      expect(el.classList.contains("t-water")).toBe(true);
+      for (const still of ["mk", "memory", "dim", "ice-thin", "ice-safe"]) expect(el.classList.contains(still)).toBe(false);
+    }
+    // Water the survivor remembers but cannot see now lies still.
+    for (const el of root.querySelectorAll(".c.t-water.memory, .c.t-water.dim")) expect(el.classList.contains("water-live")).toBe(false);
+
+    // Frozen water is a sheet, not a surface that catches light.
+    const frozen = weatherShotFixture("frozen-water");
+    root.innerHTML = mapHtml(frozen.world, frozen.state, newUiState(), frozen.cal);
+    expect(root.querySelectorAll(".t-water.ice-safe").length).toBeGreaterThan(20);
+    expect(root.querySelector(".water-live")).toBeNull();
+    expect(root.innerHTML).not.toContain("water-ripple");
   });
 
   it("makes the visual harness select simulation fixtures without injecting presentation state", () => {

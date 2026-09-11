@@ -5,7 +5,7 @@ import { absence, popOf, regionDensity } from "./animals";
 import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty } from "./inventory";
 import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepFieldFire, stepSmoke } from "./fire";
-import { goalDeed, KEPT_DAYS } from "./goals";
+import { recordOpportunityEvent, KEPT_DAYS } from "./opportunities";
 import {
   BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
   RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
@@ -97,26 +97,26 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     // means nothing, so it is cleared at the two death points above.
     const rainingOnIt = fireAlive && weather.precip !== "none";
     if (rainingOnIt) st.fire.rainHeld += dt;
-    // These three goals are the player's own only: an untended camp fire in
+    // These three opportunities are the player's own only: an untended camp fire in
     // a region the player has left is real, but it is not what the player
     // is being asked to keep. `mine` alone, not `atCampHere`, because being
     // away from the pit within your own camp - out at the snares, asleep -
-    // is exactly the case these goals are meant to reward, not punish.
+    // is exactly the case these opportunities are meant to reward, not punish.
     if (mine) {
-      if (rainingOnIt) goalDeed(state, { kind: "keptRain", minutes: st.fire.rainHeld });
+      if (rainingOnIt) recordOpportunityEvent(state, { kind: "keptRain", minutes: st.fire.rainHeld });
       if (fireAlive && st.fire.litSince !== null) {
         const elapsed = state.minute - st.fire.litSince;
         // The daily roll alone can sit up to a day short of the target, since it only
         // ever samples DAILY_HOUR: a fire lit mid-morning reaches three days mid-morning
         // too, a span the roll does not visit until the next one. Emitting again the
         // instant elapsed crosses KEPT_DAYS lands the credit on the day it is earned;
-        // goalDeed already ignores a goal once done, so the daily roll's own emission
+        // recordOpportunityEvent already ignores an opportunity once done, so the daily roll's own emission
         // afterwards costs nothing.
         const crossedKeptDays = elapsed >= KEPT_DAYS * 24 * 60 && elapsed - dt < KEPT_DAYS * 24 * 60;
-        if (daily || crossedKeptDays) goalDeed(state, { kind: "keptFor", minutes: elapsed });
+        if (daily || crossedKeptDays) recordOpportunityEvent(state, { kind: "keptFor", minutes: elapsed });
       }
       if (dawnThisTick && fireAlive && st.fire.litSince !== null && st.fire.litSince <= lastDusk(state.minute, state.startDoy)) {
-        goalDeed(state, { kind: "keptNight" });
+        recordOpportunityEvent(state, { kind: "keptNight" });
       }
     }
 
@@ -297,6 +297,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         st.trap.kg = 0;
         st.trap.oilyKg = 0;
         st.trap.age = 0;
+        st.trap.caught = [];
       }
     }
     if (st.trap) {
@@ -315,6 +316,8 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
           st.pop[s] = Math.max(0, popOf(st, s) - 1);
           const before = st.trap.kg;
           st.trap.kg = Math.min(TRAP_HOLD_KG, before + (SPECIES_DEFS[s].yields?.meatKg ?? 0) * kgFactor);
+          st.trap.caught ??= [];
+          if (st.trap.kg > before && !st.trap.caught.includes(s)) st.trap.caught.push(s);
           // The class through fishItem, the same call the spear's catch makes, so the without
           // probe shuts the oily side in one place rather than leaking it into the trap.
           if (fishItem(s) === "oilyFish") st.trap.oilyKg += st.trap.kg - before;

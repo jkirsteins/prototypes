@@ -121,7 +121,8 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   the fog is per cell, not per region: what you have walked is a thread
   through the black, and what the eye reaches from where you stand is a
   blot around it. Closed spruce shows you the ground underfoot and no
-  more; open bog and a fell top show you the horizon; the dark shows you
+  more, but trees at the water's edge show you the water and the far
+  shore; open bog and a fell top show you the horizon; the dark shows you
   nothing at all.
 - **You cannot walk where you do not know the way.** A route may not cross
   ground you have never seen, so "walk to camp" can say there is no way
@@ -242,9 +243,10 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   tapped for three weeks in May and shore seaweed on a coastal camp fill
   the season's plant band; nests give eggs in May and June. Once the
   larder holds a winter's food, hunting and fishing stand down for the
-  woodpile until it dips back under that line. Auto-eat and auto-feed
-  keep you alive while the tab is closed, as long as the food and
-  firewood are there.
+  woodpile until it dips back under that line. The self-care and camp
+  rows on the activity queue eat, drink and feed the fire while the tab is
+  closed, as long as the food and firewood are there and the player has
+  not ranked work over them; nothing eats behind those rows' backs.
 - **Spares.** A tool recipe yields a spare that is taken up when the one in
   hand breaks; "keep camp at 1 axe" is how the axe is never the end of the
   run.
@@ -424,6 +426,25 @@ and accelerated work. The same simulated wind vector drives rain and snow
 drift. Fog and optional ASCII cloud glyphs use slower presentation-only cycles
 of 12 and 16 real seconds. Those decorative shape changes do not accelerate
 with work, pause, or alter the simulated feature's location or visibility.
+Liquid water in the current viewshed ripples on the same kind of wall clock.
+It is faked for the eye, not modelled: three smooth waves cross the sheet in
+different directions, with wavelengths of 4, 2.5 and 6 cells and periods of
+5, 3.75 and 8 real seconds, and each cell shows their sum. A cell's start in
+each wave comes from its position, with up to a radian of seeded jitter, and
+each wave peaks at its own seeded brightness, so neighbours move together
+without the sheet sliding as one texture. Each wave is an overlay in the
+cell's lit blue whose opacity the compositor animates, so a lake costs the
+main thread no paint; at the two close zoom rungs the peak is halved so a
+big cell does not wash out its detail glyphs. Ice, marked cells and
+remembered water lie still, and reduced motion turns it off. `?shimmer=2`
+is a test aid that runs all three waves twice as fast; it is not a game
+feature.
+
+Panels are rendered from state ten times a second, not on every display
+frame: nothing a panel shows moves faster than a game minute, and every
+per-frame writer compares before it writes. Motion that must be smooth is
+CSS on the compositor. Input still renders at once through its own
+handlers, and the map tip draws on the pointer event itself.
 
 ### Stationary ground consequences
 
@@ -644,7 +665,7 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/sim/stocks.ts`: the spring egg stock, seeded on 1 May, and the root ground - what a cell's stand holds, what is left in each cell that has been dug, and the growing season's regrowth.
 - `src/sim/skills.ts`: the level curves, recommended levels, mastery extras and pool perks.
 - `src/sim/light.ts`: the illuminance at a cell in lux - the sun, the moon, cloud, snow and flame - the light each activity needs, and the odds a light buys; `src/ui/map.ts`: the rings a light source lights.
-- `src/sim/water.ts`: the water reserve, drinking, filling vessels and auto-drink.
+- `src/sim/water.ts`: the water reserve, drinking and filling vessels; the self-care row in `src/sim/body.ts` is what drinks.
 - `src/sim/clothing.ts`: per-garment wetness, drying and frostbite chance.
 - `src/sim/fire.ts`: wet wood, burn rate and lighting odds in weather, indoor smoke.
 - `src/sim/hazards.ts`: the hourly rolls: frostbite, fire spread, ice underfoot, freezing vessels.

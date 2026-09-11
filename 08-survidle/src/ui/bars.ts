@@ -39,6 +39,39 @@ function setBar(id: string, frac: number, text?: string, root: ParentNode = docu
   }
 }
 
+/** Game minutes a trend is read over: long enough that a minute's noise does not flip the mark. */
+const TREND_WINDOW = 10;
+/** Share of the bar a reading must move over the window before the mark says anything but steady. */
+const TREND_DEADBAND = 0.002;
+/** Each bar's readings inside the window, oldest first, as a share of the bar. */
+const trendHistory = new Map<string, { minute: number; frac: number }[]>();
+
+/**
+ * Which way a bar is going, read off its own last ten game minutes: a
+ * tester asked whether warmth was falling and could not tell from a number
+ * that only ever showed where it was. Direction and pace, not cause - what
+ * is draining it is a bigger question than the mark should pretend to answer.
+ */
+function setTrend(id: string, minute: number, frac: number, root: ParentNode): void {
+  let h = trendHistory.get(id);
+  // A clock that went backwards is another run: its history says nothing about this one.
+  if (!h || (h.length && h[h.length - 1].minute > minute)) {
+    h = [];
+    trendHistory.set(id, h);
+  }
+  if (!h.length || h[h.length - 1].minute !== minute) h.push({ minute, frac });
+  while (h.length > 1 && minute - h[0].minute > TREND_WINDOW) h.shift();
+  const span = minute - h[0].minute;
+  const delta = frac - h[0].frac;
+  const dir = span <= 0 || Math.abs(delta) < TREND_DEADBAND ? "steady" : delta > 0 ? "up" : "down";
+  const perHour = span > 0 ? Math.abs(delta) * 100 * (60 / span) : 0;
+  const title = dir === "steady" ? "steady" : `${dir === "up" ? "rising" : "falling"} ${perHour < 1 ? perHour.toFixed(1) : Math.round(perHour)}% an hour`;
+  for (const el of root.querySelectorAll<HTMLElement>(`[data-trend="${id}"]`)) {
+    if (el.dataset.dir !== dir) el.dataset.dir = dir;
+    if (el.title !== title) el.title = title;
+  }
+}
+
 /**
  * Last frame's reserve, for spotting a meal. The sim does not announce one
  * to the frame loop and does not need to: a reserve that rose since the last
@@ -66,7 +99,7 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   const line = hungerLine(state);
   kcalBar?.classList.toggle("low", p.kcal < line);
   // The mark itself moves with the same line - a lean reserve eats sooner,
-  // a well-provisioned one later - so it is written here every frame rather
+  // a well-provisioned one later - so it is written here on every render rather
   // than baked into the markup (tests/churn.test.ts).
   const hungerMark = kcalBar?.querySelector<HTMLElement>('[data-mark="hunger"]');
   if (hungerMark) hungerMark.style.left = `${((line / KCAL_FULL) * 100).toFixed(1)}%`;
@@ -93,6 +126,11 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   }
   setBar("wet", p.wetness / 100, `${Math.round(p.wetness)}`, root);
   setBar("water", p.water / WATER_FULL, `${p.water.toFixed(1)} l`, root);
+  const trends: [string, number][] = [
+    ["health", p.health / 100], ["kcal", p.kcal / KCAL_FULL], ["fat", p.fat / fatUpper], ["warmth", p.warmth / 100],
+    ["energy", p.energy / 100], ["sleepiness", sleepy / 100], ["wet", p.wetness / 100], ["water", p.water / WATER_FULL],
+  ];
+  for (const [id, frac] of trends) setTrend(id, state.minute, frac, root);
 
   const st = regionState(state, world, p.region);
   const total = fuelTotal(st.fire);
@@ -102,7 +140,7 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   // Fuel is spent to zero the moment a fire falls to coals, so the plain
   // "0.0 kg" text below would read exactly like a dead fire. This is the one
   // place a per-minute count is safe to write: it lands on a named element
-  // every frame rather than into a panel's diffed markup (tests/churn.test.ts).
+  // on every render rather than into a panel's diffed markup (tests/churn.test.ts).
   const fireText = hasEmbers(st.fire)
     ? `coals, ${fmtDuration(st.fire.embers)} left`
     : st.fire.wetKg > 0
@@ -168,7 +206,7 @@ export function fillShare(state: GameState, spec: string): number | null {
 /**
  * Every frame: every bar whose fill names where its value comes from.
  *
- * A width that moves every frame would make its panel's markup differ every
+ * A width that moves on every render would make its panel's markup differ every
  * frame, and the panel would be reparsed and rediffed at that rate to shift
  * one bar. So no fill carries a width. It carries the name of what it draws
  * and is written here, one property on one element, while the markup around

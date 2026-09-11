@@ -81,8 +81,8 @@ describe("forecast knowledge in the weather wall", () => {
     current(state).person.quirks = [];
     state.minute = 10;
     state.weather.storm = { id: 9, source: "natural", kind: "gale", from: 100, until: 460, warned: false };
-    state.goals.opportunity = {
-      goal: "readWeather", status: "announced", createdAt: 0, attempts: 1,
+    state.opportunities.context.weather = {
+      opportunity: "readWeather", status: "announced", createdAt: 0, attempts: 1,
       stormId: 9, source: "natural", area: null, announcedAt: 10, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };

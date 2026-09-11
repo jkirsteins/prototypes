@@ -11,7 +11,7 @@
  * has any business redrawing: a raw float where the reader is shown a whole
  * number, a share that climbs with every minute of work. Such a value does
  * not belong in the markup. It belongs on an element with a name, written
- * each frame by src/ui/bars.ts, which is what the body's bars, the hurry
+ * on each render by src/ui/bars.ts, which is what the body's bars, the hurry
  * pulse, the wear bars and the Do rows' mastery all do.
  *
  * This ran red when it was written: the gear panel redrew on 300 frames of

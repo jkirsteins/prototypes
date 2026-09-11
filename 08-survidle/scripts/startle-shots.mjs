@@ -46,6 +46,14 @@ async function waitFor(check, description, ms = 10000) {
   throw new Error(`Timed out waiting for ${description}`);
 }
 
+async function dismissOpportunities(evalJs) {
+  await waitFor(async () => Boolean(await evalJs("document.querySelector('#overlay:not([hidden]) [data-act=opportunity-modal-ok]')")), "initial opportunities");
+  await waitFor(async () => {
+    await evalJs("document.querySelector('#overlay:not([hidden]) [data-act=opportunity-modal-ok]')?.click()");
+    return await evalJs("window.survidle.state.opportunities.notices.length === 0 && !document.querySelector('#overlay:not([hidden]) .opportunity-modal')");
+  }, "all initial opportunity batches");
+}
+
 async function cdp() {
   const target = await (await fetch(`http://localhost:${PORT}/json/new?${encodeURIComponent(URL_BASE)}`, { method: "PUT" })).json();
   const ws = new WebSocket(target.webSocketDebuggerUrl);
@@ -340,8 +348,7 @@ async function main() {
     await evalJs("document.querySelector('[data-act=land]').click()");
     await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=welcome-close]')")), "seed 19 welcome");
     await evalJs("document.querySelector('[data-act=welcome-close]').click()");
-    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=goal-close]')")), "seed 19 goals");
-    await evalJs("document.querySelector('[data-act=goal-close]').click()");
+    await dismissOpportunities(evalJs);
     await waitFor(async () => Boolean(await evalJs("document.querySelector('#mapdyn [data-wildlife-id]')")), "seed 19 natural deer");
     const naturalInitial = JSON.parse(await evalJs(`(() => { const animal = document.querySelector('#mapdyn [data-wildlife-id]'); const r = animal.getBoundingClientRect(); return JSON.stringify({ id: Number(animal.dataset.wildlifeId), x: r.left + r.width / 2, y: r.top + r.height / 2, cell: Number(animal.dataset.mapCell), minute: window.survidle.state.minute }); })()`));
     await saveMap(send, evalJs, "natural-seed-19-initial");
@@ -364,8 +371,7 @@ async function main() {
     await evalJs("document.querySelector('[data-act=land]').click()");
     await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=welcome-close]')")), "seed 9 welcome");
     await evalJs("document.querySelector('[data-act=welcome-close]').click()");
-    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=goal-close]')")), "seed 9 goals");
-    await evalJs("document.querySelector('[data-act=goal-close]').click()");
+    await dismissOpportunities(evalJs);
     await waitFor(async () => Boolean(await evalJs("document.querySelector('#mapdyn .mk-player')")), "seed 9 map");
     await waitFor(async () => Number(await evalJs("window.survidle.state.minute")) >= 1, "seed 9 08:01 approach time");
     assert(Number(await evalJs("document.querySelectorAll('#mapdyn .mk-animal').length")) === 0, "seed 9 exposed an animal before the heard-only walk");
@@ -396,8 +402,7 @@ async function main() {
     await evalJs("document.querySelector('[data-act=land]').click()");
     await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=welcome-close]')")), "seed 3 welcome");
     await evalJs("document.querySelector('[data-act=welcome-close]').click()");
-    await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=goal-close]')")), "seed 3 goals");
-    await evalJs("document.querySelector('[data-act=goal-close]').click()");
+    await dismissOpportunities(evalJs);
     await evalJs("document.querySelector('[data-act=zoom][data-dir=in]').click(); document.querySelector('[data-act=zoom][data-dir=in]').click()");
     await waitFor(async () => Boolean(await evalJs("document.querySelector('#mapdyn [data-wildlife-id=\"1\"]')")), "seed 3 natural deer");
     const calmInitial = JSON.parse(await evalJs(`(() => {

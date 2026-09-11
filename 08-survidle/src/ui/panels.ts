@@ -1,4 +1,4 @@
-import { edible, hungerLine, itemLabel, refusalReason } from "../sim/actions";
+import { hungerLine, itemLabel } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { COLD_UNDER, SLEEP_AT, SOAKED_WETNESS, stormOptions, workResumeAt } from "../sim/body";
 import { isCareRow } from "../sim/bodyorder";
@@ -11,7 +11,7 @@ import { groundDry, hasEmbers, smoky } from "../sim/fire";
 import { herePile, listItems, pileAt, qty, weight } from "../sim/inventory";
 import { body, fatLandmarks } from "../sim/person";
 import { groundOf } from "../sim/intent";
-import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_KG, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
+import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_KG, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { knownShare } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
@@ -26,7 +26,7 @@ import { fmtName } from "../sim/names";
 import { sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
 import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation, walkManner } from "../sim/player";
-import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
+import { campCellOf, cellOf, describeWhere, kmBetween, SPOT_WORDS } from "../sim/position";
 import { survivorRoute } from "../sim/routing";
 import { current, worldDate } from "../sim/record";
 import { campSite, regionState } from "../sim/regionstate";
@@ -37,9 +37,9 @@ import {
   availableTasks, check, fallChance, type TaskOption, walkTarget, whereIs,
 } from "../sim/tasks";
 import { isWorkIntent, type AtmosphereSample, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
-import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
+import { campWaterCapacity, THIRSTY_L, WATER_FULL } from "../sim/water";
 import { atmosphereAt, forecastText, groundAt, iceMode, type LocalConditions, localStorm, localWeather, stormComing, stormNow } from "../sim/weather";
-import { fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
+import { fmtDaysAbout, fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { cellAt, regionAt, speciesHere, type World } from "../world/gen";
 import { routeKm } from "../world/route";
 import { hurryKind, type HurryState } from "./hurry";
@@ -77,7 +77,9 @@ function bar(id: string, cls: string, label: string, marks: BarMark[] = []): str
       ? `<div class="mark" style="left:${(k.at * 100).toFixed(1)}%" title="${esc(k.title)}"></div>`
       : `<div class="mark" data-mark="${k.at}" title="${esc(k.title)}"></div>`))
     .join("");
-  return `<div class="bar readout ${cls}"><div class="fill" id="bar-${id}" data-bar="${id}"></div>${m}<span class="lbl"><span>${label}</span><b id="val-${id}" data-val="${id}"></b></span></div>`;
+  // The trend mark carries no direction in the markup: updateBars writes it
+  // from the reading's own history, the way it writes the fill's width.
+  return `<div class="bar readout ${cls}"><div class="fill" id="bar-${id}" data-bar="${id}"></div>${m}<span class="lbl"><span>${label}</span><span class="val"><i class="trend" data-trend="${id}"></i><b id="val-${id}" data-val="${id}"></b></span></span></div>`;
 }
 
 /**
@@ -702,11 +704,23 @@ function activityStep(state: GameState, world: World, cal: Calendar): string {
     .replace("laying out materials at camp", "laying out materials");
 }
 
+/**
+ * The need a care row is serving, said beside its name: "Self-care" over
+ * "opening an ice hole" left a tester asking why he was opening one, and
+ * the answer was that he was thirsty.
+ */
+const CARE_NEED_WORD = {
+  sleep: "sleepy", storm: "storm coming", cold: "cold", hungry: "hungry",
+  thirsty: "thirsty", spent: "exhausted", home: "going home", fire: "the fire", snares: "the snares",
+} as const;
+
 export function activity(state: GameState, world: World, cal: Calendar): Activity | null {
   const it = state.intent;
   if (it) {
     return {
-      title: isWorkIntent(it) ? plain(check(state, world, cal, it.task, it.arg, it.cell).label) : it.care === "camp" ? "Camp maintenance" : "Self-care",
+      title: isWorkIntent(it)
+        ? plain(check(state, world, cal, it.task, it.arg, it.cell).label)
+        : `${it.care === "camp" ? "Camp maintenance" : "Self-care"}: ${CARE_NEED_WORD[it.need]}`,
       step: activityStep(state, world, cal),
       progress: !!state.task && state.task.duration > 0,
     };
@@ -840,45 +854,6 @@ export function forecastHtml(view: ForecastView | null, state: GameState): strin
   return `<div class="row">${text}</div>`;
 }
 
-/** The eat / add firewood buttons, shown whenever they apply, wherever the player stands. */
-export function instantHtml(state: GameState, world: World): string {
-  const p = state.player;
-  const invs = [p.pack, herePile(state, world)];
-  const camp = spotHere(state, world) === "camp";
-  const foods = (Object.keys(FOODS) as FoodId[])
-    .map((f) => {
-      const have = invs.reduce((a, inv) => a + qty(inv, f), 0);
-      if (have <= 1e-9) return "";
-      const def = FOODS[f];
-      const refused = !edible(state, f);
-      const reason = refusalReason(state, f);
-      return `<button class="mini" data-act="eat" data-food="${f}" ${refused ? "disabled" : ""}>eat ${itemLabel(f, Math.min(def.portionKg, have))} <small>${refused ? reason : `+${Math.round(def.kcalPerKg * Math.min(def.portionKg, have))} kcal${def.sickChance ? ", risky" : ""}`}</small></button>`;
-    })
-    .join(" ");
-  const st = regionState(state, world, p.region);
-  const field = p.fieldFire?.cell === cellOf(state, world) && p.fieldFire.fuelKg > 0;
-  const wood = camp && !field ? invs.reduce((a, inv) => a + qty(inv, "firewood") + qty(inv, "wetFirewood"), 0) : qty(p.pack, "firewood");
-  const fire = (st.fire.lit && camp) || field
-    ? `<button class="mini" data-act="feed" ${wood <= 0 ? "disabled" : ""}>add firewood <small>${fmtKg(wood)} within reach</small></button>`
-    : "";
-  const atSource = waterSource(state, world);
-  const short = p.water < WATER_FULL - 1e-9;
-  const shoreClosed = watersideCell(world, cellOf(state, world)) && localWeather(state, world).iceCm >= ICE_SHORE_CM;
-  const drink = short && (atSource || vesselLitres(p) > 0)
-    ? `<button class="mini" data-act="drink">drink <small>${p.water.toFixed(1)} of ${WATER_FULL.toFixed(1)} l</small></button>`
-    : shoreClosed && vesselLitres(p) <= 0
-      ? `<button class="mini" disabled>drink <small>iced over</small></button>`
-      : "";
-  const fill = atSource && p.tools.some((t) => (TOOLS[t.id].litres ?? 0) > (t.litres ?? 0))
-    ? `<button class="mini" data-act="fill">fill vessels</button>`
-    : "";
-  // Named, so morphChildren finds this box again wherever it has moved to
-  // rather than matching it by position. A row of buttons whose contents
-  // come and go with what is in the pack is the last thing that should be
-  // matched by where it happened to sit last frame.
-  return `<div data-box="instant" style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${drink}${fill}</div>`;
-}
-
 /** Water and ice live only in piles (spec 2.1); a take button would move litres into the pack, where they are inert. */
 function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): string {
   const rows = act === "take" ? items.filter(({ item }) => item !== "water" && item !== "ice") : items;
@@ -931,10 +906,10 @@ export function inventoryHtml(state: GameState, world: World, cal: Calendar, dis
   const here = herePile(state, world);
   const ground = listItems(here);
   const dropAll = carried.length ? `<div class="invact"><button class="mini" data-act="drop-all">drop everything here</button></div>` : "";
-  // Eating, drinking and feeding the fire stand over what they are done
-  // with. Under the map they read as a queue with something already in it,
-  // on a survivor who had never been given an order.
-  return `${instantHtml(state, world)}<div class="invsec carry" data-inv="carry">
+  // No eat, drink or add-firewood button stands here: the self-care row
+  // eats and drinks and the camp row feeds the fire, and a button beside
+  // them was a second route to the same act that read as a chore of its own.
+  return `<div class="invsec carry" data-inv="carry">
 <h2>Carried <span class="r ${over}">${fmtKg(kg)} of ${d.packComfortableKg} kg comfortable, ${d.packHardKg} kg max</span></h2>
 ${invRows(carried, "drop")}${dropAll}
 </div>${ground.length ? `
@@ -1044,7 +1019,7 @@ ${rows.length ? rows.join("") : `<p class="dim">No one has died here yet.</p>`}
 
 export function journalHtml(state: GameState, cal: Calendar, _ui: UiState): string {
   const n = nextThreshold(state, cal);
-  const when = n.inDays > 0 ? `expected in ${n.inDays} days` : "any day now";
+  const when = n.inDays > 0 ? `expected in ${fmtDaysAbout(n.inDays)}` : "any day now";
   const season = `<div class="season"><b>Next: ${esc(NAMES[n.id])}</b>, ${when}. ${esc(ASKS_FOR[n.id])}</div>`;
   const rec = current(state);
   const card = `<div class="card">${cardHtml(rec.person, rec.name, livingExtras(state), { px: 48 })}</div>`;
