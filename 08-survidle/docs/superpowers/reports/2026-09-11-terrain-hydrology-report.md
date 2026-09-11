@@ -925,3 +925,40 @@ Seed 42, `npm run terrain -- 42`:
 | largest river mouths (m3/s) | 130 101 53 52 | 130 101 53 52 40 |
 
 River cells rose by about a factor of 11, and the world's fifth-largest mouth (40 m3/s) now clears the new threshold and shows on the list.
+
+## Chooser shortlist
+
+`bestHuntCell` routed to every mapped cell of the region (and of the neighbours
+when an expert ranged), twice per cell per species, which is what made the
+lineage gate an 80 minute run. It now sifts first and routes second: one
+breadth-first flood over known, passable ground (`reachableFrom` in
+`src/sim/routing.ts`) drops the cells no route could reach without asking A* to
+expand its whole box to answer null, every surviving candidate is scored on
+straight-line distances, and only the best `HUNT_SHORTLIST = 24` of that
+ranking are measured with real routes and scored again.
+
+The sift ranks on the score rather than on distance alone. A shortlist of the
+nearest 24 cells is enough for the from-scratch reference player, but it
+silently took away the expert's reach: measured on seed 1 with the landing
+region's hunting pressure at 1, the best ground in each neighbouring region sat
+at straight-line rank 34 to 89, scoring 4.4 against 1.5 for anything within the
+nearest 24 - so a nearest-24 shortlist would have kept an expert on emptied
+ground. Scoring the sift on straight km, which the value term already accounts
+for, keeps that behaviour; the two expert-ranging tests in
+`tests/hunting.test.ts` are the guard.
+
+`huntEstimate` and `huntSpeciesWeights` take an optional `HuntTravel`
+(`toCell`, `toCamp`); given one, the distances are the caller's, so the walk
+home is measured once per cell instead of once per species, and the sift pays
+no A* at all. Callers that pass nothing route exactly as before.
+
+Seed 42, 20 days, `npx vite-node scripts/reference.ts 42 20`, three runs each:
+
+| | before | after |
+|---|---|---|
+| wall time | 15.3, 15.9, 16.7 s | 11.1, 11.1, 11.6 s |
+| A* searches | 114,637 | 10,515 |
+
+The run's outcome is unchanged (alive and fed at day 20, reached day 21), and
+under a CPU profile A* is no longer the hot spot in the chain - what remains of
+the 11 s is world generation.
