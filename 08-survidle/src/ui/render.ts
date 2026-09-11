@@ -216,7 +216,7 @@ function sameKind(a: Node, b: Node): boolean {
  * Brings one element's attributes to match another's.
  *
  * style is the exception, and deliberately: the width of every bar is
- * written straight onto the element each frame by bars.ts, and the markup
+ * written straight onto the element on each render by bars.ts, and the markup
  * never mentions it. Clearing a style the markup does not carry would wipe
  * those every time a panel changed. A style the markup does state still wins.
  */

@@ -421,13 +421,25 @@ and accelerated work. The same simulated wind vector drives rain and snow
 drift. Fog and optional ASCII cloud glyphs use slower presentation-only cycles
 of 12 and 16 real seconds. Those decorative shape changes do not accelerate
 with work, pause, or alter the simulated feature's location or visibility.
-Liquid water in the current viewshed shimmers on the same kind of wall clock:
-a random sequence of sixteen shades between its depth band's blue and a
-shade lighter, held in steps of about a quarter second, each cell starting
-at its own seeded point. It is faked for the eye, not modelled. Ice, marked
-cells and remembered water lie still, and reduced motion turns it off.
-`?shimmer=2` is a test aid that runs it twice as fast; it is not a game
+Liquid water in the current viewshed ripples on the same kind of wall clock.
+It is faked for the eye, not modelled: three smooth waves cross the sheet in
+different directions, with wavelengths of 4, 2.5 and 6 cells and periods of
+5, 3.75 and 8 real seconds, and each cell shows their sum. A cell's start in
+each wave comes from its position, with up to a radian of seeded jitter, and
+each wave peaks at its own seeded brightness, so neighbours move together
+without the sheet sliding as one texture. Each wave is an overlay in the
+cell's lit blue whose opacity the compositor animates, so a lake costs the
+main thread no paint; at the two close zoom rungs the peak is halved so a
+big cell does not wash out its detail glyphs. Ice, marked cells and
+remembered water lie still, and reduced motion turns it off. `?shimmer=2`
+is a test aid that runs all three waves twice as fast; it is not a game
 feature.
+
+Panels are rendered from state ten times a second, not on every display
+frame: nothing a panel shows moves faster than a game minute, and every
+per-frame writer compares before it writes. Motion that must be smooth is
+CSS on the compositor. Input still renders at once through its own
+handlers, and the map tip draws on the pointer event itself.
 
 ### Stationary ground consequences
 

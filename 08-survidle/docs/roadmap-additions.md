@@ -724,10 +724,21 @@ known/unknown boundary, preserve the uniform time-of-day shade across the whole
 viewport, and never reveal terrain or marks in an unknown cell. Treat this as a
 P2 readability pass, with screenshots at day, night and rain before shipping.
 
-## Rendering on its own clock - NEXT
+## Rendering on its own clock
 
-**Raised** 2026-09-11, while measuring the water shimmer's cost. **Next
-item**, by the author's call the same day.
+**Raised** 2026-09-11, while measuring the water shimmer's cost.
+
+**Addressed** 2026-09-11. Tiers 1 and 2 below are built: panels render
+every 100 ms, `setHidden` and the sky, speed-graph and tip writers compare
+before writing, and the tip draws on the pointer event. Measured on the
+same lake run: main thread 478 to 230 ms a second with the water still,
+script 157 to 32, the mutation census down from eleven per-frame writers to
+the speed path at ten a second. What remains: the water's 567 opacity
+overlays still cost about 160 ms a second because Chrome ticks every
+animation on the main thread whatever the compositing hints; the lever is
+one animation per cell with pre-summed keyframes through the Web Animations
+API. Tier 3, the engine in a worker, is untouched. The churn budget test
+still counts markup only, not attribute rewrites.
 
 The frame loop renders every panel on every animation frame and diffs the
 result, so the page pays style and layout at display rate whether or not

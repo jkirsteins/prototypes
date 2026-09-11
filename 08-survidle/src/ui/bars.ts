@@ -99,7 +99,7 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   const line = hungerLine(state);
   kcalBar?.classList.toggle("low", p.kcal < line);
   // The mark itself moves with the same line - a lean reserve eats sooner,
-  // a well-provisioned one later - so it is written here every frame rather
+  // a well-provisioned one later - so it is written here on every render rather
   // than baked into the markup (tests/churn.test.ts).
   const hungerMark = kcalBar?.querySelector<HTMLElement>('[data-mark="hunger"]');
   if (hungerMark) hungerMark.style.left = `${((line / KCAL_FULL) * 100).toFixed(1)}%`;
@@ -140,7 +140,7 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   // Fuel is spent to zero the moment a fire falls to coals, so the plain
   // "0.0 kg" text below would read exactly like a dead fire. This is the one
   // place a per-minute count is safe to write: it lands on a named element
-  // every frame rather than into a panel's diffed markup (tests/churn.test.ts).
+  // on every render rather than into a panel's diffed markup (tests/churn.test.ts).
   const fireText = hasEmbers(st.fire)
     ? `coals, ${fmtDuration(st.fire.embers)} left`
     : st.fire.wetKg > 0
@@ -206,7 +206,7 @@ export function fillShare(state: GameState, spec: string): number | null {
 /**
  * Every frame: every bar whose fill names where its value comes from.
  *
- * A width that moves every frame would make its panel's markup differ every
+ * A width that moves on every render would make its panel's markup differ every
  * frame, and the panel would be reparsed and rediffed at that rate to shift
  * one bar. So no fill carries a width. It carries the name of what it draws
  * and is written here, one property on one element, while the markup around
