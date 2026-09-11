@@ -19,6 +19,17 @@ describe("water beside", () => {
     expect(watersideCell(world, c, "lake")).toBe(true);
   });
 
+  it("counts a river beside as fishing water and a stream on the cell as not", () => {
+    const world = flatWorld({ w: 10, h: 10, terrain: "birch" });
+    const c = 5 * 10 + 5;
+    world.solved.flags[c] |= FLAG_STREAM;
+    // A brook is drinking water: waterside for any purpose, no water to fish in.
+    expect(watersideCell(world, c, "any")).toBe(true);
+    expect(watersideCell(world, c, "fishing")).toBe(false);
+    paintWorld(world, [c + 1], "river");
+    expect(watersideCell(world, c, "fishing")).toBe(true);
+  });
+
   it("refuses a seep on a stream cell, as on any shore", () => {
     const world = flatWorld({ w: 10, h: 10, terrain: "spruce" });
     const c = 5 * 10 + 5;

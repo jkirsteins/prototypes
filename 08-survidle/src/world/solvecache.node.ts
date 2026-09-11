@@ -4,7 +4,7 @@
  * committed. A seed is solved once per machine, then read in tens of
  * milliseconds. Browser code must never import this file.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { GENERATOR_VERSION, type SolvedWorld, solveWorld } from "./solve";
 import { setSolveCache } from "./solvecache";
@@ -43,7 +43,21 @@ function decode(buf: Buffer): SolvedWorld {
   };
 }
 
+/**
+ * Files from an earlier generator, swept at install. A version bump makes every
+ * cached world unreadable and nothing else ever deletes them, so the directory
+ * would grow by a full set of solved worlds - hundreds of megabytes - per bump.
+ */
+function sweepOldVersions(dir: string): void {
+  if (!existsSync(dir)) return;
+  const suffix = `-v${GENERATOR_VERSION}.bin`;
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith(suffix)) rmSync(join(dir, name), { force: true, recursive: true });
+  }
+}
+
 export function installNodeWorldCache(dir = join(process.cwd(), "node_modules", ".cache", "survidle-worlds")): void {
+  sweepOldVersions(dir);
   setSolveCache((seed, w, h) => {
     const file = join(dir, `${seed}-${w}x${h}-v${GENERATOR_VERSION}.bin`);
     if (existsSync(file)) return decode(readFileSync(file));

@@ -88,7 +88,7 @@ export function solveWorld(seed: number, w: number, h: number, onProgress: Solve
   return { w, h, height, flowDir: hydro.dir, discharge: hydro.flow, kind, flags, terrain, moisture };
 }
 
-/** The buffers to transfer out of a worker, in the order `fromBuffers` expects. */
+/** The solved arrays' buffers: the transfer set for a worker's posted message, so the arrays move rather than being copied. */
 export function solvedBuffers(s: SolvedWorld): ArrayBuffer[] {
   return [s.height.buffer, s.flowDir.buffer, s.discharge.buffer, s.kind.buffer, s.flags.buffer, s.terrain.buffer, s.moisture.buffer] as ArrayBuffer[];
 }

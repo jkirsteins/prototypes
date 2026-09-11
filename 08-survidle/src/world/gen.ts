@@ -283,7 +283,9 @@ export function forestShareWithin(world: World, cell: number, radius: number): n
   return n ? forest / n : 0;
 }
 
-const STARTS = new Map<number, { id: number; cell: number; ring: number }>();
+// Keyed by seed and size: a test world of a few hundred cells and the full
+// 1800 by 2224 world share a seed and land their start in different places.
+const STARTS = new Map<string, { id: number; cell: number; ring: number }>();
 
 /** The best landing in one lattice square: the sheltered shore with the most forest around it, or -1. */
 function landingIn(world: World, lx: number, ly: number): number {
@@ -317,7 +319,8 @@ function landingIn(world: World, lx: number, ly: number): number {
  * and the run is about finding it.
  */
 function findStart(world: World): { id: number; cell: number; ring: number } {
-  const cached = STARTS.get(world.seed);
+  const key = `${world.seed}:${world.w}x${world.h}`;
+  const cached = STARTS.get(key);
   if (cached) return cached;
   const v = 0.92;
   const ax = Math.floor((coastLineU(v) * world.w) / LATTICE);
@@ -332,14 +335,14 @@ function findStart(world: World): { id: number; cell: number; ring: number } {
         const cell = landingIn(world, lx, ly);
         if (cell < 0) continue;
         const found = { id: regionOf(world, cell % world.w, Math.floor(cell / world.w)), cell, ring };
-        STARTS.set(world.seed, found);
+        STARTS.set(key, found);
         return found;
       }
     }
   }
   const id = ay * LATTICE_W + ax;
   const fallback = { id, cell: regionAt(world, id).campCell, ring: START_MAX_RING };
-  STARTS.set(world.seed, fallback);
+  STARTS.set(key, fallback);
   return fallback;
 }
 

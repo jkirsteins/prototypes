@@ -155,15 +155,16 @@ let solving = false;
 async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0): Promise<void> {
   if (solving) return;
   solving = true;
-  // The finally is what makes the flag safe to hold: a solve that throws would
-  // otherwise leave the frame standing still and every later click a no-op.
+  // The finally is what makes the flag and the bar safe to hold: a solve that
+  // throws would otherwise leave the frame standing still with every later
+  // click a no-op, behind a full-page overlay that never comes down.
   try {
     const loaded = await loadWorld(seed, showLoading);
-    hideLoading();
     const g = newWorld(seed, boat, startDoy, loaded);
     state = g.state;
     world = g.world;
   } finally {
+    hideLoading();
     solving = false;
   }
   wasDead = false;
@@ -195,8 +196,8 @@ async function boot() {
     solving = true;
     try {
       world = await loadWorld(state.seed, showLoading);
-      hideLoading();
     } finally {
+      hideLoading();
       solving = false;
     }
     fillPopulations(state, world);
@@ -747,7 +748,15 @@ function zoomBy(delta: number) {
   ui.zoom = Math.max(0, Math.min(LEVELS.length - 1, ui.zoom + delta));
 }
 
-await boot();
+try {
+  await boot();
+} catch (err) {
+  // The bar is the whole of the UI until the world exists, so a solve that
+  // fails says so there rather than leaving a blank overlay and a dead module.
+  // Nothing below can run without a world, so the failure still ends the load.
+  showLoading(`the world could not be made: ${err instanceof Error ? err.message : String(err)}`, 0);
+  throw err;
+}
 const weatherShot = weatherShotName ? weatherShotFixture(weatherShotName) : null;
 if (weatherShot) {
   state = weatherShot.state;

@@ -100,10 +100,16 @@ export function heathCell(world: World, idx: number): boolean {
   return t === "bog" || t === "meadow";
 }
 
-/** Land beside water: any water including a stream on the cell, or one kind only. */
-export function watersideCell(world: World, idx: number, kind: "lake" | "sea" | "river" | "stream" | "any" = "any"): boolean {
+/**
+ * Land beside water: any water including a stream on the cell, one kind only,
+ * or "fishing" for water that is a cell of its own - a lake, the sea or a
+ * river. A brook of 20 litres a second is drinking water and nothing more:
+ * nothing lives in it to catch and no axe cuts a hole in it.
+ */
+export function watersideCell(world: World, idx: number, kind: "lake" | "sea" | "river" | "stream" | "fishing" | "any" = "any"): boolean {
   if (kind === "stream") return streamAt(world, idx);
   if (kind === "any") return streamAt(world, idx) || neighbours(world, idx).some((n) => waterKindOf(world, n) !== null);
+  if (kind === "fishing") return neighbours(world, idx).some((n) => waterKindOf(world, n) !== null);
   return neighbours(world, idx).some((n) => waterKindOf(world, n) === kind);
 }
 
