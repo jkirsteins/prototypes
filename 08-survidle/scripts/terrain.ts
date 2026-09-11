@@ -69,7 +69,7 @@ for (const seed of seeds) {
   console.log(`largest river mouths m3/s: ${mouths.slice(0, 5).map((v) => v.toFixed(0)).join(" ")}   (Namsen 290, Ume 430, Lule 500)`);
   // Coastline: land cells with a western-sea 4-neighbour, times 0.3 km, over the straight coast length 667/0.9409.
   let coastEdges = 0;
-  for (let i = 0; i < n; i++) { if (s.kind[i] === KIND.sea) continue; const x = i % W, y = (i - x) / W; for (const j of [i - 1, i + 1, i - W, i + W]) { if (j < 0 || j >= n) continue; if (s.kind[j] === KIND.sea && coastKmOfCell(j % W, (j - j % W) / W, W, H) < 60) { coastEdges++; break; } } }
+  for (let i = 0; i < n; i++) { if (s.kind[i] === KIND.sea) continue; for (const j of [i - 1, i + 1, i - W, i + W]) { if (j < 0 || j >= n) continue; if (s.kind[j] === KIND.sea && coastKmOfCell(j % W, (j - j % W) / W, W, H) < 60) { coastEdges++; break; } } }
   console.log(`west coast length / straight: ${(coastEdges * 0.3 / (667 / 0.9409)).toFixed(1)}   target > 5`);
   // Exposed rock by band.
   const rock = { coast: [0, 0], steep: [0, 0], lowland: [0, 0] };

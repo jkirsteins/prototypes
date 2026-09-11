@@ -535,14 +535,14 @@ are 300 m cell coordinates:
 
 | shot | minute | x | y | simulated feature |
 | --- | ---: | ---: | ---: | --- |
-| clear | 1,440 | 450 | 1,100 | clear comparison above rock |
+| clear | 1,440 | 1,696 | 880 | clear comparison above rock |
 | sunny-clouds | 170,160 | 700 | 950 | dry midsummer sun under a broken cloud field |
 | approaching-rain | 86,760 | 1,040 | 150 | rain-band edge |
-| local-rain | 108,720 | 1,300 | 376 | 11.53 mm/h rain core |
-| persisted-snow | 480,480 | 296 | 1,200 | 10.66 cm/h snow over 39 cm retained ground snow |
-| valley-fog | 19,560 | 840 | 1,000 | dry 0.39 fog in a local bog depression |
+| local-rain | 108,720 | 1,112 | 400 | 12.42 mm/h rain core |
+| persisted-snow | 480,480 | 872 | 864 | 14.71 cm/h snow over 60 cm retained ground snow |
+| valley-fog | 19,560 | 1,432 | 1,036 | dry 0.57 fog in a local bog depression |
 | windward-lee | 3,960 | 700 | 950 | terrain-modified extinction gradient |
-| obscured | 480,480 | 450 | 1,100 | 0.21 km MOR at the clear comparison rock |
+| obscured | 480,480 | 1,696 | 880 | 0.36 km MOR at the clear comparison rock |
 
 The URL only selects a catalog entry. Normal `GameState`, `WeatherWorld`,
 `visibleCells` and `mapHtml` generate every class, variable, glyph and known
@@ -560,8 +560,8 @@ ASCII ripple glyphs. Reduced-motion mode freezes those glyphs.
 The sunny-cloud pair advances the normal simulation by 60 game minutes and
 captures the resulting cloud-shadow field before and after; it does not assign
 or modify rendering classes.
-The valley cell's normalized elevation is 0.321; its west, east, north and
-south samples 6 km away are 0.490, 0.446, 0.408 and 0.424. `fog-frame-a.png`
+The valley cell stands at 108 m; its west, east, north and south samples 6 km
+away are at 509, 457, 388 and 506 m. `fog-frame-a.png`
 and `fog-frame-b.png` hold the same frozen simulation minute and visibility
 footprint 3.2 real seconds apart; only presentation animation continues.
 

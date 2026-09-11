@@ -16,6 +16,7 @@ import { check } from "../src/sim/tasks";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { passable } from "../src/world/route";
 import { cellOf } from "../src/sim/position";
+import { walkableNeighbour } from "./world-facts";
 
 const cal = calendar(0);
 
@@ -37,7 +38,7 @@ describe("the survivor routes on knowledge", () => {
   it("opens once the ground between is mapped", () => {
     const { state, world } = newGame(3);
     const home = state.player.region;
-    const nb = regionAt(world, home).neighbours[0].id;
+    const nb = walkableNeighbour(world, home);
     mapRegion(state, world, home);
     mapRegion(state, world, nb);
     state.discovered[nb] = SEEN;
@@ -61,13 +62,13 @@ describe("the survivor routes on knowledge", () => {
     const { state, world } = newGame(3);
     const home = state.player.region;
     const camp = regionAt(world, home).campCell;
-    const nb = regionAt(world, home).neighbours[0];
+    const nb = walkableNeighbour(world, home);
     // The neighbour's camp cell exists and is truly reachable, but nothing
     // has been mapped, so the survivor cannot plan a route to it.
-    expect(survivorRoute(state, world, camp, regionAt(world, nb.id).campCell)).toBeNull();
+    expect(survivorRoute(state, world, camp, regionAt(world, nb).campCell)).toBeNull();
     mapRegion(state, world, home);
-    mapRegion(state, world, nb.id);
-    expect(survivorRoute(state, world, camp, regionAt(world, nb.id).campCell)).not.toBeNull();
+    mapRegion(state, world, nb);
+    expect(survivorRoute(state, world, camp, regionAt(world, nb).campCell)).not.toBeNull();
   });
 
   it("frontierRoute permits one unknown final step and no route through unknown ground", () => {

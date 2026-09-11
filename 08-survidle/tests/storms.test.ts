@@ -11,6 +11,7 @@ import { ambientTemperature, stepWeather } from "../src/sim/weather";
 import { galeProtection, isLee, profileOf, protectionOf } from "../src/sim/shelter";
 import { cellAt } from "../src/world/gen";
 import { testRain } from "./weather-helpers";
+import { dipCellNear, terrainCellNear } from "./world-facts";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -127,11 +128,14 @@ describe("rain and snow storms", () => {
   });
 });
 
-// Seed 17's generated terrain: spruce canopy, an open slope, a meadow
-// depression, and high ground whose local dip must not turn it into lee.
-const SPRUCE = 523074;
-const OPEN = 523076;
-const DEPRESSION = 523121;
+// Seed 17's generated terrain, found by what each cell has to be: a spruce
+// canopy, open meadow on a slope, a meadow depression, and high ground whose own
+// local dip must not turn it into lee.
+const GALE_WORLD = newGame(17).world;
+const GALE_HOME = GALE_WORLD.start;
+const SPRUCE = terrainCellNear(GALE_WORLD, GALE_HOME, "spruce").cell;
+const OPEN = dipCellNear(GALE_WORLD, GALE_HOME, "meadow", false);
+const DEPRESSION = dipCellNear(GALE_WORLD, GALE_HOME, "meadow");
 
 function galeSite(cell = OPEN) {
   const g = exposure(0, "rain");
@@ -161,8 +165,12 @@ describe("gale protection", () => {
     expect(isLee).toBeTypeOf("function");
     for (const [cell, terrain, lee] of [
       [SPRUCE, "spruce", true], [DEPRESSION, "meadow", true],
-      [OPEN, "meadow", false], [523075, "pine", false],
-      [524998, "rock", false], [528591, "fell", false], [535986, "water", false],
+      [OPEN, "meadow", false], [dipCellNear(world, GALE_HOME, "pine", false), "pine", false],
+      // Rock and fell in a dip of their own: still exposed, which is the rule
+      // these two are here for.
+      [dipCellNear(world, GALE_HOME, "rock"), "rock", false],
+      [dipCellNear(world, GALE_HOME, "fell"), "fell", false],
+      [terrainCellNear(world, GALE_HOME, "water").cell, "water", false],
     ] as const) {
       expect(cellAt(world, cell).terrain).toBe(terrain);
       expect(isLee(world, cell)).toBe(lee);

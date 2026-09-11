@@ -19,9 +19,11 @@ import { startTask, stepTask } from "../src/sim/tasks";
 import type { GameState, GoalId } from "../src/sim/types";
 import { skyReadDay, stepWeather } from "../src/sim/weather";
 import { cellAt, regionAt } from "../src/world/gen";
-import { findRoute, routeMinutes } from "../src/world/route";
+import { findRoute, passable, routeMinutes } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
 import { testAtmosphere, testRain } from "./weather-helpers";
+import { isLee } from "../src/sim/shelter";
+import { regionNear, terrainCellNear, walkableNeighbour } from "./world-facts";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -476,7 +478,7 @@ describe("Chapter 2 forecast evidence", () => {
   it("freezes the onset plan after work in the interval ending at onset and never rewrites it", () => {
     const { state, world } = newGame(17);
     chapter2Attempt(state, 42);
-    const meadow = regionAt(world, state.player.region).cells.find((cell) => cellAt(world, cell).terrain === "meadow")!;
+    const meadow = terrainCellNear(world, state.player.region, "meadow").cell;
     placeAt(state, world, meadow);
     const site = siteFor(state.regions[state.player.region], meadow);
     site.emergencyMinutes = 89;
@@ -496,7 +498,7 @@ describe("Chapter 2 forecast evidence", () => {
   it("splits a fractional onset to freeze its exact pre-task state", () => {
     const { state, world } = newGame(17);
     chapter2Attempt(state, 43);
-    const meadow = regionAt(world, state.player.region).cells.find((cell) => cellAt(world, cell).terrain === "meadow")!;
+    const meadow = terrainCellNear(world, state.player.region, "meadow").cell;
     placeAt(state, world, meadow);
     const site = siteFor(state.regions[state.player.region], meadow);
     site.emergencyMinutes = 89;
@@ -679,6 +681,9 @@ describe("natural-first weather", () => {
 
   it("claims Chapter 3 weather from a stored refuge while the survivor is still at home", () => {
     const { state, world } = newGame(17);
+    // Air that actually delivers the scheduled storm at the refuge: the claim
+    // checks the coordinate-owned weather there, not the schedule alone.
+    testRain(8, 5, 40);
     siteCamp(state, world);
     activateRemoteStorm(state);
     const home = cellOf(state, world);
@@ -702,7 +707,10 @@ describe("natural-first weather", () => {
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(80));
     expect(state.goals.opportunity?.stormId).toBeNull();
 
-    state.weather.storm = { id: 81, source: "natural", kind: "rain", from: state.minute + lead, until: state.minute + lead + 360, warned: false };
+    // A hair past the lead rather than exactly on it: adding minutes to a
+    // thirty-day clock and subtracting them again does not land on the same
+    // float, and what this case is about is the storm being far enough off.
+    state.weather.storm = { id: 81, source: "natural", kind: "rain", from: state.minute + lead + 0.01, until: state.minute + lead + 360, warned: false };
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(81));
     expect(cellOf(state, world)).toBe(home);
     expect(state.goals.opportunity).toMatchObject({ stormId: 81, source: "natural" });
@@ -710,10 +718,11 @@ describe("natural-first weather", () => {
 
   it("claims and retries refuge weather from home before the field fire and meal lessons", () => {
     const { state, world } = newGame(17);
+    testRain(8, 5, 40);
     siteCamp(state, world);
     activateRemoteRefuge(state);
     const home = state.player.region;
-    const remote = regionAt(world, home).neighbours[0].id;
+    const remote = walkableNeighbour(world, home);
     const refuge = regionAt(world, remote).campCell;
     placeAt(state, world, refuge);
     siteFor(regionState(state, world, remote), refuge).cover = 2;
@@ -731,7 +740,7 @@ describe("natural-first weather", () => {
     expect(route).not.toBeNull();
     const lead = routeMinutes(world, route!, baseWalkSpeed(state, calendar(state.minute, state.startDoy), state.weather), "none") + 30;
     state.weather.storm = {
-      id: 82, source: "natural", kind: "rain", from: state.minute + lead,
+      id: 82, source: "natural", kind: "rain", from: state.minute + lead + 0.01,
       until: state.minute + lead + 360, warned: false,
     };
 
@@ -788,7 +797,18 @@ describe("Chapter 3 refuge storm evidence", () => {
     siteCamp(state, world);
     activateRemoteStorm(state);
     const home = state.player.region;
-    const remote = regionAt(world, regionAt(world, home).neighbours[0].id);
+    // A refuge region with room in it: land more than a kilometre from its own
+    // camp, so protection counted anywhere in the region is not the same thing as
+    // protection within the local radius, and open meadow to be exposed on. A
+    // region of mostly sea has neither.
+    const remote = regionAt(world, regionNear(world, home, (id) => {
+      if (id === home) return false;
+      const region = regionAt(world, id);
+      const land = region.cells.filter((cell) => passable(cellAt(world, cell).terrain));
+      return land.some((cell) => straightKm(world, region.campCell, cell) > 1)
+        && land.some((cell) => cellAt(world, cell).terrain === "meadow" && !isLee(world, cell))
+        && land.some((cell) => cellAt(world, cell).terrain === "spruce");
+    }));
     state.goals.opportunity = {
       goal: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
       stormId, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
@@ -801,10 +821,14 @@ describe("Chapter 3 refuge storm evidence", () => {
   it("counts adequate protection anywhere in the refuge region, beyond the local one-kilometre radius", () => {
     const { state, world } = newGame(17);
     const { remote } = remoteAttempt(state, world);
-    const far = remote.cells.reduce((best, cell) => straightKm(world, remote.campCell, cell) > straightKm(world, remote.campCell, best) ? cell : best, remote.campCell);
+    // The farthest ground in the refuge region: water is not somewhere to sit out
+    // a storm, so the search keeps to land.
+    const far = remote.cells
+      .filter((cell) => passable(cellAt(world, cell).terrain))
+      .reduce((best, cell) => straightKm(world, remote.campCell, cell) > straightKm(world, remote.campCell, best) ? cell : best, remote.campCell);
     expect(straightKm(world, remote.campCell, far)).toBeGreaterThan(1);
     placeAt(state, world, far);
-    siteFor(state.regions[remote.id], far).structures.leanTo = true;
+    siteFor(regionState(state, world, remote.id), far).structures.leanTo = true;
     state.weather.storm = { id: 90, source: "natural", kind: "rain", from: state.minute, until: state.minute + 60, warned: true };
 
     advance(state, world, 60);
@@ -817,9 +841,9 @@ describe("Chapter 3 refuge storm evidence", () => {
   it("accepts a snow windbreak but rejects a high-profile lean-to in a gale", () => {
     const snow = newGame(17);
     const snowAttempt = remoteAttempt(snow.state, snow.world, 92);
-    const snowCell = snowAttempt.remote.cells[0];
+    const snowCell = snowAttempt.remote.cells.find((cell) => passable(cellAt(snow.world, cell).terrain))!;
     placeAt(snow.state, snow.world, snowCell);
-    siteFor(snow.state.regions[snowAttempt.remote.id], snowCell).cover = 1;
+    siteFor(regionState(snow.state, snow.world, snowAttempt.remote.id), snowCell).cover = 1;
     snow.state.weather.storm = { id: 92, source: "natural", kind: "snow", from: snow.state.minute, until: snow.state.minute + 60, warned: true };
     recordStormMinute(snow.state, snow.world, 92, "snow", 60);
     expect(stormMetrics(snow.state, 92).minutesByProtection).toEqual([0, 60, 0, 0]);
@@ -831,9 +855,9 @@ describe("Chapter 3 refuge storm evidence", () => {
 
     const gale = newGame(17);
     const galeAttempt = remoteAttempt(gale.state, gale.world, 93);
-    const exposed = galeAttempt.remote.cells.find((cell) => cellAt(gale.world, cell).terrain === "meadow")!;
+    const exposed = galeAttempt.remote.cells.find((cell) => cellAt(gale.world, cell).terrain === "meadow" && !isLee(gale.world, cell))!;
     placeAt(gale.state, gale.world, exposed);
-    siteFor(gale.state.regions[galeAttempt.remote.id], exposed).structures.leanTo = true;
+    siteFor(regionState(gale.state, gale.world, galeAttempt.remote.id), exposed).structures.leanTo = true;
     gale.state.weather.storm = { id: 93, source: "natural", kind: "gale", from: gale.state.minute, until: gale.state.minute + 60, warned: true };
     recordStormMinute(gale.state, gale.world, 93, "gale", 60);
     expect(stormMetrics(gale.state, 93).minutesByProtection).toEqual([0, 60, 0, 0]);
@@ -847,7 +871,7 @@ describe("Chapter 3 refuge storm evidence", () => {
     const leeAttempt = remoteAttempt(lee.state, lee.world, 94);
     const spruce = leeAttempt.remote.cells.find((cell) => cellAt(lee.world, cell).terrain === "spruce")!;
     placeAt(lee.state, lee.world, spruce);
-    siteFor(lee.state.regions[leeAttempt.remote.id], spruce).cover = 1;
+    siteFor(regionState(lee.state, lee.world, leeAttempt.remote.id), spruce).cover = 1;
     lee.state.weather.storm = { id: 94, source: "natural", kind: "gale", from: lee.state.minute, until: lee.state.minute + 60, warned: true };
 
     advance(lee.state, lee.world, 60);

@@ -14,7 +14,7 @@ describe("simulation-backed weather screenshot fixtures", () => {
     const fog = weatherShotSimulation("valley-fog");
     const snow = weatherShotSimulation("persisted-snow");
 
-    expect(clear.definition).toMatchObject({ seed: 17, minute: 1440, x: 450, y: 1100 });
+    expect(clear.definition).toMatchObject({ seed: 17, minute: 1440, x: 1696, y: 880 });
     expect(conditionsAt(clear.state, clear.world, clear.cal, clear.cell).extinctionPerKm).toBeLessThan(0.3);
     expect(conditionsAt(rain.state, rain.world, rain.cal, rain.cell).rainMmPerHour).toBeGreaterThan(10);
     expect(conditionsAt(fog.state, fog.world, fog.cal, fog.cell).fog).toBeGreaterThan(0.35);

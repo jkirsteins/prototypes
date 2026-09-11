@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { cellPresentation } from "../src/ui/cellpresentation";
 import { weatherShotSimulation } from "../src/sim/weather-scenarios";
-import { cellAt, regionAt } from "../src/world/gen";
 import { newGame } from "../src/sim/newgame";
+import { terrainCellNear } from "./world-facts";
 
 describe("the player-facing projection of one cell", () => {
   it("does not resolve current ground for unknown or remembered cells", () => {
@@ -42,7 +42,7 @@ describe("the player-facing projection of one cell", () => {
 
   it("projects current snow through color classes without replacing meadow terrain", () => {
     const shot = newGame(17);
-    const meadow = regionAt(shot.world, shot.state.player.region).cells.find((cell) => cellAt(shot.world, cell).terrain === "meadow");
+    const meadow = terrainCellNear(shot.world, shot.state.player.region, "meadow").cell;
     expect(meadow).toBeTypeOf("number");
     const current = cellPresentation(shot.state, shot.world, meadow!, "current", () => ({ snowCm: 31, iceCm: 0 }));
     expect(current).toMatchObject({

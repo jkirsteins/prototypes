@@ -13,6 +13,7 @@ import { siteCamp } from "./siting-helpers";
 import { current } from "../src/sim/record";
 import { levelMinutes } from "../src/sim/skills";
 import { stormOptions } from "../src/sim/body";
+import { testAtmosphere } from "./weather-helpers";
 
 const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
 /** Minutes since the run start for a clock hour on day one. */
@@ -260,6 +261,9 @@ describe("sky in the page", () => {
 
   it("moves the sun and lights the map grid every frame", () => {
     const { state, world } = newGame(21);
+    // A clear sky to move the sun across: the weather card carries the sampled
+    // cloud into the drawing, and where this seed lands the sky is overcast.
+    testAtmosphere({ cloud: 0 });
     const cal = at(13);
     // The sky is drawn in the weather widget now, not the clock line.
     setPanel("weather", weatherHtml(state, world, cal, ambientTemperature(cal, state.weather)));
@@ -285,6 +289,10 @@ describe("sky in the page", () => {
 
   it("keeps one varied constellation star pattern through a clear night and hides it by day or cloud", () => {
     const { state } = newGame(21);
+    // The run begins under whatever sky the landing has; the clear night this
+    // case is about is stated rather than hoped for.
+    state.weather.clear = true;
+    state.weather.precip = "none";
     const root = document.createElement("div");
     root.innerHTML = skyHtml(WALL);
     const visibleConstellation = () => root.querySelector<SVGElement>('[data-constellation][opacity="1"]')?.id;
@@ -420,6 +428,8 @@ describe("sky in the page", () => {
 
   it("shows Perseid streaks only on clear nights in their late-summer window", () => {
     const { state } = newGame(21, 223);
+    state.weather.clear = true;
+    state.weather.precip = "none";
     const root = document.createElement("div");
     root.innerHTML = skyHtml(WALL);
     const opacity = () => root.querySelector("#sky-perseids")?.getAttribute("opacity");
