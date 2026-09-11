@@ -4319,6 +4319,50 @@ third edge, the heat border, already on the map. Extends 4.
   is bounded by the ruling that one survivor cannot empty a shore or
   heath, so it is a texture of part 4's paint and not a part of its own.
 
+### Q. The landing note
+
+**Curve.** Survivor row 1: what the heir starts with changes from "the
+dim map, landing near the old camp" to a note and a shore one valley
+over, and the ladder's row reads so once this lands. No tier. Expected:
+no sim number moves; the heir gate holds at its current count with
+`runHeir` following the note instead of the dim map, which is the
+harness change the item owns. Slot: before P, after the terrain
+hydrology merge, since that moves shore cells, and before the next
+tester round, so the round measures the new landing. About a day.
+
+Raised 2026-09-11. A flavour mechanic, not a core one, and it must not
+grow: it has no tiers, no distance ladder and no carry. It exists because
+the heir's map today is every ancestor's wandering drawn dim, which dots
+the map and hands the heir a camp they have not found.
+
+Four rulings:
+
+1. A heir's map starts empty except what the landing shows. The
+   ancestors' ground is not drawn, and the route gate does not read it:
+   knowledge you cannot see is knowledge you do not have.
+2. The landing is a shore cell in a region adjacent to the camp's, never
+   the camp's own; two regions out only in a warm landing month, May to
+   September. Random within that. Two regions with spruce between can
+   cost a night out, and a winter night in wool with no roof can kill a
+   heir who has not yet seen the camp, which teaches nothing.
+3. The journal carries one note in three parts: the camp's region by
+   name, its direction from where you stand, one thing the region is
+   known for. Enough to pick a direction, not enough to skip the walk.
+   Inside the region, "Explore" is the existing button.
+4. When the camp cell first comes into view, the camp's region comes
+   back whole, and so does any region where something of the lineage
+   stands: a second camp, a trap line, a cache. Ground the ancestors only
+   walked stays unknown until this survivor walks it. Trails and snares
+   are on the land and can be followed; a route through a far valley is
+   not.
+
+The note is generated from the bearing to the camp's region and the
+region card:
+
+- "Camp is in Harelia, the valley to the south-west. Look for the lake."
+- "Camp is in Stensund, two valleys east along this shore."
+- "Camp is over the fell to the north, in Kaltio. Spruce country."
+
 ## Beyond the gate: the edge of the world
 
 Not an item. It carries no curve line, has no slot, and waits on the
