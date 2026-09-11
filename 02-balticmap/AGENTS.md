@@ -1096,6 +1096,18 @@ answer for anywhere else and none of them was taught about it.
 - **The landings are AUTHORED, like `terrainEligibility`.** There is no rim
   concept in this codebase and the foreign power is not the change that should
   invent one.
+- **A power with no region has to be given one thing per surface that reads
+  `data.regions`, and each is its own line in `src/main.ts`.** It borrows a
+  baked silhouette, so it is in none of the tables the map builds from itself:
+  `factionById` and `factionNameById` for its NAME, `factionByRegion` for the
+  id a click resolves to a faction, `ringsByFaction` for the ground an arrow
+  crosses, `applyTargeting` for the two classes that say it can be aimed at,
+  and the paint pass for `data-id` and `.region` while it stands. Every one of
+  these was found in a browser and none of them is a type error: the offer read
+  `foreign-rus`, the aim preview answered "no land" over the power, and a raid
+  played at it spent the source's defense and drew no arrow at all. The engine
+  side was right throughout - `aiTakeTurn` marched on it from the first day -
+  which is exactly why nothing failed until somebody looked.
 
 ## Nothing ends itself
 

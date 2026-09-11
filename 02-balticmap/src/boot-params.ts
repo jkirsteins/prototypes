@@ -5,7 +5,7 @@ import {
   pickDuel, pickFaction, startGame, TURNIP_HARVEST_THRESHOLD, viewOf,
   type GameState,
 } from "./game";
-import { duelStakes } from "./gauntlet";
+import { ACTS, duelStakes } from "./gauntlet";
 import { aiTakeTurn } from "./ai";
 import { applyDamage, defenseMaxOf, MIN_RAID_SPEND } from "./defense";
 import { addMarch } from "./marches";
@@ -83,6 +83,18 @@ export interface BootParams {
    *  real `pickDuel` / `declineDuel`, so an id the offer does not hold is
    *  dropped rather than scoping the loop to a land nobody may fight. */
   duel: string | null;
+  /** Which act the booted run is in, or null to open on the first.
+   *
+   *  Clamped into `[1, ACTS]`. It exists because the run's last act cannot be
+   *  reached from a URL any other way: an act is earned by beating the boss
+   *  that closes the one before it, so a browser check of the expedition would
+   *  otherwise have to play two acts to get there.
+   *
+   *  It is applied BEFORE the wrap that reads it, which is the ordering that
+   *  matters: reaching an act's exit summons its boss at a round wrap, so
+   *  `act=3&realm=13` boots one round short of the offer rather than on it.
+   *  Play a turn and the prophecy comes round. */
+  act: number | null;
   /** Which of the player's own lands `duel=` puts up, or null to take the
    *  first `duelStakes` offers.
    *
@@ -225,7 +237,7 @@ function parseRules(raw: string): RuleSelections {
 const BOOT_KEYS = [
   "seed", "build", "screen", "faction", "hand", "turns", "defense", "disease",
   "leadership", "armies", "settlements", "march", "realm", "turnips", "wealth",
-  "popups", "rules", "region", "duel", "stake",
+  "popups", "rules", "region", "duel", "stake", "act",
 ];
 
 /** Null when the URL names no boot param at all, which is the ordinary case:
@@ -246,6 +258,7 @@ export function parseBootParams(search: string): BootParams | null {
   const turns = intOr(q.get("turns"), 0) ?? 0;
   const realm = intOr(q.get("realm"), null);
   const turnips = intOr(q.get("turnips"), null);
+  const act = intOr(q.get("act"), null);
   const wealth = intOr(q.get("wealth"), null);
   const build = q.get("build");
   const region = q.get("region");
@@ -281,6 +294,7 @@ export function parseBootParams(search: string): BootParams | null {
     region: region !== null && region in REGIONS ? (region as RegionId) : null,
     duel: q.get("duel"),
     stake: q.get("stake"),
+    act: act === null ? null : Math.max(1, Math.min(ACTS, act)),
   };
 }
 
@@ -431,6 +445,13 @@ export function applyBootParams(
     }
     g = { ...g, overlords, incorporated };
   }
+  // The act, before the pick: `duel=` is answered against the offer the board
+  // is standing on, and which offer that is depends on which act the run is
+  // in. It is a plain assignment rather than a transition because an act is
+  // EARNED - there is no door that grants one - and a boot param that walked
+  // the run forward through two boss duels would be a fixture rather than a
+  // check.
+  if (params.act !== null) g = { ...g, act: params.act };
   // The pick, answered before the marches for the ordinary reason overrides
   // run in this order: `duel=` is about the run's shape and an arrow is about
   // the board, and the shape does not read the board. Through the real

@@ -599,26 +599,56 @@ measured it, because nobody has played this branch in a browser yet.
   thirteen lands holding no landing closes act III against a neighbour instead
   and tries again. That is playable - it reads as fighting your way to the
   coast - and it has never been watched.
-- **A long march to the power draws as a strait.** `crossingBetween` shares no
-  vertices with a baked country outline, so the expedition's arrow gets the sea
-  treatment. Same limitation this file already records for three-hop marches.
-- **The surround matte may clip it.** Both powers' polygons overlap
-  `visibleRectOf` by construction - checked - so part of each is on screen, but
-  how much of Rus' or the Maghreb actually reads as a country has not been
-  looked at in a browser.
+- **A long march to the power draws as a strait** - confirmed on screen, and it
+  is the right picture: the arrow spans the gap from the coast into the purple
+  rather than standing on a border it does not have.
+- **The surround matte does not clip Rus'.** Looked at: it reads as a large
+  country filling the north-east, with its baked label on it. The Maghreb has
+  not been looked at.
+- **Clicking the power pins nothing.** It carries a `data-id` so it can be
+  aimed at, and a click with no card armed therefore resolves an id the region
+  table has never heard of - `applySelection` answers "no land" rather than
+  crashing, which is honest and is not the same as a hover panel saying what
+  the thing is. A power the player cannot read the defenses of is the next
+  thing to build here.
 - **Iberia has never been played, and now has a foreign power too.** The
   Maghreb's landings are authored to the same standard as the Baltic's and
   checked by `tests/regions.test.ts`, not by anybody's eyes.
 
-## Unverified in a browser, all of it
+## The browser pass, and the three things only it could find
 
-Nothing on this branch has been seen on screen. `tests/stake-pick.test.ts` and
-`tests/boon-pick.test.ts` drive the real screen through happy-dom - the stake
-screen, the rest, the frozen boss offer and the lock across all three - which
-is stronger than nothing and is not a browser. Specifically unwatched: the act
-chip's two forms, the prophecy modal's camera glide to a land the player may
-never have looked at, a champion reading as a champion, the power appearing on
-the coast, and an arrow of the player's own drawn out past the frame.
+Driven on the dev server at `?seed=3&faction=jersikans&realm=13&act=3&duel=none`
+and read off the screenshots rather than off the text extraction. Seen working:
+the duel offer and the stake screen, the act chip in both forms, the duel chip,
+the prophecy and the three-boon rest, the boss offer with its decline hidden,
+the power drawn as a country on the eastern edge, a Raid aimed at it out of a
+landing, the spend slider reading `Raid -> Lands of Rus'`, and the expedition
+arrow standing out past the coast. No page errors in any run.
+
+Three real bugs came out of it, all of them invisible to `npm test` and all of
+them fixed on this branch:
+
+- **The status bar ran under the scoreboard.** The act chip alone covered the
+  turnip meter on a 1440px window; with the duel chip beside it the whole
+  turnip chip was off the right of the screen. The bar was capped at the WINDOW
+  rather than at the room between the panels, and it was already touching the
+  scoreboard before this branch added anything. It is capped at the gap now and
+  wraps to a second row under pressure.
+- **The power was offered under its raw id** - "Duel foreign-rus" on the modal
+  and on the scoreboard - because it is not in `MapData.factions`.
+- **The last act could not be played by a person at all.** The power holds no
+  region, so no click resolved it: the aim preview read "no land" over it, and
+  a raid played at it (through the card panel, which did list it) spent the
+  source's defense, wrote its line in the log and drew NO ARROW. The policy had
+  been marching on it correctly the whole time, which is why every test passed.
+
+The rule that came out of the third one is in `AGENTS.md` under the off-map
+section: a faction with no region needs a line per table the map builds from
+`data.regions`, and none of them is a type error.
+
+Still unwatched: a champion reading as a champion rather than as a neighbour
+with more health, one of the power's own raid arrows landing on a coast, and
+Iberia in any form.
 
 ## Smaller things
 

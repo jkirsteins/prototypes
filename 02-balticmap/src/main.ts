@@ -1,4 +1,4 @@
-import type { Region } from "./types";
+import type { Faction, Region } from "./types";
 import { renderMap, darkenColor, brightenColor, inkFor } from "./map-render";
 import {
   createTooltip, settlementTooltipText,
@@ -281,10 +281,45 @@ for (const region of regionPaths.values()) {
   });
 }
 const tooltip = createTooltip(app);
-const factionById = new Map(data.factions.map((f) => [f.id, f]));
+/** Every faction the screen may have to NAME or COLOUR, which is the map's own
+ *  plus the power beyond the frame.
+ *
+ *  The power is not in `MapData.factions` - it holds no polygon on the map and
+ *  borrows a baked neighbour's ground - so a lookup over the map alone fell
+ *  back to its id, and the run's last fight was offered as "Duel foreign-rus"
+ *  on the modal and in the scoreboard. It is added here, once, so every
+ *  surface that resolves a faction id gets the same answer.
+ *
+ *  `type` and `ethnicity` are the flattest true things that can be said about
+ *  it: it is a land in the descriptive sense the type carries (no mechanics
+ *  ride on it), and it belongs to no people on this map. */
+const foreignFaction = ((): Faction => {
+  const power = activeRegion().foreignPower;
+  return {
+    id: power.id, name: power.name, ethnicity: power.id,
+    type: "land", color: power.color,
+    // A name like "The Maghreb" or "Lands of Rus'" is already a place and
+    // takes no article, the same rule Lietuva is flagged with.
+    placeName: true,
+  };
+})();
+const factionById = new Map(
+  [...data.factions, foreignFaction].map((f) => [f.id, f]),
+);
 const regionById = new Map(data.regions.map((r) => [r.id, r]));
 const factionByRegion = new Map(data.regions.map((r) => [r.id, r.faction]));
 const regionByFaction = new Map(data.regions.map((r) => [r.faction, r.id]));
+// The power's ground under the SAME two ids as every land: the id a click
+// resolves and the faction that holds it are one string here, because the
+// power borrows a silhouette rather than holding a region of its own.
+//
+// This is what makes the last act playable by a person rather than only by the
+// policy. Every surface that aims goes point -> `landAtPoint` -> this map ->
+// faction, so without an entry the expedition could be marched by `aiTakeTurn`
+// and by nothing a player could click: the aim preview read "no land" over the
+// power and the click fell through to a pan.
+factionByRegion.set(activeRegion().foreignPower.id, activeRegion().foreignPower.id);
+regionByFaction.set(activeRegion().foreignPower.id, activeRegion().foreignPower.id);
 /** The further sites each land can settle: its locked settlements, in the order
  *  the map authors them. A land is settled into these one at a time, so the Nth
  *  founding reveals the Nth dot and the drawing follows the count in state
@@ -1262,6 +1297,15 @@ function applyOwnership(): void {
     if (path !== null) {
       const summoned = inPlay() && game().foreign.includes(power.id);
       path.classList.toggle("neighbor-power", summoned);
+      // A summoned power is a LAND to point at, and only while it stands: the
+      // id is what `landAtPoint` answers with and `.region` is what the
+      // targeting cues are written on, so the two together are the whole of
+      // "this can be aimed at". Both come off again when it is not summoned,
+      // or a New game would leave the silhouette clickable with nothing behind
+      // it.
+      path.classList.toggle("region", summoned);
+      if (summoned) path.setAttribute("data-id", power.id);
+      else path.removeAttribute("data-id");
       // Back to the grey the stylesheet gives every other neighbour when it is
       // not standing - a New game must not leave the last run's enemy painted.
       path.style.fill = summoned ? power.color : "";
@@ -1856,6 +1900,19 @@ const townsByFaction = ((): Map<string, { x: number; y: number }[]> => {
 const ringsByFaction = new Map<string, Pt[][]>(
   data.regions.map((r) => [r.faction, ringsOf(r.path)]),
 );
+// The power's ground, off the silhouette it borrows. Without it `crossingFor`
+// answers null for every pair the power is at either end of, and the scene
+// draws NO ARROW: the expedition was played, the log said so and the defense
+// came off the source, with nothing on the map between the coast and the land
+// the army had been sent at. It shares no vertex with any land here, so the
+// crossing comes out a strait and the arrow spans the gap - which is what an
+// army leaving the map should look like, and is the same treatment Saaremaa's
+// raids already get.
+{
+  const power = activeRegion().foreignPower;
+  const baked = data.neighbors.find((n) => n.id === power.neighbor);
+  if (baked !== undefined) ringsByFaction.set(power.id, ringsOf(baked.path));
+}
 const crossings = new Map<string, Crossing | null>();
 
 /** The border between two lands, from the first's side. `renderArrowScene`
@@ -2478,9 +2535,12 @@ const BEAT_LABEL_MS = 1700;
  *  the player has finished reading what moved it. */
 const BADGE_WALK_MS = 220;
 
-const factionNameById = new Map(data.factions.map((f) => [f.id, f.name]));
+const factionNameById = new Map(
+  [...data.factions, foreignFaction].map((f) => [f.id, f.name]),
+);
 const placeNameFactionIds = new Set(
-  data.factions.filter((f) => f.placeName).map((f) => f.id),
+  [...data.factions, foreignFaction]
+    .filter((f) => f.placeName).map((f) => f.id),
 );
 
 /** The hooks a beat label's segments render through - the same tooltip the
@@ -3137,6 +3197,23 @@ function applyTargeting(): void {
     el.classList.toggle(
       "target-invalid", (live && !valid) || f === takenByHost || sworn,
     );
+  }
+  // The power beyond the frame, on the same two classes. It is not in
+  // `regionPaths` - it borrows a baked silhouette - so the loop above cannot
+  // reach it, and left out it was the one legal target on the map that never
+  // lit up: everything else dimmed to 0.07 around a land with no white outline
+  // on it. Faction and polygon resolve to the same id here, so there is no
+  // political step to take.
+  {
+    const power = activeRegion().foreignPower;
+    const el = svg.querySelector<SVGPathElement>(
+      `.neighbors path[data-neighbor="${power.neighbor}"][data-id]`,
+    );
+    if (el !== null) {
+      const valid = live && targets.has(power.id);
+      el.classList.toggle("target-valid", valid);
+      el.classList.toggle("target-invalid", live && !valid);
+    }
   }
   // Targeting cues win the map while armed - applyHighlight suppresses itself
   // then. Disarming lands here too, and brings the live hover back - never the

@@ -9,7 +9,7 @@ import {
   buildRoundSummary, isNoticeWorthy, walkCtxOf,
   type NoticeCtx, type RoundSummary,
 } from "./notices";
-import { actExitSize, BOON_TITLES, type Boon } from "./gauntlet";
+import { ACTS, actExitSize, BOON_TITLES, type Boon } from "./gauntlet";
 import {
   allocateSpend, defenseMaxOf, defenseOf, diseaseOn, subjugationGateOpen,
 } from "./defense";
@@ -1290,6 +1290,10 @@ export function createHud(
   // neighbour from the fight that ends the act until the prophecy landed.
   const actChip = document.createElement("span");
   actChip.className = "status-act hidden";
+  /** The one line of the act hover that depends on the board. Written by the
+   *  update pass, the `rulerTip` shape, because the chip itself has no room
+   *  for the number a player actually plans against. */
+  let actTipLine = "";
   actChip.addEventListener("mousemove", (e) => {
     cb.onShowTip?.(
       [
@@ -1306,6 +1310,10 @@ export function createHud(
             "that boss is what carries the run into the next act; nothing " +
             "else moves it, and losing ground never moves it back.",
         },
+        // The number the chip has no room for. It is the one thing a player
+        // actually plans against, so it is the last line rather than a clause
+        // buried in the two above.
+        { text: actTipLine },
       ],
       e.clientX, e.clientY,
     );
@@ -3058,10 +3066,19 @@ export function createHud(
       ).size;
       const need = actExitSize(state.act, winSizeFor(state, humanFaction));
       actChip.classList.remove("hidden");
+      // SHORT. The status bar is a centred row between the left buttons and
+      // the scoreboard, and it has no room to spare: the first version of this
+      // chip read "Act 1 - 4 lands to its boss", which pushed the turn text off
+      // its left edge and the duel chip under the scoreboard on its right. How
+      // far off the boss is lives in the hover, where there is room for the
+      // sentence that explains it.
+      actChip.classList.toggle("act-ready", held >= need);
       actChip.textContent =
+        held >= need ? `Act ${state.act}/${ACTS} !` : `Act ${state.act}/${ACTS}`;
+      actTipLine =
         held >= need
-          ? `Act ${state.act} - its boss is at hand`
-          : `Act ${state.act} - ${count(need - held, "land")} to its boss`;
+          ? "Its boss is at hand: the next offer is that fight."
+          : `${count(need - held, "land")} more and its boss is summoned.`;
       const duel = state.gauntlet;
       duelChip.classList.toggle("hidden", duel.kind !== "duel");
       if (duel.kind === "duel") {

@@ -108,8 +108,18 @@ describe("parseBootParams", () => {
       seed: 7, build: null, screen: null, faction: null, hand: null, turns: 0,
       defense: {}, disease: {}, leadership: {}, armies: {}, settlements: {},
       marches: [], realm: null, turnips: null, wealth: null, popups: null,
-      rules: null, region: null, duel: null, stake: null,
+      rules: null, region: null, duel: null, stake: null, act: null,
     });
+  });
+
+  it("clamps the act into the run's own range", () => {
+    // The one boot param that reaches a state an act is normally EARNED into,
+    // so it is clamped like every other number here: a URL is the same attack
+    // surface as a hand-edited record.
+    expect(params("?act=3").act).toBe(3);
+    expect(params("?act=0").act).toBe(1);
+    expect(params("?act=99").act).toBe(3);
+    expect(params("?act=later").act).toBeNull();
   });
 
   it("reads build as one of the two builds, and drops anything else", () => {
