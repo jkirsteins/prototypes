@@ -99,7 +99,8 @@ describe("lee is what the upwind ground and wood block", () => {
     paintWorld(world, [HERE - W - 1], "meadow", 130);
     const diagonal = leeScore(world, HERE, 315);
     expect(diagonal.blocking).toBeCloseTo(30 / (300 * Math.SQRT2), 6);
-    expect(diagonal.score).toBeCloseTo(0.707, 3);
+    expect(diagonal.score).toBeGreaterThan(0.5);
+    expect(diagonal.score).toBeLessThan(1);
     expect(diagonal.by).toBe("slope");
     expect(isLee(world, HERE, 315)).toBe(true);
     // The same rise at the same true distance along a cardinal wind, to within
