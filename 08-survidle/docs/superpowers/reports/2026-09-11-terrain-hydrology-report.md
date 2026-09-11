@@ -900,3 +900,7 @@ readings will move because the lowland stops being cooled; they are reported,
 not tuned" - and re-baking them silently would be tuning. Three are worth
 tracing as possible real bugs before merge: the panel churn budget, the missing
 Norwegian letters, and `probe.test.ts`'s undefined in the trap's oily side.
+
+## Heir lineage gate, measured
+
+Run once from the controller session after the known-route cache widening: about 80 minutes wall time for the 24 lives (about 15 on main). Readings: trend gate 1 of 5 seeds (the gate is 3 of 4); lineage gate 3 of 5 seeds reached a year within six lives. Findings, not targets: the drop against the old world is the fjord coast the heirs land on, and the time is the hunting chooser routing to every mapped candidate cell.
