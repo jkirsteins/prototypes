@@ -1492,9 +1492,13 @@ button.act small.gives, span.act small.gives,
 .grid .c.water-live .water-ripple-1 { animation-duration: calc(5s / var(--water-shimmer-speed, 1)); }
 .grid .c.water-live .water-ripple-2 { animation-duration: calc(3.75s / var(--water-shimmer-speed, 1)); }
 .grid .c.water-live .water-ripple-3 { animation-duration: calc(8s / var(--water-shimmer-speed, 1)); }
+/* At the two close rungs a cell is a 33 or 66 px block, and a peak that
+   reads as a glint on an 11 px glyph reads as a flat wash that swallows
+   the detail glyphs. Half the gain there keeps the ~ and = legible. */
+.grid.detailed .c.water-live .water-ripple { --water-gain: 0.5; }
 @keyframes water-ripple {
   0%, 100% { opacity: 0; }
-  50% { opacity: var(--water-peak, 0.4); }
+  50% { opacity: calc(var(--water-peak, 0.4) * var(--water-gain, 1)); }
 }
 /* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
    depth palette. Thin ice remains dark and uncertain; safe ice forms the

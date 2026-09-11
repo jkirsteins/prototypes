@@ -311,7 +311,9 @@ describe("the map's compositing layers", () => {
     }
     const frames = css.match(/@keyframes water-ripple[\s\S]*?\n}/)?.[0] ?? "";
     expect(frames).toContain("0%, 100% { opacity: 0; }");
-    expect(frames).toContain("50% { opacity: var(--water-peak, 0.4); }");
+    expect(frames).toContain("50% { opacity: calc(var(--water-peak, 0.4) * var(--water-gain, 1)); }");
+    // At the close rungs a cell is a big block, and the same peak would wash out its detail glyphs.
+    expect(rule(".grid.detailed .c.water-live .water-ripple")).toContain("--water-gain: 0.5");
     expect(frames).not.toContain("background");
     expect(frames).not.toContain("transform");
     // Neighbours are near each other in phase: one drawn cell east moves each
