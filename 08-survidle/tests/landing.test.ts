@@ -19,7 +19,7 @@ import { seasonalMean } from "../src/sim/weather";
 import { mapHtml } from "../src/ui/map";
 import { tombstoneHtml } from "../src/ui/panels";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
-import { CELL_KM } from "../src/units";
+import { PATCH_KM } from "../src/world/spatial";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 
@@ -52,7 +52,7 @@ describe("the landing", () => {
       expect(c.terrain).not.toBe("water");
       expect(neighbours(world, a).some((n) => cellAt(world, n).terrain === "water")).toBe(true);
       const cc = cellAt(world, camp);
-      const km = Math.hypot(c.x - cc.x, c.y - cc.y) * CELL_KM;
+      const km = Math.hypot(c.x - cc.x, c.y - cc.y) * PATCH_KM;
       expect(km).toBeGreaterThanOrEqual(3);
       expect(km).toBeLessThanOrEqual(20);
     }

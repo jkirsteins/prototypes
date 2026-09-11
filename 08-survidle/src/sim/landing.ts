@@ -4,10 +4,10 @@
  * search; every heir lands near the last camp.
  */
 import { derive, Rng } from "../rng";
-import { CELL_KM } from "../units";
 import { cellAt, neighbours, regionOf, type World } from "../world/cells";
 import { regionAt } from "../world/gen";
 import { passable } from "../world/route";
+import { PATCH_KM } from "../world/spatial";
 import { advance } from "./advance";
 import { ensureCareRows } from "./bodyorder";
 import { calendar, coastOpen, fmtDate, START_DOY } from "./calendar";
@@ -57,7 +57,7 @@ function isShore(world: World, idx: number): boolean {
 /** A shore cell 3 to 20 km from the old camp, the same one every time; the nearest shore if the band is empty. */
 export function landingCell(world: World, oldCamp: number, seed: number, index: number): number {
   const cc = cellAt(world, oldCamp);
-  const r = Math.ceil(LANDING_MAX_KM / CELL_KM);
+  const r = Math.ceil(LANDING_MAX_KM / PATCH_KM);
   const band: number[] = [];
   let nearest = -1;
   let nearestD = Number.POSITIVE_INFINITY;
@@ -65,7 +65,7 @@ export function landingCell(world: World, oldCamp: number, seed: number, index: 
     for (let x = Math.max(0, cc.x - r); x <= Math.min(world.w - 1, cc.x + r); x++) {
       const idx = y * world.w + x;
       if (!isShore(world, idx)) continue;
-      const km = Math.hypot(x - cc.x, y - cc.y) * CELL_KM;
+      const km = Math.hypot(x - cc.x, y - cc.y) * PATCH_KM;
       if (km >= LANDING_MIN_KM && km <= LANDING_MAX_KM) band.push(idx);
       if (km < nearestD && idx !== oldCamp) {
         nearestD = km;
@@ -315,7 +315,7 @@ export function land(state: GameState, world: World, name = state.landing?.name,
   // Nobody made camp in the life before, so there is no camp to be told the way to
   // and nothing standing for a journal to list.
   const oldName = oldCamp === null ? "" : regionAt(world, cellAt(world, oldCamp).region).name;
-  const toOldCamp = oldCamp === null ? "" : ` The old camp at ${oldName} lies ${Math.round(Math.hypot(cellAt(world, oldCamp).x - lc.x, cellAt(world, oldCamp).y - lc.y) * CELL_KM)} km ${bearing(world, l.cell, oldCamp)}.`;
+  const toOldCamp = oldCamp === null ? "" : ` The old camp at ${oldName} lies ${Math.round(Math.hypot(cellAt(world, oldCamp).x - lc.x, cellAt(world, oldCamp).y - lc.y) * PATCH_KM)} km ${bearing(world, l.cell, oldCamp)}.`;
   const built = oldCamp === null ? "" : builtList(last);
   const journal = built ? ` The journal of ${fmtName(last.name)} lists ${built} at ${oldName}.` : "";
   // The carry sentence reads the ancestor's record directly rather than carrySkills's

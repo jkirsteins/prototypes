@@ -46,6 +46,7 @@ const slowTestFiles = [
   "tests/hone.test.ts",
   "tests/horizon.test.ts",
   "tests/hunger.test.ts",
+  "tests/hunting.test.ts",
   "tests/hurry.test.ts",
   "tests/hut.test.ts",
   "tests/ice.test.ts",
