@@ -54,9 +54,13 @@ for (const seed of seeds) {
   let q: number[] = [];
   for (let i = 0; i < n; i++) if (s.kind[i] !== KIND.land || (s.flags[i] & FLAG_STREAM)) { d[i] = 0; q.push(i); }
   while (q.length) { const nq: number[] = []; for (const c of q) { const x = c % W, y = (c - x) / W; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; const j = yy * W + xx; if (d[j] < 0) { d[j] = d[c] + 1; nq.push(j); } } } q = nq; }
-  const dist: number[] = []; let land = 0, lake = 0, sea = 0, river = 0;
-  for (let i = 0; i < n; i++) { if (s.kind[i] === KIND.land) { land++; dist.push(d[i] * 0.3); } else if (s.kind[i] === KIND.lake) lake++; else if (s.kind[i] === KIND.sea) sea++; else river++; }
-  console.log(`land -> water km: p50 ${pct(dist, 0.5).toFixed(1)} p90 ${pct(dist, 0.9).toFixed(1)}   target p50 < 0.6, p90 < 2`);
+  const dist: number[] = []; let land = 0, lake = 0, sea = 0, river = 0, streamCells = 0;
+  for (let i = 0; i < n; i++) { if (s.kind[i] === KIND.land) { land++; dist.push(d[i] * 0.3); if (s.flags[i] & FLAG_STREAM) streamCells++; } else if (s.kind[i] === KIND.lake) lake++; else if (s.kind[i] === KIND.sea) sea++; else river++; }
+  // Perennial channel density: total stream (plus river) length over land area, km per km2.
+  // 0.5 to 1.5 is an estimate for perennial channels in Nordic terrain; total channel
+  // density counting ephemeral runs higher, so this is a floor check, not the whole picture.
+  const channelDensity = (streamCells * 0.3) / (land * 0.09);
+  console.log(`land -> water km: p50 ${pct(dist, 0.5).toFixed(1)} p90 ${pct(dist, 0.9).toFixed(1)}   target p50 < 0.6, p90 < 2;  perennial channel density ${channelDensity.toFixed(2)} km/km2   target 0.5..1.5 (perennial only)`);
   console.log(`lake share of land+lake: ${(100 * lake / (land + lake)).toFixed(1)}%   target 5..10;  sea ${(100 * sea / n).toFixed(1)}% river cells ${river}`);
   // Largest catchments: discharge at sea-bound river mouths, converted back to km2 at inland runoff is not exact; report the top mouths in m3/s and the top catchments by cell count.
   const mouths: number[] = [];

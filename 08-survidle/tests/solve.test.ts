@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { coastKmOfCell } from "../src/world/classify";
+import { coastKmOfCell, uniformise } from "../src/world/classify";
 import { DIST8, NO_FLOW, receiverOf } from "../src/world/hydro";
+import { fbm } from "../src/world/noise";
 import { FLAG_FORD, FLAG_STREAM, KIND, RIVER_M3S, solveWorld, STREAM_M3S } from "../src/world/solve";
 import { latitudeAt, TERRAIN_INDEX, treelineM } from "../src/world/terrain";
 
@@ -82,6 +83,20 @@ describe("the solved miniature world", () => {
     const seen = new Set<number>();
     for (let i = 0; i < n; i++) seen.add(s.terrain[i]);
     for (const t of ["water", "fell", "rock", "bog", "spruce", "pine", "birch", "meadow"] as const) expect(seen.has(TERRAIN_INDEX[t]), t).toBe(true);
+  });
+});
+
+describe("uniformise", () => {
+  it("turns an fbm sampling's share under 0.3 into 0.3, not fbm's own clustered share", () => {
+    const size = 200;
+    const raw = new Float32Array(size * size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) raw[y * size + x] = fbm(x * 0.5 + 3, y * 0.5 + 7, 99, 2);
+    }
+    const uniform = uniformise(raw);
+    let under = 0;
+    for (let i = 0; i < uniform.length; i++) if (uniform[i] < 0.3) under++;
+    expect(Math.abs(under / uniform.length - 0.3)).toBeLessThan(0.02);
   });
 });
 

@@ -109,15 +109,54 @@ const STEEP = 0.36;
 const SPRUCE_COAST_KM = 30;
 const SPRUCE_LAT_LIMIT = 66;
 
-/** Bare rock share by band; the highest applicable rate wins. */
+/**
+ * Rank-transforms raw noise values into a uniform 0..1 draw: a band rate
+ * compared against a value is a share of cells only when the value being
+ * compared is itself uniform, and two octaves of value noise (fbm) are
+ * not - they cluster near 0.5. Bins the raw range into `bins` buckets,
+ * turns each bucket's count into a cumulative share of all values, and
+ * maps every value to the cumulative share up to and including its own
+ * bucket. Arithmetic only, so it stays engine-identical like the rest of
+ * the solve.
+ */
+export function uniformise(values: Float32Array, bins = 4096): Float32Array {
+  const n = values.length;
+  let lo = values[0];
+  let hi = values[0];
+  for (let i = 1; i < n; i++) {
+    const v = values[i];
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  const span = hi - lo || 1;
+  const bucketOf = new Uint16Array(n);
+  const counts = new Uint32Array(bins);
+  for (let i = 0; i < n; i++) {
+    let b = Math.floor(((values[i] - lo) / span) * bins);
+    if (b < 0) b = 0;
+    if (b >= bins) b = bins - 1;
+    bucketOf[i] = b;
+    counts[b]++;
+  }
+  const cumulative = new Float32Array(bins);
+  let running = 0;
+  for (let b = 0; b < bins; b++) {
+    running += counts[b];
+    cumulative[b] = running / n;
+  }
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = cumulative[bucketOf[i]];
+  return out;
+}
+
+/** Bare rock share by band; the highest applicable rate wins. A rate here
+ * is the real share of cells since classify() compares it against the
+ * uniformised soil noise, not the raw fbm value. */
 function rockRate(coastKm: number, slope: number, underTreeline: number): number {
-  // The soil noise is not a uniform 0..1 draw (two octaves of value noise cluster
-  // near 0.5), so a rate here is not the resulting rock share; it is set higher
-  // than the target share to land on it against the noise's real distribution.
-  let rate = 0.15;
-  if (coastKm < 1) rate = 0.40;
-  if (slope > STEEP && rate < 0.38) rate = 0.38;
-  if (underTreeline >= 0 && underTreeline < 100 && rate < 0.45) rate = 0.45;
+  let rate = 0.04;
+  if (coastKm < 1) rate = 0.30;
+  if (slope > STEEP && rate < 0.25) rate = 0.25;
+  if (underTreeline >= 0 && underTreeline < 100 && rate < 0.35) rate = 0.35;
   return rate;
 }
 
@@ -131,6 +170,34 @@ export function classify(hydro: HydrologyResult, seed: number, w: number, h: num
   const { height, sea, lake, dir, count, flow } = hydro;
   const kmPerU = TEMPLATE_W_KM / w;
   const kmPerV = TEMPLATE_H_KM / h;
+
+  // The soil noise must be uniform in 0..1 for a rockRate() rate to be the
+  // real share of cells rather than a share of the raw fbm output, which is
+  // not uniform. Sample it once for every land cell (not sea, not lake, not
+  // a river by discharge), uniformise across that population, and scatter
+  // the result back so the main loop below reads it like any other field.
+  const isLand = new Uint8Array(n);
+  let landCount = 0;
+  for (let i = 0; i < n; i++) {
+    if (sea[i] || lake[i] || flow[i] >= RIVER_M3S) continue;
+    isLand[i] = 1;
+    landCount++;
+  }
+  const rawSoil = new Float32Array(landCount);
+  const soilCell = new Int32Array(landCount);
+  let sk = 0;
+  for (let i = 0; i < n; i++) {
+    if (!isLand[i]) continue;
+    const x = i % w;
+    const y = (i - x) / w;
+    rawSoil[sk] = fbm((x + 0.5) * kmPerU / 2 + 11, (y + 0.5) * kmPerV / 2 + 5, s.soil, 2);
+    soilCell[sk] = i;
+    sk++;
+  }
+  const uniformSoil = uniformise(rawSoil);
+  const soilAt = new Float32Array(n);
+  for (let sk2 = 0; sk2 < landCount; sk2++) soilAt[soilCell[sk2]] = uniformSoil[sk2];
+
   for (let i = 0; i < n; i++) {
     const x = i % w;
     const y = (i - x) / w;
@@ -165,7 +232,7 @@ export function classify(hydro: HydrologyResult, seed: number, w: number, h: num
     const p = (runoffLsKm2(coastKm) - 12) / 38;
     const m = 0.5 * p + 0.4 * wetness + 0.1 * northFacing;
     moisture[i] = Math.round((m < 0 ? 0 : m > 1 ? 1 : m) * 255);
-    const soil = fbm((x + 0.5) * kmPerU / 2 + 11, (y + 0.5) * kmPerV / 2 + 5, s.soil, 2);
+    const soil = soilAt[i];
     const underTreeline = treeline - hm;
     if (hm > treeline) { terrain[i] = TERRAIN_INDEX.fell; continue; }
     if (soil < rockRate(coastKm, slope, underTreeline)) { terrain[i] = TERRAIN_INDEX.rock; continue; }
