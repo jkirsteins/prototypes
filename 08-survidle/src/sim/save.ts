@@ -270,6 +270,17 @@ export function migrate(state: GameState, version = 9): void {
   // any of them drops them here and round-trips clean.
   p.sleepDebt ??= 100 - p.energy;
   p.sleeping ??= null;
+  p.collapsed ??= false;
+  // Collapse used to be a second route into sleep. Preserve its recovery as
+  // exhausted Rest, while leaving ordinary sleep continuity untouched.
+  const legacyCollapse = (p.sleeping as { collapsed: boolean } | null)?.collapsed === true;
+  if (legacyCollapse) {
+    p.sleeping = null;
+    p.collapsed = true;
+    p.bodyNeed = "spent";
+    if (state.task?.id === "sleep") state.task = null;
+    if (state.intent?.mode === "care" && state.intent.care === "body") state.intent = null;
+  }
   // A save with no sticky need reads its need fresh on the next free minute,
   // which costs one minute of stickiness and nothing else.
   p.bodyNeed ??= null;
@@ -385,7 +396,7 @@ export function migrate(state: GameState, version = 9): void {
       }
       // The old generated Walk was classified as hand work and could replace
       // itself with an ownerless collapse sleep. Let Self-care decide again.
-      if (!state.intent && state.task?.id === "sleep" && state.player.sleeping?.collapsed) {
+      if (!state.intent && state.task?.id === "sleep" && state.player.collapsed) {
         state.task = null;
         state.player.sleeping = null;
       }

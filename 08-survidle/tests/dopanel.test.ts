@@ -36,7 +36,9 @@ describe("the purposes and the filter", () => {
     const time = paneHtml(state, world, cal, "chop", undefined, { travelDisplay: "time" });
     expect(distance).toMatch(/will walk to nearest forest - \d+\.\d km/);
     expect(time).toMatch(/will walk to nearest forest - (?:\d+ h )?\d+ min/);
-    expect(distance).toMatch(/Fell any tree.*\d+ min/s);
+    // The bracket is the wall clock under the hurry, not the one scale: an hour
+    // of felling as a once action is seconds of the player's, not a minute.
+    expect(distance).toMatch(/Fell any tree.*\d+ h \(\d+ s\)/s);
   });
 
   it("the filter narrows by label, case-insensitive, and an empty filter keeps everything", () => {
@@ -130,6 +132,16 @@ describe("the purposes and the filter", () => {
     const html = doHtml(state, world, cal, ui);
     expect(html).toContain('data-opt="intent:craft:bow"');
     expect(html).not.toContain('data-act="more"');
+  });
+
+  it("offers Rest but leaves falling asleep and waking to the body", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    expect(availableTasks(state, world, cal).map((o) => o.id)).not.toContain("sleep");
+    const html = doHtml(state, world, cal, { ...newUiState(), panes: { pane: "do", subtab: "Camp", purpose: "Rest" } });
+    expect(html).toContain('data-opt="intent:rest:');
+    expect(html).not.toContain('data-opt="intent:sleep:');
+    expect(html).not.toContain('data-opt="intent:night:');
   });
 
   it("offers material tracking only inside an eligible Make or Build row", () => {

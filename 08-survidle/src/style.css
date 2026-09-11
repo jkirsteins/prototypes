@@ -227,6 +227,7 @@ small, .dim { color: var(--dim); }
 .bar.warmth .fill { background: var(--warmth); }
 .bar.energy .fill { background: var(--energy); }
 .bar.sleepiness .fill { background: var(--sleepiness); }
+.sleep-forecast { color: var(--dim); font-size: 10px; margin: 1px 0 3px; }
 .bar.wet .fill { background: var(--wet); }
 .bar.water .fill { background: var(--water); }
 .bar.fire .fill { background: var(--fire); }

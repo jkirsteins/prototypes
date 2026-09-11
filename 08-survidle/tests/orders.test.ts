@@ -1251,7 +1251,7 @@ describe("fall-through", () => {
     const blocked = addOrder(state, world, { task: "cook", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     blocked.pinned = true;
     state.player.bodyNeed = "sleep";
-    state.player.sleeping = { collapsed: true };
+    state.player.sleeping = { collapsed: false };
     state.player.sleepDebt = 1000;
     const st = regionState(state, world, state.player.region);
     st.orders = [blocked, ...st.orders.filter((o) => o.id !== blocked.id)];
@@ -1265,7 +1265,7 @@ describe("fall-through", () => {
     const { state, world } = newGame(3);
     const blocked = addOrder(state, world, { task: "cook", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     state.player.bodyNeed = "sleep";
-    state.player.sleeping = { collapsed: true };
+    state.player.sleeping = { collapsed: false };
     state.player.sleepDebt = 1000;
     const st = regionState(state, world, state.player.region);
     const bodyRow = bodyRowOf(state, world)!;

@@ -114,7 +114,7 @@ describe("the runner keeps its night gate", () => {
 });
 
 describe("the collapse", () => {
-  it("blocks the work row, then lets the ranked self-care row sleep", () => {
+  it("blocks the work row, then lets the ranked self-care row rest", () => {
     const c = camp(MIDNIGHT);
     // A click lands over the body's row, which is what makes the work the
     // player chose in the moment the player's: nothing tired, thirsty or cold
@@ -126,12 +126,13 @@ describe("the collapse", () => {
     c.state.player.energy = SLEEP_AT;
     advance(c.state, c.world, 1);
     expect(c.state.intent).toBeNull();
-    expect(c.state.player.sleeping?.collapsed).toBe(true);
+    expect(c.state.player.collapsed).toBe(true);
+    expect(c.state.player.sleeping).toBeNull();
     expect(c.state.task).toBeNull();
     advance(c.state, c.world, 1);
     expect(c.state.intent?.mode).toBe("care");
-    for (let i = 0; i < 300 && c.state.task?.id !== "sleep"; i++) advance(c.state, c.world, 1);
-    expect(c.state.task?.id).toBe("sleep");
+    for (let i = 0; i < 300 && c.state.task?.id !== "rest"; i++) advance(c.state, c.world, 1);
+    expect(c.state.task?.id).toBe("rest");
   });
 
   it("does not fire while there is anything left in the body", () => {

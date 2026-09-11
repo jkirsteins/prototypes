@@ -90,6 +90,17 @@ describe("the working day", () => {
     expect(p.coldSpent).toBe(false);
   });
 
+  it("loads an old collapse sleep as exhausted rest", () => {
+    const { state } = newGame(1);
+    const raw = JSON.parse(serialize(state));
+    raw.state.player.sleeping = { collapsed: true };
+    raw.state.player.bodyNeed = "sleep";
+    const p = deserialize(JSON.stringify(raw))!.state.player;
+    expect(p.sleeping).toBeNull();
+    expect(p.collapsed).toBe(true);
+    expect(p.bodyNeed).toBe("spent");
+  });
+
   it("a night under way survives a save and load, so a run reloaded mid-sleep goes back to bed", () => {
     const { state, world } = felling();
     const cal = calendar(state.minute, state.startDoy);

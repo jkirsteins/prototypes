@@ -11,8 +11,16 @@ import type { GameState, SkillId } from "../sim/types";
 import { WATER_FULL } from "../sim/water";
 import { ambientTemperature, localWeather } from "../sim/weather";
 import { sleepiness } from "../sim/sleep";
-import { fmtDuration, fmtReal } from "../units";
+import { fmtDuration, fmtRealSeconds, realSecondsFor } from "../units";
 import type { World } from "../world/gen";
+import { type HurryState, realSecondsLeft } from "./hurry";
+import { sleepForecast } from "./sleep";
+
+/** The frame loop's clock: what it adds to the one scale, so a bar can say how long the wait really is. */
+export interface FrameClock {
+  hurry: HurryState;
+  speed: number;
+}
 
 /**
  * The named bar, wherever it is drawn.
@@ -47,7 +55,7 @@ function flash(el: HTMLElement | null | undefined): void {
 }
 
 /** Every frame: the moving parts that the keyed panels leave alone. */
-export function updateBars(state: GameState, world: World, root: ParentNode = document): void {
+export function updateBars(state: GameState, world: World, root: ParentNode = document, clock?: FrameClock): void {
   const p = state.player;
   const cal = calendar(state.minute, state.startDoy);
   setBar("health", p.health / 100, `${Math.round(p.health)}`, root);
@@ -79,6 +87,10 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   setBar("energy", p.energy / 100, `${Math.floor(p.energy + 1e-9)}`, root);
   const sleepy = sleepiness(p.sleepDebt, cal.hour);
   setBar("sleepiness", sleepy / 100, `${Math.max(0, Math.min(100, Math.round(sleepy)))}`, root);
+  const forecast = sleepForecast(state, world, cal);
+  for (const line of root.querySelectorAll<HTMLElement>("[data-sleep-forecast]")) {
+    if (line.textContent !== forecast) line.textContent = forecast;
+  }
   setBar("wet", p.wetness / 100, `${Math.round(p.wetness)}`, root);
   setBar("water", p.water / WATER_FULL, `${p.water.toFixed(1)} l`, root);
 
@@ -106,7 +118,11 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
     // as well, because "12 min left" beside nothing was read as the whole
     // order's - but the row it sits in names the step now, an inch to its
     // left, so saying it twice only made the row too long to read.
-    setBar("task", frac, `${fmtDuration(left)} left (${fmtReal(left)})`, root);
+    // The bracket is the wall clock. The frames run a once action at up to
+    // PEAK and work at the body's pace, so it is the loop's own arithmetic
+    // and not the one scale; without the clock it falls back to that scale.
+    const secs = clock ? realSecondsLeft(state, world, clock.hurry, clock.speed) : null;
+    setBar("task", frac, `${fmtDuration(left)} left (${fmtRealSeconds(secs ?? realSecondsFor(left))})`, root);
     const share = `${Math.floor(frac * 100)}%`;
     for (const pct of root.querySelectorAll<HTMLElement>('[data-pct="task"]')) {
       if (pct.textContent !== share) pct.textContent = share;

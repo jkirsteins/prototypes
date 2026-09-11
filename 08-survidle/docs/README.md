@@ -26,6 +26,9 @@ or a single advanced action runs at up to 6x from start to end, and a
 standing or counted order goes 3 minutes ahead each time you click its
 row, one click per two-thirds of a second. Body needs, the runner's
 waiting, and everything done while you are away run at the one scale.
+The seconds in brackets on the task bar and on an option row are the wall
+clock under all of that - the hurry and the body's pace - not the one
+scale, so a once action's "40 min (10 s)" is what you will actually wait.
 
 ## How it plays
 
@@ -113,7 +116,8 @@ waiting, and everything done while you are away run at the one scale.
   the fog is per cell, not per region: what you have walked is a thread
   through the black, and what the eye reaches from where you stand is a
   blot around it. Closed spruce shows you the ground underfoot and no
-  more; open bog and a fell top show you the horizon; the dark shows you
+  more, but trees at the water's edge show you the water and the far
+  shore; open bog and a fell top show you the horizon; the dark shows you
   nothing at all.
 - **You cannot walk where you do not know the way.** A route may not cross
   ground you have never seen, so "walk to camp" can say there is no way
@@ -201,8 +205,10 @@ waiting, and everything done while you are away run at the one scale.
   berries, about 1.2 kg, among them. Warmth settles toward what
   your felt temperature can hold: ambient, plus clothing, fire and shelter
   at camp, plus activity, minus wetness. Below 20 warmth you lose health
-  fast. Energy drains awake and faster working; below 20 you work at half
-  speed, and if you idle while spent you fall asleep where you stand.
+  fast. Stamina drains through physical work. At 20 Stamina the survivor
+  collapses and must Rest to 55 before working again. Sleepiness is separate:
+  its pressure and the time of day determine when the survivor falls asleep
+  and wakes. Sleep is automatic; Rest remains an explicit action.
 - **The elements.** Water is a reserve like food: drink at a shore, carry it
   in a bark bucket or a waterskin, melt snow at the fire in winter for a kilo
   of wood a litre. Lakes freeze; thin ice is a shortcut that can take you,

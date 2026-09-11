@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { ARROWS_TO_CARRY, bodyStep, currentNeed, minutesToCamp, SLEEP_AT, stormOptions } from "../src/sim/body";
-import { alertness, minutesToWake, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT } from "../src/sim/sleep";
+import { alertness, minutesToWake, RESTED_AT, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT } from "../src/sim/sleep";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { bankFire } from "../src/sim/fire";
 import { addItem, pile, qty, weight } from "../src/sim/inventory";
@@ -65,27 +65,22 @@ function felling(seed = 39, deliver: "leave" | "camp" = "leave") {
 }
 
 describe("the body's row against the work", () => {
-  it("collapsing, it sets the tree aside, walks to camp and dozes there until it is rested", () => {
+  it("collapsing, it sets the tree aside, walks to camp and rests to the recovery line", () => {
     const { g, state, world, camp } = felling();
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     advance(state, world, 20);
     state.player.energy = 20;
     advance(state, world, 1);
     expect(state.task?.id).toBe("walk");
-    expect(state.intent?.step).toBe("walking to camp to doze");
-    expect(state.player.bodyNeed).toBe("sleep");
+    expect(state.intent?.step).toBe("walking to camp for the evening");
+    expect(state.player.bodyNeed).toBe("spent");
     expect(Object.keys(state.paused)).toHaveLength(1);
-    expect(until(g, () => state.task?.id === "sleep")).toBe(true);
+    expect(until(g, () => state.task?.id === "rest")).toBe(true);
     expect(cellOf(state, world)).toBe(camp);
-    // A morning collapse is a doze by the fire and says so; only a sleep begun
-    // in the dark reads as sleeping.
-    expect(state.intent?.step).toBe("dozing by the fire");
-    expect(until(g, () => state.task?.id !== "sleep", 700)).toBe(true);
+    expect(state.intent?.step).toBe("resting after the day's work");
+    expect(until(g, () => state.task?.id !== "rest", 700)).toBe(true);
     expect(state.player.bodyNeed).toBeNull();
-    // Collapse is not an ordinary evening rest: it restores the full reserve
-    // before the interrupted work is allowed to restart.
-    // The observed minute includes the first minute of resumed work.
-    expect(state.player.energy).toBeGreaterThan(99.8);
+    expect(state.player.energy).toBeGreaterThanOrEqual(RESTED_AT - 0.2);
     // Back to the tree it left, and on with the same intent.
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     expect(state.task!.progress).toBeGreaterThan(15);
@@ -111,7 +106,7 @@ describe("the body's row against the work", () => {
     expect(other.state.task?.id).toBe("chop");
   });
 
-  it("makes a fire for the night when the means are at camp: the site, a split log, then light", () => {
+  it("makes a fire before collapse recovery when the means are at camp: the site, a split log, then light", () => {
     const { g, state, world, camp } = felling();
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, camp), "stone", 6);
@@ -119,28 +114,27 @@ describe("the body's row against the work", () => {
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.energy = 20;
     const steps: string[] = [];
-    until(g, () => {
+    expect(until(g, () => {
       const s = state.intent?.step ?? "";
       if (steps.at(-1) !== s) steps.push(s);
-      return state.task?.id === "sleep";
-    }, 1500);
-    expect(steps).toEqual(expect.arrayContaining(["walking to camp to doze", "clearing the fire site", "splitting a log for the fire", "lighting the fire", "dozing by the fire"]));
+      return s === "resting by the fire after the day's work";
+    }, 1500)).toBe(true);
+    expect(steps).toEqual(expect.arrayContaining(["walking to camp for the evening", "clearing the fire site", "splitting a log for the fire", "lighting the fire", "resting by the fire after the day's work"]));
     expect(regionState(state, world, state.player.region).fire.lit).toBe(true);
   });
 
-  it("with no way to camp it sleeps where it stands and says so", () => {
+  it("with no way to camp it rests where it stands and says so", () => {
     const { g, state, world } = felling();
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     // Overload the pack so no walk can start.
     addItem(state.player.pack, "stone", 40);
     state.player.energy = 20;
     advance(state, world, 1);
-    expect(state.task?.id).toBe("sleep");
-    expect(state.intent?.step).toContain("where {you} {stand}");
-    expect(state.log.some((e) => e.text.includes("{You} {sleep} where {you} {are}"))).toBe(true);
+    expect(state.task?.id).toBe("rest");
+    expect(state.intent?.step).toBe("resting after the day's work; no way to camp");
   });
 
-  it("cold, it goes to camp and rests until warm again, and sleep outranks cold", () => {
+  it("cold, it goes to camp and rests until warm again, and collapse outranks cold", () => {
     const { g, state, world, camp } = felling();
     const st = regionState(state, world, state.player.region);
     // A fire already going, so this region's camp can actually warm a cold body.
@@ -171,7 +165,7 @@ describe("the body's row against the work", () => {
     state.player.warmth = 20;
     state.player.energy = 15;
     advance(state, world, 1);
-    expect(state.player.bodyNeed).toBe("sleep");
+    expect(state.player.bodyNeed).toBe("spent");
   });
 
   it("a cold need holds until warm, across a fresh intent", () => {
@@ -407,7 +401,7 @@ describe("the body's row against the work", () => {
     // Past the spent line the build goes on: it is ranked over the body's own
     // row, and a body that has to wait its turn takes nothing back from the
     // work. The body giving out is the one thing that does not wait to be
-    // ranked, and then it sleeps on the spot.
+    // ranked, and then it rests on the spot.
     let pastSpent = false;
     for (let m = 0; m < 3000 && state.intent?.mode === "hand"; m++) {
       advance(state, world, 1);
@@ -417,8 +411,9 @@ describe("the body's row against the work", () => {
     // Collapse releases the build to the queue. Its row visibly refuses work
     // until Self-care has restored the body, then the same row resumes.
     expect(state.player.energy).toBeLessThan(SLEEP_AT + 1);
-    expect(state.player.sleeping?.collapsed).toBe(true);
-    expect(until(g, () => state.task?.id === "sleep", 20)).toBe(true);
+    expect(state.player.collapsed).toBe(true);
+    expect(state.player.sleeping).toBeNull();
+    expect(until(g, () => state.task?.id === "rest", 20)).toBe(true);
     expect(until(g, () => state.task?.id === "build", 1000)).toBe(true);
     // The player sets it aside by choosing something else; the minutes are banked and read back into the next start.
     orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");

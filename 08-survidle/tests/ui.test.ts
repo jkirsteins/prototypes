@@ -28,7 +28,7 @@ import { campHtml, forecastHtml, rosterHtml, instantHtml, inventoryHtml, placesH
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
 import { allPanesHtml, paneFor, paneHtml } from "./pane";
 import { tipHtml } from "../src/ui/tip";
-import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
+import { advanceHurry, hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
 import { huntedLand } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, speciesHere, spotOf } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
@@ -84,9 +84,11 @@ describe("reachability: everything in the catalogue has a button", () => {
     expect(html).toContain('data-specific="fish"');
   });
   it("every gather and camp task, in the Do list", () => {
-    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "lightTorch", "sharpen", "repair", "rest", "sleep"]) {
+    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "lightTorch", "sharpen", "repair", "rest"]) {
       expect(html).toContain(`data-opt="intent:${id}:`);
     }
+    expect(html).not.toContain('data-opt="intent:sleep:');
+    expect(html).not.toContain('data-opt="intent:night:');
   });
   it("every walk out of camp, in the map's places list", () => {
     for (const s of regionAt(world, state.player.region).spots) {
@@ -586,6 +588,16 @@ describe("panels", () => {
     expect(document.querySelector("#val-health")!.textContent).toBe("42");
     expect(document.querySelector<HTMLElement>('[data-bar="task"]')!.style.width).toBe("50.0%");
     expect(document.querySelector('[data-val="task"]')!.textContent).toContain("30 min left (30 s)");
+    // With the frame loop's clock beside it, the bracket is the wall clock
+    // under the hurry: a hand-started once action runs at up to 6x.
+    const h = newHurry();
+    advanceHurry(h, state, world, 0.05);
+    updateBars(state, world, document, { hurry: h, speed: 1 });
+    const text = document.querySelector('[data-val="task"]')!.textContent!;
+    expect(text).toContain("30 min left (");
+    const secs = Number(/\((\d+) s\)/.exec(text)?.[1]);
+    expect(secs).toBeGreaterThan(0);
+    expect(secs).toBeLessThan(10);
   });
 
   it("region card shows the travel button for another region, and the spots and loose piles for here", () => {
@@ -871,9 +883,11 @@ describe("the Do panel", () => {
     for (const s of huntedLand()) if (roster.capacity[s]) expect(html).toContain(`data-opt="intent:hunt:${s}"`);
     expect(html).toContain('data-opt="intent:fish:any"');
     expect(html).toContain('data-specific="fish"');
-    for (const id of ["sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "night", "rest", "sleep"]) {
+    for (const id of ["sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "rest"]) {
       expect(html).toContain(`data-opt="intent:${id}:`);
     }
+    expect(html).not.toContain('data-opt="intent:sleep:');
+    expect(html).not.toContain('data-opt="intent:night:');
     expect(html).toContain('data-opt="intent:lightTorch:"');
     expect(html).not.toContain('class="tabs"');
   });

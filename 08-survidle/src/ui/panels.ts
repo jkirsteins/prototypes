@@ -21,6 +21,7 @@ import { MANUAL_LINKS, MANUAL_SECTIONS } from "../sim/manual";
 import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
 import { liveFaceHtml, livePortraitState } from "./portrait";
+import { sleepForecast } from "./sleep";
 import { fmtName } from "../sim/names";
 import { sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
@@ -170,6 +171,7 @@ ${bar("sleepiness", "sleepiness", "Sleepiness", [
   { at: SLEEPY_AT / 100, title: "sleepy above here" },
   { at: SLEEP_ONSET / 100, title: "falls asleep above here" },
 ])}
+<div class="sleep-forecast" data-sleep-forecast>${esc(sleepForecast(state, world, cal))}</div>
 ${bar("wet", "wet", "Wet", [{ at: SOAKED_WETNESS / 100, title: "soaked above here" }])}
 <div class="statuses">${tags.join("")}</div>
 <div style="margin-top:8px">

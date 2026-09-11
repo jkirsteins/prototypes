@@ -274,7 +274,7 @@ function render(nowMs = performance.now()) {
   setPanel("inventory", inventoryHtml(state, world, cal, ui.travelDisplay));
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal, ui));
-  updateBars(state, world);
+  updateBars(state, world, document, { hurry: ui.hurry, speed });
   updateFills(state);
   updateSky(state, cal, ambient);
 
