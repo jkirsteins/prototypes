@@ -67,6 +67,9 @@ const params = new URLSearchParams(location.search);
 if (params.has("faces")) location.replace(`${import.meta.env.BASE_URL}faces.html`);
 /** Test aid: how many times faster than 60x the clock runs. Not a game feature. */
 const speed = Math.max(0.1, Number(params.get("speed")) || 1);
+/** Test aid: how many times faster the light on open water cycles; 2 halves the 14 s period. Not a game feature. */
+const shimmerSpeed = Number(params.get("shimmer"));
+if (Number.isFinite(shimmerSpeed) && shimmerSpeed > 0) document.documentElement.style.setProperty("--water-shimmer-speed", String(shimmerSpeed));
 const forcedSeed = params.get("seed");
 /** Test aid beside seed: the day of year the run begins on, for a summer or autumn pass. Not a game feature. */
 const forcedDay = params.get("day");
@@ -189,6 +192,30 @@ function boot() {
 let lastTipKey = "";
 let lastMapKey = "";
 let lastWeatherKey = "";
+/**
+ * Shows or hides an element only when that changes it. `hidden` set to the
+ * value it already holds still records a mutation and invalidates style,
+ * and this runs for every pane on every render.
+ */
+function setHidden(el: HTMLElement | null, hidden: boolean) {
+  if (el && el.hidden !== hidden) el.hidden = hidden;
+}
+/**
+ * The map's tooltip, on its own so a pointer event can draw it at once
+ * instead of waiting up to a render interval. Its text is guarded by its
+ * own key so a pointer crossing one cell redraws it once.
+ */
+function renderTip(cal = calendar(state.minute, state.startDoy)) {
+  const tip = document.getElementById("maptip")!;
+  setHidden(tip, ui.hover === null);
+  if (ui.hover !== null) {
+    const tk = tipKey(state, world, cal, ui.hover);
+    if (tk !== lastTipKey) {
+      lastTipKey = tk;
+      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay));
+    }
+  }
+}
 function render(nowMs = performance.now()) {
   if (ui.wildlifeStartles.length) document.getElementById("mapdyn")!.style.setProperty("--wildlife-now", `${nowMs}ms`);
   // Arriving where you were looking ends the looking.
@@ -234,23 +261,12 @@ function render(nowMs = performance.now()) {
   setPanel("dosubs", ui.filter.trim() ? "" : subtabsHtml(ui.panes));
   // Shown and hidden, never rendered on demand: a pane built when it is
   // asked for is a pane whose scroll position starts again every time.
-  for (const id of PANE_IDS) {
-    const el = document.getElementById(`pane-${id}`);
-    if (el) el.hidden = id !== ui.panes.pane;
-  }
+  for (const id of PANE_IDS) setHidden(document.getElementById(`pane-${id}`), id !== ui.panes.pane);
   // The tooltip is shown and hidden, never created and destroyed: a box
   // rebuilt under the pointer flickers, and one detached under it never
   // gets the leave that would have closed it. Its text is guarded by its
   // own key so a pointer crossing one cell redraws it once.
-  const tip = document.getElementById("maptip")!;
-  tip.hidden = ui.hover === null;
-  if (ui.hover !== null) {
-    const tk = tipKey(state, world, cal, ui.hover);
-    if (tk !== lastTipKey) {
-      lastTipKey = tk;
-      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay));
-    }
-  }
+  renderTip(cal);
   setPanel("dopurposes", doPurposesHtml(state, world, ui));
   setPanel("doitems", doHtml(state, world, cal, ui));
   setPanel("inventory", inventoryHtml(state, world, cal, ui.travelDisplay));
@@ -262,7 +278,7 @@ function render(nowMs = performance.now()) {
 
   // The settings panel is static markup with its own listeners (the slider must
   // not be redrawn mid-drag), so it is shown and hidden rather than rewritten.
-  document.getElementById("settings")!.hidden = !ui.settings;
+  setHidden(document.getElementById("settings"), !ui.settings);
   const travelSelect = document.querySelector<HTMLSelectElement>("[data-display=travel]");
   if (travelSelect && travelSelect.value !== ui.travelDisplay) travelSelect.value = ui.travelDisplay;
   const cloudShadows = document.querySelector<HTMLInputElement>("[data-display=cloud-shadows]");
@@ -271,38 +287,41 @@ function render(nowMs = performance.now()) {
   const overlay = document.getElementById("overlay")!;
   if (ui.manual) {
     setPanel("overlay", manualHtml());
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (ui.cemetery) {
     setPanel("overlay", cemeteryHtml(state, ui));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (ui.away) {
     setPanel("overlay", awayHtml(ui.away, awayInfo?.seconds ?? 0, awayInfo?.capped ?? false, since(current(state), ui.awayFromDay, current(state).name.first), current(state).person, current(state).name.first));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (state.landing) {
     setPanel("overlay", landingHtml(state, world));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (state.dead) {
     setPanel("overlay", tombstoneHtml(state, world, ui));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (ui.welcome) {
     setPanel("overlay", welcomeHtml(state, cal));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (ui.teach) {
     setPanel("overlay", conceptHtml(state, world, cal, ui.teach));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (ui.goalGuide) {
     setPanel("overlay", goalGuideHtml(state, world, cal, ui.goalGuide.ids, ui.goalGuide.done, ui.goalGuide.automatic, ui.goalGuide.notices));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (ui.recognition !== null) {
     setPanel("overlay", recognitionHtml(state, ui.recognition));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else {
-    overlay.hidden = true;
+    setHidden(overlay, true);
   }
 }
 
 let lastReal = performance.now();
 let lastSave = performance.now();
+/** How often the panels are rendered from state: ten times a second, a tenth of the display rate and six times a game minute. */
+const RENDER_INTERVAL_MS = 100;
+let lastRender = -Infinity;
 function frame(now: number) {
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
@@ -357,8 +376,20 @@ function frame(now: number) {
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
-  render(now);
-  updateSpeedHistory(document, ui.speedHistory, now, GAME_MINUTES_PER_REAL_SECOND * ui.hurry.rate);
+  // The one value the map reads every frame: the startle animations are
+  // paused CSS keyframes that sample this clock through their delay.
+  if (ui.wildlifeStartles.length) document.getElementById("mapdyn")!.style.setProperty("--wildlife-now", `${now}ms`);
+  // State is rendered on its own clock. Nothing a panel shows moves faster
+  // than a game minute, so drawing every panel on every display frame paid
+  // a style pass and a layout sixty times a second for markup that had not
+  // changed. Motion that has to be smooth - water, fog, rain, the startle,
+  // the portrait - is CSS on the compositor or a per-frame write above,
+  // not a render. Input still renders at once through its own handlers.
+  if (now - lastRender >= RENDER_INTERVAL_MS) {
+    lastRender = now;
+    render(now);
+    updateSpeedHistory(document, ui.speedHistory, now, GAME_MINUTES_PER_REAL_SECOND * ui.hurry.rate);
+  }
   portraitMotion.frame(document, now, document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
   const cal = calendar(state.minute, state.startDoy);
   sounds.frame(state, world, cal, ambientTemperature(cal, localWeather(state, world)), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
@@ -863,7 +894,10 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     return grid ? cellFromClient(world, state, ui, ev.clientX, ev.clientY, grid.getBoundingClientRect()) : null;
   };
   board.addEventListener("pointermove", (ev) => {
-    ui.hover = cellUnder(ev);
+    const cell = cellUnder(ev);
+    if (cell === ui.hover) return;
+    ui.hover = cell;
+    renderTip();
   });
   board.addEventListener("pointerdown", (ev) => {
     pointerType = ev.pointerType;
@@ -894,7 +928,9 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     render();
   });
   board.addEventListener("pointerleave", (ev) => {
-    if (ev.pointerType !== "touch") ui.hover = null;
+    if (ev.pointerType === "touch") return;
+    ui.hover = null;
+    renderTip();
   });
   board.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
@@ -935,6 +971,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     if (Number.isFinite(cell)) {
       ui.hover = cell;
       showTarget(cell);
+      renderTip();
     }
   });
   map.addEventListener("pointerout", (ev) => {
@@ -943,6 +980,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     if (from && !to && ev.pointerType !== "touch") {
       ui.hover = null;
       clearTarget();
+      renderTip();
     }
   });
 }

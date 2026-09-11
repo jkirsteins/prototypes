@@ -116,7 +116,8 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   the fog is per cell, not per region: what you have walked is a thread
   through the black, and what the eye reaches from where you stand is a
   blot around it. Closed spruce shows you the ground underfoot and no
-  more; open bog and a fell top show you the horizon; the dark shows you
+  more, but trees at the water's edge show you the water and the far
+  shore; open bog and a fell top show you the horizon; the dark shows you
   nothing at all.
 - **You cannot walk where you do not know the way.** A route may not cross
   ground you have never seen, so "walk to camp" can say there is no way
@@ -420,6 +421,13 @@ and accelerated work. The same simulated wind vector drives rain and snow
 drift. Fog and optional ASCII cloud glyphs use slower presentation-only cycles
 of 12 and 16 real seconds. Those decorative shape changes do not accelerate
 with work, pause, or alter the simulated feature's location or visibility.
+Liquid water in the current viewshed shimmers on the same kind of wall clock:
+a random sequence of sixteen shades between its depth band's blue and a
+shade lighter, held in steps of about a quarter second, each cell starting
+at its own seeded point. It is faked for the eye, not modelled. Ice, marked
+cells and remembered water lie still, and reduced motion turns it off.
+`?shimmer=2` is a test aid that runs it twice as fast; it is not a game
+feature.
 
 ### Stationary ground consequences
 
