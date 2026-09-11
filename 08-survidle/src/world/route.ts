@@ -41,17 +41,12 @@ export function passable(t: Terrain, ice: IceMode = "none", ford = false): boole
 /** Cells of slack around the endpoints' bounding box. */
 export const ROUTE_MARGIN = 40;
 
-const caches = new WeakMap<World, Map<string, number[]>>();
+const caches = new WeakMap<World, Map<string, number[] | null>>();
 
 /**
  * Cells to step through from `from` to `to`, excluding `from` and including
  * `to`, or null when no land route exists within the search box. An empty
  * array means already there.
- *
- * Only a found route is cached. A ford is placed once at world generation
- * and never afterwards, so this never recomputes a real route twice - but a
- * "no route" reading is not given the same permanence, since nothing else
- * here promises the ground it depends on is any more fixed than a ford is.
  */
 export function findRoute(world: World, from: number, to: number, ice: RouteIce = "none", avoidFell = false): number[] | null {
   if (from === to) return [];
@@ -64,9 +59,9 @@ export function findRoute(world: World, from: number, to: number, ice: RouteIce 
   // cache hands out copies and keeps its own.
   const key = `${from}>${to}>${iceKey(ice)}${avoidFell ? ">nofell" : ""}`;
   const hit = cache.get(key);
-  if (hit) return hit.slice();
+  if (hit !== undefined) return hit ? hit.slice() : null;
   const route = astar(world, from, to, ice, avoidFell);
-  if (route) cache.set(key, route);
+  cache.set(key, route);
   return route ? route.slice() : null;
 }
 
