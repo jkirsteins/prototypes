@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { POLICY_COVERAGE, chooseAction, aiTakeTurn } from "../src/ai";
 import {
-  chooseBuild, chooseRules, newGame, pickFaction, startGame,
+  advance, chooseBuild, chooseRules, newGame, pickFaction, startGame, turnOpen,
   type GameState,
 } from "../src/game";
 import { CARDS, type Strategy } from "../src/cards";
@@ -30,16 +30,24 @@ const SUBJUGATE_LINE = Math.floor(SUBJUGATION_GATE * FIXTURE_MAX);
 const INDEPENDENCE_LINE = Math.ceil(INDEPENDENCE_GATE * FIXTURE_MAX);
 
 function base(): GameState {
+  // Every faction acts here. These tests are about the policy, not about who
+  // is quiet, and a quiet rival would drop out of the candidate sets the
+  // branches sort over without the test ever saying so.
+  //
+  // Asked of the DEAL, by reserving every seat, rather than patched over
+  // afterwards. Quiet is spelled twice - the status and the empty chair - and
+  // a fixture that cleared only the status left a land the policy still
+  // refused to count. A chair filled by hand is worse still: a warpath seat's
+  // ruler brings `war-leader`, so a hand-seated one raids for less than the
+  // real thing and every "is this worth a raid" branch reads differently.
   const g = pickFaction(
     chooseBuild(
       startGame(newGame(FACTIONS, undefined, {}, undefined, MAXES)),
       "warpath", seededRng(1),
     ),
     "zeta", seededRng(1),
+    { reservedFactionIds: FACTIONS.filter((id) => id !== "zeta") },
   );
-  // Every faction acts here. These tests are about the policy, not about who
-  // is quiet, and a quiet rival would drop out of the candidate sets the
-  // branches sort over without the test ever saying so.
   return { ...g, current: 1, passives: {} };
 }
 
@@ -64,6 +72,82 @@ function withLeadership(g: GameState, lead: Record<string, number>): GameState {
   }
   return { ...g, rulers };
 }
+
+/** zeta - alpha - beta - gamma - delta - epsilon, a line rather than the
+ *  complete graph the rest of this file works on. The one fixture where
+ *  distance is the subject. */
+const LINE_ADJ: Record<string, string[]> = {
+  alpha: ["zeta", "beta"],
+  beta: ["alpha", "gamma"],
+  gamma: ["beta", "delta"],
+  delta: ["gamma", "epsilon"],
+  epsilon: ["delta"],
+  zeta: ["alpha"],
+};
+
+function lineBase(): GameState {
+  const g = pickFaction(
+    chooseBuild(
+      startGame(newGame(FACTIONS, LINE_ADJ, {}, undefined, MAXES)),
+      "warpath", seededRng(1),
+    ),
+    "zeta", seededRng(1),
+  );
+  return { ...g, current: 1, passives: {} };
+}
+
+describe("a blow three turns out is worth less than one tomorrow", () => {
+  /** alpha holding beta and gamma down the line, facing two rivals whose gates
+   *  are the SAME distance in points: zeta next door, delta at the far end.
+   *
+   *  gamma has no army, so delta's arrow cannot set out from the land that
+   *  borders it - `marchSourceFor` sends it out of alpha, three lands back,
+   *  and the blow lands in three turns. zeta's sets out of alpha too and lands
+   *  tomorrow. Nothing else separates the two: equal gaps, and faction order
+   *  puts delta FIRST, so the untouched policy takes the far one. */
+  const twoRivals = (): GameState => {
+    const g = asStrategy(lineBase(), "warpath");
+    return withLeadership({
+      ...g,
+      incorporated: { beta: "alpha", gamma: "alpha" },
+      // alpha the roomiest, so `marchSourceFor` picks it for both targets and
+      // the only thing left between them is how far the army has to walk.
+      defense: { alpha: 30, beta: 20 },
+      armies: { gamma: 0 },
+    }, { alpha: 0 });
+  };
+
+  it("11W: raids the near gate over an equal one three turns away", () => {
+    expect(chooseAction(withHand(twoRivals(), ["raid"]))).toMatchObject({
+      type: "play", cardIndex: 0, targetId: "zeta", sourceId: "alpha",
+    });
+  });
+
+  it("does not pass on faction order - the far land sorts first", () => {
+    // Without the discount this is a tie broken by `state.factionIds`, and
+    // delta comes before zeta in it. A test that passed on the tie-break would
+    // be testing nothing.
+    const g = twoRivals();
+    expect(g.factionIds.indexOf("delta"))
+      .toBeLessThan(g.factionIds.indexOf("zeta"));
+    // And the two really are equal in points, so distance is the whole of it.
+    expect(g.defense.delta).toBeUndefined();
+    expect(g.defense.zeta).toBeUndefined();
+  });
+
+  it("still crosses the map for a target worth enough more", () => {
+    // The discount is a discount and not a leash: delta four points nearer its
+    // gate is worth the extra two turns of walking.
+    const g = twoRivals();
+    const richer = {
+      ...g,
+      defense: { ...g.defense, delta: SUBJUGATE_LINE + 1 },
+    };
+    expect(chooseAction(withHand(richer, ["raid"]))).toMatchObject({
+      type: "play", cardIndex: 0, targetId: "delta",
+    });
+  });
+});
 
 describe("POLICY_COVERAGE", () => {
   it("names a policy branch for every card in the game", () => {
@@ -278,7 +362,7 @@ describe("5A: answering a march", () => {
   const incoming = (from: string, at: string, damage: number, id = 1) => ({
     [String(id)]: {
       id, actor: from, from, to: at, cardId: "raid", damage,
-      holdsArmy: true, expiry: 3,
+      holdsArmy: true, declared: 2, expiry: 3,
     },
   });
 
@@ -335,7 +419,7 @@ describe("5A: answering a march", () => {
         ...incoming("beta", "alpha", 4),
         "2": {
           id: 2, actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
-          damage: 4, holdsArmy: true, expiry: 3,
+          damage: 4, holdsArmy: true, declared: 2, expiry: 3,
         },
       },
     };
@@ -532,15 +616,17 @@ describe("6P: pestilence decisive moves", () => {
   });
 
   it("6P-2: cashes when the total damage beats a raid, else waits", () => {
-    // "A raid's worth" moves with leadership, so the waits-arm needs a proven
-    // ruler: at leadership 1 a raid is worth 2, and two stacks sit level with
-    // it while three beat it. No gate is near, so this is the total arm alone.
+    // "A raid's worth" moves with what the land can pay, so the waits-arm
+    // needs a shallow purse: alpha at 3 reaches half of it rounded up, which
+    // is 2, and two stacks sit level with that while three beat it. No gate is
+    // near, so this is the total arm alone.
+    //
+    // The purse and not a proven ruler, because this seat is PESTILENCE and a
+    // chief adds to a raid only through `war-leader`, which a pestilence build
+    // never brings. A 60-point land could pay for far more than two, which is
+    // why the defense is stated rather than left pristine.
     let g = asStrategy(base(), "pestilence");
-    g = withLeadership(g, { alpha: 1 });
-    // alpha at 2, so the raid it could send reaches 1 and its ruler adds the
-    // second point. "A raid's worth" is the best one actually available now,
-    // and a 60-point land could pay for far more than two.
-    g = { ...g, defense: { alpha: 2 } };
+    g = { ...g, defense: { alpha: 3 } };
     const fat = { ...g, disease: { beta: { alpha: 3 } } };
     expect(chooseAction(withHand(fat, ["plague", "grow-crops"])))
       .toEqual({ type: "play", cardIndex: 0 });
@@ -557,6 +643,39 @@ describe("6P: pestilence decisive moves", () => {
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
+  it("6P-2: a stack on a peer land does not feed the cash-out total", () => {
+    // beta is alpha's sibling under gamma - a plague cannot strike it, so its
+    // stack must not count toward "does the total beat a raid's worth" any
+    // more than it counts toward the damage the card would actually deal.
+    // delta alone (2 stacks, legal) keeps the card playable and stays under
+    // the raid's worth of 2; beta's 1 stack summed in on top of it was
+    // enough to tip the total past that line.
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, overlords: new Map([["alpha", "gamma"], ["beta", "gamma"]]) };
+    // alpha at 3 pays 2 into a raid, which is the worth the total is measured
+    // against - see the test above for why a chief adds nothing here.
+    g = { ...g, defense: { alpha: 3 } };
+    g = { ...g, disease: { delta: { alpha: 2 }, beta: { alpha: 1 } } };
+    g = withHand(g, ["plague", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("6P-2: a gate only a peer's stack would open is not a cash-out", () => {
+    // beta's gate sits exactly one stack from opening, but beta is alpha's
+    // sibling under gamma and a plague cannot land there. delta's own stack
+    // opens nothing and the total is nowhere near a raid's worth at full
+    // defense, so the only way this fires is counting beta's gate anyway.
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, overlords: new Map([["alpha", "gamma"], ["beta", "gamma"]]) };
+    g = {
+      ...g,
+      defense: { beta: SUBJUGATE_LINE + PLAGUE_DAMAGE_PER_STACK },
+      disease: { beta: { alpha: 1 }, delta: { alpha: 1 } },
+    };
+    g = withHand(g, ["plague", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
   it("6P-3: claims the board with foul winds while rivals hold more stacks", () => {
     let g = asStrategy(base(), "pestilence");
     g = { ...g, disease: { beta: { gamma: 2 }, gamma: { alpha: 1 } } };
@@ -565,6 +684,25 @@ describe("6P: pestilence decisive moves", () => {
     const ahead = { ...g, disease: { beta: { alpha: 2 }, gamma: { delta: 1 } } };
     expect(chooseAction(withHand(ahead, ["foul-winds", "grow-crops"])))
       .toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("6P-3: a rival's stack on a peer land does not feed the winds tally", () => {
+    // beta holds a rival's 5 stacks, but beta is alpha's sibling under gamma
+    // and foul winds cannot claim what it cannot reach. epsilon's 1 stack
+    // keeps the card legal; alpha's own 2 stacks elsewhere outweigh it, so
+    // the honest tally waits. Only counting beta's unreachable 5 flips it.
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, overlords: new Map([["alpha", "gamma"], ["beta", "gamma"]]) };
+    g = {
+      ...g,
+      disease: {
+        beta: { delta: 5 },
+        epsilon: { delta: 1 },
+        zeta: { alpha: 2 },
+      },
+    };
+    g = withHand(g, ["foul-winds", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
   it("6P-4: reads the miasma when only the doubled plague opens a gate", () => {
@@ -866,5 +1004,75 @@ describe("aiTakeTurn under unlimited rules", () => {
     const after = aiTakeTurn(g, seededRng(1));
     expect(after.playedThisTurn).toBe(true);
     expect(after.players[0].hand).toEqual(["pay-military-tribute"]);
+  });
+});
+
+describe("no seat can hang the run", () => {
+  // The freeze this guards against is the worst failure this app has: nothing
+  // is persisted, so a player whose board stops has lost the run. The chain is
+  // `chooseAction` proposes something the rules refuse -> `playCard` or
+  // `discardCard` hands the state straight back -> `endTurn` refuses a standard
+  // turn that played nothing -> `advance` will not move past an open turn.
+  //
+  // The instance that made this reachable was `greatRaidPick` scoring the bare
+  // border, and it is fixed at the source. This pins the CLASS instead, through
+  // the one pathological state still constructible: an empty hand. There is
+  // nothing to play, so `playableSet` reports a discard of no cards,
+  // `chooseAction` proposes index 0 and `discardCard` refuses on the index. A
+  // seat with a REFUSED PLAY cannot be built any more - `cardBlockReason` keeps
+  // a targeted card with no legal target out of the playable set, so step 12's
+  // last resort cannot propose one - and that is the point of guarding on "the
+  // turn could not be ended" rather than on "a play was refused".
+  const emptyHanded = (): GameState => {
+    const g = base();
+    return {
+      ...g,
+      players: g.players.map((pl, i) =>
+        i === 1 ? { ...pl, hand: [], deck: [], discard: [] } : pl,
+      ),
+    };
+  };
+
+  it("a seat that cannot end its turn gives it up rather than freezing", () => {
+    const g = emptyHanded();
+    expect(g.rules.turn).not.toBe("unlimited");
+    const errors: unknown[][] = [];
+    const real = console.error;
+    console.error = (...args: unknown[]): void => void errors.push(args);
+    let after: GameState;
+    try {
+      after = aiTakeTurn(g, seededRng(1));
+    } finally {
+      console.error = real;
+    }
+    // The turn is spent, so `advance` can move on: this is the whole of it.
+    expect(after.playedThisTurn).toBe(true);
+    expect(turnOpen(after)).toBe(false);
+    expect(advance(after, seededRng(1)).current).not.toBe(g.current);
+    // And it SHOUTED. A silent give-up turns the next picker bug into
+    // mysteriously skipped turns nobody can diagnose.
+    expect(errors).toHaveLength(1);
+    expect(String(errors[0][0])).toContain("cannot end its turn");
+    expect(String(errors[0][0])).toContain(g.players[1].factionId);
+  });
+
+  it("says nothing when a seat legitimately has nothing to do", () => {
+    // A dead hand is not a hung seat: `chooseAction` returns a discard and
+    // `discardCard` spends the turn. The guard must not fire here, or the
+    // console fills with errors on an ordinary board.
+    const g = withHand(base(), ["pay-military-tribute"]);
+    const errors: unknown[][] = [];
+    const real = console.error;
+    console.error = (...args: unknown[]): void => void errors.push(args);
+    let after: GameState;
+    try {
+      after = aiTakeTurn(g, seededRng(1));
+    } finally {
+      console.error = real;
+    }
+    expect(after.playedThisTurn).toBe(true);
+    expect(errors).toHaveLength(0);
+    // Ended by a real discard through the engine, not by the guard.
+    expect(after.log.some((e) => e.type === "discard")).toBe(true);
   });
 });

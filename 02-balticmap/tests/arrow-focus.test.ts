@@ -1,5 +1,9 @@
 // @vitest-environment happy-dom
-// @vitest-environment-options {"url": "http://localhost/?seed=1&faction=ravalans&armies=ravalans:3&march=ravalans>harjuans&hand=raid,grow-crops"}
+// @vitest-environment-options {"url": "http://localhost/?seed=1&faction=ravalans&armies=ravalans:3&duel=laanians&march=ravalans>harjuans&hand=raid,grow-crops"}
+/** The duel enemy is NOT the arrow's far end, deliberately: `duel=` is
+ *  answered through the real offer, and the offer prefers a land with a
+ *  chief. Naming a quiet neighbour boots on `picking` instead, which locks
+ *  input behind the offer modal and refuses every click this file makes. */
 /** The arrow hover, which is DERIVED from where the pointer is rather than
  *  remembered from an arrow's own enter and leave - see `arrowFocus` in
  *  src/main.ts. An arrow that resolves away under a stationary pointer fires

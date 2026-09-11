@@ -12,18 +12,20 @@ import { activeRegion } from "./regions";
 import {
   addDisease, applyDamage, applyHeal, capturesOnArrival, clearDiseaseOf,
   DEFAULT_DEFENSE_MAX,
-  defenseMaxOf, defenseOf, HARVEST_FEAST_HEAL, independenceGateOpen,
+  defenseMaxOf, defenseOf, HARVEST_FEAST_HEAL, independenceGateLine,
+  independenceGateOpen,
   MIN_RAID_SPEND,
   PLAGUE_DAMAGE_PER_STACK, LAND_GROWTH, SINGLE_LAND_HEAL,
   transferAllDiseaseTo, turnipThresholdFor, WAR_COUNCIL_LEADERSHIP,
   type Defense, type Disease,
 } from "./defense";
 import {
-  aimsUpOwnChain, attackDamageFor, omensMultiplier, attackReach,
-  ESCAPE_RESPITE_TURNS, freeArmiesFor, greatRaidMarches, marchSourcesAgainst,
+  aimsWithinOwnRealm, attackDamageFor, omensMultiplier, attackReach,
+  ESCAPE_RESPITE_TURNS, foulWindsTargetsOf, freeArmiesFor, greatRaidMarches,
+  marchSourcesAgainst,
   claimWouldLand, greatRaidPool, greatRaidSpends,
-  handLimitFor, marchTargetsFrom, outbreakPolygons,
-  MIN_HAND, plagueMultiplier,
+  handLimitFor, marchHopsTo, marchTargetsFrom, outbreakPolygons,
+  MIN_HAND, plagueMultiplier, plagueTargetsOf,
   playableSet, spendCeilingOn,
   turnipThresholdOn, validTargetsFor, wealthIncomeFor,
   type Guards, type Omens, type RulesView,
@@ -32,23 +34,29 @@ import {
   addClaim, addMarch, axesOf, axisKeyOf, claimKeyOf, clearClaims,
   clearMarches,
   lapsedClaimsOf, lapsedMarchesOf, resolveAxis,
-  type Armies, type Claims, type Marches,
+  type Armies, type Claims, type March, type Marches,
 } from "./marches";
 import {
-  autoHarvestChoice, BURN_ORDER, harvestCard, removeCopies, SPEND_ORDER,
-  type HarvestChoice,
+  autoHarvestChoice, buildOffer, BURN_ORDER, harvestCard, removeCopies,
+  SPEND_ORDER, type HarvestChoice,
 } from "./harvest";
 import {
-  damageAfterTerrain, hasPassive, quietPassives,
+  damageAfterTerrain, hasPassive, passivesOn, quietPassives,
   RESTLESS_RAID_CHANCE, seedTerrain, stripOnCapture, WILD_LANDS_HEAL,
   WILD_LANDS_HEAL_CHANCE, type Passives,
 } from "./passives";
 import {
   abilitiesByFaction, grantAbility, hasRuler, initialRulers, leadersByFaction,
-  leadershipByFaction, replaceRuler, rulerNameOf, rulerOf, vacateRulers,
-  type Rulers,
+  leadershipByFaction, replaceRuler, rulerNameOf, rulerOf, seatRuler,
+  vacateRulers, type Rulers,
 } from "./rulers";
-import { BUILD_ABILITIES } from "./abilities";
+import {
+  absorbsDuelEnemy, actExitSize, ACTS, bossFor, boonsFor, BOON_GROWTH_AMOUNT,
+  BOSS_CEILING_PER_ACT, BOSS_LEADERSHIP_PER_ACT, BOSS_RAIDS_PER_ACT,
+  duelDecidedBy, duelStakes, duelStanding, gauntletAtRoundWrap, rewardFor,
+  type Boon, type DuelOutcome, type Gauntlet,
+} from "./gauntlet";
+import { BUILD_ABILITIES, RAID_LEADERSHIP } from "./abilities";
 import { DEFAULT_RULES, sweepsHandAtTurnEnd, type RuleSelections } from "./rules";
 import { sweepLapsed } from "./timed";
 
@@ -61,6 +69,8 @@ export type GameEventType =
   | "passive-fired"
   | "march-declared" | "march-resolved" | "march-lapsed"
   | "harvest-earned" | "harvest-picked" | "harvest-burned"
+  | "duel-won" | "duel-lost" | "duel-void"
+  | "boss-foretold" | "boon-taken"
   | "victory" | "played-on" | "defeat" | "unified" | "surrendered";
 
 /** How much defense a raid may tear out of `source`, given what the caller
@@ -207,7 +217,9 @@ export interface GameEvent {
    *  loser in the same batch would walk back through a store the claim had
    *  already emptied. Absent when nobody else held a stack there. */
   losses?: Readonly<Record<string, number>>;
-  /** tribute: the coins this payment moved from the vassal to its lord. */
+  /** tribute: the coins this payment moved from the vassal to its lord.
+   *  duel-won: the coins a won duel paid into the winner's treasury, on the
+   *  one reward of the three that moves no walked score. */
   wealth?: number;
   /** harvest-picked: this card came WITH the harvest rather than being the
    *  one chosen from the offer. Two identical "kept X" lines read as the
@@ -275,6 +287,26 @@ export interface GameState {
    *  One-way. Nothing clears it: the bar it raised is the run's now, and a
    *  player who could put it back would be choosing when to win. */
   playingOn: boolean;
+  /** Where the run is in the gauntlet cycle - picking a target, dueling one,
+   *  or letting the world take its one turn. See src/gauntlet.ts, which owns
+   *  the union and every transition it makes.
+   *
+   *  On the state and not in src/main.ts for the reason `playingOn` is: a
+   *  guest holds a replica, and the scope the host's turn loop is applying is
+   *  the scope the guest's screen has to draw. */
+  gauntlet: Gauntlet;
+  /** Which act the run is in, 1 to `ACTS`. A high-water mark: it moves only
+   *  when the act's boss is BEATEN, never on the realm shrinking and never on
+   *  a boss duel lost.
+   *
+   *  Reaching an act's exit size (`actExitSize`) SUMMONS that act's boss; it
+   *  does not advance the act. The two were one number first, and the run then
+   *  skipped its own boss the moment a duel won two lands at once.
+   *
+   *  A plain number, so it crosses `src/net-codec.ts` for free - and it has to
+   *  cross, because a guest's screen draws the act the host's engine is
+   *  applying, the same reason `playingOn` is state. */
+  act: number;
   turn: number; // 1-based
   players: PlayerState[]; // index 0 = human
   current: number;
@@ -299,6 +331,18 @@ export interface GameState {
    *  the run. `chooseRules` is the only writer. See src/rules.ts. */
   rules: RuleSelections;
   factionIds: string[];
+  /** The faction ids that do NOT stand on the map: powers from beyond the
+   *  frame, summoned for the run's last act.
+   *
+   *  A list rather than a flag on each faction, because everything that asks
+   *  is asking about the ROSTER - how much of the map is there to hold - and a
+   *  per-faction lookup would put that arithmetic at every call site.
+   *
+   *  The bar reads it (`winSizeFor`), and so does the scan for a rival about
+   *  to unify: a power that holds no ground on the map must not move the
+   *  number of lands a run is played for, and must not win the map by
+   *  arithmetic it was never on. */
+  foreign: string[];
   overlords: Overlords; // STORED vassal -> overlord map
   incorporated: Incorporated;
   adjacency: Record<string, string[]>;
@@ -446,6 +490,30 @@ export const TURNIP_HARVEST_THRESHOLD = turnipThresholdFor(DEFAULT_DEFENSE_MAX);
 /** Further settlements a land gets in a world nobody handed a map to. */
 export const DEFAULT_SITE_CAP = 3;
 
+/** What a round of a running duel costs BOTH of the lands it is about.
+ *
+ *  Pressure, and deliberately not a clock. `DUEL_TURNS` was removed because a
+ *  duel should end on a fact about the board rather than on a number running
+ *  out - and a duel that ends on nothing at all is the stalemate that number
+ *  existed to prevent. This is the answer the plan named in advance: a fight
+ *  neither side can move begins to wear the ground it is fought over, so the
+ *  board itself converges on an answer.
+ *
+ *  Both ends, never one. A drain that only bled the stake would be a timer
+ *  wearing the player's colours, and the player would be counting rounds again
+ *  - which is the thing the clock's removal was for. Wearing both means the
+ *  side that is AHEAD wins a long duel, which is what a siege should decide.
+ *
+ *  One point a round, so it is slow enough that a duel is still won by playing
+ *  rather than by waiting, and steady enough that no duel runs forever.
+ *  Measured before it existed: over three seeds a run settled one duel in
+ *  eighty-nine turns and never closed an act.
+ *
+ *  It is logged as `levied`, the line that already means "this land lost
+ *  defense to something other than an attack", so it walks the same standings
+ *  every other score does and needs no table entry of its own. */
+export const DUEL_ATTRITION = 1;
+
 /** The OPENING bar: half the roster, rounded up. Derived rather than hardcoded
  *  so it cannot rot when the map changes.
  *
@@ -488,17 +556,35 @@ export function humanFactionOf(
  *  It derives the human from the board rather than taking one, because the
  *  one caller that would get it wrong is the scoreboard: `renderScoreboard`
  *  reads its human from `localPlayerId`, which on a GUEST screen is the
- *  guest's seat and not the seat the raised bar belongs to. */
+ *  guest's seat and not the seat the raised bar belongs to.
+ *
+ *  The count is `homeRoster`, never `factionIds`: a power summoned from beyond
+ *  the frame joins the roster and holds no ground on the map, so counting it
+ *  would move the bar from thirteen lands to fourteen at the exact moment the
+ *  run's last act begins - a run getting harder because its own boss turned
+ *  up, in a number the player has been reading all game. */
 export function winSizeFor(
   board: Pick<
-    GameState, "factionIds" | "players" | "humanSeats" | "playingOn"
+    GameState, "factionIds" | "foreign" | "players" | "humanSeats" | "playingOn"
   >,
   factionId: string,
 ): number {
-  if (board.playingOn && factionId === humanFactionOf(board)) {
-    return board.factionIds.length;
-  }
-  return victoryRealmSize(board.factionIds.length);
+  const roster = homeRoster(board);
+  if (board.playingOn && factionId === humanFactionOf(board)) return roster;
+  return victoryRealmSize(roster);
+}
+
+/** How many factions actually stand on the map: the roster less anything
+ *  summoned from beyond the frame.
+ *
+ *  One reader per question rather than one number sprinkled about - the bar
+ *  above, and the rival-unification scan in `endingFor`. Both are asking "how
+ *  much of the map is there", and a power with no ground on it is not part of
+ *  the answer. */
+export function homeRoster(
+  board: Pick<GameState, "factionIds" | "foreign">,
+): number {
+  return board.factionIds.length - board.foreign.length;
 }
 
 export function viewOf(state: GameState): RulesView {
@@ -507,6 +593,7 @@ export function viewOf(state: GameState): RulesView {
     incorporated: state.incorporated,
     adjacency: state.adjacency,
     factionIds: state.factionIds,
+    foreign: state.foreign,
     turn: state.turn,
     guards: state.guards,
     omens: state.omens,
@@ -583,6 +670,14 @@ export function newGame(
     phase: "main-menu",
     // A run nobody has won yet, so nobody has declined to stop.
     playingOn: false,
+    // The first thing a run does is choose who to fight. Empty here because
+    // nobody has been dealt a land yet and a realm with no ground borders
+    // nothing; `pickFaction` reaches the round wrap the moment the seats are
+    // dealt, and that is what fills the offer.
+    gauntlet: { kind: "picking", candidates: [], boss: false },
+    // Every run opens on the first act. Nothing seeds it higher: an act is
+    // earned by beating the boss that closes the one before it.
+    act: 1,
     turn: 1,
     players: [],
     current: 0,
@@ -590,6 +685,8 @@ export function newGame(
     repeatGroup: null,
     rules: { ...DEFAULT_RULES },
     factionIds,
+    // Nothing from beyond the frame until the last act summons it.
+    foreign: [],
     overlords: realms.overlords,
     incorporated: realms.incorporated,
     guards: {},
@@ -641,15 +738,36 @@ export function transferLimit(
 
 /** What a seat nobody can ask moves into a land it has just taken: half of
  *  what the origin holds, which leaves the origin able to defend itself and
- *  gives the new holding something to stand on. Deterministic - no rng, so an
- *  AI seat's conquest replays identically. */
+ *  gives the new holding something to stand on - but never enough to stand it
+ *  back up ON its own independence line. Deterministic - no rng, so an AI
+ *  seat's conquest replays identically.
+ *
+ *  The cap is the whole reason this is not a plain half. A conquest heals the
+ *  garrison into the taken land, and the land's first `beginTurn` reads
+ *  `independenceGateOpen` before anything else: a garrison at or above the
+ *  line hands the new vassal its freedom at the first opportunity it gets, so
+ *  the taker would be arming the escape it just prevented. The polygons this
+ *  bites are the small ones - on a land whose ceiling is 2 the line is 2, and
+ *  half of any healthy raider clears it - which is why the cap is derived from
+ *  the destination's own line (`independenceGateLine`) rather than written as
+ *  a number.
+ *
+ *  A PERSON is never capped here, because a person is not forced: the modal
+ *  raised by `pendingTransfers` is the same question asked out loud, 0 is
+ *  already one of its answers, and choosing to over-garrison a vassal is a
+ *  play a player may want to make. This removes the asymmetry rather than
+ *  adding a rule. */
 export function autoTransfer(
   state: GameState, from: string, to: string,
 ): number {
-  const held = defenseOf(
-    { defense: state.defense, defenseMax: state.defenseMax }, from,
+  const v = { defense: state.defense, defenseMax: state.defenseMax };
+  const held = defenseOf(v, from);
+  const underGate = Math.max(
+    0, independenceGateLine(v, to) - 1 - defenseOf(v, to),
   );
-  return Math.min(Math.floor(held / 2), transferLimit(state, from, to));
+  return Math.min(
+    Math.floor(held / 2), transferLimit(state, from, to), underGate,
+  );
 }
 
 /** Moves defense points between two lands and clears that faction's pending
@@ -783,10 +901,48 @@ function makePlayer(
   };
 }
 
-/** How many factions take turns on a map. Everybody else keeps a seat and a
- *  deck and simply never plays - see `keeps-to-itself` in src/passives.ts.
- *  Clamped to the land count, so a three-land test map has everybody acting. */
-export const MAX_ACTIVE = 5;
+/** How many lands are seeded with NO chief - the grey middle. Everybody else
+ *  gets a ruler and takes turns; these keep a seat and a deck and simply never
+ *  play, per `keeps-to-itself` in src/passives.ts.
+ *
+ *  The seeding is stated as how many stay quiet rather than as how many act,
+ *  because "quiet" is now the exception and a rule reads best from its
+ *  exception. It used to be the other way round - five acting seats on a
+ *  twenty-six land map - and the cost of that was measured: a duel enemy with
+ *  no chief was supposed to be RARE and was 41.6% of duels, because
+ *  `duelCandidates` can only prefer a chiefed land that the border actually
+ *  offers, and a border made of quiet lands offers none.
+ *
+ *  **Waking the map is affordable now and was not before.** A wide acting set
+ *  used to mean every seat playing every round, for the whole run. Under the
+ *  gauntlet only the two duelling realms act while a duel is running
+ *  (`duelStanding` in src/gauntlet.ts, read by `takesNoTurn`), so the width
+ *  costs turns only during the one unscoped world-tick round per gauntlet.
+ *  That is the reason the old constraint no longer binds, and if the duel
+ *  scope is ever removed this number has to be revisited with it.
+ *
+ *  **Six, and not zero.** A grey middle is a designed feature and not a
+ *  leftover: it is what the restless raid fires out of, it is what a young
+ *  realm expands into, and the three-part chiefless-duel rule (prefer a
+ *  chiefed candidate, fight a chiefless one fully, absorb it on defeat) needs
+ *  something to fire on or it rots. Six of the Baltic's twenty-six is about a
+ *  quarter of the map, which is a visible middle rather than a rounding error,
+ *  and no realm on either map is walled in by it.
+ *
+ *  **What the number actually bought, measured rather than intended.** 156
+ *  runs of the duel sweep, every faction as the human across six seeds: the
+ *  chiefless share of duels went from 41.6% (438 of 1053) to 0.0% (0 of 3184).
+ *  The curve is steep and there is no number that lands in between - 12 quiet
+ *  lands still measures 0.6%, and the 41.6% came from having 21 of them. So
+ *  "rare" here means the fallback is now the hemmed-in realm the shape of a
+ *  map can still produce, pinned by tests/gauntlet.test.ts rather than met on
+ *  every run. That is the honest reading and it is why the arm stays. */
+export const QUIET_LANDS = 6;
+
+/** The fewest lands that ever take turns, whatever `QUIET_LANDS` asks for.
+ *  This is the old acting CEILING read as a floor: a six-land test map still
+ *  seats five, and a three-land one seats everybody. */
+export const MIN_ACTING = 5;
 
 /** Whether this land may hold a seat at all: it must answer to nobody.
  *
@@ -807,43 +963,70 @@ function seatable(state: GameState, factionId: string): boolean {
   );
 }
 
-/** Which factions take turns: the human's pick, any reserved pick (a
- *  multiplayer guest), then lands drawn from a seeded shuffle of the rest,
- *  skipping any that borders one already chosen.
+/** Which factions take turns: everybody `seatable`, less the handful drawn to
+ *  stay quiet. The human's pick and any reserved pick (a multiplayer guest)
+ *  are never drawn.
  *
  *  Every candidate is `seatable`, so a map that opens with realms on it offers
  *  seats to the realm roots and the free lands and to nothing else.
  *
- *  The spacing pass can run out of room - a small or a chain-shaped map - so a
- *  second pass fills what is left without the test. Placement never fails, and
- *  that fallback is the only reason two acting lands may end up adjacent. */
+ *  **There is no spacing rule any more, and that is a measured decision.** The
+ *  draw used to keep the five acting seats off each other's borders. With most
+ *  of the map seated there is no room for such a test to decide anything - the
+ *  fallback pass placed nearly every seat regardless - so the rule was tried
+ *  inverted onto the quiet draw, where "two quiet lands never touch" would
+ *  stop a realm being walled in by chiefless neighbours. It was then measured
+ *  over 156 sweep runs and moved the chiefless share of duels by ONE duel in
+ *  3200. `QUIET_LANDS` alone does that job, and clumping is the only shape
+ *  that still produces the hemmed-in border the chiefless-duel rule exists
+ *  for, so keeping the test would have cost a scan per candidate to make a
+ *  documented rule slightly less reachable.
+ *
+ *  One `shuffle` and no other rng, the same as before: the draw count per deal
+ *  is a frozen contract (tests/rng-isolation.test.ts). */
 function actingFactions(
   state: GameState, humanFactionId: string, reserved: string[], rng: Rng,
 ): string[] {
-  const out = [humanFactionId];
+  const seated = [humanFactionId];
   for (const id of reserved) {
-    if (id !== humanFactionId && seatable(state, id) && !out.includes(id)) {
-      out.push(id);
+    if (id !== humanFactionId && seatable(state, id) && !seated.includes(id)) {
+      seated.push(id);
     }
   }
   const seats = state.factionIds.filter((id) => seatable(state, id));
-  const cap = Math.max(out.length, Math.min(MAX_ACTIVE, seats.length));
-  const pool = shuffle(seats.filter((id) => !out.includes(id)), rng);
-  const spaced = (id: string): boolean =>
-    out.every((placed) => !(state.adjacency[placed] ?? []).includes(id));
-  for (const id of pool) {
-    if (out.length >= cap) break;
-    if (spaced(id)) out.push(id);
-  }
-  for (const id of pool) {
-    if (out.length >= cap) break;
-    if (!out.includes(id)) out.push(id);
-  }
-  return out;
+  const pool = shuffle(seats.filter((id) => !seated.includes(id)), rng);
+  const want = Math.max(
+    0,
+    Math.min(QUIET_LANDS, seats.length - Math.max(MIN_ACTING, seated.length)),
+  );
+  return [...seated, ...pool.slice(want)];
 }
 
-/** Every faction gets a seat and the same starting deck; only `MAX_ACTIVE` of
- *  them take turns, and the rest carry `keeps-to-itself`. Each AI seat rolls
+/** What a newly seated ruler holds: whatever its own people's build brings,
+ *  from the one table the build screen and `pickFaction` also read. A woken
+ *  vassal is a seat like any other - a warpath people raid with `war-leader`
+ *  behind them - because the alternative is a second class of ruler, and the
+ *  whole design is that a status is the only difference between a land that
+ *  plays and one that does not.
+ *
+ *  Its own people's build, never the taker's: the land keeps the deck it was
+ *  dealt when it changes hands, and the abilities have to describe that deck.
+ *
+ *  A helper rather than a line inside `takeLand` because both doors an
+ *  allegiance change comes through owe the same answer - an army walking in
+ *  or a Subjugate claim landing (both `takeLand`), and a no-successor
+ *  assassination handing the land to its killer (`landSubjugation`) - and
+ *  two spellings would be two rules within a week. */
+function seatingAbilities(
+  players: readonly PlayerState[], factionId: string,
+): readonly string[] {
+  const pl = players.find((p) => p.factionId === factionId);
+  return pl === undefined ? [] : BUILD_ABILITIES[pl.strategy] ?? [];
+}
+
+/** Every faction gets a seat and the same starting deck; all but
+ *  `QUIET_LANDS` of them take turns, and the rest carry `keeps-to-itself`.
+ *  Each AI seat rolls
  *  its build, seeded - one rng draw per AI seat, in seat order, BEFORE its
  *  deck is shuffled, so the draw count per seat is a frozen contract the same
  *  way the old deck builder's was (tests/rng-isolation.test.ts pins it). The
@@ -891,9 +1074,10 @@ export function pickFaction(
     state.passives, state.factionIds, acting,
     (land) => !isUnheld(land, state.overlords, state.incorporated),
   );
-  // Only the factions that act keep a leader. Everything else about a quiet
-  // land follows from the vacancy: no ruler, no turn, and no turn even after
-  // somebody takes it.
+  // Only the factions that act keep a leader at the DEAL. Everything else
+  // about a quiet land follows from the vacancy: no ruler, so no turn, so no
+  // cards - until somebody takes it, and `takeLand` seats a chief on the land
+  // it took.
   // What each build's chief brings, from the one table the build screen also
   // reads. Seeded off the build rather than written into the raid cards: the
   // Pestilence seats hold Raid too, and theirs deal what the card says. The
@@ -984,6 +1168,18 @@ function nestsUnderItsCause(type: GameEventType): boolean {
     case "harvest-picked":
     case "harvest-burned":
       return true;
+    // A duel settles at a round wrap, out of a batch that opens with no play
+    // at all - the card that took the land was played a turn or twenty ago,
+    // and a void one was decided by nothing being played. There is nothing
+    // above any of the three to indent under. The prophecy is the same wrap's
+    // work, and the boon is a modal answered on the player's own turn with no
+    // card behind it.
+    case "duel-won":
+    case "duel-lost":
+    case "duel-void":
+    case "boss-foretold":
+    case "boon-taken":
+      return false;
   }
 }
 
@@ -1106,13 +1302,22 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   const p = state.players[state.current];
   const events: GameEvent[] = [];
   const overlords = new Map(state.overlords);
+  // The second allegiance store, and it moves in here for one reason: a duel
+  // enemy that follows nobody is ABSORBED rather than sworn (`takeLand`
+  // below). Local rather than read off the snapshot, because everything after
+  // that point - the next arrow's arrival, the hand refill, the ending - has
+  // to see the land inside the winner's realm.
+  let incorporated = state.incorporated;
   let respites = state.respites;
   let players = state.players;
+  // A conquest below seats a leader on the land it takes, so the turn's rulers
+  // are not the ones it started with.
+  let rulers = state.rulers;
   const lord = overlords.get(p.factionId);
-  if (
-    lord !== undefined &&
-    independenceGateOpen(viewOf(state), p.factionId)
-  ) {
+  // `escapesVassalage` and not the gate directly: `takesNoTurn` asks the same
+  // question one line earlier, to judge the duel scope against the realm this
+  // seat is about to be in, and two spellings of it would disagree.
+  if (lord !== undefined && escapesVassalage(state, p.factionId)) {
     overlords.delete(p.factionId);
     respites = { ...respites, [p.factionId]: state.turn + ESCAPE_RESPITE_TURNS };
     players = players.map((pl) =>
@@ -1137,7 +1342,38 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   let nextMarchId = state.nextMarchId;
   let claims = state.claims;
   let defense = state.defense;
+  // The ceiling moves in `beginTurn` for exactly one reason - a duel won on a
+  // big land grows the winner's home, ceiling and score together, the way
+  // Prosperous proliferation does. Raising one alone is the trap that rule
+  // already names: both gates are shares OF the ceiling.
+  let defenseMax = state.defenseMax;
+  // Income adds to this near the end of the turn; the duel spoils add to it at
+  // the round wrap, which is above that. A `let` from the top so the two
+  // cannot each start from `state.wealth` and throw the other away.
+  let wealth = state.wealth;
   let passives = state.passives;
+  // The gauntlet moves in two places in this function and they are different
+  // kinds of move. A conquest below may DECIDE a running duel the moment the
+  // land changes hands; the round wrap further down is where the cycle
+  // actually turns. Both write this one local, so the wrap reads a duel that
+  // this very turn's arrivals have already settled.
+  let gauntlet = state.gauntlet;
+  // The act moves in one place - a boss duel WON, in `settleDuel` - and is
+  // written back at the bottom with the gauntlet it belongs beside.
+  let act = state.act;
+  /** Set by `settleDuel` when an act's boss took the land that was staked on
+   *  it. Read once, at the ending below: the phase is decided in one place in
+   *  this function, and a second writer of it is a second answer to "is the
+   *  run over" that the first would eventually disagree with. */
+  let bossLost = false;
+  // The five stores a summoned power joins. Locals from the top, the way every
+  // other store this function writes is: `summonForeignPower` runs mid-wrap
+  // and the round-wrap block below reads the roster it left behind.
+  let factionIds = state.factionIds;
+  let foreign = state.foreign;
+  let adjacency = state.adjacency;
+  let siteCaps = state.siteCaps;
+  let ethnicities = state.ethnicities;
   const pendingTransfers = { ...state.pendingTransfers };
 
   /** The line that says an arrow got where it was aimed. It is the cause the
@@ -1187,8 +1423,66 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     land: string, by: string, from: string, cause: ArrivingCause,
   ): void => {
     const formerLord = overlords.get(land);
+    // Before the move, because the question is which side the land was on -
+    // one line later `overlords` no longer knows. Both of these ask it, so
+    // both are asked here.
+    const absorbed = absorbsDuelEnemy(
+      gauntlet, humanFactionOf(state), land, by,
+      !hasRuler(rulers, land), overlords, incorporated,
+    );
+    gauntlet = duelDecidedBy(
+      gauntlet, humanFactionOf(state), land, by, overlords, incorporated,
+    );
+    if (absorbed) {
+      // A people who follow nobody are taken outright rather than sworn -
+      // see `absorbsDuelEnemy` for why that is the difference a chiefless
+      // duel enemy makes, and why nothing outside a duel reads this way.
+      //
+      // The pyramid under it comes apart on Incorporate's own rule: fealty
+      // was to a lord that has just stopped existing as a seat, and
+      // re-parenting its vassals would make absorbing a mid-lord strictly
+      // better than digesting one. Its OWN annexations follow it, because
+      // they were never a fealty link to begin with.
+      overlords.delete(land);
+      for (const [vassal, lord] of [...overlords]) {
+        if (lord === land) {
+          overlords.delete(vassal);
+          respites = {
+            ...respites, [vassal]: state.turn + ESCAPE_RESPITE_TURNS,
+          };
+          players = updateFaction(players, vassal, stripTribute);
+          events.push({
+            turn: state.turn, playerId: p.id, type: "released",
+            targetFactionId: vassal, overlordFactionId: land,
+          });
+        }
+      }
+      incorporated = { ...incorporated, [land]: by };
+      for (const [annexed, owner] of Object.entries(incorporated)) {
+        if (owner === land) incorporated = { ...incorporated, [annexed]: by };
+      }
+      passives = stripOnCapture(passives, land);
+      players = updateFaction(players, land, stripTribute);
+      // No chief is seated and no tribute is dealt: an annexed people has no
+      // seat to sit in and no turn to spend a card on. No transfer question
+      // either - defenders are moved into a land that will hold a border, and
+      // an absorbed one is inside the realm rather than on the edge of it.
+      events.push({
+        turn: state.turn, playerId: p.id, type: "incorporated",
+        targetFactionId: land, overlordFactionId: by,
+      });
+      return;
+    }
     overlords.set(land, by);
     passives = stripOnCapture(passives, land);
+    // The people wake up under their new lord: a land that has changed hands
+    // has a chief, and a chief is the whole of what makes a seat take turns.
+    // An occupied chair is handed straight back, so a land taken from a lord
+    // who was already leading it keeps the leader it had.
+    rulers = seatRuler(
+      rulers, state.ethnicities, land, state.turn,
+      seatingAbilities(players, land),
+    );
     players = updateFaction(players, land, (pl) => {
       const clean = stripTribute(pl);
       return { ...clean, deck: shuffle([...clean.deck, ...TRIBUTE_CARDS], rng) };
@@ -1199,23 +1493,24 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       ...cause,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
-    // A PERSON is asked, whichever seat they sit in; everybody else moves half
-    // on the spot. Every conquest asks: a turn that takes three lands queues
-    // three questions and they are answered in the order the lands fell. It
-    // must NOT fall through to the automatic half - that moved points out of a
-    // land the player was never asked about, which is the one thing
-    // `pendingTransfers` exists to prevent.
+    // A PERSON is asked, whichever seat they sit in; everybody else gets
+    // `autoTransfer`'s capped amount on the spot (see its doc comment for why
+    // the cap exists). Every conquest asks: a turn that takes three lands
+    // queues three questions and they are answered in the order the lands
+    // fell. It must NOT fall through to the automatic transfer - that moved
+    // points out of a land the player was never asked about, which is the one
+    // thing `pendingTransfers` exists to prevent.
     if (isHumanFaction(state, by)) {
       pendingTransfers[by] = [...(pendingTransfers[by] ?? []), { from, to: land }];
       return;
     }
     const moved = autoTransfer(
-      { ...state, defense, defenseMax: state.defenseMax }, from, land,
+      { ...state, defense, defenseMax }, from, land,
     );
     if (moved > 0) {
-      const v = { defense, defenseMax: state.defenseMax };
+      const v = { defense, defenseMax };
       defense = applyHeal(
-        { defense: applyDamage(v, from, moved), defenseMax: state.defenseMax },
+        { defense: applyDamage(v, from, moved), defenseMax },
         land, moved,
       );
       events.push({
@@ -1226,10 +1521,10 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   };
 
   // Claims land before marches are declared and after they have resolved: a
-  // demand that arrives to find the land still broken takes it, and a land
-  // taken this way cannot send its armies at its new lord - those raids are
-  // called off, while anything it aimed elsewhere flies on. Wars have not
-  // stopped, only this one.
+  // demand that arrives to find the land still broken takes it. What the land
+  // already has in the air is NOT called off here - see the note on
+  // `resolveMarches`: an arrow is judged when it is declared and again when it
+  // lands, and never in between.
   const landClaims = (actor: string, playerId: number): void => {
     for (const { key, claim } of lapsedClaimsOf(claims, actor, state.turn)) {
       claims = clearClaims(claims, [key]);
@@ -1253,48 +1548,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       takeLand(claim.to, claim.actor, claim.from, {
         via: "claim", cardId: claim.cardId,
       });
-      callOffMarchesAgainstLord(claim.to, claim.actor, playerId);
     }
   };
-
-  /** A land just taken cannot send its armies at its new lord, nor at anyone
-   *  that lord answers to: those raids are called off, while anything it aimed
-   *  elsewhere flies on. Wars have not stopped, only this one. Every route into
-   *  `takeLand` owes this, which is why it is a function rather than a step of
-   *  the claim path.
-   *
-   *  The chain, not just the direct lord: this is the hostile keyword's rule
-   *  applied at the instant the pyramid changes shape, and `resolveMarches`
-   *  applies the identical test to whatever is still in flight afterwards.
-   *  Two spellings of one rule would be two rules within a week - which is
-   *  precisely how this function came to hold the whole of it and the rest of
-   *  the game held none. */
-  function callOffMarchesAgainstLord(
-    land: string, _lord: string, playerId: number,
-  ): void {
-    const view = { ...viewOf({ ...state, players }), overlords, marches, defense };
-    for (const axis of axesOf(marches)) {
-      for (const march of [...axis.fromA, ...axis.fromB]) {
-        if (
-          march.actor !== land ||
-          !aimsUpOwnChain(view, march.actor, march.cardId, march.to)
-        ) {
-          continue;
-        }
-        marches = clearMarches(marches, [
-          ...Object.entries(marches)
-            .filter(([, m]) => m === march)
-            .map(([key]) => key),
-        ]);
-        events.push({
-          turn: state.turn, playerId, type: "march-lapsed",
-          cardId: march.cardId,
-          targetFactionId: march.to, sourceFactionId: march.from,
-          marchIds: [march.id],
-        });
-      }
-    }
-  }
 
   /** Armies that got through, one land at a time: the arrival is reported, and
    *  then the two gates decide whether the land actually changes hands.
@@ -1328,13 +1583,28 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // quietly ate itself, and lands with no chief to answer for them ended up
     // holding vassals.
     if (!hasRuler(state.rulers, capture.by)) return { defense, taken: false };
+    // **A power beyond the frame RAIDS before the last act, and settles only
+    // in it.** It stands on the map from the act before the one it is fought
+    // in, so its arrows are the telegraph - the player watches them come out
+    // of the grey and land on their coast, and knows what is coming before
+    // anything asks them to fight it. What it may not do in that window is
+    // take ground: it musters far above any land on the map, so a power free
+    // to conquer through the act before its own would simply eat the coast
+    // while the player was fighting somebody else. Once it IS the fight, this
+    // stands down and it takes ground like anybody.
+    if (
+      foreign.includes(capture.by) &&
+      !(gauntlet.kind === "duel" && gauntlet.enemy === capture.by)
+    ) {
+      return { defense, taken: false };
+    }
     // The actor already holds this land, because an earlier arrival of its
     // own took it this same turn. The arrow is SPENT and lands nothing: an
     // army does not sack the land its own side has just moved defenders
     // into. It gets its arrival line above - the arrow is accounted for on
     // the surface the player reads - and no damage.
     if (
-      fullRealmOf(capture.by, overlords, state.incorporated).has(capture.land)
+      fullRealmOf(capture.by, overlords, incorporated).has(capture.land)
     ) {
       return { defense, taken: false };
     }
@@ -1342,6 +1612,243 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       via: "conquest", cardId: capture.cardId,
     });
     return { defense, taken: true };
+  };
+
+  /** The last act's enemy, called onto the map's edge.
+   *
+   *  It is a FACTION and not a new kind of thing, for the reason a boss is a
+   *  neighbour rather than a new kind of entity: `attackReach`,
+   *  `marchTargetsFrom`, the arrow scene, the duel scope and the turn loop all
+   *  work on faction ids, and a power that was anything else would need every
+   *  one of them taught about it. What makes it foreign is one list -
+   *  `GameState.foreign` - which the bar and the unification scan read so that
+   *  a power holding no ground on the map cannot move either number.
+   *
+   *  It borrows its polygon from the map's baked neighbours (`ForeignPowerDef`
+   *  in src/regions.ts). The ground was always drawn there; nothing in the
+   *  game had ever heard of it.
+   *
+   *  Its adjacency is the `landings`, both ways. That is the whole geography
+   *  of it: an army may march out to it only from a land that faces it, and
+   *  its own raids reach only the lands it faces. `hopsBetween` then answers
+   *  for it exactly as it answers for anywhere else, so one land behind a
+   *  landing is two hops out and the three-hop rule needs nothing new.
+   *
+   *  Returns the state unchanged when the power is already standing, so a
+   *  second summon - a retry after a lost expedition - cannot deal it a second
+   *  seat. */
+  const summonForeignPower = (): void => {
+    const def = activeRegion().foreignPower;
+    if (state.factionIds.includes(def.id)) return;
+    factionIds = [...factionIds, def.id];
+    foreign = [...foreign, def.id];
+    // Both ways, and only the landings. A power reachable from a land that
+    // does not face it would be an expedition setting out from the wrong coast.
+    const nextAdjacency: Record<string, string[]> = { ...adjacency };
+    const reachable = def.landings.filter((l) => factionIds.includes(l));
+    nextAdjacency[def.id] = [...reachable];
+    for (const land of reachable) {
+      nextAdjacency[land] = [...(nextAdjacency[land] ?? []), def.id];
+    }
+    adjacency = nextAdjacency;
+    defenseMax = { ...defenseMax, [def.id]: def.defenseMax };
+    // No settlements, ever: it is not ground the player can build on, and a
+    // site cap would put a Found a settlement target beyond the frame.
+    siteCaps = { ...siteCaps, [def.id]: 0 };
+    ethnicities = { ...ethnicities, [def.id]: def.id };
+    // Its own seat, so it can answer. A warpath deck, because what it does is
+    // send armies - and the AI already has a branch for every card in one.
+    players = [...players, makePlayer(players.length, def.id, "warpath", rng)];
+    rulers = seatRuler(
+      rulers, ethnicities, def.id, state.turn,
+      BUILD_ABILITIES.warpath ?? [],
+    );
+  };
+
+  /** An act's champion, made ready to be beaten.
+   *
+   *  Four levers, and every one of them is something the game already does to
+   *  a land - which is the whole design of a boss here. It is not a new kind
+   *  of entity with rules of its own; it is a neighbour the map has raised up,
+   *  and a player who has learned to read a ceiling, a chief and a deck can
+   *  read this one too.
+   *
+   *  - The `regional-leader` status, which shrugs off a quarter of every blow
+   *    and is what the land hover names.
+   *  - A ceiling raised by the act, and a heal that takes it there. The
+   *    ceiling is what the player can READ before committing, which is what
+   *    makes the fight a decision rather than a surprise.
+   *  - A chief who leads its raids in person: `war-leader` AND the leadership
+   *    that makes the ability mean anything. Granting the ability alone was
+   *    the first version, and the boss raided for exactly what its neighbours
+   *    did - the ability adds the leader's leadership, and a chief seated by
+   *    `seatRuler` holds 0 of it.
+   *  - More of its own build's raids. A boss that only defends is a boss the
+   *    player starves out, and extra copies of a card the AI already has a
+   *    branch for is the cheapest way to make it answer.
+   *
+   *  A chiefless champion gets everything but the chief, and that is not a
+   *  hole: `bossFor` prefers a led candidate, so this is the hemmed-in border
+   *  the offer's own fallback covers, and beating such a land absorbs it
+   *  outright (`absorbsDuelEnemy`) - which is a bigger prize, not a smaller
+   *  one. */
+  const elevateBoss = (
+    boss: string, forAct: number,
+  ): {
+    passives: Passives;
+    defense: Defense;
+    defenseMax: Record<string, number>;
+    rulers: Rulers;
+    players: PlayerState[];
+  } => {
+    const held = passivesOn(passives, boss);
+    const nextPassives = held.includes("regional-leader")
+      ? passives
+      : { ...passives, [boss]: [...held, "regional-leader"] };
+    const nextMax = {
+      ...defenseMax,
+      [boss]:
+        defenseMaxOf({ defense, defenseMax }, boss) +
+        BOSS_CEILING_PER_ACT * forAct,
+    };
+    // To the ceiling, so the number the prophecy sends the player to look at
+    // is the number they will have to get through.
+    const nextDefense = applyHeal(
+      { defense, defenseMax: nextMax }, boss,
+      defenseMaxOf({ defense, defenseMax: nextMax }, boss),
+    );
+    let nextRulers = rulers;
+    if (hasRuler(rulers, boss)) {
+      nextRulers = grantAbility(nextRulers, [boss], RAID_LEADERSHIP);
+      const chief = nextRulers[boss];
+      if (chief !== undefined) {
+        nextRulers = {
+          ...nextRulers,
+          [boss]: {
+            ...chief,
+            leadership: chief.leadership + BOSS_LEADERSHIP_PER_ACT * forAct,
+          },
+        };
+      }
+    }
+    const extra = Array.from(
+      { length: BOSS_RAIDS_PER_ACT * forAct }, () => "raid",
+    );
+    // The tribute-injection shape: shuffled in rather than stacked on top, so
+    // the boss does not draw its whole reinforcement in one turn.
+    const nextPlayers = updateFaction(players, boss, (pl) => ({
+      ...pl, deck: shuffle([...pl.deck, ...extra], rng),
+    }));
+    return {
+      passives: nextPassives,
+      defense: nextDefense,
+      defenseMax: nextMax,
+      rulers: nextRulers,
+      players: nextPlayers,
+    };
+  };
+
+  /** The duel's settlement, written at the wrap that retires it: ONE event
+   *  whichever way the fight went, and the spoils on the one arm that earns
+   *  them.
+   *
+   *  Every ending is announced and not only the win. A duel is a promise the
+   *  run makes and then settles, and the un-won ways it settles used to produce
+   *  nothing at all - no event, no line, no sound - so a player learned it from
+   *  the next offer appearing. `Gauntlet.decided` says which it was, written at
+   *  the moment the ground moved, because the difference is the sentence.
+   *
+   *  A duel retiring with nothing recorded is a VOID one - the fight lost one
+   *  of its two ends before either land could move (`duelVoided`). It is the
+   *  only outcome derived here rather than read, and the derivation is
+   *  exhaustive: the wrap retires a duel for exactly two reasons and `decided`
+   *  covers the other.
+   *
+   *  What a won duel is worth is paid into the winner's realm here. Losing pays
+   *  nothing and takes nothing extra either: the forfeit IS the staked land,
+   *  and the enemy has already walked into it, so there is no second transfer
+   *  to make here.
+   *
+   *  The spoils COME HOME - to the human's own land, whichever of the enemy's
+   *  lands actually changed hands. Two reasons, and the second is the one that
+   *  matters: the reward is promised in the picker against the ENEMY, before a
+   *  single arrow is sent, so the land it derives from has to be the one the
+   *  offer named; and the land that fell may be a vassal of a vassal the
+   *  winner never aimed at. `rewardFor` is the whole of what the two surfaces
+   *  share, which is what stops the offer promising what this does not pay.
+   *
+   *  One event, whatever the reward, carrying the defense it moved so the
+   *  before -> after suffix comes off the same walk every other score does. */
+  const settleDuel = (
+    enemy: string, outcome: DuelOutcome, boss: boolean,
+  ): void => {
+    const home = humanFactionOf(state);
+    if (home === null) return;
+    const winner = players.find((pl) => pl.factionId === home);
+    // Beating the act's boss is what carries the run forward, and it is the
+    // ONLY thing that does: reaching an act's exit size summons the boss and
+    // moves nothing. A losing boss duel leaves the act where it stands and the
+    // boss is summoned again at the next wrap, which is the retry the run's
+    // shape asks for - the escalation is the boss being elevated again rather
+    // than a rule invented for the failure.
+    if (outcome === "won" && boss) act = Math.min(ACTS, act + 1);
+    // Losing to a BOSS ends the run, and losing to a neighbour does not. That
+    // is the whole of what makes an act's last fight different to play: an
+    // ordinary duel forfeits the land you staked and leaves you the ladder
+    // this game has always had - vassalage, and the independence gate out of
+    // it - and the fight that closes an act is the one you cannot walk away
+    // from. A duel that settled NOTHING is not a loss and does not end
+    // anything: the boss is summoned again at the next wrap.
+    if (outcome === "lost" && boss) bossLost = true;
+    if (outcome !== "won") {
+      // The two un-won endings are separate types rather than one line with a
+      // reason on it, because they are separate news: the staked land went the
+      // other way, or the fight lost an end and settled nothing. Both move no
+      // score here, so both carry only the two ends of the fight - a loss
+      // already moved its score at the capture that caused it.
+      events.push({
+        turn: state.turn, playerId: winner?.id ?? p.id,
+        type: outcome === "lost" ? "duel-lost" : "duel-void",
+        targetFactionId: home, sourceFactionId: enemy,
+      });
+      return;
+    }
+    // Derived from the ENEMY, which is the land the offer named. Both inputs
+    // are stable across a duel - `siteCaps` is map data and the defensive
+    // terrains survive a capture (`strippedOnCapture: false`) - so what the
+    // picker promised twenty rounds ago is what this pays.
+    // The act as it stood when the duel OPENED, which is `state.act`: the
+    // advance one line above has already moved the local `act` for a won boss
+    // duel, and paying the next act's rate for this act's fight would break
+    // the one thing the offer and the cashing must agree on.
+    const reward = rewardFor(
+      { siteCaps: state.siteCaps, passives }, enemy, state.act,
+    );
+    if (reward.kind === "wealth") {
+      events.push({
+        turn: state.turn, playerId: winner?.id ?? p.id, type: "duel-won",
+        targetFactionId: home, sourceFactionId: enemy, wealth: reward.amount,
+      });
+      wealth = { ...wealth, [home]: (wealth[home] ?? 0) + reward.amount };
+      return;
+    }
+    if (reward.kind === "growth") {
+      defenseMax = {
+        ...defenseMax,
+        [home]: defenseMaxOf({ defense, defenseMax }, home) + reward.amount,
+      };
+    }
+    // What actually moved, never the constant - the rule every heal site
+    // keeps. A home already at its ceiling takes nothing, and an event
+    // claiming the whole amount would drift the walk for the rest of the run.
+    const before = defenseOf({ defense, defenseMax }, home);
+    defense = applyHeal({ defense, defenseMax }, home, reward.amount);
+    const moved = defenseOf({ defense, defenseMax }, home) - before;
+    events.push({
+      turn: state.turn, playerId: winner?.id ?? p.id, type: "duel-won",
+      targetFactionId: home, sourceFactionId: enemy,
+      ...(moved > 0 ? { amount: moved } : {}),
+    });
   };
 
   // Marches land here - see the comment above the stores this fills. Arrivals
@@ -1368,6 +1875,127 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // beginning owns the line, the same turn-start-clock convention the
   // independence gate above already keeps.
   if (state.current === 0) {
+    // The cycle turns HERE and nowhere else, so a round is never half scoped:
+    // whoever the wrap decides may act is who acts for the whole of the round
+    // that is beginning. First in the block, because the sweep below asks
+    // `takesNoTurn` - a seat this wrap has just released from a duel scope is
+    // a seat that will see a `beginTurn` of its own this round, and its
+    // arrows must be left for it rather than landed here.
+    //
+    // `overlords` and not the snapshot: the escape at the top of this turn
+    // and the arrivals below it have already moved the realms, and the offer
+    // this reads out is the board as it now stands.
+    const wrapped = gauntletAtRoundWrap(
+      gauntlet, { ...viewOf(state), overlords, incorporated },
+      humanFactionOf(state),
+    );
+    // The duel settled - announced, and paid where it is owed - at the moment
+    // it retires and nowhere else.
+    // Asked of the gauntlet as it stood BEFORE the wrap, because the wrap is
+    // what throws the duel away: one line later there is no enemy left to name
+    // and no `decided` left to read.
+    if (gauntlet.kind === "duel" && wrapped.kind !== "duel") {
+      settleDuel(gauntlet.enemy, gauntlet.decided ?? "void", gauntlet.boss);
+    }
+    gauntlet = wrapped;
+    // The act's boss is summoned HERE and not inside `gauntletAtRoundWrap`,
+    // because the question it asks - has the realm reached this act's share of
+    // the bar - is `winSizeFor`'s, about a board src/gauntlet.ts is
+    // deliberately not given. It runs after the wrap, so it reads the offer
+    // the wrap just produced rather than the one it replaced.
+    //
+    // Only an ORDINARY offer is replaced. A boss already standing is left
+    // alone, and so is a duel, a tick and a rest: summoning is what turns the
+    // border offer into the act's last fight, and it happens once per attempt.
+    if (gauntlet.kind === "picking" && !gauntlet.boss) {
+      const home = humanFactionOf(state);
+      const board = { ...state, overlords, incorporated };
+      if (
+        home !== null &&
+        fullRealmOf(home, overlords, incorporated).size >=
+          actExitSize(act, winSizeFor(board, home))
+      ) {
+        // The LAST act is fought beyond the frame, so its enemy has to be
+        // called onto the map's edge before anybody can be offered it. Every
+        // earlier act closes with a neighbour that was already standing.
+        // Summoned an ACT EARLY, so it is standing - and raiding - before it
+        // is ever offered as a fight. That is the whole of "you see it
+        // coming": a power that turned up in the same breath as the modal
+        // asking you to fight it would be an announcement, not a threat.
+        if (act >= ACTS - 1) summonForeignPower();
+        const beyond = activeRegion().foreignPower.id;
+        const boss = bossFor(
+          {
+            ...viewOf(state), overlords, incorporated,
+            factionIds, adjacency, defenseMax, passives,
+            leaders: leadersByFaction(rulers),
+          },
+          home,
+          act >= ACTS ? beyond : null,
+        );
+        // Null is a real answer: a realm bordering nothing it may fight cannot
+        // be handed a boss, so the act does not close yet and the ordinary
+        // picker keeps running until the border gives it somebody.
+        if (boss !== null) {
+          const seat = players.find((pl) => pl.factionId === home);
+          // Made ready BEFORE the prophecy is written, so the modal that names
+          // it is describing the land as it now stands. A boss elevated after
+          // its own announcement would be a promise the board had not kept
+          // yet, and the player would read a badge that was about to move.
+          const raised = elevateBoss(boss, act);
+          passives = raised.passives;
+          defense = raised.defense;
+          defenseMax = raised.defenseMax;
+          rulers = raised.rulers;
+          players = raised.players;
+          gauntlet = {
+            kind: "rest", boss,
+            boons: boonsFor(
+              seat !== undefined && buildOffer(seat).length > 0,
+            ),
+          };
+          events.push({
+            turn: state.turn, playerId: seat?.id ?? p.id, type: "boss-foretold",
+            targetFactionId: boss, sourceFactionId: home, amount: act,
+          });
+        }
+      }
+    }
+    // A duel wears the ground it is fought over. Both of the two lands the
+    // fight is ABOUT, and nothing else: this is what makes a duel converge now
+    // that there is no clock, and a drain that bled one side would be a timer
+    // in the player's colours. It runs on the gauntlet as it stands AFTER the
+    // wrap, so a duel that has just retired costs nothing more.
+    //
+    // Before the wild-lands heal below, so a land that is both wild and under
+    // siege nets out the way the log reads it rather than mending the point it
+    // has just lost inside one batch.
+    // ORDINARY duels only. An act's champion presses on its own - its chief
+    // leads its raids and its deck is thick with them - so a boss duel needs
+    // no help converging. Wearing the wagered land through one as well was
+    // measured and is strictly worse for the player: 22 of 24 seeded runs
+    // ended at a boss duel with it on, against 17 with it off. The ground
+    // wears where nobody is pressing.
+    if (gauntlet.kind === "duel" && !gauntlet.boss) {
+      for (const land of [gauntlet.staked, gauntlet.enemy]) {
+        const before = defenseOf({ defense, defenseMax }, land);
+        if (before <= 0) continue;
+        defense = applyDamage(
+          { defense, defenseMax }, land, DUEL_ATTRITION,
+        );
+        const moved = before - defenseOf({ defense, defenseMax }, land);
+        if (moved <= 0) continue;
+        // The land's OWN seat owns the line, the same turn-start-clock
+        // convention the wild-lands heal below keeps: charging both to the
+        // human would tag the enemy's loss `.log-mine` and put it through
+        // every filter as something the player did.
+        const owner = players.find((pl) => pl.factionId === land);
+        events.push({
+          turn: state.turn, playerId: owner?.id ?? p.id, type: "levied",
+          targetFactionId: land, amount: moved,
+        });
+      }
+    }
     // A land that was hit THIS round does not also grow back in it. The heal
     // ran after the marches landed, so a raid arriving on a wild land could be
     // undone in the same batch: the log said the raid landed for 1 and the
@@ -1383,7 +2011,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     for (const polygon of state.factionIds) {
       if (!hasPassive(passives, polygon, "wild-lands")) continue;
       if (struckThisRound.has(polygon)) continue;
-      const v = { defense, defenseMax: state.defenseMax };
+      const v = { defense, defenseMax };
       if (defenseOf(v, polygon) >= defenseMaxOf(v, polygon)) continue;
       if (rng() >= WILD_LANDS_HEAL_CHANCE) continue;
       const before = defenseOf(v, polygon);
@@ -1394,7 +2022,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       // the log and the round summary drift from the store for the rest of the
       // run. `landHeal` in `playCard` keeps the same rule.
       const moved =
-        defenseOf({ defense, defenseMax: state.defenseMax }, polygon) - before;
+        defenseOf({ defense, defenseMax }, polygon) - before;
       if (moved <= 0) continue;
       // The land's OWN seat owns the line, never the seat whose turn happens to
       // be starting. The log tags an entry `.log-mine` off `playerId` and lets
@@ -1421,8 +2049,16 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // in: taking a quiet land strips the status while its arrow is in flight,
     // and a vassal that was taking turns can be Incorporated out of its seat
     // with a march or a Subjugate already declared.
+    // Asked of the gauntlet this wrap just settled, never of the snapshot: a
+    // duel that ended one line above hands its stilled factions their turns
+    // back this round, and a sweep reading the old scope would land the
+    // arrows of seats that are about to play them themselves.
     const dormant = state.factionIds.filter(
-      (land) => takesNoTurn(state, land),
+      // `incorporated` and not the snapshot: a land ABSORBED moments ago is
+      // annexed, so it is a seat that will never see a `beginTurn` and its
+      // arrows have to be landed here or stand on the map for the rest of the
+      // run. The other stores stay on the snapshot, as they always have.
+      (land) => takesNoTurn({ ...state, gauntlet, incorporated }, land),
     );
     for (const land of dormant) {
       const seat = players.find((pl) => pl.factionId === land);
@@ -1470,17 +2106,23 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       // land-grab nobody chose. With nothing standing left to hit, it sits
       // this round out.
       const targets = marchTargetsFrom(view, land, land).filter(
-        (to) => defenseOf({ defense, defenseMax: state.defenseMax }, to) > 0,
+        (to) => defenseOf({ defense, defenseMax }, to) > 0,
       );
       if (targets.length === 0) continue;
       const to = targets[Math.floor(rng() * targets.length)];
+      // `marchTargetsFrom` above offered it, so the walk exists; asked again
+      // here because the number of turns it takes is the same answer, and a
+      // second spelling of it is how the arrow and the legality that allowed
+      // it start to disagree.
+      const hops = marchHopsTo(view, land, to);
+      if (hops === null) continue;
       const id = nextMarchId++;
       const damage = attackDamageFor(view, land, "raid", MIN_RAID_SPEND).damage;
-      defense = applyDamage({ defense, defenseMax: state.defenseMax }, land, MIN_RAID_SPEND);
+      defense = applyDamage({ defense, defenseMax }, land, MIN_RAID_SPEND);
       marches = addMarch(marches, {
         id,
         actor: land, from: land, to, cardId: "raid", damage,
-        holdsArmy: true, expiry: state.turn + 1,
+        holdsArmy: true, declared: state.turn, expiry: state.turn + hops,
       });
       // Logged as the play it reads as on the map: an arrow with a strength on
       // it, answerable by a counter-raid like any other. No card leaves a deck
@@ -1539,7 +2181,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // Each draw logs the same `draw` event the single-draw path logged, and a
   // deck that runs dry mid-refill reshuffles exactly as it does between turns.
   const handLimit = handLimitFor(
-    { overlords, incorporated: state.incorporated }, p.factionId,
+    { overlords, incorporated }, p.factionId,
   );
   while (hand.length < handLimit && (deck.length > 0 || discard.length > 0)) {
     if (deck.length === 0) {
@@ -1558,22 +2200,22 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // Settlement income: a start-of-turn fact of holding land, not a play.
   // Silent - see the doc on `GameState.wealth` for why no event is logged.
   const income = wealthIncomeFor(viewOf(state), p.factionId);
-  const wealth = income > 0
-    ? {
-        ...state.wealth,
-        [p.factionId]: (state.wealth[p.factionId] ?? 0) + income,
-      }
-    : state.wealth;
+  if (income > 0) {
+    wealth = { ...wealth, [p.factionId]: (wealth[p.factionId] ?? 0) + income };
+  }
   // A land can change hands here - a claim answering, an army walking into a
   // flattened land, a dormant land's raid - so the run can END here, and this
   // is the one place `beginTurn` may set the phase. Last, after every store
   // above it has settled, because it reads the board rather than the play.
   const phase = endingFor(
-    { ...state, players, overlords }, p.id, events,
+    { ...state, players, overlords, incorporated }, p.id, events,
+    bossLost,
   ) ?? state.phase;
   return {
-    ...state, phase, players, overlords, wealth, marches, nextMarchId, claims,
-    defense, passives, pendingTransfers,
+    ...state, phase, players, overlords, incorporated, wealth, marches,
+    nextMarchId, claims,
+    defense, defenseMax, passives, pendingTransfers, rulers, gauntlet, act,
+    factionIds, foreign, adjacency, siteCaps, ethnicities,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
@@ -1586,8 +2228,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   };
 }
 
-/** Lands every march this seat declared a turn ago, and every counter standing
- *  against one of them.
+/** Lands every march of this seat's whose arrival turn has come, and every
+ *  counter standing against one of them.
  *
  *  Resolution is per AXIS: both directions of a clash come off the board
  *  together, and within the axis the armies pair off one for one, each pair
@@ -1597,6 +2239,10 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
  *  makes a counter-raid an answer rather than a trade, and leaving half a
  *  clash on the board would let the attacker's own resolution hit before the
  *  counter it provoked.
+ *
+ *  The pull-in is the OPPOSING end and never this end's own stragglers. An
+ *  arrow of the actor's still walking toward the same land is not part of the
+ *  clash it has not reached; it waits for the turn its own expiry names.
  *
  *  Pushes onto `events` and returns the moved stores; the caller owns the
  *  batch.
@@ -1634,11 +2280,22 @@ function resolveMarches(
    *  a second arrow of the same actor spent rather than a raid on a vassal. */
   const takenHere = new Map<string, string>();
 
-  // A march whose ground moved under it while it was in flight is dropped:
-  // the army has no land left to have marched out of, the land it was aimed at
-  // is no longer something its actor may attack, or the actor has knelt to
-  // whoever it was aimed at since. All three are the ordinary consequence of
-  // somebody else's turn, so they are reported.
+  // THE one place a march in flight is judged, and it runs on the turn the
+  // march LANDS. A march whose ground moved under it while it was in flight is
+  // dropped: the army has no land left to have marched out of, the land it was
+  // aimed at is no longer something its actor may attack, or the actor has
+  // knelt to whoever it was aimed at since. All three are the ordinary
+  // consequence of somebody else's turn, so they are reported - an arrow that
+  // vanishes with nothing said is the map lying about the board.
+  //
+  // Declared and landed, never in between. Two capture sites used to call the
+  // same rule off the moment a pyramid changed shape, which was indisting-
+  // uishable from this while every flight lasted one turn. An army now takes a
+  // turn per land it crosses and allegiance moves under it several times on
+  // the way, so a mid-flight test cancels arrows the player is still watching
+  // fly - and cancels them on relations that may well have changed back before
+  // the army would have arrived. What the board promises is that the arrow is
+  // there until it lands; what it may not promise is that landing is legal.
   //
   // The source test is two questions, not one. A polygon stays in its own
   // `fullRealmOf` even after it is annexed - the id is the land's, and the
@@ -1647,10 +2304,9 @@ function resolveMarches(
   // land its owner has lost.
   //
   // The third is the hostile keyword catching up with an arrow drawn before
-  // the pyramid changed shape. `callOffMarchesAgainstLord` answers the same
-  // question at the instant of a capture, for the one land being taken; this
-  // answers it for everybody else, every turn, which is what makes "never up
-  // your own chain" a rule rather than a check performed once.
+  // the pyramid changed shape. A land that became your sibling while your
+  // arrow was in the air is as much your own bloc as one that became your
+  // lord, and the arrow lapses for it rather than landing.
   const alive: typeof lapsed = [];
   for (const entry of lapsed) {
     const realm = fullRealmOf(entry.march.actor, state.overlords, state.incorporated);
@@ -1659,7 +2315,7 @@ function resolveMarches(
     if (
       realm.has(entry.march.from) && realm.has(holder) &&
       reach.has(entry.march.to) &&
-      !aimsUpOwnChain(view, entry.march.actor, entry.march.cardId, entry.march.to)
+      !aimsWithinOwnRealm(view, entry.march.actor, entry.march.cardId, entry.march.to)
     ) {
       alive.push(entry);
       continue;
@@ -1674,17 +2330,50 @@ function resolveMarches(
   }
   if (alive.length === 0) return { marches, defense };
 
-  // Only the axes the landing marches run along, but each taken WHOLE, so a
-  // counter still in flight is spent answering the attack it was declared
-  // against rather than surviving to strike an undefended land next turn.
-  const landing = new Set(alive.map((e) => axisKeyOf(e.march.from, e.march.to)));
+  // Only the axes the landing marches run along, and on each one only the
+  // arrows that are actually in the fight: everything arriving out of the
+  // landing end, plus the OPPOSING end whole.
+  //
+  // The opposing end whole is the counter rule - a counter still in flight is
+  // spent answering the attack it was declared against rather than surviving
+  // to strike an undefended land next turn, which is what makes a counter-raid
+  // an answer rather than a trade. It is a rule about the two ENDS meeting,
+  // and it says nothing about a second arrow of the actor's own.
+  //
+  // That distinction did not exist while every flight was one turn: nothing
+  // un-lapsed could sit on a landing axis except the counter. With a turn per
+  // land crossed, a source with two armies raiding one land on consecutive
+  // turns puts two of its own arrows on one axis with different arrival turns,
+  // and taking the axis whole landed tomorrow's blow today.
+  const arriving = new Set(alive.map((e) => e.key));
+  /** Axis key -> the source polygons whose arrows are landing on it. Every
+   *  entry of `alive` shares one actor, and no faction may aim at its own
+   *  home, so in practice this is one end - but it is read per end rather
+   *  than assumed, so a future two-ended case filters both. */
+  const landingFroms = new Map<string, Set<string>>();
+  for (const e of alive) {
+    const key = axisKeyOf(e.march.from, e.march.to);
+    const set = landingFroms.get(key) ?? new Set<string>();
+    set.add(e.march.from);
+    landingFroms.set(key, set);
+  }
   for (const axis of axesOf(marches)) {
-    if (!landing.has(axisKeyOf(axis.a, axis.b))) continue;
-    marches = clearMarches(marches, axis.keys);
+    const landing = landingFroms.get(axisKeyOf(axis.a, axis.b));
+    if (landing === undefined) continue;
+    // The store is keyed by the march's own id, so this is its key.
+    const inFight = (from: string, side: March[]): March[] =>
+      landing.has(from)
+        ? side.filter((m) => arriving.has(String(m.id)))
+        : side;
+    const fromA = inFight(axis.a, axis.fromA);
+    const fromB = inFight(axis.b, axis.fromB);
+    marches = clearMarches(
+      marches, [...fromA, ...fromB].map((m) => String(m.id)),
+    );
     // One pairing at a time, against the defense as the pairing before it left
     // it. That ordering is what lets two armies down one axis break a land and
     // then walk into it, the same way two armies down two axes already could.
-    for (const eng of resolveAxis(axis.a, axis.b, axis.fromA, axis.fromB)) {
+    for (const eng of resolveAxis(axis.a, axis.b, fromA, fromB)) {
       const contested = eng.fromA !== null && eng.fromB !== null;
       const strengthA = eng.fromA?.damage ?? 0;
       const strengthB = eng.fromB?.damage ?? 0;
@@ -1880,6 +2569,173 @@ export function keepPlaying(state: GameState): GameState {
   };
 }
 
+/** The player answers the pick: a duel opens against `enemyId`, with `stakeId`
+ *  of their own lands put up against it.
+ *
+ *  Two answers and one call, because they are one decision - which fight, and
+ *  what it is worth risking - and a run that could open a duel with the stake
+ *  still owed would be a duel whose losing condition does not exist yet.
+ *
+ *  Shaped like `keepPlaying` and `transferDefense`: an identity return is what
+ *  `commitDecision` reads as refused, so a pick naming a land the offer does
+ *  not hold - a stale modal, a wire message, a hand-edited record - changes
+ *  nothing rather than scoping the turn loop to a faction nobody may fight.
+ *  The offer is the authority and not `attackReach`, because the offer is what
+ *  the player was shown; it is re-read at every round wrap, so it is never
+ *  more than a round behind the board.
+ *
+ *  The STAKE is checked against `duelStakes` for the same reason, and it is
+ *  read fresh rather than carried on the offer: the candidates were computed
+ *  at a wrap and a stake is about the player's own realm, which their own turn
+ *  may have changed since.
+ *
+ *  **Every duel is staked, including the first one of a run.** It was optional
+ *  on a one-land realm first, and that was wrong twice over: losing your home
+ *  is vassalage rather than defeat, so the bet was never the run; and a duel
+ *  with nothing staked can only be WON, which left the opening duel of every
+ *  run with one ending. Measured on a real 44-turn run, that duel was still
+ *  going at the end and no duel had ever settled.
+ *
+ *  It moves the gauntlet and nothing else. The duel takes effect from the next
+ *  seat onward - the turn it was answered in is the player's own, and taking
+ *  it off them would be answering a question by skipping the asker. */
+export function pickDuel(
+  state: GameState, enemyId: string, stakeId: string,
+): GameState {
+  if (state.phase !== "playing") return state;
+  if (state.gauntlet.kind !== "picking") return state;
+  if (!state.gauntlet.candidates.includes(enemyId)) return state;
+  const home = humanFactionOf(state);
+  if (home === null) return state;
+  if (!duelStakes(viewOf(state), home, enemyId).includes(stakeId)) return state;
+  // **Nothing is healed here, and that was measured rather than assumed.**
+  // Making the wagered land ready as the duel opened - the mirror of
+  // `elevateBoss` healing a champion when it is summoned - moved the win rate
+  // not at all over 24 seeded runs, and it quietly overrode `defense=`: a boot
+  // param that put a land at 1 found it back at its ceiling a line later,
+  // because `duel=` is applied after it. A rule that buys nothing and breaks
+  // the one surface a browser check is built on is a rule not worth having.
+  return {
+    ...state,
+    gauntlet: {
+      kind: "duel", enemy: enemyId, staked: stakeId, decided: null,
+      // The offer says which fight this is. A boss offer holds exactly the
+      // boss, so answering one opens the fight that closes the act.
+      boss: state.gauntlet.boss,
+    },
+  };
+}
+
+/** The player answers the rest: one boon taken, and the act's boss offered.
+ *
+ *  The whole of the breath before a boss. It pays the boon, logs it, and turns
+ *  the rest into a FROZEN one-candidate offer - so the fight the prophecy named
+ *  is the fight the picker puts up, and the border moving in between cannot
+ *  swap it.
+ *
+ *  Shaped like `pickDuel`: an identity return is what `commitDecision` reads as
+ *  refused, so a boon the offer does not hold changes nothing.
+ *
+ *  It draws rng only on the card arm, and only to shuffle - the same one draw
+ *  the harvest's own grant makes, in the same place, so a seeded run's stream
+ *  depends on what was chosen rather than on what was offered. */
+export function pickBoon(
+  state: GameState, boon: Boon, rng: Rng,
+): GameState {
+  if (state.phase !== "playing") return state;
+  if (state.gauntlet.kind !== "rest") return state;
+  if (!state.gauntlet.boons.includes(boon)) return state;
+  const home = humanFactionOf(state);
+  if (home === null) return state;
+  const seat = state.players.find((pl) => pl.factionId === home);
+  const realm = fullRealmOf(home, state.overlords, state.incorporated);
+
+  let defense = state.defense;
+  let defenseMax = state.defenseMax;
+  let players = state.players;
+  const events: GameEvent[] = [];
+  let granted: string | undefined;
+
+  if (boon === "growth") {
+    defenseMax = {
+      ...defenseMax,
+      [home]: defenseMaxOf({ defense, defenseMax }, home) + BOON_GROWTH_AMOUNT,
+    };
+  }
+  // Mending walks the whole realm; growing touches the home land alone. Both
+  // end in the same heal and the same line, because what the player is owed is
+  // the number that MOVED - a land already at its ceiling takes nothing, and
+  // an event claiming the whole amount would drift the walk that feeds the log
+  // and the round summary for the rest of the run.
+  const mended = boon === "mend" ? [...realm] : boon === "growth" ? [home] : [];
+  for (const land of state.factionIds.filter((f) => mended.includes(f))) {
+    const before = defenseOf({ defense, defenseMax }, land);
+    defense = applyHeal(
+      { defense, defenseMax },
+      land,
+      defenseMaxOf({ defense, defenseMax }, land),
+    );
+    const moved = defenseOf({ defense, defenseMax }, land) - before;
+    if (moved <= 0) continue;
+    events.push({
+      turn: state.turn, playerId: seat?.id ?? 1, type: "healed",
+      targetFactionId: land, amount: moved,
+    });
+  }
+  if (boon === "card" && seat !== undefined) {
+    // `buildOffer` and not a pool of this module's own: the rest hands out a
+    // card from the player's own build, which is the harvest's question and
+    // has one answer. First in build order, deterministically, so a seeded
+    // replay grants the same card.
+    const [cardId] = buildOffer(seat);
+    if (cardId === undefined) return state;
+    granted = cardId;
+    players = updateFaction(players, home, (pl) => ({
+      ...pl, deck: shuffle([...pl.deck, cardId], rng),
+    }));
+  }
+  events.unshift({
+    turn: state.turn, playerId: seat?.id ?? 1, type: "boon-taken",
+    targetFactionId: home,
+    ...(granted === undefined ? {} : { cardId: granted }),
+  });
+  return {
+    ...state,
+    defense,
+    defenseMax,
+    players,
+    gauntlet: {
+      kind: "picking", candidates: [state.gauntlet.boss], boss: true,
+    },
+    log: appendEvents(state, events),
+  };
+}
+
+/** The player declines the whole offer. The border is not a to-do list, so
+ *  passing is a real answer - and it costs the world tick that a finished duel
+ *  costs, which is the price of a round spent not fighting anybody.
+ *
+ *  The same identity-return refusal as `pickDuel`, for the same reason. */
+export function declineDuel(state: GameState): GameState {
+  if (state.phase !== "playing") return state;
+  if (state.gauntlet.kind !== "picking") return state;
+  // A boss offer has no way past it. The act does not close until the fight
+  // that closes it is fought, so a decline here would be a decline of the act
+  // - and the offer would come straight back, which is a modal that reads as
+  // broken rather than as a rule. The screen says so rather than showing a
+  // button that does nothing.
+  if (state.gauntlet.boss) return state;
+  // `turn + 2`, and the 2 is the whole of the fix. A decline is answered
+  // MID-ROUND, on the player's own turn, which is the turn just after the
+  // wrap - so a tick ending at `turn + 1` is ended by the very next wrap and
+  // buys nothing: the same four tiles came back on the player's next turn,
+  // eleven turns running, and the world round a decline is supposed to cost
+  // was never spent. At `turn + 2` the round that follows this one runs
+  // unscoped in full and the offer returns at the wrap after it, which is the
+  // same one round a retiring duel spends.
+  return { ...state, gauntlet: { kind: "world-tick", until: state.turn + 2 } };
+}
+
 /** The injected tribute cards leave on every exit from vassalage, so a freed
  *  or poached faction never carries a stale demand into its next life. */
 const stripTribute = (p: PlayerState): PlayerState => ({
@@ -1950,7 +2806,48 @@ export function isHumanFaction(state: GameState, factionId: string): boolean {
   );
 }
 
-/** Whether this faction will never see a `beginTurn` of its own. Three
+/** Whether this faction wins its independence the moment its own turn starts.
+ *
+ *  ONE spelling, because two readers must agree about it. `beginTurn` APPLIES
+ *  the escape as the very first thing a turn does; `takesNoTurn` is asked one
+ *  line earlier, by `advance`, and has to judge the duel scope against the
+ *  realm the seat will be in once the escape has run. */
+export function escapesVassalage(
+  state: GameState, factionId: string,
+): boolean {
+  return state.overlords.has(factionId) &&
+    independenceGateOpen(viewOf(state), factionId);
+}
+
+/** `state.overlords` with this faction's pending escape already applied, for
+ *  the duel scope alone.
+ *
+ *  The escape moves a faction OUT of whichever realm was holding it, so a
+ *  vassal about to win its freedom is about to leave the fight. Asked of the
+ *  realm it is leaving, `advance` let it play a turn the scope forbids and
+ *  then corrected itself at the next wrap - the two-readers-disagree shape,
+ *  122 times over eight seeded 80-turn runs.
+ *
+ *  The consequence, stated rather than discovered: a vassal that has healed
+ *  back to its gate does not escape WHILE a duel runs, because a seat that
+ *  never sees a `beginTurn` never reaches the line that frees it. It escapes
+ *  at its first turn after the duel retires. A realm does not come apart
+ *  mid-fight, and the alternative - freeing it at the round wrap, the way a
+ *  dormant seat's arrows are landed there - would also start freeing seeded
+ *  leaderless vassals that have never escaped in this game's history.
+ *
+ *  Nothing outside a duel pays for this: the gate is a `viewOf` build and
+ *  this is asked once per seat in `advance`'s loop, so the cheap questions
+ *  come first. */
+function overlordsAfterEscape(state: GameState, factionId: string): Overlords {
+  if (state.gauntlet.kind !== "duel") return state.overlords;
+  if (!escapesVassalage(state, factionId)) return state.overlords;
+  const out = new Map(state.overlords);
+  out.delete(factionId);
+  return out;
+}
+
+/** Whether this faction will never see a `beginTurn` of its own. Four
  *  reasons, and they must be asked together, IN THIS ORDER:
  *
  *  An annexed people no longer has a seat to sit in, and that holds whoever
@@ -1958,11 +2855,38 @@ export function isHumanFaction(state: GameState, factionId: string): boolean {
  *  run, and exempting them here would leave everybody else waiting on a turn
  *  that can never be taken.
  *
- *  Otherwise nobody leads it. A conquest does not wake a land up - taking a
- *  land wins the land, not its people's allegiance to a chief who does not
- *  exist - UNLESS a person is sitting there, because a player skipped forever
- *  is not a rule, it is a hung game. A leaderless person still takes no LAND;
- *  that gate is `hasRuler` at the capture sites and is untouched.
+ *  Otherwise a PERSON always gets their turn, whichever seat they sit in and
+ *  whatever the run's shape says, because a player skipped forever is not a
+ *  rule, it is a hung game. It is stated before the two board reasons below
+ *  rather than folded into the leaderless one, which is where it used to sit:
+ *  a duel scopes the map to two realms, and a second person playing a seat on
+ *  neither side would otherwise be frozen out for twenty rounds by a fight
+ *  they are not in. A leaderless person still takes no LAND; that gate is
+ *  `hasRuler` at the capture sites and is untouched.
+ *
+ *  Then the duel scope, which answers in BOTH directions and is therefore two
+ *  of the four. It is asked HERE, third: after the annexed arm, because an
+ *  annexed seat is out of the run whatever the gauntlet says; after the human
+ *  arm, for the reason just above; and BEFORE the leaderless arm, because a
+ *  duel has to be able to still a faction that has a perfectly good chief -
+ *  stilling the leaderless is what the last arm already does, and a scope
+ *  asked after it would be a scope that never applied to anybody.
+ *
+ *  While a duel runs, a faction on NEITHER side takes no turn. And a faction
+ *  on the ENEMY's side takes one whether or not anybody leads it: this is the
+ *  only place in the game the leaderless arm below is bypassed. Outside a
+ *  duel a land with no chief still takes no turn and the grey middle is still
+ *  the grey middle. It is here because the offer cannot always find a
+ *  neighbour with a chief - a realm hemmed in by quiet lands is a shape the
+ *  map can still produce, rare as `QUIET_LANDS` now makes it - and an enemy
+ *  that never answers is twenty rounds of the map standing still, with
+ *  `duel-lost` unreachable. A leaderless enemy still takes no LAND; that gate is
+ *  `hasRuler` at the capture sites and is untouched, which is why beating one
+ *  ABSORBS it rather than swearing it (`absorbsDuelEnemy`).
+ *
+ *  Last, nobody leads it - and a land nobody has taken is the only kind that
+ *  stays that way, because `takeLand` seats a chief on the land it takes and
+ *  a woken vassal comes to the table.
  *
  *  ONE spelling, because two readers depend on the answer matching. `advance`
  *  passes over such a seat, and `beginTurn`'s round wrap lands the arrows it
@@ -1971,11 +2895,24 @@ export function isHumanFaction(state: GameState, factionId: string): boolean {
  *  somebody else now holds. The human arm belongs here for exactly that
  *  reason: spelled in `advance` alone, it exempted the first seat from the
  *  skip while the sweep still resolved a second person's marches at somebody
- *  else's turn start. */
+ *  else's turn start. The duel arm inherits that for free - a faction stilled
+ *  by the scope has its arrows landed by the same sweep, so a duel does not
+ *  freeze a third party's army in the air for twenty rounds.
+ *
+ *  The duel's own side is `humanFactionOf`, seat 0 - the run has one shape
+ *  and two people cannot be in different duels, the same reason `playingOn`
+ *  and `winSizeFor` read that seat. Who is ASKED and who is never skipped is
+ *  still `isHumanFaction`, plural, one line above. */
 export function takesNoTurn(state: GameState, factionId: string): boolean {
   if (factionId in state.incorporated) return true;
-  if (hasRuler(state.rulers, factionId)) return false;
-  return !isHumanFaction(state, factionId);
+  if (isHumanFaction(state, factionId)) return false;
+  const standing = duelStanding(
+    state.gauntlet, humanFactionOf(state), factionId,
+    overlordsAfterEscape(state, factionId), state.incorporated,
+  );
+  if (standing === "outside") return true;
+  if (standing === "theirs") return false;
+  return !hasRuler(state.rulers, factionId);
 }
 
 /** Whether this board ends the run, and how. Pushes the ending event onto
@@ -1998,10 +2935,15 @@ export function takesNoTurn(state: GameState, factionId: string): boolean {
 function endingFor(
   board: Pick<
     GameState, "factionIds" | "overlords" | "incorporated" | "players" |
-    "humanSeats" | "turn" | "playingOn"
+    "humanSeats" | "turn" | "playingOn" | "foreign"
   >,
   playerId: number,
   events: GameEvent[],
+  /** An act's boss took the land staked against it. Passed in rather than read
+   *  off the board, because it is a fact about a fight that has just RETIRED -
+   *  one line later the gauntlet has moved on and the board shows only a land
+   *  that changed hands, which is not the same thing. */
+  bossLost = false,
 ): GamePhase | null {
   const { overlords, incorporated } = board;
   const humanFaction = humanFactionOf(board);
@@ -2013,13 +2955,53 @@ function endingFor(
     });
     return "defeat";
   }
+  // Losing to an act's boss. Above the victory arm, the same order the
+  // incorporation arm keeps: defeat before victory, and the two cannot
+  // coincide.
+  if (bossLost && humanFaction !== null) {
+    events.push({
+      turn: board.turn, playerId, type: "defeat",
+      targetFactionId: humanFaction,
+    });
+    return "defeat";
+  }
+  const realm =
+    humanFaction === null
+      ? new Set<string>()
+      : fullRealmOf(humanFaction, overlords, incorporated);
+  // **The run is won by taking ground beyond the map, not by counting lands
+  // on it.** Half the map used to end the run; it SUMMONS the last act's boss
+  // now, and the only victory is the expedition that beats it - which is why
+  // `winSizeFor` is read as an act boundary above rather than as an ending
+  // here.
+  //
+  // The second arm is the safety valve and not a second win condition: a run
+  // where nothing was ever summoned - a border that offered no boss, a boot
+  // param that handed the player the map - would otherwise have no way to end
+  // at all. A player holding every land on the map with nothing beyond it has
+  // won by any reading.
+  // Lands ON THE MAP, so a power taken from beyond the frame does not count
+  // toward a bar measured in map lands - it would be one free land against a
+  // number the player reads off the scoreboard.
+  const homeHeld = [...realm].filter((f) => !board.foreign.includes(f)).length;
+  const wonTheExpedition =
+    board.foreign.length > 0 && board.foreign.every((f) => realm.has(f));
+  const nothingLeftOnTheMap =
+    board.foreign.length === 0 && homeHeld >= homeRoster(board);
+  // A run played ON past its ending is the one case still measured in lands,
+  // and through `winSizeFor` rather than a second reading of the roster - the
+  // one-bar rule: the number the scoreboard shows and the number this applies
+  // are the same call. The offer was taken, so the expedition is already won
+  // and would otherwise re-fire the instant the board was handed back.
+  const won = board.playingOn
+    ? humanFaction !== null && homeHeld >= winSizeFor(board, humanFaction)
+    : wonTheExpedition || nothingLeftOnTheMap;
   if (
     humanFaction !== null &&
     // Only a free faction wins: a vassal's realm is a strict subset of its
     // root's, so victory belongs to roots.
     !overlords.has(humanFaction) &&
-    fullRealmOf(humanFaction, overlords, incorporated).size >=
-      winSizeFor(board, humanFaction)
+    won
   ) {
     events.push({
       turn: board.turn, playerId, type: "victory",
@@ -2027,9 +3009,13 @@ function endingFor(
     });
     return "victory";
   }
+  // A power from beyond the frame is not racing anybody for the map and holds
+  // no ground on it, so it is skipped: left in, it would "unify" the instant
+  // it took enough lands to clear a bar it was never on.
   const unifier = board.factionIds.find(
     (f) =>
       f !== humanFaction &&
+      !board.foreign.includes(f) &&
       !(f in incorporated) &&
       !overlords.has(f) &&
       fullRealmOf(f, overlords, incorporated).size >= winSizeFor(board, f),
@@ -2123,6 +3109,10 @@ export function playCard(
   const armies = state.armies;
   let passives = state.passives;
   let defenseMax = state.defenseMax;
+  // A play can take a land - the other of the two allegiance doors - and a
+  // land moving between the duel's two realms decides the duel. The cycle
+  // itself does not turn here: that is the round wrap in `beginTurn`.
+  let gauntlet = state.gauntlet;
 
   // The reserve spends, computed against the PRE-play state. An attack play
   // cashes the whole omens stack at once; a Plague cashes the miasma stack.
@@ -2201,17 +3191,25 @@ export function playCard(
 
   /** One attack card committing one army. Emits `march-declared`, marking the
    *  moment the arrow appears and carrying the id the arrow is keyed on - the
-   *  damage on it is a promise about next turn, not a score that moved;
-   *  `march-resolved` is where the numbers go. Expiry is the src/timed.ts
-   *  convention, one turn out, which is this seat's next `beginTurn` whichever
-   *  seat it is. */
+   *  damage on it is a promise about the turn it lands, not a score that
+   *  moved; `march-resolved` is where the numbers go. Expiry is the
+   *  src/timed.ts convention, a turn out per land the army crosses, which is
+   *  one of this seat's own `beginTurn`s whichever seat it is. */
   const declareMarch = (
     from: string, to: string, spend: number, holdsArmy = true,
   ): void => {
+    // How far the army has to walk, and whether it may. Refused before
+    // anything is spent, which is the shape the play already had for a source
+    // with no free army: `marchSourcesAgainst` turned the whole play down at
+    // the top of `playCard`, so a pair out of range never reaches here and
+    // this is the same answer read a second time rather than a second rule.
+    const hops = marchHopsTo(view, from, to);
+    if (hops === null) return;
     // The spend comes off the source THE MOMENT the arrow appears, not when it
     // lands. That is the whole shape of the card: what it cost is on the map
-    // for a rival to read for the turn the arrow is in flight, and the number
-    // printed on the arrow is a promise precisely because it was already paid.
+    // for a rival to read for as long as the arrow is in flight, and the
+    // number printed on the arrow is a promise precisely because it was
+    // already paid. A long march is therefore a long time spent soft.
     defense = applyDamage({ defense, defenseMax }, from, spend);
     events.push({
       turn: state.turn, playerId: p.id, type: "levied",
@@ -2222,7 +3220,7 @@ export function playCard(
     marches = addMarch(marches, {
       id,
       actor: p.factionId, from, to, cardId, damage, holdsArmy,
-      expiry: state.turn + 1,
+      declared: state.turn, expiry: state.turn + hops,
     });
     events.push({
       turn: state.turn, playerId: p.id, type: "march-declared",
@@ -2268,12 +3266,37 @@ export function playCard(
    *  reason it is on `takeLand`. */
   const landSubjugation = (target: string, cause: SubjugationCause): void => {
     const formerLord = overlords.get(target);
+    // Before the move, for the reason the same call gives at `takeLand`: one
+    // line later `overlords` no longer knows which side the land was on.
+    gauntlet = duelDecidedBy(
+      gauntlet, humanFactionOf(state), target, p.factionId,
+      overlords, incorporated,
+    );
     // The target's own vassals come along: taking a lord takes its pyramid.
     overlords.set(target, p.factionId);
     // A land that has changed hands is no longer a land nobody holds, so the
     // statuses that said so go. What describes the ground - and the fact that
-    // this land has no ambitions of its own - stays.
+    // this land has no ambitions of its own - stays. Live at today's one
+    // caller: `no-successor` is `strippedOnCapture`, so this line does
+    // something every time landSubjugation runs.
     passives = stripOnCapture(passives, target);
+    // The same rule as an army arriving: a land that has changed hands has a
+    // chief. Spelled at both doors rather than inside `stripOnCapture`,
+    // because stripping a status and seating a leader are two facts and one
+    // of them is about to be a whole seat's behaviour - and the DOOR owns the
+    // invariant rather than whichever caller happens to run first.
+    //
+    // Inert at today's one caller: the no-successor assassination branch
+    // runs `replaceRuler` on this same target immediately above, which
+    // always seats a successor, so the chair is already occupied by the time
+    // this runs and `seatRuler` returns `rulers` unchanged. It stays anyway -
+    // a comment saying this door need not seat would be true only as long as
+    // `replaceRuler` keeps running first, and this codebase does not let a
+    // rule live in caller ordering.
+    rulers = seatRuler(
+      rulers, state.ethnicities, target, state.turn,
+      seatingAbilities(players, target),
+    );
     players = updateFaction(players, target, (pl) => {
       const clean = stripTribute(pl);
       return {
@@ -2287,28 +3310,17 @@ export function playCard(
       ...cause,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
-    // A land just taken cannot send its armies at its new lord, nor at anyone
-    // that lord answers to. The claim path in `beginTurn` says the same thing
-    // through the same predicate; both routes into a capture owe it, or which
-    // route took the land decides whether its raids fly on.
-    const chainView = { ...view, overlords, incorporated };
-    for (const [key, march] of Object.entries(marches)) {
-      if (
-        march.actor !== target ||
-        !aimsUpOwnChain(chainView, march.actor, march.cardId, march.to)
-      ) {
-        continue;
-      }
-      marches = clearMarches(marches, [key]);
-      events.push({
-        turn: state.turn, playerId: p.id, type: "march-lapsed",
-        cardId: march.cardId,
-        targetFactionId: march.to, sourceFactionId: march.from,
-        marchIds: [march.id],
-      });
-    }
+    // A land just taken keeps whatever it has in the air, including the arrows
+    // now aimed at its own new bloc. They are judged when they LAND - see the
+    // note on `resolveMarches` - and the ones that are still illegal then lapse
+    // there, with the same line, out of the one place that decides it.
   };
 
+  /** No `duelDecidedBy` here, and it is not an oversight: Incorporate aims at
+   *  the actor's OWN vassal (`vassalCard` in src/playability.ts), so the land
+   *  is already inside the actor's realm and is on the same side of a duel
+   *  before and after. A card that could digest somebody else's land would be
+   *  a third allegiance door and would owe the call. */
   const landIncorporation = (target: string): void => {
     overlords.delete(target);
     // A real rule, not defense: digesting a mid-lord frees its vassals.
@@ -2344,7 +3356,7 @@ export function playCard(
   } else if (isMarchCard(cardId) && targetId !== undefined && sourceId !== undefined) {
     // Declared, not landed. `declareMarch` runs the spend through
     // `attackDamageFor`, the same call the card tip quotes, so what the arrow
-    // promises and what lands next turn cannot drift.
+    // promises and what eventually lands cannot drift.
     declareMarch(sourceId, targetId, clampSpend(view, cardId, sourceId, opts?.spend));
   } else if (cardId === "great-raid" && targetId !== undefined) {
     // `greatRaidSpends` is the one list: legality asked its fan, the slider
@@ -2416,15 +3428,15 @@ export function playCard(
     }
   } else if (cardId === "plague") {
     const mult = plagueMultiplier(view, p.factionId);
-    for (const polygon of state.factionIds) {
+    // Hostile, and a Plague has no aim of its own - it lands wherever the
+    // actor's stacks already sit, which may include a land that was a rival
+    // when the stack was laid and is a lord or a sibling now. `plagueTargetsOf`
+    // is the one list of where that stays true; legality and the hover preview
+    // read the same list, so a card the player was told was playable, and told
+    // would deal a given total, cannot land anywhere else or for any less.
+    const targets = plagueTargetsOf(view, p.factionId);
+    for (const polygon of targets) {
       const stacks = disease[polygon]?.[p.factionId] ?? 0;
-      if (stacks === 0) continue;
-      // Hostile, and a Plague has no aim of its own - it lands wherever the
-      // actor's stacks already sit, which may include a land seeded before the
-      // actor knelt to anybody. The stacks stay where they are and burn
-      // nothing: a card whose keyword says it cannot strike upward must not
-      // find a back door through a stack laid last week.
-      if (aimsUpOwnChain(view, p.factionId, cardId, polygon)) continue;
       const damage = damageAfterTerrain(
         view, polygon, stacks * PLAGUE_DAMAGE_PER_STACK * mult,
       );
@@ -2439,39 +3451,35 @@ export function playCard(
         targetFactionId: polygon, amount: moved, stacksSpent: stacks,
       });
     }
-    // The same predicate the damage loop skipped on: a land the plague could
-    // not strike keeps its stacks, or the card would cost the actor its
+    // Only what the damage loop just walked is spent; a stack the plague
+    // could not strike keeps standing, or the card would cost the actor its
     // disease for nothing.
-    disease = clearDiseaseOf(
-      disease, p.factionId,
-      (polygon) => aimsUpOwnChain(view, p.factionId, cardId, polygon),
-    );
+    const struck = new Set(targets);
+    disease = clearDiseaseOf(disease, p.factionId, (polygon) => !struck.has(polygon));
   } else if (cardId === "foul-winds") {
     // One event per polygon whose ownership moved: the stacks the actor
     // GAINED there (the total held by others before the shift), plus the
     // per-loser breakdown the walk needs to zero each of THEIR counts too.
-    for (const polygon of state.factionIds) {
-      const owners = disease[polygon];
-      if (owners === undefined) continue;
-      // The same clause as the Plague above, for the same reason: claiming the
-      // stacks standing on a lord's land is how the NEXT plague would strike
-      // it, so a hostile card stops at the pyramid here too.
-      if (aimsUpOwnChain(view, p.factionId, cardId, polygon)) continue;
+    // `foulWindsTargetsOf` is the same filtered list as the Plague loop above,
+    // for the same reason - claiming the stacks standing on a peer's land is
+    // how the NEXT plague would strike it, so a hostile card stops at the
+    // realm here too, and legality already refused a play with nothing in it.
+    const targets = foulWindsTargetsOf(view, p.factionId);
+    for (const polygon of targets) {
+      const owners = disease[polygon] ?? {};
       const losses = Object.fromEntries(
         Object.entries(owners).filter(([owner]) => owner !== p.factionId),
       );
       const gained = Object.values(losses).reduce((sum, n) => sum + n, 0);
-      if (gained === 0) continue;
       events.push({
         turn: state.turn, playerId: p.id, type: "winds-shifted", cardId,
         targetFactionId: polygon, amount: gained, losses,
       });
     }
-    // The same predicate the event loop above skipped on, so the store and the
-    // log cannot disagree about which polygons the winds reached.
+    // Only what the event loop just walked changes hands.
+    const claimed = new Set(targets);
     disease = transferAllDiseaseTo(
-      disease, p.factionId,
-      (polygon) => aimsUpOwnChain(view, p.factionId, cardId, polygon),
+      disease, p.factionId, (polygon) => !claimed.has(polygon),
     );
   } else if (isSingleLandHeal(cardId) && targetId !== undefined) {
     // One branch for the whole class: which card it is decides only how much,
@@ -2652,6 +3660,7 @@ export function playCard(
     ...state, phase, players, overlords, incorporated, guards, omens, miasma,
     settlements, settlementsSpent, defense, defenseMax, disease, turnips,
     wealth, respites, rulers, marches, nextMarchId, claims, armies, passives,
+    gauntlet,
     log: appendEvents(state, events),
     // A standard turn is spent by its one play. An unlimited turn stays open
     // until the player says otherwise, even with an empty hand: a turn that

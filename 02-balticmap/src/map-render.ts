@@ -188,6 +188,11 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
   for (const n of data.neighbors) {
     const p = el("path");
     p.classList.add("neighbor");
+    // Keyed by its own id, so a power summoned onto one of these can be found
+    // and painted later. Every neighbour carries it, not only the one a region
+    // names: the lookup is then a fact about the markup rather than about
+    // which region happens to be loaded.
+    p.dataset.neighbor = n.id;
     p.setAttribute("d", n.path);
     neighborsGroup.appendChild(p);
   }

@@ -16,6 +16,7 @@ import {
 import {
   freeArmiesOn, type Armies, type Claims, type Marches,
 } from "./marches";
+import { hopsBetween, MAX_MARCH_HOPS } from "./adjacency";
 import { hasPassive, perArmyOn, type Passives } from "./passives";
 import { boostsKeyword, type LeaderAbilities } from "./abilities";
 import { activeExpiry } from "./timed";
@@ -54,6 +55,12 @@ export interface RulesView {
   incorporated: Incorporated;
   adjacency: Record<string, string[]>; // polygon id -> adjacent polygon ids
   factionIds: string[];
+  /** The faction ids that hold no ground on the map - powers summoned from
+   *  beyond the frame. `GameState.foreign`, projected. Read by
+   *  `duelCandidates`, which must not offer one as an ordinary neighbour: it
+   *  stands on the map an act before it is fought, and the fight it belongs to
+   *  is the one the run's last act names. */
+  foreign: string[];
   /** Polygon id -> the passive statuses it carries (src/passives.ts). Read by
    *  the damage sites, the income rule and the AI. */
   passives: Passives;
@@ -304,10 +311,12 @@ export function borderPolygonsOf(view: RulesView, actor: string): Set<string> {
  *  the full realm less what the actor holds outright (its own home and
  *  annexations), so a grand-vassal and a vassal's annexed land ride along.
  *
- *  DOWNWARD and sideways only. What this set does not answer is whether the
- *  actor may aim UP its own chain of lords, which it may not - see
- *  `aimsUpOwnChain`, asked separately by every surface that aims, because it
- *  is a fact about the CARD (the hostile keyword) and not about the map. */
+ *  REACH only. What this set does not answer is whether the actor may aim at
+ *  a peer of its own realm - a lord above it, or a land answering to the same
+ *  root - which it may not: see `aimsWithinOwnRealm`, asked separately by
+ *  every surface that aims, because it is a fact about the CARD (the hostile
+ *  keyword) and not about the map. Downward survives both, which is the point
+ *  of the vassal half above. */
 export function attackReach(view: RulesView, actor: string): Set<string> {
   const out = borderPolygonsOf(view, actor);
   const own = incorporatedRealmOf(actor, view.incorporated);
@@ -318,49 +327,75 @@ export function attackReach(view: RulesView, actor: string): Set<string> {
 }
 
 /** Whether a HOSTILE card played by `actor` may not touch `polygon`, because
- *  the polygon lies UP the actor's own pyramid of fealty: its overlord, that
- *  overlord's overlord to the root, or any land one of those lords has
- *  annexed. An annexed polygon is politically its annexer, which is why the
- *  question is asked of the annexer and not of the land's own id.
+ *  the polygon is a PEER inside the actor's own realm: up the chain at a lord
+ *  or at a land one of those lords annexed, or sideways at a land answering to
+ *  the same root without answering to the actor. An annexed polygon is
+ *  politically its annexer, which is why the question is asked of the annexer
+ *  and not of the land's own id.
  *
- *  Sideways and downward stay open, deliberately. A vassal may raid a fellow
- *  vassal, a fellow vassal's vassals, and its own - the pyramid is a chain of
- *  command, not a truce - and a lord keeps raiding its own vassals to hold
- *  them under the independence gate, which `attackReach` exists to allow and
- *  without which vassalage could not be kept at all.
+ *  One question rather than two, because up and sideways are the same fact -
+ *  the bloc fighting itself - and a bloc whose members raid each other reads
+ *  as the game behaving at random rather than as anybody's plan. Sideways only
+ *  became reachable when vassals started taking turns of their own; before
+ *  that a sibling raid was a shape no seat could produce.
  *
- *  The one spelling, asked by everything that aims: the targeting pass, the
- *  two-step march aim, the plague resolution, and the arrows already in flight
- *  when somebody's subjugation makes a rival into your lord. A rule enforced
- *  at one of those is a rule with three ways around it. */
-export function aimsUpOwnChain(
+ *  DOWNWARD is deliberately not here. A lord raiding its own vassal is upkeep:
+ *  it is how a vassal is held under the independence gate, which `attackReach`
+ *  exists to allow and without which vassalage could not be kept at all. So
+ *  the set is the ROOT's realm minus the ACTOR's own - exactly "everyone in my
+ *  pyramid who is not mine to discipline".
+ *
+ *  `fullRealmOf(actor, ...)` contains the actor itself, so a card aimed at the
+ *  actor's own land is not refused here and stays whatever legality already
+ *  said about it.
+ *
+ *  The one spelling, asked by everything that aims. Thirteen call sites over
+ *  five surfaces: the targeting pass, the two-step march aim, the Plague
+ *  resolution, the Foul winds resolution, and the arrows already in flight
+ *  when somebody's subjugation reshapes the pyramid under them. A rule
+ *  enforced at one of those is a rule with four ways around it, and the two
+ *  disease surfaces are the ones that look least like aiming: they walk every
+ *  polygon holding the actor's stacks rather than a list of targets, so a card
+ *  refused at the border would otherwise reach the same land through a stack
+ *  laid there last week. */
+export function aimsWithinOwnRealm(
   view: RulesView, actor: string, cardId: string, polygon: string,
 ): boolean {
   if (!isHostileCard(cardId)) return false;
   const political = view.incorporated[polygon] ?? polygon;
-  return overlordChainOf(actor, view.overlords).includes(political);
+  const chain = overlordChainOf(actor, view.overlords);
+  const root = chain.length > 0 ? chain[chain.length - 1] : actor;
+  if (!fullRealmOf(root, view.overlords, view.incorporated).has(political)) {
+    return false;
+  }
+  return !fullRealmOf(actor, view.overlords, view.incorporated).has(political);
 }
 
 /** Lands the actor could march an army OUT of: full-realm members holding a
- *  free army that border something the actor may attack. The tail of every
- *  arrow the actor can draw.
+ *  free army within marching distance of something the actor may attack. The
+ *  tail of every arrow the actor can draw.
  *
  *  The realm half is `fullRealmOf`, not `incorporatedRealmOf` - a lord marches
  *  out of its vassals' lands too, the same pyramid rule `attackReach` follows
- *  on the other end. */
+ *  on the other end.
+ *
+ *  "Faces something worth attacking" is `marchHopsTo` and not adjacency, the
+ *  same question `marchTargetsFrom` asks from the other end. A land whose only
+ *  legal target is two hops off is a legal tail, and a source list that said
+ *  otherwise would grey out a card whose map still offered the land. */
 export function marchSourcesFor(
   view: RulesView, actor: string, cardId = "raid",
 ): string[] {
-  const reach = attackReach(view, actor);
+  const reach = [...attackReach(view, actor)].filter(
+    (target) => !aimsWithinOwnRealm(view, actor, cardId, target),
+  );
   const realm = fullRealmOf(actor, view.overlords, view.incorporated);
   return view.factionIds.filter(
     (land) =>
       realm.has(land) &&
       freeArmiesFor(view, land) > 0 &&
       spendCeilingOn(view, cardId, land) >= MIN_RAID_SPEND &&
-      (view.adjacency[land] ?? []).some(
-        (adj) => reach.has(adj) && !aimsUpOwnChain(view, actor, cardId, adj),
-      ),
+      reach.some((target) => marchHopsTo(view, land, target) !== null),
   );
 }
 
@@ -403,18 +438,46 @@ export function greatRaidPool(
     .reduce((sum, m) => sum + spendCeilingOn(view, "great-raid", m.from), 0);
 }
 
+/** How many turns an army out of `source` spends reaching `land`, or null if
+ *  it may not go that far.
+ *
+ *  The ONE spelling of the question, and the one reader of `MAX_MARCH_HOPS`
+ *  outside the constant itself. Legality, the expiry the declaration sets and
+ *  the arrival the arrow prints all have to agree, and three copies of a hop
+ *  count is how they stop agreeing.
+ *
+ *  A land is never a march at itself, so 0 answers the same as out of range:
+ *  no arrow, whichever reason. The two are not worth telling apart anywhere -
+ *  every caller wants "may an army go, and how long does it take". */
+export function marchHopsTo(
+  view: RulesView, source: string, land: string,
+): number | null {
+  const hops = hopsBetween(view.adjacency, source, land, MAX_MARCH_HOPS);
+  return hops === null || hops === 0 ? null : hops;
+}
+
 /** What an army standing in `source` can be aimed at: everything in the
- *  actor's attack reach that `source` borders. An army marches to a
- *  neighbouring land, so the arrow is always one step long. */
+ *  actor's attack reach it can march to inside `MAX_MARCH_HOPS`. An arrow is
+ *  as long as the walk, and the walk costs a turn per land crossed - so the
+ *  far end of this list is a play whose arrow stands on the map for three
+ *  turns with the source left soft behind it the whole time. */
 export function marchTargetsFrom(
   view: RulesView, actor: string, source: string, cardId = "raid",
 ): string[] {
   const reach = attackReach(view, actor);
-  const adjacent = new Set(view.adjacency[source] ?? []);
   return view.factionIds.filter(
     (land) =>
-      reach.has(land) && adjacent.has(land) &&
-      !aimsUpOwnChain(view, actor, cardId, land),
+      reach.has(land) && marchHopsTo(view, source, land) !== null &&
+      !aimsWithinOwnRealm(view, actor, cardId, land),
+  );
+}
+
+/** Every land an army standing in `source` could walk to, distance alone -
+ *  no reach, no realm, no card. The set form of `marchHopsTo`, for the passes
+ *  that need the whole neighbourhood rather than one pair. */
+export function marchReachFrom(view: RulesView, source: string): Set<string> {
+  return new Set(
+    view.factionIds.filter((land) => marchHopsTo(view, source, land) !== null),
   );
 }
 
@@ -425,6 +488,12 @@ export function marchTargetsFrom(
  *  army sends one, so the card is a way to play several Raids at once rather
  *  than a fan across the frontier. Each arrow is its own axis, which is what
  *  makes it heavy: a counter-raid answers one of them and the rest land.
+ *
+ *  BORDERS, deliberately, and not `marchHopsTo` like the single-arrow cards.
+ *  A Raid chooses one land to send one army from and pays a turn per land
+ *  crossed; this card sends everything at once and cannot choose, so measuring
+ *  its fan in hops would empty half a realm at one land and land the arrows on
+ *  three different turns. The card's identity is the neighbourhood.
  *
  *  Order of play matters and is meant to. A land whose only army is already
  *  out on a march sends nothing, so a Raid declared first out of the same land
@@ -453,13 +522,14 @@ export function greatRaidMarches(
 }
 
 /** Which of the actor's lands could send an army at `target`. Empty means the
- *  target is in reach on the map but out of reach in fact: every land that
- *  borders it has its army already out. */
+ *  target is in reach on the map but out of reach in fact: every land within
+ *  marching distance of it has its army already out. */
 export function marchSourcesAgainst(
   view: RulesView, actor: string, target: string,
 ): string[] {
-  const adjacent = new Set(view.adjacency[target] ?? []);
-  return marchSourcesFor(view, actor).filter((land) => adjacent.has(land));
+  return marchSourcesFor(view, actor).filter(
+    (land) => marchHopsTo(view, land, target) !== null,
+  );
 }
 
 /** What the actor's held omens readings multiply an attack card by:
@@ -595,6 +665,48 @@ export function plagueDamageOn(
   return stacks * PLAGUE_DAMAGE_PER_STACK * plagueMultiplier(view, actorFactionId);
 }
 
+/** The polygons a Plague played by `actor` would actually land on right now:
+ *  every polygon holding one of the actor's own stacks, minus whatever
+ *  `aimsWithinOwnRealm` refuses a hostile card to strike - a stack sitting on
+ *  a lord or a sibling stays where it is and burns nothing.
+ *
+ *  The one list, read by legality (a Plague with stacks only in the refused
+ *  set is `no-disease`, not playable), the resolution (exactly the polygons
+ *  it damages and clears), the AI's cash-out and gate-hunting arithmetic, and
+ *  the hover preview. That last one is the reason this exists as a function
+ *  and not four copies of the same filter: a heal's amount is read by the
+ *  play AND by the hover so the preview cannot promise what the card will
+ *  not do (see the fortify rules in AGENTS.md), and a Plague's total is the
+ *  same promise one card over. Four hand-rolled sums of "which polygons can
+ *  this actually reach" is how the hover ended up quoting damage the card
+ *  could never deal. */
+export function plagueTargetsOf(view: RulesView, actor: string): string[] {
+  return view.factionIds.filter(
+    (polygon) =>
+      (view.disease[polygon]?.[actor] ?? 0) > 0 &&
+      !aimsWithinOwnRealm(view, actor, "plague", polygon),
+  );
+}
+
+/** The polygons Foul winds played by `actor` would actually claim stacks
+ *  from right now: every polygon holding somebody ELSE's disease, minus
+ *  whatever `aimsWithinOwnRealm` refuses the card to reach. The same shape as
+ *  `plagueTargetsOf`, for the same reason - legality, the resolution's
+ *  gain/loss walk and the AI's `theirs` tally all asked this filter
+ *  separately before this existed. Foul winds has no hover preview to point
+ *  at it too; if one is ever added, it belongs here rather than as a fifth
+ *  copy. */
+export function foulWindsTargetsOf(view: RulesView, actor: string): string[] {
+  return view.factionIds.filter((polygon) => {
+    if (aimsWithinOwnRealm(view, actor, "foul-winds", polygon)) return false;
+    const owners = view.disease[polygon];
+    return (
+      owners !== undefined &&
+      Object.entries(owners).some(([owner, n]) => owner !== actor && n > 0)
+    );
+  });
+}
+
 /** Localized outbreak's splash: every neighbour of the target polygon except
  *  polygons of the actor's own full realm, and except anything up the actor's
  *  own chain of lords. Indiscriminate otherwise - third parties are hit, which
@@ -613,7 +725,7 @@ export function outbreakPolygons(
   return (view.adjacency[targetPolygon] ?? []).filter(
     (p) =>
       !realm.has(p) &&
-      !aimsUpOwnChain(view, actorFactionId, "localized-outbreak", p),
+      !aimsWithinOwnRealm(view, actorFactionId, "localized-outbreak", p),
   );
 }
 
@@ -665,6 +777,9 @@ export type TargetBlockReason =
    *  `at-full-defense` because the land does still want the heal - it is the
    *  settlement that is spent, and it comes back next turn. */
   | { code: "no-settlement" }
+  /** A hostile card aimed at a peer of the actor's own realm - a lord above
+   *  it, or a land answering to the same root. `aimsWithinOwnRealm` is the
+   *  rule; the name is shorthand for the fealty structure, not for one link. */
   | { code: "liege" }
   | { code: "incorporated" }
   | { code: "self" }
@@ -719,14 +834,19 @@ export function targetEligibilityFor(
   const inward = isInwardCard(cardId);
   const vassalCard = cardId === "incorporate";
 
-  // Every polygon a free army of the actor's borders, computed once for the
-  // whole pass rather than per candidate: `marchSourcesFor` walks the realm,
-  // and Raid asks the question 26 times.
+  // Every polygon a free army of the actor's could march to, computed once for
+  // the whole pass rather than per candidate: `marchSourcesFor` walks the
+  // realm, and Raid asks the question 26 times.
+  //
+  // `marchReachFrom` and not the source's neighbours: an army walks up to
+  // `MAX_MARCH_HOPS`, so a land three deep is a land this card has an army
+  // for, and a set built off adjacency would call it armyless while the aim
+  // offered it.
   const sources =
     isMarchCard(cardId)
       ? new Set(
           marchSourcesFor(view, actorFactionId).flatMap(
-            (land) => view.adjacency[land] ?? [],
+            (land) => [...marchReachFrom(view, land)],
           ),
         )
       : null;
@@ -751,12 +871,17 @@ export function targetEligibilityFor(
     if (cardId === "assassinate-ruler" && (view.leaders[factionId] !== true)) {
       reasons.push({ code: "no-ruler" });
     }
-    // Never up your own pyramid. The `hostile` keyword is the whole of the
-    // rule - see `aimsUpOwnChain` - and it subsumes the Subjugate cycle rule
-    // that used to stand here alone: a Subjugate aimed at a liege would set
-    // `overlords[target] = actor` and close a loop, and Subjugate is hostile,
-    // so the same block catches it.
-    if (aimsUpOwnChain(view, actorFactionId, cardId, factionId)) {
+    // Never at a peer of your own realm. The `hostile` keyword is the whole
+    // of the rule - see `aimsWithinOwnRealm` - and it subsumes the Subjugate
+    // cycle rule that used to stand here alone: a Subjugate aimed at a liege
+    // would set `overlords[target] = actor` and close a loop, and Subjugate is
+    // hostile, so the same block catches it.
+    //
+    // The code stays `liege` now that a sibling is refused too. It was always
+    // shorthand for the fealty structure rather than for one link - a lord's
+    // annexed land is no more a liege than a sibling is - and the explanation
+    // it renders states both halves.
+    if (aimsWithinOwnRealm(view, actorFactionId, cardId, factionId)) {
       reasons.push({ code: "liege" });
     }
     if (cardId === "subjugate") {
@@ -897,6 +1022,11 @@ export type CardBlockReason =
    *  `repeatGroup`). Says nothing about this card: it is the turn that is out,
    *  not the card that is illegal. */
   | { code: "turn-spent" }
+  /** Nobody sits in this faction's chair. A land with no chief is normally a
+   *  land that takes no turn, so this was unreachable prose - until two
+   *  seats started acting without one: a person whose ruler was assassinated
+   *  with no successor, and a duel enemy, which fights chief or no chief. */
+  | { code: "no-ruler" }
   | { code: "no-target" }
   | { code: "unavailable" };
 
@@ -922,6 +1052,17 @@ export function cardBlockReason(
   // used to be here on the grounds that a 0-reading play was a wasted turn
   // rather than an illegal one; it is a targeted heal now and falls through
   // to the ordinary no-target rule with the rest of them.
+  // A card whose effect is about the ruler needs one sitting there. Asked of
+  // `CardDef.needsRuler` rather than by name, so the rule is in the wire
+  // fingerprint with every other legality dial. `playCard` reads the actor's
+  // ruler through `rulerOf`, which THROWS on a vacant chair, so this is
+  // legality and not flavour: a leaderless seat that takes a turn - a person
+  // whose ruler was assassinated with no successor, or a duel enemy fighting
+  // without one - would otherwise crash the run on a card its own hand called
+  // playable.
+  if (card.needsRuler === true && view.leaders[factionId] !== true) {
+    return { code: "no-ruler" };
+  }
   if (
     cardId === "grow-crops" || cardId === "favourable-omens" ||
     cardId === "miasma" || cardId === "war-council" ||
@@ -939,41 +1080,49 @@ export function cardBlockReason(
       : null;
   }
   // The two attack cards answer the same two questions in the same order: is
-  // there anything to hit, and is there an army free to send at it. The border
-  // question first, because a realm surrounded by its own lands has nothing to
+  // there anything to hit, and is there an army free to send at it. The reach
+  // question first, because a realm with nothing left in reach has nothing to
   // raid however many armies it is sitting on.
   // Both filter what a hostile card may not be aimed at before counting, or a
   // vassal whose only neighbour is its own lord would be told its raid was
   // playable and then offered nothing to aim it at.
+  // `attackReach` and not `borderPolygonsOf`, the same set the per-target pass
+  // scores: the reach includes the actor's own vassals, and a lord whose only
+  // fannable target is one of them is playing the card for exactly the reason
+  // the rule keeps legal - holding a vassal under the independence gate. Read
+  // off the border alone, the card was greyed while its map still offered the
+  // land.
   if (cardId === "great-raid") {
-    const border = [...borderPolygonsOf(view, factionId)].filter(
-      (t) => !aimsUpOwnChain(view, factionId, cardId, t),
+    const reach = [...attackReach(view, factionId)].filter(
+      (t) => !aimsWithinOwnRealm(view, factionId, cardId, t),
     );
-    if (border.length === 0) return { code: "no-target" };
-    return border.some((t) => greatRaidMarches(view, factionId, t).length > 0)
+    if (reach.length === 0) return { code: "no-target" };
+    return reach.some((t) => greatRaidMarches(view, factionId, t).length > 0)
       ? null
       : { code: "no-army" };
   }
   if (isMarchCard(cardId)) {
     const reach = [...attackReach(view, factionId)].filter(
-      (t) => !aimsUpOwnChain(view, factionId, cardId, t),
+      (t) => !aimsWithinOwnRealm(view, factionId, cardId, t),
     );
     if (reach.length === 0) return { code: "no-target" };
     return marchSourcesFor(view, factionId, cardId).length > 0
       ? null
       : { code: "no-army" };
   }
+  // Neither disease card is aimed, so legality asks the same reachable-target
+  // lists the resolution and the hover preview read - a card whose only
+  // stacks sit where `aimsWithinOwnRealm` refuses would otherwise tell a seat
+  // it was playable, take its turn and move nothing at all.
   if (cardId === "plague") {
-    const held = Object.values(view.disease).some(
-      (owners) => (owners[factionId] ?? 0) > 0,
-    );
-    return held ? null : { code: "no-disease" };
+    return plagueTargetsOf(view, factionId).length > 0
+      ? null
+      : { code: "no-disease" };
   }
   if (cardId === "foul-winds") {
-    const any = Object.values(view.disease).some((owners) =>
-      Object.values(owners).some((n) => n > 0),
-    );
-    return any ? null : { code: "no-disease" };
+    return foulWindsTargetsOf(view, factionId).length > 0
+      ? null
+      : { code: "no-disease" };
   }
   if (cardId === "harvest-feast") {
     const damaged = [

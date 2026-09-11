@@ -24,22 +24,30 @@ describe("the passive table", () => {
     }
   });
 
-  it("strips exactly the statuses that describe an unheld land", () => {
+  it("strips exactly the statuses that describe a land nobody holds, plus the champion", () => {
     const stripped = Object.values(PASSIVES)
       .filter((d) => d.strippedOnCapture)
       .map((d) => d.id)
       .sort();
-    expect(stripped).toEqual(["keeps-to-itself", "no-successor", "wild-lands"]);
+    expect(stripped).toEqual([
+      "keeps-to-itself", "no-successor", "regional-leader", "wild-lands",
+    ]);
   });
 
-  it("wakes a taken land up - the quiet set is exactly what capture strips", () => {
+  it("wakes a taken land up - the quiet set is what capture strips, less the champion", () => {
     // The whole quiet set goes on capture: its people join the game as their
     // new lord's vassal, with turns and a deck. That is also what makes "only
     // unheld lands raid on their own" a fact about the status rather than a
     // second rule written down somewhere.
+    //
+    // `regional-leader` is stripped too and is deliberately NOT in the quiet
+    // set: it describes a seat the game raised up to be beaten rather than a
+    // land nobody holds, and it is put on by `elevateBoss` rather than at
+    // seeding. Taking it ends the elevation, which is why it strips - a land
+    // that kept it would carry a boss's defenses into every fight after.
     expect([...QUIET_PASSIVES].sort()).toEqual(
       Object.values(PASSIVES)
-        .filter((d) => d.strippedOnCapture)
+        .filter((d) => d.strippedOnCapture && d.id !== "regional-leader")
         .map((d) => d.id)
         .sort(),
     );

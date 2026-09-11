@@ -721,6 +721,114 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
         tone: "good" as const,
       })),
   },
+  "duel-won": {
+    kind: "modal",
+    // The local seat's own spoils and nobody else's. Not gated on
+    // `e.playerId !== localPlayerId` the way the damage rules are, for the
+    // reason `independence` is not: the player pressed nothing at this moment
+    // - the duel retired itself at a round wrap - so this is news to them even
+    // though the event carries their own id.
+    appliesToHuman: (e, _ctx, localPlayerId = 1) => e.playerId === localPlayerId,
+    lines: (events, changes, _ctx) =>
+      events.map((e, i) => ({
+        text: [
+          t("The duel with "), faction(e.sourceFactionId ?? ""),
+          t(" is won"),
+          ...(e.wealth === undefined
+            ? [t(" - the spoils come home")]
+            : [t(` - ${e.wealth} wealth comes home`)]),
+        ],
+        changes: changesFor(i, changes),
+        tone: "good" as const,
+      })),
+    footnotes: () => [[
+      t("The whole map takes one turn now, and then a fresh offer comes "),
+      t("round."),
+    ]],
+  },
+  // The two un-won endings, in the same shape and the same footer as the win.
+  // A duel is a promise the run settles, so every way it settles is news: the
+  // player who is told nothing is left to infer that the last fight ended from
+  // the next offer appearing, which is not a settlement at all.
+  "duel-lost": {
+    kind: "modal",
+    // The local seat's own fight. Not gated on somebody else having acted,
+    // for the reason the win is not: the duel retired itself at a round wrap,
+    // so this is news even on the player's own id.
+    appliesToHuman: (e, _ctx, localPlayerId = 1) => e.playerId === localPlayerId,
+    lines: (events, changes) =>
+      events.map((e, i) => ({
+        text: [
+          t("The duel with "), faction(e.sourceFactionId ?? ""),
+          t(" is lost - the land you staked changed hands, and there are no "),
+          t("spoils"),
+        ],
+        changes: changesFor(i, changes),
+        tone: "bad" as const,
+      })),
+    footnotes: () => [[
+      t("The whole map takes one turn now, and then a fresh offer comes "),
+      t("round."),
+    ]],
+  },
+  // The rare ending, and never the player's doing: the fight lost one of its
+  // two ends - the enemy was annexed by somebody else, or the staked land left
+  // the realm without the enemy taking it - so neither land can settle it any
+  // more. It says WHY rather than only that it ended, because a fight that
+  // stops with nothing said reads as the run losing track of itself.
+  "duel-void": {
+    kind: "modal",
+    appliesToHuman: (e, _ctx, localPlayerId = 1) => e.playerId === localPlayerId,
+    lines: (events, changes) =>
+      events.map((e, i) => ({
+        text: [
+          t("The duel with "), faction(e.sourceFactionId ?? ""),
+          t(" settles nothing - what it was fought over is gone, so neither "),
+          t("side takes anything"),
+        ],
+        changes: changesFor(i, changes),
+        tone: "neutral" as const,
+      })),
+    footnotes: () => [[
+      t("The whole map takes one turn now, and then a fresh offer comes "),
+      t("round."),
+    ]],
+  },
+  // The prophecy: the one line in a run that says something is COMING. It is
+  // the whole of "unmissable" - a boss the player only meets by walking into
+  // it is a boss that reads as the game changing the rules mid-run - so it is
+  // a modal even though nothing on the board has moved yet.
+  //
+  // Gated on the local seat's own id rather than on somebody else having
+  // acted, for the reason the duel endings are: the act's exit was reached at
+  // a round wrap and there is no rival play to hang it on.
+  "boss-foretold": {
+    kind: "modal",
+    appliesToHuman: (e, _ctx, localPlayerId = 1) => e.playerId === localPlayerId,
+    lines: (events, changes) =>
+      events.map((e, i) => ({
+        text: [
+          t("The next fight is foretold: "), faction(e.targetFactionId ?? ""),
+          t(" stands between your realm and the rest of the map, and it has "),
+          t("been made ready for you"),
+        ],
+        changes: changesFor(i, changes),
+        tone: "bad" as const,
+      })),
+    footnotes: () => [[
+      t("Take one thing for the road, then the fight. There is no way "),
+      t("round this one."),
+    ]],
+  },
+  // The player picked it on a modal, so telling them what they chose teaches
+  // nothing - the same reason the harvest's own pick is silent. What the boon
+  // DID is not silent: mending and growing push `healed` lines that carry
+  // their own numbers, and the card is named in the log.
+  "boon-taken": {
+    kind: "silent",
+    reason: "the player picked it on the rest modal; the log carries it, and " +
+      "what it healed rides on `healed` lines of its own",
+  },
   "harvest-picked": {
     kind: "silent",
     // The pick is public - the log names the card for every seat, the same

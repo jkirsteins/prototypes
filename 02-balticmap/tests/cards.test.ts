@@ -9,6 +9,7 @@ import {
   upgradesInto,
   type CardDef, type CardRules,
 } from "../src/cards";
+import { MAX_MARCH_HOPS } from "../src/adjacency";
 import {
   COMBAT_RULES, capturesOnArrival, RAID_SPEND_FRACTION, SINGLE_LAND_HEAL,
 } from "../src/defense";
@@ -26,7 +27,7 @@ describe("cards", () => {
     const expectProps = (
       id: string, name: string, targeted: boolean, secret: boolean,
       maxPerDeck: number | null, deckBuildable: boolean, forced: boolean,
-      text: string, wealthCost?: number,
+      text: string, wealthCost?: number, needsRuler?: boolean,
     ) => {
       LISTED.push(id);
       const {
@@ -35,6 +36,7 @@ describe("cards", () => {
       expect(rest).toEqual({
         id, name, targeted, secret, maxPerDeck, deckBuildable, forced, text,
         ...(wealthCost !== undefined ? { wealthCost } : {}),
+        ...(needsRuler !== undefined ? { needsRuler } : {}),
       });
     };
     expectProps(
@@ -44,15 +46,16 @@ describe("cards", () => {
     // Build A - Warpath.
     expectProps(
       "raid", "Raid", true, false, null, true, false,
-      "Send an army at a bordering land, spending up to HALF that land's " +
-      "defense. It lands next turn for what you spent, " +
-        "less any counter-raid.",
+      "Send an army at a land your realm can reach, out of any land of " +
+      "yours up to three away, spending up to HALF the source land's " +
+      "defense. It marches a turn for every land it crosses and lands for " +
+        "what you spent, less any counter-raid.",
     );
     expectProps(
       "great-raid", "Great raid", true, false, null, true, false,
       "Every land of yours bordering one land raids it, one army each, " +
-      "spending defense you divide between them. Each " +
-        "lands next turn like a Raid, answered separately.",
+      "spending defense you divide between them. They are all neighbours, " +
+        "so unlike a Raid every arrow lands next turn, answered separately.",
     );
     expectProps(
       "favourable-omens", "Favourable omens", false, false, null, true, false,
@@ -62,12 +65,17 @@ describe("cards", () => {
       "war-council", "War council", false, false, null, true, false,
       "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - " +
         "what their leadership is worth is up to what they can do with it.",
+      // The one card that needs a chief in the chair: its effect is about
+      // the ruler, and a leaderless seat that takes a turn is a real state
+      // now (a duel enemy, an assassinated person with no successor).
+      undefined, true,
     );
     expectProps(
       "strong-raid", "Strong raid", true, false, null, true, false,
-      "Send an army at a bordering land, spending as much of that land's " +
-      "defense as you like. It lands next turn for what you spent, " +
-        "less any counter-raid.",
+      "Send an army at a land your realm can reach, out of any land of " +
+      "yours up to three away, spending as much of the source land's " +
+      "defense as you like. It marches a turn for every land it crosses " +
+        "and lands for what you spent, less any counter-raid.",
     );
     expectProps(
       "strong-fortify", "Strong fortify", true, false, null, true, false,
@@ -154,6 +162,24 @@ describe("cards", () => {
     // The table above IS the roster: a card added to CARDS without a row here
     // fails, so nothing ships property-unreviewed.
     expect([...LISTED].sort()).toEqual(Object.keys(CARDS).sort());
+  });
+
+  it("does not promise a single-arrow raid lands next turn", () => {
+    // An army takes a turn for every land it crosses, and a raid may be sent
+    // as far as `MAX_MARCH_HOPS`, so "a bordering land" and "lands next turn"
+    // were both false the moment travel time shipped. A card tip the board
+    // contradicts is worse than no tip - the player reads it once and then
+    // plays against a rule they were told wrong.
+    for (const id of ["raid", "strong-raid"]) {
+      expect(CARDS[id].text, id).not.toContain("lands next turn");
+      expect(CARDS[id].text, id).not.toContain("bordering land");
+      expect(CARDS[id].text, id).toContain("a turn for every land it crosses");
+    }
+    // Great raid's fan is bordering lands BY CONSTRUCTION - see
+    // `greatRaidMarches` - so its arrows really do all land next turn, and it
+    // now says why rather than pointing at a Raid that no longer does.
+    expect(CARDS["great-raid"].text).toContain("lands next turn");
+    expect(CARDS["great-raid"].text).toContain("neighbours");
   });
 
   it("keeps textSegments and text saying the same thing", () => {
@@ -346,19 +372,19 @@ describe("builds and the neutral pool", () => {
     for (const id of spends) expect(repeatGroupOf(id)).not.toBeNull();
   });
 
-  it("pins the hostile set - every card that may not be aimed up your chain", () => {
+  it("pins the hostile set - every card that may not be aimed at your realm", () => {
     // A literal, so the set cannot grow or shrink without somebody reading the
     // rule it turns on: a card that does harm and is left OUT of this set can
-    // still be aimed at the actor's own overlord, and nothing else in the tree
-    // would say so. Untargeted plagues are in it too - they resolve over a set
-    // of lands rather than at one, and `plagueTargets` skips the same chain.
+    // still be aimed at the actor's own overlord or its siblings, and nothing
+    // else in the tree would say so. Untargeted plagues are in it too - they
+    // resolve over a set of lands rather than at one, and skip the same realm.
     const hostile = Object.keys(CARDS).filter(isHostileCard).sort();
     expect(hostile).toEqual([
       "assassinate-ruler", "foul-winds", "great-raid", "localized-outbreak",
       "plague", "raid", "spread-disease", "strong-raid", "subjugate",
     ]);
-    // Nothing that heals, builds or grows is hostile: a card aimed inward
-    // cannot be aimed up anything.
+    // Nothing that heals, builds or grows is hostile: a card aimed inward is
+    // aimed at your own realm by definition.
     for (const id of INWARD_CARDS) expect(isHostileCard(id)).toBe(false);
   });
 
@@ -646,8 +672,8 @@ describe("the wire's card fingerprint", () => {
     const behaviour = Object.entries(CARD_FIELD_KIND)
       .filter(([, kind]) => kind === "behaviour").map(([f]) => f).sort();
     expect(behaviour).toEqual([
-      "deckBuildable", "forced", "id", "keywords", "maxPerDeck", "secret",
-      "targeted", "wealthCost",
+      "deckBuildable", "forced", "id", "keywords", "maxPerDeck", "needsRuler",
+      "secret", "targeted", "wealthCost",
     ]);
   });
 
@@ -707,6 +733,17 @@ describe("the wire's card fingerprint", () => {
     expect(cardRulesHash(tweaked({
       combat: { ...COMBAT_RULES, subjugationGate: 0.25 },
     }))).not.toBe(base);
+  });
+
+  it("moves when how far an army may march moves", () => {
+    // A legality dial outside the hash is the divergence the hash exists to
+    // refuse: two deploys differing on it shake hands and then disagree about
+    // which lands a Raid may be aimed at and what the aim preview draws.
+    const base = cardRulesHash();
+    expect(cardRulesHash(tweaked({ maxMarchHops: MAX_MARCH_HOPS + 1 })))
+      .not.toBe(base);
+    // And the table quotes the constant rather than a copy of its value.
+    expect(CARD_RULES.maxMarchHops).toBe(MAX_MARCH_HOPS);
   });
 
   it("keeps the hashed capture rule and the predicate saying one thing", () => {

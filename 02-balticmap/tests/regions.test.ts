@@ -6,7 +6,7 @@ import {
 import { loadRegionPref, saveRegionPref, REGION_PREF_KEY, memoryStorage } from "../src/meta";
 import { viewBoundsOf } from "../src/view";
 import {
-  chooseBuild, MAX_ACTIVE, newGame, pickFaction, startGame, type GameState,
+  chooseBuild, QUIET_LANDS, newGame, pickFaction, startGame, type GameState,
 } from "../src/game";
 import { fullRealmOf, isUnheld } from "../src/relations";
 import {
@@ -192,10 +192,11 @@ describe("a region that opens with realms", () => {
         expect(hasPassive(g.passives, land, id), `${land} ${id}`).toBe(false);
       }
     }
-    // The free lands still keep to themselves: 24 less the human's seat, the
-    // four drawn rivals and the nine already held.
+    // The free lands that keep to themselves are exactly the quiet draw: a
+    // held land is not one of them, which is what the loop above asserts, and
+    // every other free land now has a chief.
     const quiet = g.factionIds.filter((f) => !playsTurns(g.passives, f));
-    expect(quiet).toHaveLength(10);
+    expect(quiet).toHaveLength(QUIET_LANDS);
   });
 
   it("offers a seat to no land inside a realm", () => {
@@ -208,7 +209,11 @@ describe("a region that opens with realms", () => {
     for (const seed of [1, 2, 3, 7, 11]) {
       const g = dealIberia(seed, "toledans");
       const acting = g.factionIds.filter((f) => hasRuler(g.rulers, f));
-      expect(acting, `seed ${seed}`).toHaveLength(MAX_ACTIVE);
+      // Every free land less the quiet draw: a realm's members are not
+      // seatable, so a region that opens with realms seats fewer than a bare
+      // one of the same size.
+      const free = g.factionIds.filter((f) => !heldLands(g).includes(f));
+      expect(acting, `seed ${seed}`).toHaveLength(free.length - QUIET_LANDS);
       for (const land of acting) {
         expect(heldLands(g), `seat ${land} on seed ${seed}`).not.toContain(land);
       }

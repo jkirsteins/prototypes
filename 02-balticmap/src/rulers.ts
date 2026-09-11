@@ -25,8 +25,9 @@ export interface Ruler {
  *
  *  The vacancy is the whole difference between a faction that plays and one
  *  that does not - `advance` skips a faction with no ruler, and that is the
- *  only test anywhere. Grey lands start vacant; the five players do not, and
- *  cannot become vacant, because `replaceRuler` always seats a successor. */
+ *  only test anywhere. Grey lands START vacant and stop being vacant the
+ *  moment somebody takes them (`seatRuler`); a seated faction never becomes
+ *  vacant, because `replaceRuler` always seats a successor. */
 export type Rulers = Record<string, Ruler>;
 
 const GENERIC: readonly string[] = genericNames as string[];
@@ -102,8 +103,10 @@ export function initialRulers(
 }
 
 /** Empties every seat except the ones named. What makes a land unplayable:
- *  no leader, so no turn, so no cards - even after somebody takes it, which
- *  is why a conquest is property rather than a new player at the table. */
+ *  no leader, so no turn, so no cards - until somebody takes it, and then
+ *  `seatRuler` gives its people a chief and the quiet land joins the table as
+ *  its new lord's vassal. The vacancy is where a land STARTS, not a mark that
+ *  it can never play. */
 export function vacateRulers(rulers: Rulers, seated: readonly string[]): Rulers {
   const out: Rulers = {};
   for (const [factionId, ruler] of Object.entries(rulers)) {
@@ -136,8 +139,45 @@ export function rulerOf(rulers: Rulers, factionId: string): Ruler {
   return ruler;
 }
 
-/** The only writer. Returns both names so the caller can record what
- *  happened without asking twice and risking a different answer. */
+/** Seats a leader where nobody sat. The OTHER writer, and not a special case
+ *  of `replaceRuler`: that one is a succession and reads the dead ruler
+ *  through `rulerOf`, which throws on a vacant seat.
+ *
+ *  A land that has changed hands gets one of these, which is the whole of what
+ *  makes a vassal act - `takesNoTurn` asks `hasRuler` and nothing else. The
+ *  fields are stated rather than inherited because there is nobody to inherit
+ *  from: a fresh name no living ruler holds, `since` at the turn the land
+ *  fell, leadership 0, and whatever abilities its people's own build brings.
+ *  Abilities are handed in rather than looked up so this module stays a leaf
+ *  that knows nothing about decks or seats.
+ *
+ *  An occupied chair is returned untouched, so a caller does not have to ask
+ *  first: a land taken from a lord who was already leading it keeps its
+ *  leader, and a conquest is not an assassination. */
+export function seatRuler(
+  rulers: Rulers,
+  ethnicities: Record<string, string>,
+  factionId: string,
+  turn: number,
+  abilities: readonly string[],
+): Rulers {
+  if (rulers[factionId] !== undefined) return rulers;
+  const taken = new Set(Object.values(rulers).map((r) => r.name));
+  return {
+    ...rulers,
+    [factionId]: {
+      name: rulerNameFor(factionId, ethnicities[factionId], turn, taken),
+      since: turn,
+      leadership: 0,
+      ...(abilities.length > 0 ? { abilities: [...abilities] } : {}),
+    },
+  };
+}
+
+/** The succession writer: this ruler is dead and another takes the chair.
+ *  `seatRuler` is the other one, for a chair nobody was sitting in. Returns
+ *  both names so the caller can record what happened without asking twice and
+ *  risking a different answer. */
 export function replaceRuler(
   rulers: Rulers,
   ethnicities: Record<string, string>,

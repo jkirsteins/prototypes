@@ -29,6 +29,13 @@ export interface ScreenFacts {
   harvestOpen: boolean;
   /** A conquest of the local seat's is waiting for its defenders. */
   transferOwed: boolean;
+  /** The gauntlet is asking THIS screen something: which fight comes next, or
+   *  which boon to take into the act's last one. One fact and not two, because
+   *  they are one question in two screens on one overlay - see `askDuelPick`
+   *  in src/main.ts - and a second flag would be a second lock to keep in step
+   *  with it. False on a guest, whose answer would have nowhere to go - see
+   *  the `pick-duel` route. */
+  pickOwed: boolean;
   /** The seat on turn is the one this screen plays. */
   localTurn: boolean;
 }
@@ -48,7 +55,10 @@ export function actionBlock(
   action: PlayerAction, state: GameState, facts: ScreenFacts,
 ): string | null {
   if (facts.busy) return "the round is still resolving";
-  const owed = facts.harvestOpen || facts.transferOwed
+  // The pick joins the two questions already here rather than being spelled
+  // beside them at a call site: a hand that renders live and swallows the
+  // click is what a term the renderer cannot read produces, every time.
+  const owed = facts.harvestOpen || facts.transferOwed || facts.pickOwed
     ? "answer the question on screen first"
     : null;
   switch (action) {
@@ -86,6 +96,10 @@ export interface ReaskFacts {
   /** A conquest of the local seat's is waiting, and this screen has not given
    *  up on it. */
   transferOwed: boolean;
+  /** The gauntlet is asking this screen something - `ScreenFacts.pickOwed`,
+   *  the same fact, computed once by the caller so the lock and the modal
+   *  cannot disagree about whether an answer is owed. */
+  pickOwed: boolean;
 }
 
 /** Whether an owed question should be put back on screen now.
@@ -108,4 +122,23 @@ export function shouldReask(state: GameState, facts: ReaskFacts): boolean {
   // seen the update yet.
   if (facts.overlayOpen || facts.awaitingWire) return false;
   return facts.transferOwed;
+}
+
+/** Whether the duel picker should be on screen now.
+ *
+ *  Not folded into `shouldReask`, because it is not a reconciliation: the pick
+ *  has no one-shot route to lose. `picking` is a STATE the engine holds until
+ *  somebody answers, so "should it be up" is simply read off the board every
+ *  time the screen settles, and asking twice is impossible - the second ask
+ *  finds the overlay already open.
+ *
+ *  It queues BEHIND the conquest question deliberately. That one is about the
+ *  board the player was just shown and holds a transition stage open until it
+ *  is answered; this one is about the round after next. Two modals share one
+ *  overlay, so the order is the whole of which is seen first. */
+export function shouldAskPick(state: GameState, facts: ReaskFacts): boolean {
+  if (state.phase !== "playing") return false;
+  if (facts.overlayOpen || facts.awaitingWire) return false;
+  if (facts.transferOwed) return false;
+  return facts.pickOwed;
 }

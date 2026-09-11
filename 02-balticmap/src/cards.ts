@@ -1,3 +1,4 @@
+import { MAX_MARCH_HOPS } from "./adjacency";
 import {
   COMBAT_RULES, RAID_SPEND_FRACTION, SINGLE_LAND_HEAL, type CombatRules,
 } from "./defense";
@@ -78,6 +79,21 @@ export interface CardDef {
    *  `playCard` deducts it at the moment of play, unconditionally. The costed
    *  set is pinned to a literal in tests/cards.test.ts. */
   wealthCost?: number;
+  /** Whether a chief has to be sitting in the actor's chair for this to be
+   *  legal. Absent = no.
+   *
+   *  Data rather than a branch naming a card, for the reason `wealthCost` is:
+   *  a legality dial has to reach `cardRulesHash`, or two deploys shake hands
+   *  and then disagree about which of the player's cards is playable. It is
+   *  read once, by `cardBlockReason` in src/playability.ts.
+   *
+   *  Only a card whose EFFECT is about the ruler needs it, and there is
+   *  exactly one: `playCard` reads the actor's ruler through `rulerOf`, which
+   *  throws on a vacant chair. It was unreachable prose while a leaderless
+   *  land took no turn, and stopped being when two of them started acting - a
+   *  person whose ruler was assassinated with no successor, and a duel enemy,
+   *  which fights chief or no chief. */
+  needsRuler?: boolean;
   /** The keywords this card carries - the names of the CLASSES of cards it
    *  belongs to. What each class means is the keyword's business, not the
    *  card's: see `KEYWORDS`. A card says which classes it is in and nothing
@@ -104,13 +120,13 @@ export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Nothing happens. Enough of these earn a Turnip harvest.",
     textSegments: [t("Nothing happens. Enough of these earn a "), card("turnip-harvest"), t(".")] },
   // Build A - Warpath.
-  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a bordering land, spending up to HALF that land's defense. It lands next turn for what you spent, less any counter-raid." },
-  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Every land of yours bordering one land raids it, one army each, spending defense you divide between them. Each lands next turn like a Raid, answered separately.",
-    textSegments: [t("Every land of yours bordering one land raids it, one army each, spending defense you divide between them. Each lands next turn like a "), card("raid"), t(", answered separately.")] },
+  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a land your realm can reach, out of any land of yours up to three away, spending up to HALF the source land's defense. It marches a turn for every land it crosses and lands for what you spent, less any counter-raid." },
+  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Every land of yours bordering one land raids it, one army each, spending defense you divide between them. They are all neighbours, so unlike a Raid every arrow lands next turn, answered separately.",
+    textSegments: [t("Every land of yours bordering one land raids it, one army each, spending defense you divide between them. They are all neighbours, so unlike a "), card("raid"), t(" every arrow lands next turn, answered separately.")] },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next raid or fortify card counts double. Stacks.",
     textSegments: [t("Your next "), keyword("raid"), t(" or "), keyword("fortify"), t(" card counts double. Stacks.")] },
-  "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - what their leadership is worth is up to what they can do with it." },
-  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a bordering land, spending as much of that land's defense as you like. It lands next turn for what you spent, less any counter-raid." },
+  "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, needsRuler: true, rarity: "common", text: "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - what their leadership is worth is up to what they can do with it." },
+  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a land your realm can reach, out of any land of yours up to three away, spending as much of the source land's defense as you like. It marches a turn for every land it crosses and lands for what you spent, less any counter-raid." },
   "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 3 defense to one of your lands." },
   "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 2 defense to one of your lands." },
   // Build B - Pestilence. Stacks are owned: each rival's disease on a land is
@@ -322,18 +338,21 @@ export interface KeywordDef {
    *  run out of nothing: `freeSettlementsIn` in src/playability.ts is the
    *  reader, and `beginTurn` hands the settlements back. */
   spendsSettlement?: true;
-  /** The card does somebody harm, and therefore cannot be aimed UP the actor's
-   *  own pyramid of fealty: not at its overlord, not at that overlord's
-   *  overlord, not at any land those lords have annexed. Sideways and downward
-   *  stay open - a vassal may raid a fellow vassal, that vassal's vassals, and
-   *  its own.
+  /** The card does somebody harm, and therefore cannot be aimed at a PEER of
+   *  the actor's own realm: not at its overlord, not at that overlord's
+   *  overlord, not at anything else answering to the same root, not at any land
+   *  one of them has annexed. Downward stays open - a lord may raid its own
+   *  vassals and their vassals, which is how a vassal is held under the
+   *  independence gate. `aimsWithinOwnRealm` in src/playability.ts is the rule;
+   *  this flag is what it asks about.
    *
    *  A KEYWORD and not a list of ids, because the rule has to be asked by
    *  everything that aims: the targeting pass, the two-step march aim, the
-   *  arrows already in flight when a subjugation changes who your lord is, and
-   *  the untargeted plagues that resolve over a set of lands. A list would
-   *  have been the eight-places problem `MARCH_CARDS` records, and the failure
-   *  is silent: a card left out is a card that can still stab upward. */
+   *  arrows already in flight when a subjugation reshapes the pyramid under
+   *  them, and the untargeted Plague and Foul winds that resolve over a set of
+   *  lands. A list would have been the eight-places problem `MARCH_CARDS`
+   *  records, and the failure is silent: a card left out is a card that can
+   *  still stab its own side. */
   hostile?: true;
 }
 
@@ -350,7 +369,7 @@ export const KEYWORDS: Readonly<Record<string, KeywordDef>> = {
     id: "hostile",
     name: "Hostile",
     noun: "hostile card",
-    text: "Cannot be aimed up your own chain of fealty: not at your overlord, nor at anyone they answer to, nor at land those lords have annexed. A fellow vassal, their vassals and your own are all fair game.",
+    text: "Cannot be aimed at your own realm: not at your overlord, nor at anyone they answer to, nor at anyone else under the same crown, nor at land any of them have annexed. Your own vassals and their vassals are still fair game - holding them under the independence gate is a lord's own business.",
     hostile: true,
   },
   unique: {
@@ -502,6 +521,7 @@ export const CARD_FIELD_KIND: Record<keyof Required<CardDef>, "behaviour" | "pro
   deckBuildable: "behaviour",
   forced: "behaviour",
   wealthCost: "behaviour",
+  needsRuler: "behaviour",
   keywords: "behaviour",
   name: "prose",
   text: "prose",
@@ -531,6 +551,11 @@ export interface CardRules {
   builds: Record<Strategy, readonly string[]>;
   upgrades: Readonly<Record<string, UpgradeCost>>;
   marchCards: ReadonlySet<string>;
+  /** How far an army may march (`MAX_MARCH_HOPS`, src/adjacency.ts). Not a
+   *  card table and here anyway, for the reason `combat` is: it decides which
+   *  lands every march card may be aimed at, so two deploys that disagree
+   *  about it disagree about what those cards do. */
+  maxMarchHops: number;
   guards: Readonly<Record<string, string>>;
   tributeCards: readonly string[];
   /** What a blow BUYS, as against what a card carries: the gates, and the rule
@@ -548,6 +573,7 @@ export const CARD_RULES: CardRules = {
   builds: BUILDS,
   upgrades: UPGRADES,
   marchCards: MARCH_CARDS,
+  maxMarchHops: MAX_MARCH_HOPS,
   guards: GUARDS,
   tributeCards: TRIBUTE_CARDS,
   combat: COMBAT_RULES,
@@ -580,6 +606,7 @@ export function cardRulesHash(rules: CardRules = CARD_RULES): string {
     `builds:${stable(rules.builds)}`,
     `upgrades:${stable(rules.upgrades)}`,
     `march:${[...rules.marchCards].sort().join(",")}`,
+    `hops:${rules.maxMarchHops}`,
     `guards:${stable(rules.guards)}`,
     `tribute:${[...rules.tributeCards].sort().join(",")}`,
     `combat:${stable(rules.combat)}`,
