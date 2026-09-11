@@ -108,11 +108,16 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   the old one, and the region panel says what the cell offers first.
 - **Orders belong to a camp.** Walk into a new region and its list is
   empty; come back and the old list resumes.
-- **A big north.** The world is about 540 by 390 km, the shape of the far
-  north: sea and fjords to the northwest, a fell spine inland, lakes and bog
-  to the east. It is generated as you touch it, so loading is instant.
-  Regions are about 4 km across; country you have never entered is fog, and
-  the next valley over is dimly seen. The map is always centred on you;
+- **A big north.** The world is about 540 by 667 km, real ground from 61 N
+  to 67 N: height in metres above the sea, valleys cut by erosion and
+  drainage rather than drawn in, lakes that each have an outlet, streams and
+  rivers running down to fjords on the west coast, stone exposed at the
+  rate real geology gives it, and the treeline set by latitude and distance
+  from the sea. Solving that takes a few seconds at the start of a run,
+  shown by a loading bar; after that, the map and regions are still built
+  as you touch them, the same as before. Regions are about 4 km across;
+  country you have never entered is fog, and the next valley over is
+  dimly seen. The map is always centred on you;
   the fog is per cell, not per region: what you have walked is a thread
   through the black, and what the eye reaches from where you stand is a
   blot around it. Closed spruce shows you the ground underfoot and no
@@ -513,6 +518,7 @@ limit could never reveal.
     npm run test:slow
     npm run build
     npm run weather:profile
+    npm run terrain
 
 `npm test` is the commit gate and stays under twenty seconds; it excludes
 `tests/slow/`, which holds the runs measured in whole simulated seasons -
@@ -560,7 +566,17 @@ and `fog-frame-b.png` hold the same frozen simulation minute and visibility
 footprint 3.2 real seconds apart; only presentation animation continues.
 
 `scripts/mapstats.ts` prints a downsampled view of the whole world and its
-terrain shares: `npx vite-node scripts/mapstats.ts 42`.
+terrain shares, plus the full-resolution water kinds, stream count, rock
+share and a height histogram: `npx vite-node scripts/mapstats.ts 42`.
+
+`npm run terrain` is the realism report: for seeds 42, 1 and 7 it solves
+(or reads the cached solve) and prints each measure from the
+terrain-hydrology spec's section 6 beside its real target - distance from
+land to water, lake share, the largest river mouths, coastline length,
+exposed rock by band, bog share by latitude, valley bearings, mean slope
+per class and the solve time. `npm run terrain -- <seed>` runs one seed;
+`npm run terrain -- --time` runs the older stage-by-stage timing spike
+instead of the report.
 
 `npm run reference` runs the day-one order list a competent player would
 write, headless, on five seeds, about ten seconds; the gate is alive and

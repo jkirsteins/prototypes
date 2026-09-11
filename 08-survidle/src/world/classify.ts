@@ -100,7 +100,7 @@ export const FLAG_FORD = 2;
 /** Mean discharge above this is a river about 50 m wide at bankfull: its own terrain, crossed on ice or at a ford. */
 export const RIVER_M3S = 40;
 /** A brook that runs all year. */
-export const STREAM_M3S = 0.05;
+export const STREAM_M3S = 0.02;
 /** A river cell dropping faster than this to its receiver is a riffle a walker can ford. */
 export const FORD_GRADIENT = 0.005;
 /** Slopes above this (20 degrees) shed their soil. */
@@ -111,10 +111,13 @@ const SPRUCE_LAT_LIMIT = 66;
 
 /** Bare rock share by band; the highest applicable rate wins. */
 function rockRate(coastKm: number, slope: number, underTreeline: number): number {
-  let rate = 0.04;
-  if (coastKm < 1) rate = 0.30;
-  if (slope > STEEP && rate < 0.25) rate = 0.25;
-  if (underTreeline >= 0 && underTreeline < 100 && rate < 0.35) rate = 0.35;
+  // The soil noise is not a uniform 0..1 draw (two octaves of value noise cluster
+  // near 0.5), so a rate here is not the resulting rock share; it is set higher
+  // than the target share to land on it against the noise's real distribution.
+  let rate = 0.15;
+  if (coastKm < 1) rate = 0.40;
+  if (slope > STEEP && rate < 0.38) rate = 0.38;
+  if (underTreeline >= 0 && underTreeline < 100 && rate < 0.45) rate = 0.45;
   return rate;
 }
 
@@ -166,7 +169,7 @@ export function classify(hydro: HydrologyResult, seed: number, w: number, h: num
     const underTreeline = treeline - hm;
     if (hm > treeline) { terrain[i] = TERRAIN_INDEX.fell; continue; }
     if (soil < rockRate(coastKm, slope, underTreeline)) { terrain[i] = TERRAIN_INDEX.rock; continue; }
-    if (slope < 0.02 && wetness > 0.6 && p > 0.3) { terrain[i] = TERRAIN_INDEX.bog; continue; }
+    if (slope < 0.02 && wetness > 0.5 && p > 0.2) { terrain[i] = TERRAIN_INDEX.bog; continue; }
     if (underTreeline < 60 || (coastKm < 3 && soil < 0.5)) { terrain[i] = TERRAIN_INDEX.meadow; continue; }
     const spruceAllowed = coastKm > SPRUCE_COAST_KM && lat < SPRUCE_LAT_LIMIT;
     if (underTreeline < 150 || coastKm < 10 || (m > 0.55 && !spruceAllowed)) { terrain[i] = TERRAIN_INDEX.birch; continue; }
