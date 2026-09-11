@@ -88,6 +88,18 @@ is why B is not optional, why every away death has to be one the
 forecast showed, and why the re-run rate is the first bar above.
 Punishing is the aim; unfair is the failure mode.
 
+**Nature is the enemy.** There are no other humans in this world and
+there never will be; what pushes back on the survivor is the north
+itself. Every threat, every raid on the larder and every stretch of
+ground the forest takes back is nature acting, and every structure,
+store, trail and stretch of worked ground is a stake held against it.
+When an item needs an antagonist to be legible - something that takes
+territory, something that comes for what is stored, something that makes
+a border mean anything - it is the land, the weather and the animals,
+never a rival, a raider or a neighbour. The model is written here so no
+item borrows a human enemy for convenience, and so a player can be told
+in four words what they are up against.
+
 Calibration targets for the sim, to steer by rather than to hit exactly:
 
 - A first run dies inside 20 days. A player who has learned the loop

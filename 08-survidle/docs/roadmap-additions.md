@@ -877,3 +877,199 @@ None of these blocks anything; each is a polish item or a question.
   discovery notice; the starlight walk-sign test does not pin that its
   midnight is brighter than pitch dark, so an overcast moonless night turns
   it into a copy of the dark case.
+
+## Nature is the enemy: the camp, the stake and the idle layer
+
+**Raised** 2026-09-11, in a design conversation on why the idle layer is
+the weakest part of the game after the 09-07 and 09-10 playtests. The
+mental model itself is now in the roadmap's "What we are optimising for"
+section. Everything below is a candidate; each carries a verdict, add,
+consider later, or do not add, and the reason.
+
+### The diagnosis
+
+Three things the idle genre depends on are missing, and neither playtest
+rejected idle as such:
+
+- **No ratchet.** Idle games run on a quantity that only goes up, whose
+  rate the player improves. Survival is homeostasis: when it works,
+  nothing happens. Skills are invisible hours, Lineage pays only on death,
+  and camp is a short ladder.
+- **No return moment.** `catchUp` in `src/sim/save.ts` returns a log and a
+  per-order tally. That is a report, not a payoff, and it can be "you
+  died while the tab was closed."
+- **Unauthored autonomy.** Both testers accepted indirect control (RimWorld
+  and Dwarf Fortress came up unprompted) and rejected acts they had not
+  written the rule for. The 09-10 tester's own line: those games have
+  indirect control without being idle games.
+
+The answer that keeps realism is **extension, not intensification**. The
+unrealistic ratchet makes one hectare yield more; the honest ones work
+more hectares, bank more months, know more country, carry more
+generations and cut the odds of dying. Four of those five are in the tree.
+Proposed as a rule for "Rules that hold across all eight" once an item
+below lands: no number in the game rises by making a fixed real quantity
+(a day's kilocalories, a working day, a hectare's yield) larger.
+
+### Games to play, and what to take from each
+
+- **Loop Hero.** No control over the hero at all; the player shapes the
+  world he walks and decides when to retreat with the loot. Autonomy is
+  pleasant because the player authored the environment. The nearest
+  shipped answer to the control contract question.
+- **Kittens Game.** The one mainstream idle game that is a survival idle.
+  Storage caps make returning necessary rather than permitted, and the
+  season is the check-in clock; winter kills kittens.
+- **This War of Mine.** The night scavenging run is an away period the
+  player authored, with a destination, a risk and a haul, and a report on
+  return that is a story. That is what "away" should mean here.
+- **RimWorld.** The work-priority tab and the thought ledger: state as an
+  itemised list of signed causes, thresholds drawn on the bar, the reason
+  attached to the greyed affordance, and an override that is always
+  available and visibly temporary.
+- **Oxygen Not Included.** The daily report as a return moment for a game
+  that never stops.
+- **Increlution.** A survival incremental with short runs, death, carried
+  knowledge and earned automation; this game's lineage model with the
+  attention curve already solved.
+- **Cultist Simulator.** Real time, a hunger timer that must be fed, and
+  nothing starts without the player placing it. The control contract from
+  the other direction.
+- **Frostpunk.** One meaningful decision a day and the rest is watching;
+  the heat map is a painted stake against the cold with no claimant.
+
+### Add
+
+**1. Two views, camp and survivor.** A top-level view switch, not a map
+control. Camp view centres on the camp, shows what stands and what is
+stored, and carries the camp-scoped orders: build, keeps on stores, the
+trap line, the fire, hauling. Survivor view is the current page, with the
+body-scoped and field-scoped orders: gear, travel, hunt, forage, explore.
+One order list; the view chooses which end of it is shown. Camp view needs
+a camp picker, which is also how a second camp founded by accident (09-07,
+notes 223-224) becomes a feature. The camp view must still show danger to
+the survivor. The reason to build it: camp view is what the player does
+while the survivor sleeps or is away. The 09-10 tester spent sixteen
+minutes looking for a wake button; the answer is not an override but
+something to do with those minutes. Extends item 3 and the UI pass.
+
+**2. Placed improvements.** A camp improvement is placed on the map as a
+ghost, awaiting its build, and not only added to the queue. Most of it
+exists: `src/sim/tasks.ts` writes `build[sid] = 0.001` on the camp site
+the moment a build order starts, `Site.build` keeps progress between
+visits, `RegionState.sites` is keyed by cell, and orders already carry a
+target cell in `req.where`. The work is to let placement choose the cell,
+create the entry at placement rather than at start, and draw it. Four
+rules: a ghost carries its blockers (needs 40 logs, have 12; needs
+Building 10; on peat, wants a platform); a ghost and its order are one
+object, so reordering, cancelling and rank show on both; placement is
+where the ground model teaches itself, since the cost changes as the
+ghost moves over peat, rock and snow; and only things that occupy ground
+get a ghost, so hanging meat on the rack stays a plain order. Ghosts and
+part-built structures survive death: an heir inherits the predecessor's
+intent, which answers the 09-07 record's design question 4 (a day-5 death
+leaves a camp not worth inheriting). This is the answer to the 09-07
+record's design question 6, what the map is for. Extends item 3.
+
+**3. The camp sheet: producers and stores.** One sheet listing each
+producer with its rate (`PRODUCERS` in `src/sim/capabilities.ts`: snares,
+drying rack, basket trap, water trough, seep; snares are resource
+colonies of the camp and stay visible from it) and each store with held,
+cap and what is spoiling (rack space, the woodpile, vessels, a cellar or
+cache when built). No abstract capacity number: the caps are the ones the
+sim has, `RACK_MAX_KG` times `site.racks`, `MAX_SNARES`, the vessels' litres,
+and `capabilities.ts` already words them as `limits`. Each store gets one
+rung of expansion. Caps are lossy, not merely full: meat spoils, an
+unchecked trap line loses its catch after `SNARE_CATCH_MAX_AGE`, the fire
+dies, water freezes, so returning is pressed for by the north and not by
+a timer. Two headline numbers, both camp-scoped and both honest: person-
+days of food banked, and the forecast's survival odds at a horizon (item B
+already computes "7 of 10"). The away report reads against this sheet: the
+snares took four hares and lost two, the rack is full and two days off
+drying. Extends items 3 and B.
+
+**4. The stake, and nature reclaiming it.** A painted area on the map
+measuring how much ground the survivor holds against the north. One rule
+for what colours a cell: used in the last N days, where used means walked,
+worked, trapped, built on or fetched from; the camp core is permanent
+while a structure stands. The paint fades on the fog's own clock (tier 3,
+"visited once, since forgotten," is already nature taking knowledge
+back). Ground whose upkeep has fallen under a threshold, or whose
+structures have collapsed for lack of it, turns half-painted: a reminder
+of territory once held and lost. The upkeep is already priced,
+`STRUCTURE_LIFE_DAYS` and the two-thirds re-roofing rule, so the stake's
+size is bounded by one person's labour and not by a number. The painted
+area is the game's territorial ratchet; it goes up only by keeping more
+ground in use. Extends item 6.
+
+**5. Raids that scale with the larder, and the raised cache.** Item 4
+already names bear, wolverine, fox and ravens taking meat from the rack,
+the pile and the shelter. The addition is the coupling: raid pressure
+rises with what is banked, so the ratchet in 3 is what draws nature in,
+and growing the stake forces the next piece of capital. That capital is
+the raised cache, the Sami njalla or the Norwegian stabbur, a storehouse
+on a post; it is already in item 3's buildings list as "raised cache or
+cellar" and this gives it its threat. Extends items 3 and 4.
+
+**6. A pack range that follows its prey.** Wolves live in patches and the
+winter loop thins the deer and elk; tie them together so a pack's range
+moves toward the camp in December, because its prey is gone, and eases in
+May. Drawn as a second paint, the danger paint, in its own colour: the
+stake is what the player holds, the danger paint is what holds against
+them, and one colour cannot say both. At night the fire's rings are the
+third edge, the heat border, already on the map. Extends item 4.
+
+### Consider later
+
+**7. Zone painting as control.** Scope standing orders to painted zones:
+"fell trees, forever" in this woodlot; "keep camp at 20 kg berries" from
+this heath; a no-go paint north of the river, which is the direct answer
+to the 09-10 tester's turning point (the walk to bare rock, notes 60-65,
+131-132); a reserve paint over next winter's wood. This is the spatial
+form of authored policy, the RimWorld work tab drawn on the map, and the
+missing link between the order list and the map. It reuses the placement
+gesture from 2, so it waits on 2; painting before ghosts is decoration.
+
+**8. The seasonal round.** A follow-on to 7 once the year loop is looked
+at: paint where the survivor goes in which month, since the territory is a
+different shape in winter (ice is a road, the bog is crossable, the deer
+are thin) than in summer. Historically what a northern round was; no
+other game draws it.
+
+**9. A camp across several cells.** Not a mechanic of its own. Within the
+cell first: the 3 by 3 and 6 by 6 subcell fields at close zoom are
+presentational by design, so drawing the nine structures of `Site` into a
+camp cell's subcells costs no simulation and answers the observer's note
+that the 50 m zoom is ugly because nothing is simulated there (09-10, note
+123). Across cells it falls out of 2 when a ghost is placed on a
+neighbouring cell, and each annexed cell is a siting decision: the rack
+by the water, the trap line on the heath, the woodshed in the forest.
+Three rulings when it happens: the runner walks home to `campCell` as now,
+hauling within the camp is free inside a radius, and the fire warms one
+cell, so a sprawling camp is not strictly better.
+
+**10. The catchment and depletion overlay.** `hunt-pressure.ts` already
+depletes game within `PRESSURE_RADIUS_KM` of activity, so the camp has a
+footprint in the sim that nobody can see. Revealing it is cheap. It is
+bounded by the ruling that one survivor cannot empty a shore or heath, so
+it is a texture of the stake in 4 and not an item of its own.
+
+### Do not add
+
+- **Political borders or claims.** A border needs pressure from outside,
+  and nature supplies it; there is nothing to claim ground from, so a
+  claim would be the first mechanic in the game that is not a real
+  quantity. The stake in 4 is what a border is here.
+- **Other people.** A camp that becomes a household solves the ceiling
+  completely and makes the game RimWorld. The premise is one survivor and
+  the roadmap's contract is written around it. Area and generations
+  first; this is a fork to name, not to drift into.
+- **An abstract storage capacity.** "Storage 200/400" would be the first
+  abstract number in the game. The caps exist and are real; surface them.
+- **Intensification ratchets.** Faster eating, longer days, richer
+  hectares, multipliers on yield. Every one breaks the model, and the
+  rule proposed under the diagnosis bans them.
+- **A wake button as the answer to sleep.** The camp view is the answer to
+  what those minutes are for. Whether sleep can be interrupted at all is
+  still the open half of the 09-10 record's proposed improvement 2 and
+  stays a control-contract question.
