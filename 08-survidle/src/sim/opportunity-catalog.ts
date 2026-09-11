@@ -103,13 +103,19 @@ export function catalogOpportunityDef(key: OpportunityKey): OpportunityDef | und
   return DEFS.get(key);
 }
 
-export function discoverMany(state: OpportunityState, keys: readonly OpportunityKey[], minute: number): OpportunityKey[] {
+/**
+ * Silent discovery is knowledge the survivor arrived with rather than
+ * something that just happened: it neither presents nor takes the current
+ * leaf, since there was no moment for the player to answer.
+ */
+export function discoverMany(state: OpportunityState, keys: readonly OpportunityKey[], minute: number, announce = true): OpportunityKey[] {
   const discovered: OpportunityKey[] = [];
   for (const key of keys) {
     if (!DEFS.has(key) || state.discoveredAt[key] !== undefined) continue;
     state.discoveredAt[key] = minute;
     discovered.push(key);
   }
+  if (!announce) return discovered;
   if (state.current === null && discovered.length === 1) {
     state.current = discovered[0];
     state.lastCategory = DEFS.get(discovered[0])?.category ?? state.lastCategory;
@@ -152,12 +158,17 @@ export function knownForageOpportunityKeys(state: GameState, world: World, _cal:
   return SUPPORTED_FORAGE_FOODS.filter((food) => available.has(food) && FORAGE_TASK[food] !== undefined).map((food) => `forage:${food}` as OpportunityKey);
 }
 
-export function discoverAvailableOpportunities(state: GameState, world: World, cal: Calendar): OpportunityKey[] {
+/**
+ * What the survivor's own ground and skill make possible. Ground mapped
+ * after a run is under way is news; ground a run or a save opens with is
+ * not, and the boundaries that hand over that ground ask for silence.
+ */
+export function discoverAvailableOpportunities(state: GameState, world: World, cal: Calendar, announce = true): OpportunityKey[] {
   const keys = [
     ...knownForageOpportunityKeys(state, world, cal),
     ...knownTrapOpportunityKeys(state),
   ];
-  return discoverMany(state.opportunities, keys, state.minute);
+  return discoverMany(state.opportunities, keys, state.minute, announce);
 }
 
 export function eventDiscoveryKeys(event: OpportunityEvent, state?: GameState): OpportunityKey[] {

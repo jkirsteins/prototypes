@@ -3,7 +3,7 @@ import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
 import { ensureCareRows, isCareRow } from "./bodyorder";
 import { calendar, dayNumber, START_DOY } from "./calendar";
-import { newOpportunities, opportunityDef, OPPORTUNITIES, SEASONS } from "./opportunities";
+import { discoverAvailableOpportunities, newOpportunities, opportunityDef, OPPORTUNITIES, SEASONS } from "./opportunities";
 import type { OpportunityContextState, OpportunityKey, OpportunityNotice, OpportunityState, Season, WeatherOpportunityContext } from "./types";
 import { addItem } from "./inventory";
 import { TOOLS } from "./items";
@@ -550,6 +550,16 @@ function migrateLegacyOpportunities(state: GameState, raw: Record<string, unknow
     state.opportunities = next;
   }
   delete raw["goals"];
+}
+
+/**
+ * The world half of a load, which needs the generated world and so cannot
+ * live in `migrate`. Ground the save already holds is ground a survivor has
+ * already stood on, so what it makes possible is knowledge the load hands
+ * back rather than a discovery: it arrives without a presentation.
+ */
+export function knowLoadedGround(state: GameState, world: World): void {
+  discoverAvailableOpportunities(state, world, calendar(state.minute, state.startDoy), false);
 }
 
 export function saveGame(state: GameState, storage: Storage = localStorage, now = Date.now()): void {

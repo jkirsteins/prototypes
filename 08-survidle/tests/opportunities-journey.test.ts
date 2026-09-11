@@ -4,13 +4,14 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { dismissOpportunityPresentation, recordOpportunityEvent, opportunityDef, opportunitySteps, OPPORTUNITIES, newOpportunities } from "../src/sim/opportunities";
 import { ITEM_NAMES, RECIPE_IDS, RECIPES, STRUCTURE_IDS, STRUCTURES, TOOL_IDS, TOOLS } from "../src/sim/items";
-import { newGame, newPerson } from "../src/sim/newgame";
+import { newGame, newPerson, newWorld } from "../src/sim/newgame";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionAt } from "../src/world/gen";
 import { mapRegion } from "../src/sim/mapped";
+import { land } from "../src/sim/landing";
 import { setSkillLevel } from "../src/sim/horizon";
 import { discoverAvailableOpportunities } from "../src/sim/opportunity-catalog";
-import { deserialize, serialize } from "../src/sim/save";
+import { deserialize, knowLoadedGround, serialize } from "../src/sim/save";
 import { resetTeaching } from "../src/sim/teach";
 import { TASK_IDS, type OpportunityKey, type Season } from "../src/sim/types";
 import { allOpportunityDefs } from "../src/sim/opportunity-catalog";
@@ -95,7 +96,7 @@ describe("the authored opportunity journey", () => {
   it("starts with site, the four known seasons, and the visible collection possibilities", () => {
     const { state } = newGame(3);
     expect(activeOpportunityKeys(state, cal)).toEqual(["site", ...SEASON_KEYS, ...INITIAL_COLLECTIONS]);
-    expect(unpresentedOpportunityKeys(state, cal).sort()).toEqual(["site", ...INITIAL_FORAGE].sort());
+    expect(unpresentedOpportunityKeys(state, cal)).toEqual(["site"]);
     dismissAll(state);
     expect(unpresentedOpportunityKeys(state, cal)).toEqual([]);
   });
@@ -110,6 +111,35 @@ describe("the authored opportunity journey", () => {
     expect(state.opportunities.notices.flatMap((notice) => notice.discovered))
       .toEqual(expect.not.arrayContaining([...DAY_ONE_CAPABILITIES]));
     expect(state.opportunities.current).toBe("site");
+  });
+
+  it("keeps the landing ground's own forage silent, so choosing a home is the only thing said", () => {
+    const { state } = newGame(3);
+    for (const key of INITIAL_FORAGE) {
+      expect(state.opportunities.discoveredAt[key]).toBe(0);
+      expect(state.opportunities.completedAt[key]).toBeUndefined();
+    }
+    expect(state.opportunities.notices.flatMap((notice) => notice.discovered)).toEqual(["site"]);
+  });
+
+  it("keeps a landed survivor's own ground silent too", () => {
+    const { state, world } = newWorld(3);
+    land(state, world);
+    expect(state.opportunities.discoveredAt["forage:berries"]).toBeDefined();
+    expect(state.opportunities.notices.flatMap((notice) => notice.discovered)).toEqual(["site"]);
+  });
+
+  it("says nothing about forage a loaded save's own ground already implies", () => {
+    const { state, world } = newGame(3);
+    // The ground stays mapped while the leaves are forgotten: what a save
+    // written before these leaves existed looks like on the next load.
+    state.opportunities = newOpportunities(cal.season);
+    state.opportunities.notices = [];
+    const loaded = deserialize(serialize(state, 0));
+    if (!loaded) throw new Error("the save did not round-trip");
+    knowLoadedGround(loaded.state, world);
+    expect(loaded.state.opportunities.discoveredAt["forage:berries"]).toBeDefined();
+    expect(loaded.state.opportunities.notices).toEqual([]);
   });
 
   it("announces forage that only newly known ground makes possible", () => {

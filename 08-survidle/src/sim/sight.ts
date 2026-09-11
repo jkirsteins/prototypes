@@ -372,9 +372,9 @@ export function opticalCandidateRangeCells(terrainRange: number): number {
  * underfoot always, then a ray to every cell on the vantage's own range,
  * each one marked until it runs into a canopy that closes the view.
  */
-export function seeFrom(state: GameState, world: World, cal: Calendar, cell: number): void {
+export function seeFrom(state: GameState, world: World, cal: Calendar, cell: number, announce = true): void {
   for (const visible of visibleCells(state, world, cal, cell)) markKnown(state, visible);
-  discoverAvailableOpportunities(state, world, cal);
+  discoverAvailableOpportunities(state, world, cal, announce);
 }
 
 /** Ground in sight now, unlike mapped knowledge which survives after the eye moves on. */

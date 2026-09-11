@@ -25,9 +25,10 @@ export function markKnown(state: GameState, cell: number): void {
   generation++;
 }
 
-export function mapRegion(state: GameState, world: World, region: number): void {
+/** `announce` is false where the ground is handed over at a run's own start rather than mapped during one. */
+export function mapRegion(state: GameState, world: World, region: number, announce = true): void {
   for (const c of regionAt(world, region).cells) markKnown(state, c);
-  discoverAvailableOpportunities(state, world, calendar(state.minute, state.startDoy));
+  discoverAvailableOpportunities(state, world, calendar(state.minute, state.startDoy), announce);
 }
 
 export function knownShare(state: GameState, world: World, region: number): number {

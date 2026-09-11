@@ -297,7 +297,7 @@ export function land(state: GameState, world: World, name = state.landing?.name,
     state.landing = null;
     enterRegion(state, world, l.region);
     // A camp is chosen, and a choice needs the ground in front of you.
-    mapRegion(state, world, l.region);
+    mapRegion(state, world, l.region, false);
     const here = regionAt(world, l.region).name;
     if (l.date.doy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${here}. {You} {have} an axe, wool on {your} back and a kilo of dried meat.`);
     else log(state, `${fmtDate(calendar(0, l.date.doy))}. {You} {wake} at ${here} with an axe, wool on {your} back and a kilo of dried meat.`);
@@ -310,7 +310,7 @@ export function land(state: GameState, world: World, name = state.landing?.name,
   state.landing = null;
   enterRegion(state, world, l.region);
   // A camp is chosen, and a choice needs the ground in front of you.
-  mapRegion(state, world, l.region);
+  mapRegion(state, world, l.region, false);
   const lc = cellAt(world, l.cell);
   // Nobody made camp in the life before, so there is no camp to be told the way to
   // and nothing standing for a journal to list.

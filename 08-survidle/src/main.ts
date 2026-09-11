@@ -27,7 +27,7 @@ import { abandon, feltTemperature } from "./sim/player";
 import { campCellOf, cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
-import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
+import { awaySeconds, catchUp, clearSave, knowLoadedGround, loadGame, saveGame } from "./sim/save";
 import { recordOpportunityEvent } from "./sim/opportunities";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
@@ -174,6 +174,7 @@ function boot() {
     wasDead = Boolean(saved.state.dead);
     world = generateWorld(state.seed);
     fillPopulations(state, world);
+    knowLoadedGround(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
     if (elapsed > 30 && !state.dead && !state.landing) {
       setCueSink(null);
