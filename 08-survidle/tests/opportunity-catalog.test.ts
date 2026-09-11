@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import {
-  allOpportunityDefs, discoverAvailableOpportunities, OPPORTUNITY_GROUPS,
+  allOpportunityDefs, DAY_ONE_CAPABILITY_KEYS, discoverAvailableOpportunities, OPPORTUNITY_GROUPS,
   SUPPORTED_FISH_SPECIES, SUPPORTED_FORAGE_FOODS, SUPPORTED_SHELTER_STRUCTURES,
   SUPPORTED_TOOL_RECIPES, SUPPORTED_WILDLIFE_SPECIES,
 } from "../src/sim/opportunity-catalog";
@@ -92,10 +92,10 @@ it("credits overlapping authored and collection leaves from one build event", ()
   expect(state.opportunities.completedAt["build:leanTo"]).toBe(state.minute);
 });
 
-it("discovery events reveal leaves without credit and identity events credit only their leaf", () => {
+it("knows its day-one leaves without credit and identity events credit only their leaf", () => {
   const state = newState();
-  recordOpportunityEvent(state, { kind: "toolAvailable", tool: "knife" });
-  recordOpportunityEvent(state, { kind: "structureAvailable", structure: "leanTo" });
+  expect(state.opportunities.discoveredAt["make:knife"]).toBe(0);
+  expect(state.opportunities.discoveredAt["build:leanTo"]).toBe(0);
   expect(state.opportunities.completedAt["make:knife"]).toBeUndefined();
   expect(state.opportunities.completedAt["build:leanTo"]).toBeUndefined();
 
@@ -110,22 +110,31 @@ it("refresh discovers known possibilities but never infers completion from posse
   const { state, world } = newGame(3);
   state.player.tools.push({ id: "knife", durability: 100 });
   discoverAvailableOpportunities(state, world, calendar(state.minute, state.startDoy));
-  expect(state.opportunities.discoveredAt["make:knife"]).toBe(state.minute);
-  expect(state.opportunities.discoveredAt["build:leanTo"]).toBe(state.minute);
+  expect(state.opportunities.discoveredAt["forage:berries"]).toBeDefined();
   expect(state.opportunities.completedAt["make:knife"]).toBeUndefined();
   expect(state.opportunities.completedAt["build:leanTo"]).toBeUndefined();
+  expect(state.opportunities.completedAt["forage:berries"]).toBeUndefined();
 });
 
-it("discovers supported Do-list entries below their recommended levels", () => {
-  const { state, world } = newGame(3);
+it("knows supported Do-list entries below their recommended levels", () => {
+  const state = newState();
   expect(state.skills.crafting.xp).toBe(0);
   expect(state.skills.building.xp).toBe(0);
-  discoverAvailableOpportunities(state, world, calendar(state.minute, state.startDoy));
-  expect(state.opportunities.discoveredAt["make:bow"]).toBe(state.minute);
-  expect(state.opportunities.discoveredAt["make:stoneAxe"]).toBe(state.minute);
-  expect(state.opportunities.discoveredAt["build:cabin"]).toBe(state.minute);
-  expect(state.opportunities.discoveredAt["build:turfHut"]).toBe(state.minute);
+  expect(state.opportunities.discoveredAt["make:bow"]).toBe(0);
+  expect(state.opportunities.discoveredAt["make:stoneAxe"]).toBe(0);
+  expect(state.opportunities.discoveredAt["build:cabin"]).toBe(0);
+  expect(state.opportunities.discoveredAt["build:turfHut"]).toBe(0);
   expect(state.opportunities.completedAt["make:bow"]).toBeUndefined();
+});
+
+it("seeds every day-one capability silently, so the opening is not a wall of unearned leaves", () => {
+  const state = newState();
+  const announced = state.opportunities.notices.flatMap((notice) => notice.discovered);
+  for (const key of DAY_ONE_CAPABILITY_KEYS) {
+    expect(state.opportunities.discoveredAt[key]).toBe(0);
+    expect(announced).not.toContain(key);
+  }
+  expect(DAY_ONE_CAPABILITY_KEYS.length).toBe(SUPPORTED_TOOL_RECIPES.length + SUPPORTED_SHELTER_STRUCTURES.length);
 });
 
 it("migrates old aggregate trap catches without inventing species credit", () => {

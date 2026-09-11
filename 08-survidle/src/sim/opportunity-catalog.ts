@@ -84,7 +84,6 @@ const COLLECTION_OPPORTUNITIES: OpportunityDef[] = [
     const tool = TOOL_RECIPE[recipe];
     return { key: `make:${tool}`, title: `Make ${TOOLS[tool].name}`, category: "mastery", group: "make-tools", steps: one("make", `Make ${TOOLS[tool].name}`, (event) => event.kind === "toolMade" && event.tool === tool ? 1 : 0) };
   }),
-  ...SEASONS.map((season): OpportunityDef => ({ key: `season:${season}`, title: `Live through ${season}`, category: "exploration", group: "seasons", steps: one("season", `Live into ${season}`, (event) => event.kind === "season" && event.season === season ? 1 : 0) })),
 ];
 
 let AUTHORED_OPPORTUNITIES: OpportunityDef[] = [];
@@ -121,13 +120,15 @@ export function discoverMany(state: OpportunityState, keys: readonly Opportunity
 
 const capabilityLevel = (state: GameState, skill: SkillId): number => Math.min(50, 1 + Math.floor(Math.sqrt(Math.max(0, state.skills[skill].xp) / 120)));
 
-export function availableToolOpportunityKeys(_state: GameState, _world: World, _cal: Calendar): OpportunityKey[] {
-  return SUPPORTED_TOOL_RECIPES.map((recipe) => `make:${TOOL_RECIPE[recipe]}` as OpportunityKey);
-}
-
-export function availableStructureOpportunityKeys(_state: GameState, _world: World, _cal: Calendar): OpportunityKey[] {
-  return SUPPORTED_SHELTER_STRUCTURES.map((structure) => `build:${structure}` as OpportunityKey);
-}
+/**
+ * Every supported tool recipe and shelter is buildable from the first minute:
+ * nothing in the simulation gates them behind a skill, a season or a place.
+ * So they are known from world start, like the seasons, and `newOpportunities`
+ * seeds them silently rather than announcing fifteen unearned leaves at once.
+ * A capability that a future gate really does hide belongs in
+ * `discoverAvailableOpportunities`, beside forage and traps.
+ */
+export const DAY_ONE_CAPABILITY_KEYS: readonly OpportunityKey[] = [...toolKeys(), ...shelterKeys()];
 
 export function knownTrapOpportunityKeys(state: GameState): OpportunityKey[] {
   if (capabilityLevel(state, "fishing") < 5) return [];
@@ -153,8 +154,6 @@ export function knownForageOpportunityKeys(state: GameState, world: World, _cal:
 
 export function discoverAvailableOpportunities(state: GameState, world: World, cal: Calendar): OpportunityKey[] {
   const keys = [
-    ...availableToolOpportunityKeys(state, world, cal),
-    ...availableStructureOpportunityKeys(state, world, cal),
     ...knownForageOpportunityKeys(state, world, cal),
     ...knownTrapOpportunityKeys(state),
   ];
@@ -168,7 +167,5 @@ export function eventDiscoveryKeys(event: OpportunityEvent, state?: GameState): 
     const trapKnown = state !== undefined && capabilityLevel(state, "fishing") >= 5;
     return [...fish.map((species) => `catch:${species}` as OpportunityKey), ...(trapKnown ? fish.map((species) => `trap:${species}` as OpportunityKey) : [])];
   }
-  if (event.kind === "toolAvailable") return [`make:${event.tool}`];
-  if (event.kind === "structureAvailable") return [`build:${event.structure}`];
   return [];
 }

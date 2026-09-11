@@ -1,12 +1,15 @@
 const SEASON_KEYS = ["season:spring", "season:summer", "season:autumn", "season:winter"] as const;
-import { reveal } from "./opportunity-helpers";
+import { activeOpportunityKeys, reveal, unpresentedOpportunityKeys } from "./opportunity-helpers";
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { activeOpportunityKeys, recordOpportunityEvent, opportunityDef, opportunitySteps, OPPORTUNITIES, acknowledgeOpportunities, newOpportunities, unpresentedOpportunityKeys } from "../src/sim/opportunities";
+import { dismissOpportunityPresentation, recordOpportunityEvent, opportunityDef, opportunitySteps, OPPORTUNITIES, newOpportunities } from "../src/sim/opportunities";
 import { ITEM_NAMES, RECIPE_IDS, RECIPES, STRUCTURE_IDS, STRUCTURES, TOOL_IDS, TOOLS } from "../src/sim/items";
 import { newGame, newPerson } from "../src/sim/newgame";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionAt } from "../src/world/gen";
+import { mapRegion } from "../src/sim/mapped";
+import { setSkillLevel } from "../src/sim/horizon";
+import { discoverAvailableOpportunities } from "../src/sim/opportunity-catalog";
 import { deserialize, serialize } from "../src/sim/save";
 import { resetTeaching } from "../src/sim/teach";
 import { TASK_IDS, type OpportunityKey, type Season } from "../src/sim/types";
@@ -14,12 +17,31 @@ import { allOpportunityDefs } from "../src/sim/opportunity-catalog";
 
 const cal = calendar(0);
 
-const INITIAL_COLLECTIONS = [
-  "forage:berries", "forage:eggs", "forage:barkFlour", "forage:cookedRoots",
+/** Seed 3's landing ground identifies these four foods, so they arrive on the first frames. */
+const INITIAL_FORAGE = ["forage:berries", "forage:eggs", "forage:barkFlour", "forage:cookedRoots"] as const;
+
+/** Nothing gates a tool recipe or a shelter, so all fifteen are known from world start. */
+const DAY_ONE_CAPABILITIES = [
   "build:leanTo", "build:cabin", "build:boughBed", "build:turfHut", "build:snowShelter",
   "make:knife", "make:fireDrill", "make:bow", "make:fishingSpear", "make:needle",
   "make:stoneAxe", "make:flakedAxe", "make:whetstone", "make:barkBucket", "make:waterskin",
 ] as const;
+
+const INITIAL_COLLECTIONS = [...INITIAL_FORAGE, ...DAY_ONE_CAPABILITIES] as const;
+
+/** `newOpportunities` seeds tools before shelters; the catalog renders them the other way round. */
+const DAY_ONE_CAPABILITY_ORDER = [
+  "make:knife", "make:fireDrill", "make:bow", "make:fishingSpear", "make:needle",
+  "make:stoneAxe", "make:flakedAxe", "make:whetstone", "make:barkBucket", "make:waterskin",
+  "build:leanTo", "build:cabin", "build:boughBed", "build:turfHut", "build:snowShelter",
+] as const;
+
+/** Drain the presentation queue the way the modal does, one notice per OK. */
+function dismissAll(state: ReturnType<typeof newGame>["state"]): void {
+  while (state.opportunities.notices.length) {
+    expect(dismissOpportunityPresentation(state, state.opportunities.notices[0].id, null)).toBe(true);
+  }
+}
 
 const CHAPTER_1 = ["findUsefulCover", "makeUsefulShelter", "testShelter"] as const;
 const CHAPTER_2 = ["readWeather", "prepareWeather", "surviveForecast"] as const;
@@ -73,12 +95,53 @@ describe("the authored opportunity journey", () => {
   it("starts with site, the four known seasons, and the visible collection possibilities", () => {
     const { state } = newGame(3);
     expect(activeOpportunityKeys(state, cal)).toEqual(["site", ...SEASON_KEYS, ...INITIAL_COLLECTIONS]);
-    expect(unpresentedOpportunityKeys(state, cal).sort()).toEqual(["site", ...INITIAL_COLLECTIONS].sort());
-    acknowledgeOpportunities(state, ["site"]);
-    expect(unpresentedOpportunityKeys(state, cal).sort()).toEqual([...INITIAL_COLLECTIONS].sort());
-    acknowledgeOpportunities(state, [...INITIAL_COLLECTIONS]);
+    expect(unpresentedOpportunityKeys(state, cal).sort()).toEqual(["site", ...INITIAL_FORAGE].sort());
+    dismissAll(state);
     expect(unpresentedOpportunityKeys(state, cal)).toEqual([]);
   });
+
+  it("discovers every day-one capability silently, without credit and without a presentation", () => {
+    const { state } = newGame(3);
+    for (const key of DAY_ONE_CAPABILITIES) {
+      expect(state.opportunities.discoveredAt[key]).toBe(0);
+      expect(state.opportunities.completedAt[key]).toBeUndefined();
+      expect(state.opportunities.stepProgress[key]).toBeUndefined();
+    }
+    expect(state.opportunities.notices.flatMap((notice) => notice.discovered))
+      .toEqual(expect.not.arrayContaining([...DAY_ONE_CAPABILITIES]));
+    expect(state.opportunities.current).toBe("site");
+  });
+
+  it("announces forage that only newly known ground makes possible", () => {
+    const { state, world } = newGame(3);
+    // Every landing this generator produces already stands on bog or meadow
+    // and pine, so the honest way to watch forage arrive later is to start
+    // from unknown ground and let the mapping seam reveal it.
+    state.opportunities = newOpportunities(cal.season);
+    state.mapped = {};
+    state.minute = 500;
+    mapRegion(state, world, state.player.region);
+    expect(state.opportunities.discoveredAt["forage:berries"]).toBe(500);
+    expect(state.opportunities.completedAt["forage:berries"]).toBeUndefined();
+    expect(state.opportunities.notices.flatMap((notice) => notice.discovered).sort())
+      .toEqual(["site", ...INITIAL_FORAGE].sort());
+  });
+
+  it("announces a trap leaf only once the gate behind it actually opens", () => {
+    const { state, world } = newGame(3);
+    dismissAll(state);
+    state.player.known[cellOf(state, world)] = { minute: 0, fish: ["perch"] };
+    discoverAvailableOpportunities(state, world, cal);
+    expect(state.opportunities.discoveredAt["trap:perch"]).toBeUndefined();
+
+    setSkillLevel(state, "fishing", 5);
+    state.minute = 900;
+    discoverAvailableOpportunities(state, world, cal);
+    expect(state.opportunities.discoveredAt["trap:perch"]).toBe(900);
+    expect(state.opportunities.completedAt["trap:perch"]).toBeUndefined();
+    expect(state.opportunities.notices.flatMap((notice) => notice.discovered)).toEqual(["trap:perch"]);
+  });
+
   it("releases all first-night leaves, then waits for all three before meals", () => {
     const { state } = newGame(3);
     finish(state, ["site", "drink", "firewood", "fire"]);
@@ -150,7 +213,6 @@ describe("opportunity guards", () => {
         { kind: "preserved" } as const,
         { kind: "fuelled" } as const,
         { kind: "ordered", task: "deadwood", long: true } as const,
-        { kind: "foodSourced" } as const,
         { kind: "ateFat" } as const,
         { kind: "toolCared" } as const,
         { kind: "explored", anotherRegion: true } as const,
@@ -326,7 +388,7 @@ describe("opportunities are the world's, not a life's", () => {
     const g = newOpportunities("winter");
     expect(g.completedAt).toEqual({});
     expect(g.stepProgress).toEqual({});
-    expect(Object.keys(g.discoveredAt)).toEqual([...SEASON_KEYS, "site"]);
+    expect(Object.keys(g.discoveredAt)).toEqual([...SEASON_KEYS, ...DAY_ONE_CAPABILITY_ORDER, "site"]);
     expect(g.notices).toHaveLength(1);
     expect(g.context.weather).toBeNull();
     expect(g.context.chapter3HomeRegion).toBeNull();

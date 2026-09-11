@@ -1,11 +1,11 @@
-import { reveal } from "./opportunity-helpers";
+import { activeOpportunityKeys, reveal } from "./opportunity-helpers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as climate from "../src/sim/climate";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { recordStormMinute, stepOpportunityContext, stormMetrics } from "../src/sim/opportunity-context";
-import { activeOpportunityKeys, discoverOpportunity, recordOpportunityEvent, queueOpportunityMessage, setCurrentOpportunity, type StormPlanSnapshot } from "../src/sim/opportunities";
+import { discoverOpportunity, recordOpportunityEvent, queueOpportunityMessage, setCurrentOpportunity, type StormPlanSnapshot } from "../src/sim/opportunities";
 import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, die } from "../src/sim/player";

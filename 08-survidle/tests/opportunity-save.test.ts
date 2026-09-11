@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calendar, START_DOY } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { dismissOpportunityPresentation, newOpportunities, recordOpportunityEvent } from "../src/sim/opportunities";
+import { DAY_ONE_CAPABILITY_KEYS } from "../src/sim/opportunity-catalog";
 import { deserialize, serialize } from "../src/sim/save";
 import { newSite } from "../src/sim/regionstate";
 import type { GameState, Species, LifeRecord as Survivor } from "../src/sim/types";
@@ -98,7 +99,10 @@ describe("one-way opportunity save migration", () => {
     }));
     expect(loaded.opportunities.completedAt).toEqual({ site: 0 });
     expect(loaded.opportunities.discoveredAt.roof).toBeUndefined();
-    expect(loaded.opportunities.discoveredAt["build:leanTo"]).toBeUndefined();
+    // A day-one capability is seeded by the fresh state, not honoured from the
+    // legacy save, so it arrives known and uncredited either way.
+    expect(loaded.opportunities.discoveredAt["build:leanTo"]).toBe(0);
+    expect(loaded.opportunities.completedAt["build:leanTo"]).toBeUndefined();
     expect(loaded.opportunities.discoveredAt["hunt:deer"]).toBeUndefined();
     expect(loaded.opportunities.stepProgress).toEqual({ firewood: { wood: 6 }, fire: { site: 1 } });
   });
@@ -154,7 +158,8 @@ describe("one-way opportunity save migration", () => {
     const loaded = read(raw);
     expect(loaded.opportunities.completedAt).toEqual({});
     expect(loaded.opportunities.stepProgress).toEqual({});
-    expect(Object.keys(loaded.opportunities.discoveredAt).filter((key) => key.includes(":") && !key.startsWith("season:"))).toEqual([]);
+    const seeded = new Set<string>([...DAY_ONE_CAPABILITY_KEYS]);
+    expect(Object.keys(loaded.opportunities.discoveredAt).filter((key) => key.includes(":") && !key.startsWith("season:") && !seeded.has(key))).toEqual([]);
     expect(loaded.opportunities.context.chapter3HomeRegion).toBeNull();
   });
 

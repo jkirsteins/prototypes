@@ -886,14 +886,11 @@ export type OpportunityEvent =
   | { kind: "waterRead"; species: Species[] }
   | { kind: "fishCaught"; species: Species; method: "direct" | "trap" }
   | { kind: "foraged"; item: FoodId }
-  | { kind: "toolAvailable"; tool: ToolId }
   | { kind: "toolMade"; tool: ToolId }
-  | { kind: "structureAvailable"; structure: StructureId }
   | { kind: "ate"; item: FoodId | "sap" }
   | { kind: "preserved" }
   | { kind: "fuelled" }
   | { kind: "ordered"; task: TaskId; long: boolean }
-  | { kind: "foodSourced" }
   | { kind: "ateFat" }
   | { kind: "toolCared" }
   | { kind: "explored"; anotherRegion: boolean }

@@ -1,8 +1,8 @@
-import { dayNumber, type Calendar } from "./calendar";
+import { dayNumber } from "./calendar";
 import { qty } from "./inventory";
 import type { FoodId } from "./items";
 import {
-  allOpportunityDefs, catalogOpportunityDef, eventDiscoveryKeys,
+  allOpportunityDefs, catalogOpportunityDef, DAY_ONE_CAPABILITY_KEYS, eventDiscoveryKeys,
   OPPORTUNITY_GROUPS, registerAuthoredOpportunityDefs, SEASONS,
 } from "./opportunity-catalog";
 import { straightKm } from "./position";
@@ -160,6 +160,7 @@ export function newOpportunities(season: Season): OpportunityState {
     notices: [], nextNoticeId: 1, context: { weather: null, chapter3HomeRegion: null }, lastCategory: "survival", lastSeason: season,
   };
   for (const value of SEASONS) discoverOpportunity(state, `season:${value}`, 0, false);
+  for (const key of DAY_ONE_CAPABILITY_KEYS) discoverOpportunity(state, key, 0, false);
   discoverOpportunity(state, "site", 0, true);
   state.current = "site";
   return state;
@@ -409,25 +410,6 @@ export function refreshOpportunities(state: GameState, minute = state.minute): v
     state.opportunities.notices.push({ id: `${state.minute}:${state.opportunities.nextNoticeId++}`, minute: state.minute, completed: [], completedGroups: [], discovered, messages: [] });
     if (state.opportunities.current === null && discovered.length === 1) setCurrentOpportunity(state.opportunities, discovered[0]);
   }
-}
-
-export function activeOpportunityKeys(state: GameState, cal: Calendar): OpportunityKey[] {
-  refreshOpportunities(state, (cal.day - 1) * 1440);
-  return allOpportunityDefs().filter((def) => state.opportunities.discoveredAt[def.key] !== undefined && state.opportunities.completedAt[def.key] === undefined).map((def) => def.key);
-}
-
-export function unpresentedOpportunityKeys(state: GameState, cal: Calendar): OpportunityKey[] {
-  refreshOpportunities(state, (cal.day - 1) * 1440);
-  return [...new Set(state.opportunities.notices.flatMap((notice) => notice.discovered))];
-}
-
-export function acknowledgeOpportunities(state: GameState, discovered: OpportunityKey[], completed: OpportunityKey[] = [], messages: string[] = []): void {
-  for (const notice of state.opportunities.notices) {
-    notice.discovered = notice.discovered.filter((key) => !discovered.includes(key));
-    notice.completed = notice.completed.filter((key) => !completed.includes(key));
-    notice.messages = notice.messages.filter((message) => !messages.includes(message));
-  }
-  state.opportunities.notices = state.opportunities.notices.filter((notice) => notice.discovered.length || notice.completed.length || notice.completedGroups.length || notice.messages.length);
 }
 
 export function queueOpportunityMessage(state: GameState, message: string): void {

@@ -1,10 +1,10 @@
-import { reveal } from "./opportunity-helpers";
+import { activeOpportunityKeys, reveal } from "./opportunity-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { drop, dropAll, eat, take } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { activeOpportunityKeys, checkWinterStores, recordOpportunityEvent, opportunitySteps, OPPORTUNITIES } from "../src/sim/opportunities";
+import { checkWinterStores, recordOpportunityEvent, opportunitySteps, OPPORTUNITIES } from "../src/sim/opportunities";
 import { setSkillLevel } from "../src/sim/horizon";
 import { startIntent } from "../src/sim/intent";
 import { createCarcass, carcassMinutes } from "../src/sim/hunting";

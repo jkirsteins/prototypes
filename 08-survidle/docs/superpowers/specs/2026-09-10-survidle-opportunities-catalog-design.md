@@ -217,14 +217,21 @@ simulation events:
 | Catch fish | Catch [species] | Reading water identifies it | Species is caught directly |
 | Trap fish | Trap [species] | Water identifies it and basket traps are known | Species is collected from a trap |
 | Forage foods | Gather [food] | Food is identified on known ground | Food is gathered |
-| Build shelters | Build [structure] | Structure becomes available | Structure is built |
-| Make tools | Make [tool] | Recipe becomes available | Tool is crafted |
+| Build shelters | Build [structure] | Known from world start | Structure is built |
+| Make tools | Make [tool] | Known from world start | Tool is crafted |
 | Seasons | Live into [season] | Known from world start | A living survivor crosses into it |
 
 The supported subset for each group is explicit. Voice-only wildlife, animals
 without a perceivable tracking route, non-buildable structures, and items with
 no direct production event are excluded until their mechanics can support an
 honest leaf.
+
+Nothing in the simulation gates a tool recipe or a shelter behind a skill, a
+season or a place, so those fifteen leaves are known from world start, silently,
+the way the four seasons are. Announcing them would present fifteen unearned
+opportunities in the first modal of a run. A capability a later gate really does
+hide announces when the gate opens, as forage does on newly known ground and a
+basket trap does once traps are known.
 
 Discoveries caused together are batched. A capability step that makes three
 tracked tool recipes available produces one presentation containing three new
