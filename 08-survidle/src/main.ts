@@ -155,12 +155,17 @@ let solving = false;
 async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0): Promise<void> {
   if (solving) return;
   solving = true;
-  const loaded = await loadWorld(seed, showLoading);
-  hideLoading();
-  const g = newWorld(seed, boat, startDoy, loaded);
-  state = g.state;
-  world = g.world;
-  solving = false;
+  // The finally is what makes the flag safe to hold: a solve that throws would
+  // otherwise leave the frame standing still and every later click a no-op.
+  try {
+    const loaded = await loadWorld(seed, showLoading);
+    hideLoading();
+    const g = newWorld(seed, boat, startDoy, loaded);
+    state = g.state;
+    world = g.world;
+  } finally {
+    solving = false;
+  }
   wasDead = false;
   ui.selected = null;
   ui.away = null;
@@ -188,9 +193,12 @@ async function boot() {
     // is not already read as "seen": the first frame must still emit died for it.
     wasDead = Boolean(saved.state.dead);
     solving = true;
-    world = await loadWorld(state.seed, showLoading);
-    hideLoading();
-    solving = false;
+    try {
+      world = await loadWorld(state.seed, showLoading);
+      hideLoading();
+    } finally {
+      solving = false;
+    }
     fillPopulations(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
     if (elapsed > 30 && !state.dead && !state.landing) {
