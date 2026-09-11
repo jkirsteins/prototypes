@@ -15,7 +15,7 @@ import { findRoute, routeKm } from "../src/world/route";
 import { campSite, regionState } from "../src/sim/regionstate";
 import { cellAt, hasSpot, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
-import { lakeShoreNear, seaShoreBesideLake } from "./world-facts";
+import { lakeShoreNear, regionNear, seaShoreBesideLake, walkableNeighbour } from "./world-facts";
 import { isWorkOrder } from "../src/sim/types";
 import { ensureGround } from "../src/sim/weather";
 import { activateWildlife } from "../src/sim/wildlife-agents";
@@ -136,8 +136,9 @@ describe("tasks", () => {
     const g = newGame(3);
     siteCamp(g.state, g.world);
     const { state, world } = g;
-    const r = regionAt(world, state.player.region);
-    const nb = r.neighbours[0];
+    // A neighbour the survivor can actually walk to: a coast puts the far side
+    // of a fjord among a region's neighbours, and no route crosses it.
+    const nb = { id: walkableNeighbour(world, state.player.region) };
     mapRegion(state, world, state.player.region);
     mapRegion(state, world, nb.id);
     const go = check(state, world, cal, "travel", `region:${nb.id}`);
@@ -217,8 +218,11 @@ describe("tasks", () => {
 
   it("turns a successful hunt into field work before any meat is recovered", () => {
     const g = newGame(3);
-    siteCamp(g.state, g.world);
     const { state, world } = g;
+    // A region that can hold deer at all: a hunt cannot bring one down where
+    // the species has no capacity.
+    placeAt(state, world, regionAt(world, regionNear(world, state.player.region, (id) => (regionAt(world, id).capacity.deer ?? 0) > 0)).campCell);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     state.player.tools.push({ id: "bow", durability: 100 });
     addItem(state.player.pack, "arrow", 40);
@@ -339,9 +343,10 @@ describe("tasks", () => {
     const { state, world } = newGame(4);
     siteCamp(state, world);
     const ids = new Set(availableTasks(state, world, calendar(0)).map((o) => o.id));
-    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "read", "setTrap", "emptyTrap", "cook", "craft", "repair", "sharpen", "build", "light", "walk", "haul", "rest", "sleep", "travel"]) {
-      expect(ids.has(id as never)).toBe(true);
-    }
+    // Sleep is not among them: it is body-owned work the runner starts, not a
+    // row the player is offered.
+    const want = ["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "read", "setTrap", "emptyTrap", "cook", "craft", "repair", "sharpen", "build", "light", "walk", "haul", "rest", "travel"];
+    expect(want.filter((id) => !ids.has(id as never))).toEqual([]);
   });
 
   it("legality can be judged at a cell you do not stand on", () => {

@@ -18,8 +18,9 @@ import type { GameState } from "../src/sim/types";
 import type { World } from "../src/world/gen";
 import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/sim/water";
 import { ensureGround, stormComing, stormNow } from "../src/sim/weather";
-import { regionAt, spotOf } from "../src/world/gen";
+import { hasSpot, regionAt, spotOf } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { shoreCampWithDryForest } from "./world-facts";
 import { testAtmosphere } from "./weather-helpers";
 
 beforeEach(() => testAtmosphere());
@@ -339,8 +340,18 @@ describe("checking the snares", () => {
    * never be asked to rank against anything.
    */
   function thirstyWithACatch() {
-    const g = felling();
+    const g = newGame(17);
     const { state, world } = g;
+    // The camp on the water with the region's forest spot off it, and a heath
+    // for the snares: the felling has to happen away from any water, or the
+    // thirst is answered where he stands and never ranks against anything.
+    const region = shoreCampWithDryForest(world, state.player.region, (id) => hasSpot(regionAt(world, id), "heath"));
+    placeAt(state, world, regionAt(world, region).campCell);
+    siteCamp(state, world);
+    kitOut(state, world);
+    state.player.energy = 100;
+    addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "forest" }, "grind");
+    advance(state, world, 1);
     const st = regionState(state, world, state.player.region);
     for (let m = 0; m < 600 && state.task?.id !== "chop"; m++) advance(state, world, 1);
     expect(state.task?.id).toBe("chop");

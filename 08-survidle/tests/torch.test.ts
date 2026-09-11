@@ -6,7 +6,9 @@ import { addItem, carried, qty, tool } from "../src/sim/inventory";
 import { ITEM_KG, RECIPES, TORCH_BURN_MINUTES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, firelit, stepPlayer } from "../src/sim/player";
-import { placeAtSpot } from "../src/sim/position";
+import { placeAt, placeAtSpot } from "../src/sim/position";
+import { regionAt } from "../src/world/gen";
+import { regionNear } from "./world-facts";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { readSave, serialize } from "../src/sim/save";
 import { MASTERY_KEYS, masteryKey, skillOf } from "../src/sim/skills";
@@ -175,8 +177,10 @@ describe("what a torch does", () => {
   });
 
   it("keeps the wolves off, as does your own lit fire", () => {
-    // Seed 1's start has wolves (seed 2's has none, capacity 0).
+    // A camp in country that holds wolves, or there is nothing for the light
+    // to keep off.
     const { state, world } = newGame(1);
+    placeAt(state, world, regionAt(world, regionNear(world, state.player.region, (id) => (regionAt(world, id).capacity.wolf ?? 0) > 0)).campCell);
     siteCamp(state, world);
     const rng = new Rng(11);
     const hits = () => {

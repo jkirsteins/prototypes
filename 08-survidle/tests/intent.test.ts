@@ -9,7 +9,7 @@ import { ITEM_KG, SAP_FROM_DOY } from "../src/sim/items";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
-import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
+import { cellOf, forestCell, heathCell, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { readSave, serialize } from "../src/sim/save";
 import { check, stepTask, stopTask , isShortAtCamp } from "../src/sim/tasks";
@@ -20,6 +20,7 @@ import { ICE_SHORE_CM } from "../src/sim/water";
 import type { Intent, TaskId } from "../src/sim/types";
 import { cellAt, cellIdx, regionAt, spotOf, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { dryForestNear, forestKindNear, regionWithSpots } from "./world-facts";
 import { testAtmosphere } from "./weather-helpers";
 import { ensureGround } from "../src/sim/weather";
 
@@ -98,16 +99,19 @@ describe("where the work is done", () => {
     expect(cellAt(world, resolveCell(state, world, cal, "chop", undefined, "nearest").cell).terrain).toMatch(/spruce|pine|birch/);
     placeAtSpot(state, world, state.player.region, "forest");
     expect(resolveCell(state, world, cal, "chop", undefined, "nearest").cell).toBe(cellOf(state, world));
-    expect(["fell", "meadow"]).toContain(cellAt(world, resolveCell(state, world, cal, "berries", undefined, "nearest").cell).terrain);
+    // Berries want heath ground, and heath is bog or meadow.
+    expect(heathCell(world, resolveCell(state, world, cal, "berries", undefined, "nearest").cell)).toBe(true);
   });
 
   it("previews the first walk separately from felling time", () => {
     const { state, world } = newGame(3);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "heath");
-    const o = intentOption(state, world, cal, "chop", "spruce", "nearest");
+    // Which forest grows within reach is the map's business; the preview is not.
+    const kind = forestKindNear(world, state.player.region);
+    const o = intentOption(state, world, cal, "chop", kind, "nearest");
     expect(o.duration).toBeGreaterThan(0);
-    expect(o.initialWalk).toMatchObject({ destination: "spruce forest", nearest: true });
+    expect(o.initialWalk).toMatchObject({ destination: `${kind} forest`, nearest: true });
     expect(o.initialWalk!.km).toBeGreaterThan(0);
     expect(o.initialWalk!.minutes).toBeGreaterThan(0);
   });
@@ -129,12 +133,18 @@ describe("where the work is done", () => {
 
   it("a spot that does not suit the work falls back to one that does, and says so", () => {
     const { state, world } = newGame(3);
+    // A region that was given both spots: an outcrop to ask for and a forest to
+    // fall back to. A region without an outcrop names no spot to refuse.
+    const id = regionWithSpots(world, state.player.region, ["outcrop", "forest", "heath"]);
+    placeAt(state, world, regionAt(world, id).campCell);
     siteCamp(state, world);
-    const r = regionAt(world, state.player.region);
     // Off forest ground, same reason as above, so the fallback is really tested.
     placeAtSpot(state, world, state.player.region, "heath");
     const res = resolveCell(state, world, cal, "chop", undefined, "outcrop");
-    expect(res.cell).toBe(spotOf(r, "forest")!.cell);
+    // The fallback is the nearest ground that does suit, which need not be the
+    // region's named forest; the note is what names the forest.
+    expect(forestCell(world, res.cell)).toBe(true);
+    expect(res.cell).toBe(resolveCell(state, world, cal, "chop", undefined, "nearest").cell);
     expect(res.note).toContain("the forest");
     // The note reaches the player: it prefixes the first real step, not just the placeholder.
     expect(startIntent(state, world, cal, rng(), req("chop", { where: "heath" }))).toBe(true);
@@ -153,12 +163,12 @@ describe("where the work is done", () => {
   });
 
   it("a hunt for anything stays on plausible ground without reading the hidden population", () => {
-    // Seed 1: with the forest-spot species zeroed below, heath is the strict
-    // heaviest ground left; seed 3's camp cell now also weighs in (tied with
-    // shore), which the fixture needs not to happen.
+    // A region with both a heath and a forest named on it, so the hunt has two
+    // grounds to weigh against each other.
     const g = newGame(1);
-    siteCamp(g.state, g.world);
     const { state, world } = g;
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["heath", "forest"])).campCell);
+    siteCamp(state, world);
     const r = regionAt(world, state.player.region);
     state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
     addItem(state.player.pack, "arrow", 10);
@@ -189,8 +199,9 @@ describe("where the work is done", () => {
     // heath full of hare, a level-1 hunter stays put, because the roe deer in
     // the forest are over their head and do not count toward that ground.
     const g = newGame(1);
-    siteCamp(g.state, g.world);
     const { state, world } = g;
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["heath", "forest"])).campCell);
+    siteCamp(state, world);
     const r = regionAt(world, state.player.region);
     state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
     addItem(state.player.pack, "arrow", 10);
@@ -236,9 +247,11 @@ describe("the work tier", () => {
     placeAtSpot(state, world, state.player.region, "heath");
     expect(startIntent(state, world, cal, rng(), req("chop"))).toBe(true);
     expect(state.task?.id).toBe("walk");
-    expect(state.intent?.step).toContain("walking to the forest");
+    // What the walk is called depends on whether the nearest forest happens to
+    // be the region's named one; that it walks, then fells, is the case.
+    expect(state.intent?.step).toMatch(/^walking to /);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    expect(state.intent?.step).toBe("felling a tree at the forest");
+    expect(state.intent?.step).toMatch(/^felling a tree /);
     expect(until(g, () => state.intent === null)).toBe(true);
     expect(state.stats.trees).toBe(1);
     expect(state.log.some((e) => e.text === "Fell any tree: done.")).toBe(true);
@@ -299,8 +312,11 @@ describe("the work tier", () => {
 
   it("a gather stops once the shortfall is in the pack, not once it is already home", () => {
     const g = newGame(3);
-    siteCamp(g.state, g.world);
     const { state, world } = g;
+    // Stone is gathered at an outcrop, so the camp has to be in a region that
+    // was given one; a region of forest and bog offers nothing to pick up.
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["outcrop"])).campCell);
+    siteCamp(state, world);
     mapRegion(state, world, state.player.region);
     const camp = regionState(state, world, state.player.region).campCell!;
     startIntent(state, world, cal, rng(), req("stone", { until: { kind: "campHas", qty: 8 } }));
@@ -623,13 +639,12 @@ describe("a spare tool at camp", () => {
     // any other task, so the same axe is in reach from camp and taken up.
     const { state, world } = newGame(17);
     siteCamp(state, world);
-    const st = regionState(state, world, state.player.region);
     // Camp off the water, so the hole is judged at a cell the survivor is not
     // standing on: every seed's landing camp is itself waterside, where the
     // work cell and the camp cell are one and the question does not arise.
-    const forest = spotOf(regionAt(world, state.player.region), "forest")!.cell;
-    st.campCell = forest;
+    const forest = dryForestNear(world, state.player.region).cell;
     placeAt(state, world, forest);
+    regionState(state, world, state.player.region).campCell = forest;
     state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
     addItem(pile(state, forest), "axe", 1);
     addItem(state.player.pack, "barkBucket", 1);

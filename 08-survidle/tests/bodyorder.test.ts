@@ -17,6 +17,7 @@ import { hurryKind } from "../src/ui/hurry";
 import { readSave, serialize } from "../src/sim/save";
 import { testAtmosphere, testRain } from "./weather-helpers";
 import { cellAt, regionAt } from "../src/world/gen";
+import { dryForestNear, terrainCellNear } from "./world-facts";
 import { runOrders } from "../src/sim/orders";
 import { stepTask } from "../src/sim/tasks";
 
@@ -212,7 +213,7 @@ describe("the body row takes its turn by rank", () => {
   it("sets storm shelter work aside at storm end so ready work resumes with cover progress kept", () => {
     testRain(8, 5, 40);
     const { state, world } = newGame(17);
-    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
+    const cell = terrainCellNear(world, state.player.region, "meadow").cell;
     placeAt(state, world, cell);
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 0, until: 10, warned: true };
     const work = addOrder(state, world, { task: "readSky", where: "nearest", until: { kind: "once" }, deliver: "leave" }, "job");
@@ -236,7 +237,7 @@ describe("the body row takes its turn by rank", () => {
 
   it("claims a matching shelter task from lower-ranked work under the body row's name", () => {
     const { state, world } = newGame(17);
-    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "spruce")!;
+    const cell = terrainCellNear(world, state.player.region, "spruce").cell;
     placeAt(state, world, cell);
     const work = addOrder(state, world, { task: "findShelter", where: { cell }, until: { kind: "once" }, deliver: "leave" }, "job");
     runOrders(state, world, cal, new Rng(1));
@@ -252,7 +253,7 @@ describe("the body row takes its turn by rank", () => {
 
   it("sets aside its own emergency build at weatherproof while keeping site progress", () => {
     const { state, world } = newGame(17);
-    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
+    const cell = terrainCellNear(world, state.player.region, "meadow").cell;
     placeAt(state, world, cell);
     state.weather.precip = "none";
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
@@ -274,7 +275,7 @@ describe("the body row takes its turn by rank", () => {
 
   it("leaves higher-ranked work running, then owns every storm step and resumes set-aside work", () => {
     const { state, world } = newGame(17);
-    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "spruce")!;
+    const cell = terrainCellNear(world, state.player.region, "spruce").cell;
     placeAt(state, world, cell);
     state.weather.precip = "none";
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
@@ -360,6 +361,8 @@ describe("the body row takes its turn by rank", () => {
 
   it("above the work, it takes the minute mid-chunk and the work keeps its minutes", () => {
     const { state, world } = newGame(3);
+    // Forest away from any water, so the drink really is a trip.
+    placeAt(state, world, dryForestNear(world, state.player.region).cell);
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     advance(state, world, 30);
     expect(state.intent?.orderId).toBe(grind.id);
@@ -393,9 +396,16 @@ describe("the camp row and a chunk in hand", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
-    advance(state, world, 60);
-    expect(state.intent?.orderId).toBe(grind.id);
-    expect(state.task).not.toBeNull();
+    // A chunk genuinely mid-flight: how long the walk out takes is the ground's
+    // business, and a catch that appears on a chunk boundary would be a
+    // different case, so the case runs on until the work is really in hand.
+    let inHand = false;
+    for (let i = 0; i < 600 && !inHand; i++) {
+      advance(state, world, 1);
+      const task = state.task;
+      inHand = state.intent?.orderId === grind.id && task?.id === "sticks" && task.progress > 0 && task.progress < task.duration - 2;
+    }
+    expect(inHand).toBe(true);
     // A catch hanging in the snares, which is the camp's other want: it asks
     // for his feet, so it is work like any other and takes its turn.
     st.snareCatch = { count: 1, age: 0 };

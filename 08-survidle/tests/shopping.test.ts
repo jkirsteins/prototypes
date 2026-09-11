@@ -12,6 +12,7 @@ import { placesHtml } from "../src/ui/panels";
 import { shoppingSource } from "../src/sim/shopping";
 import { siteCamp } from "./siting-helpers";
 import { regionAt } from "../src/world/gen";
+import { regionWithSpots } from "./world-facts";
 
 describe("the tracked shopping target", () => {
   it("starts empty and an older save gains the same empty target", () => {
@@ -146,6 +147,9 @@ describe("the tracked shopping target", () => {
 
   it("marks a known place when it can answer a current shortage", () => {
     const { state, world } = newGame(3);
+    // A region given both an outcrop and a forest: the stone and the stick a
+    // knife wants are each answered by a named place only where there is one.
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["outcrop", "forest"])).campCell);
     state.shopping = shoppingTarget("craft", "knife");
     const html = placesHtml(state, world, calendar(state.minute, state.startDoy));
     expect(html).toMatch(/outcrop[\s\S]*stone for stone knife/);

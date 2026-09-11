@@ -7,10 +7,11 @@ import { hourlyEvents } from "../src/sim/events";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { MAX_SNARES, SNARE_ODDS_PER_NIGHT } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { placeAtSpot } from "../src/sim/position";
+import { placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
+import { regionNear } from "./world-facts";
 import { siteCamp } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
 
@@ -102,8 +103,10 @@ describe("camp", () => {
   });
 
   it("wolves come only at night outside shelter", () => {
-    // Seed 1's start has wolves (seed 2's has none, capacity 0).
+    // A camp in country that holds wolves: a region whose capacity has none
+    // never sends any, whatever the hour.
     const { state, world } = newGame(1);
+    placeAt(state, world, regionAt(world, regionNear(world, state.player.region, (id) => (regionAt(world, id).capacity.wolf ?? 0) > 0)).campCell);
     siteCamp(state, world);
     const rng = new Rng(11);
     let hits = 0;

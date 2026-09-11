@@ -767,6 +767,11 @@ describe("wants by level", () => {
     // the spear keep, not whether seed 17 finds game before a cold snap.
     addItem(camp, "driedMeat", (HUNT_FOOD_RUNWAY_DAYS * RUNWAY_DEFAULT_DAILY_KCAL) / FOODS.driedMeat.kcalPerKg);
     addItem(camp, "fat", (HUNT_FAT_RUNWAY_DAYS * RUNWAY_DEFAULT_DAILY_KCAL) / FOODS.fat.kcalPerKg);
+    // And the spear's own materials: whether the ground within reach holds an
+    // outcrop to gather stone from is the map's business, not the keep's.
+    addItem(camp, "stone", 4);
+    addItem(camp, "stick", 4);
+    addItem(camp, "cordage", 4);
     stepReference(ref, 20 * 1440);
     expect(hasTool(ref.state.player, "fishingSpear")).toBe(true);
     expect(qty(camp, "fishingSpear")).toBe(1);

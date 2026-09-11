@@ -54,7 +54,12 @@ function driveExplore(g: G, maxMinutes = 40000): { minutes: number; expected: nu
   noteLeg();
   let minutes = 0;
   for (; minutes < maxMinutes && state.task; minutes++) {
+    // A region with water in it is surveyed as well as walked: the shore reads
+    // are minutes the ground asked for too, so they belong in the sum the walk
+    // is checked against.
+    const surveying = state.task.surveyPhase === "read";
     stepTask(state, world, calendar(state.minute), rng, 1);
+    if (surveying) expected += 1;
     noteLeg();
   }
   return { minutes, expected, legs };

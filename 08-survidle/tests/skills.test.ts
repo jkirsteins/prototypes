@@ -117,8 +117,12 @@ describe("what trains what", () => {
 
 type G = ReturnType<typeof newGame>;
 /** A fish the player's region holds; the tests want one that exists, not a particular one. */
-function aFish(g: G): Species {
-  return fishSpecies().find((s) => regionAt(g.world, g.state.player.region).capacity[s])!;
+/** A fish this region's water holds, optionally one answering a further rule. */
+function aFish(g: G, wants: (s: Species) => boolean = () => true): Species {
+  const here = fishSpecies().filter((s) => regionAt(g.world, g.state.player.region).capacity[s]);
+  const found = here.find(wants);
+  if (found === undefined) throw new Error(`no fish in region ${g.state.player.region} answers the rule; it holds ${here.join(", ") || "none"}`);
+  return found;
 }
 function run(g: G, minutes: number) {
   const rng = new Rng(1);
@@ -216,10 +220,14 @@ describe("effects", () => {
     const base = huntOdds(state, world, cal, d, "hare");
     state.skills.hunting.xp = levelMinutes(11);
     expect(huntOdds(state, world, cal, d, "hare")).toBeCloseTo(base * 1.1, 6);
-    const f = aFish(g);
+    // A fish whose practice a beginner already meets: a species recommended
+    // above level 1 also closes its gap on the way to 11, which halves into the
+    // odds alongside the skill and is a different rule.
+    const f = aFish(g, (species) => gap(state, `fish:${species}`) === 0);
     const df = regionDensity(state, world, state.player.region, f, cal);
     const fish = huntOdds(state, world, cal, df, f);
     state.skills.fishing.xp = levelMinutes(11);
+    expect(gap(state, `fish:${f}`)).toBe(0);
     expect(huntOdds(state, world, cal, df, f)).toBeCloseTo(fish * 1.1, 6);
   });
 

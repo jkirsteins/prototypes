@@ -15,7 +15,7 @@ import { cellAt, fordAt, hasSpot, heightAt, neighbours, regionAt, regionOf, stre
 import { CANOPY_HEIGHT_M } from "../src/sim/sight";
 import { UPWIND_STEP } from "../src/sim/shelter";
 import { passable } from "../src/world/route";
-import type { Terrain } from "../src/sim/types";
+import type { SpotId, Terrain } from "../src/sim/types";
 
 const xOf = (world: World, cell: number) => cell % world.w;
 const yOf = (world: World, cell: number) => Math.floor(cell / world.w);
@@ -405,6 +405,135 @@ export function unnamedShoreRegion(world: World, home: number): { region: number
 }
 
 const FOREST: Terrain[] = ["spruce", "pine", "birch"];
+
+/**
+ * A region near `home` whose own camp cell is open ground with forest a short
+ * walk off, and that cell. A felling order given at a camp already standing in
+ * forest is worked where the survivor stands, so every reading of the walk out,
+ * the tree set aside and the walk home has nothing to read; the case wants a
+ * camp you leave to fell. `withinCells` is how far the forest may be, in cells
+ * of `CELL_KM`, and `fromCells` how near it may be, for a case that needs the
+ * round trip to cost something; the nearest region answering is returned.
+ */
+export function openCampWithForestNear(world: World, home: number, withinCells = 2, fromCells = 1): { region: number; camp: number; forestCells: number } {
+  const terrainAt = (cell: number) => terrainOf(world, xOf(world, cell), yOf(world, cell));
+  const forestRing = (cell: number): number => {
+    for (let r = 1; r <= withinCells; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          const x = xOf(world, cell) + dx;
+          const y = yOf(world, cell) + dy;
+          if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
+          if (FOREST.includes(terrainOf(world, x, y))) return r;
+        }
+      }
+    }
+    return -1;
+  };
+  for (const id of regionsOutward(world, home, 600)) {
+    const camp = regionAt(world, id).campCell;
+    const terrain = terrainAt(camp);
+    if (!passable(terrain) || FOREST.includes(terrain)) continue;
+    const forestCells = forestRing(camp);
+    // The nearest forest is what the work walks to, so a camp with forest
+    // nearer than asked for is not the ground the caller wants.
+    if (forestCells >= fromCells) return { region: id, camp, forestCells };
+  }
+  throw new Error(`no region within reach of ${home} has an open camp with forest within ${withinCells} cells`);
+}
+
+/**
+ * The nearest region to `home` that was given every one of these named spots.
+ * `placeSpots` names a spot only where the region holds enough of its ground,
+ * so a case that needs two spots to play against each other - work sent to one
+ * that does not suit it, a hunt choosing between them - must find a region that
+ * has both rather than assume the landing does.
+ */
+export function regionWithSpots(world: World, home: number, spots: SpotId[]): number {
+  return regionNear(world, home, (id) => spots.every((spot) => hasSpot(regionAt(world, id), spot)));
+}
+
+/**
+ * The kind of forest nearest `home`, as the terrain name. Which conifer or
+ * broadleaf grows within reach of a landing is the map's business, so a case
+ * about naming a tree kind asks for the one that is actually there.
+ */
+export function forestKindNear(world: World, home: number): Terrain {
+  for (const id of regionsOutward(world, home, 400)) {
+    const cell = regionAt(world, id).cells.find((c) => FOREST.includes(cellAt(world, c).terrain));
+    if (cell !== undefined) return cellAt(world, cell).terrain;
+  }
+  throw new Error(`no region within reach of ${home} holds forest`);
+}
+
+/**
+ * A forest cell near `home` with no water and no stream beside it. Work done
+ * there is done out of arm's reach of a drink, which is what a case about
+ * thirst taking the minute needs: a mouthful taken where the survivor stands
+ * costs the work nothing and the body never has to ask for his feet.
+ */
+export function dryForestNear(world: World, home: number): { region: number; cell: number } {
+  const wet = (cell: number) => streamAt(world, cell) || neighbours(world, cell).some((n) => streamAt(world, n) || waterKindOf(world, n) !== null);
+  for (const id of regionsOutward(world, home, 400)) {
+    const cell = regionAt(world, id).cells.find((c) => FOREST.includes(cellAt(world, c).terrain) && !wet(c));
+    if (cell !== undefined) return { region: id, cell };
+  }
+  throw new Error(`no region within reach of ${home} holds forest away from water`);
+}
+
+/**
+ * Two neighbouring forest cells in one region near `home`: somewhere to put a
+ * camp under the canopy and a cell beside it to stand on. Which forest it is -
+ * spruce, pine or birch - is the region's business; what a case about walking
+ * home to cover needs is cover on both cells and one step between them.
+ */
+export function forestPairNear(world: World, home: number): { region: number; camp: number; beside: number } {
+  for (const id of regionsOutward(world, home, 400)) {
+    for (const cell of regionAt(world, id).cells) {
+      if (!FOREST.includes(cellAt(world, cell).terrain)) continue;
+      const beside = neighbours(world, cell).find((n) => regionOfCell(world, n) === id && FOREST.includes(cellAt(world, n).terrain));
+      if (beside !== undefined) return { region: id, camp: cell, beside };
+    }
+  }
+  throw new Error(`no region within reach of ${home} holds two forest cells side by side`);
+}
+
+/**
+ * A region near `home` whose camp stands on the water and whose named forest
+ * spot stands off it. Both halves are what a case about walking for water
+ * needs: work sent to the forest happens away from any water, so thirst has
+ * somewhere to walk to, and the camp is on the water, so freezing the shore
+ * shuts the near supply and the fallback behind it can be read. `accept` is the
+ * caller's own further rule on the region, for a case that needs other spots on
+ * it too.
+ */
+export function shoreCampWithDryForest(world: World, home: number, accept: (region: number) => boolean = () => true): number {
+  // A stream is drinking water like any other, so a forest spot on a brook is
+  // not dry ground for this.
+  const wet = (cell: number) => streamAt(world, cell) || neighbours(world, cell).some((n) => streamAt(world, n) || waterKindOf(world, n) !== null);
+  return regionNear(world, home, (id) => {
+    const region = regionAt(world, id);
+    if (!wet(region.campCell) || !accept(id)) return false;
+    const forest = region.spots.find((s) => s.id === "forest");
+    return forest !== undefined && !wet(forest.cell);
+  });
+}
+
+/**
+ * A region near `home` whose own camp cell is forest standing on the water, and
+ * that cell. The pairing is what a case about the last water fallback needs:
+ * felling happens at camp, so no walk separates the work from the fire, and the
+ * water under foot is the camp's own, so icing it over leaves nothing to walk to
+ * and melting snow is all that is left.
+ */
+export function forestCampOnWater(world: World, home: number): number {
+  const id = regionNear(world, home, (r) => {
+    const camp = regionAt(world, r).campCell;
+    return FOREST.includes(cellAt(world, camp).terrain) && neighbours(world, camp).some((n) => waterKindOf(world, n) !== null);
+  });
+  return regionAt(world, id).campCell;
+}
 
 /** The nearest region to `home`, itself included, that satisfies a rule. */
 export function regionNear(world: World, home: number, wants: (id: number) => boolean): number {

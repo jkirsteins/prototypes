@@ -8,6 +8,7 @@ import { fillPopulations, regionState, startingPop } from "../src/sim/regionstat
 import { readSave, serialize } from "../src/sim/save";
 import { generateWorld, regionAt, type World } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
+import { regionNear } from "./world-facts";
 import { ensureGround, groundAt, ICE_THIN_CM } from "../src/sim/weather";
 import type { GameState } from "../src/sim/types";
 import { disturbHuntingGround } from "../src/sim/hunting";
@@ -63,10 +64,16 @@ describe("animals", () => {
     fillPopulations(loaded, world);
     const pop = loaded.regions[id].pop as Record<string, number>;
     expect(pop.hare).toBe(5);
-    // Species the catalogue no longer has go; the ones it gained start where a fresh region would.
+    // Species the catalogue no longer has go; the ones it gained start where a
+    // fresh region would, at seven tenths of what this region can hold. Which
+    // species those are is the region's own ground and not the fixture's.
     expect(pop.grouse).toBeUndefined();
     expect(pop.fish).toBeUndefined();
-    expect(pop.perch).toBeCloseTo(regionAt(world, id).capacity.perch! * 0.7, 9);
+    const caps = regionAt(world, id).capacity;
+    const kept = new Set(["hare", "deer", "elk"]);
+    const gained = (Object.keys(caps) as Species[]).filter((s) => !kept.has(s) && (caps[s] ?? 0) > 0);
+    expect(gained.length).toBeGreaterThan(0);
+    for (const s of gained) expect(pop[s], s).toBeCloseTo(caps[s]! * 0.7, 9);
   });
 });
 
@@ -101,15 +108,29 @@ describe("seasons", () => {
     const k = regionAt(world, id).capacity.mallard!;
     st.pop.mallard = 0;
     const rng = new Rng(3);
-    expect(groundAt(state, world, id).iceCm).toBeCloseTo(27.395442147, 6);
-    const day = (d: number) => {
-      // Match advance: move the authoritative clock, then catch up touched
-      // ground before the daily population step. Calendar alone moves no time.
+    // Ice on the water at the start, so the thaw the flock waits for is real;
+    // how thick it is belongs to the local air and is read below as gone.
+    expect(groundAt(state, world, id).iceCm).toBeGreaterThan(0);
+    // Match advance: move the authoritative clock, then catch up touched ground.
+    // Calendar alone moves no time.
+    const ground = (d: number) => {
       state.minute = 1440 * d;
       for (const key of Object.keys(state.regions)) ensureGround(state, world, Number(key));
+    };
+    const day = (d: number) => {
+      ground(d);
       dailyAnimals(state, world, calendar(state.minute, state.startDoy), rng, { region: state.player.region, atCamp: true });
     };
-    day(30); // May: one day fills a tenth of the gap to capacity.
+    // The local thaw, found rather than named: which day this region's water
+    // opens follows from the air over it, and the flock waits for the day and
+    // not for a date. Nothing is fed to the populations while it is looked for.
+    let thaw = 1;
+    for (; thaw < 200; thaw++) {
+      ground(thaw);
+      if (groundAt(state, world, id).iceCm === 0) break;
+    }
+    expect(thaw).toBeLessThan(200);
+    day(thaw); // One day on open water fills a tenth of the gap to capacity.
     expect(groundAt(state, world, id).iceCm).toBe(0);
     expect(popOf(st, "mallard")).toBeCloseTo(k * 0.1, 9);
     day(200); // October: absence removes a tenth of the remaining flock.
@@ -166,21 +187,32 @@ describe("seasons", () => {
 
   it("moves big game out of repeatedly disturbed ground without losing animals", () => {
     const { state, world } = newGame(79);
-    const id = state.player.region;
+    // Elk move between ground that can hold elk, so both regions need the
+    // capacity: a region without it is not disturbed elk range at all.
+    const id = regionNear(world, state.player.region, (candidate) =>
+      (regionAt(world, candidate).capacity.elk ?? 0) > 0
+      && regionAt(world, candidate).neighbours.some((nb) => (regionAt(world, nb.id).capacity.elk ?? 0) > 0));
     const source = regionState(state, world, id);
     const neighbour = regionAt(world, id).neighbours.find((candidate) => (regionAt(world, candidate.id).capacity.elk ?? 0) > 0);
     expect(neighbour).toBeDefined();
     const destination = regionState(state, world, neighbour!.id);
-    source.pop.elk = 6;
+    // At capacity and no higher: a herd over what the range can hold is thinned
+    // the same day, and that loss is not the migration under test.
+    const start = regionAt(world, id).capacity.elk!;
+    source.pop.elk = start;
     destination.pop.elk = 0;
     for (const cell of regionAt(world, id).cells) disturbHuntingGround(state, world, cell, false);
     const totalBefore = popOf(source, "elk") + popOf(destination, "elk");
 
     dailyAnimals(state, world, calendar(1440 * 220), new Rng(4), null);
 
-    const moved = 6 - popOf(source, "elk");
-    expect(moved).toBeGreaterThan(6 * BIG_GAME_MIGRATION * 2);
-    expect(popOf(source, "elk") + popOf(destination, "elk")).toBeCloseTo(totalBefore, 9);
+    const moved = start - popOf(source, "elk");
+    expect(moved).toBeGreaterThan(start * BIG_GAME_MIGRATION * 2);
+    // Conserved across every region they could have walked into, not just the
+    // one this case names: disturbed ground sheds elk to all its elk neighbours.
+    const allElk = () => Object.values(state.regions).reduce((a, r) => a + popOf(r, "elk"), 0);
+    expect(allElk()).toBeCloseTo(totalBefore, 9);
+    expect(popOf(destination, "elk")).toBeGreaterThan(0);
   });
 });
 
@@ -188,9 +220,14 @@ describe("small game moves in", () => {
   /** Seed 5's start region and its neighbours, all touched, hares at the numbers the test sets. */
   function heath(nbDensity: number) {
     const { state, world } = newGame(5);
-    const id = state.player.region;
-    const st = regionState(state, world, id);
     const cal = calendar(60 * 1440); // 1 June from a 1 April start
+    // Every neighbour must be hare ground, or "the neighbours are full" is not
+    // what the fixture sets: a sea neighbour holds no hares to send over at any
+    // density, and the refill averages over all of them.
+    const id = regionNear(world, state.player.region, (candidate) =>
+      seasonalCapacity(world, candidate, "hare", cal, 0) > 10
+      && regionAt(world, candidate).neighbours.every((nb) => seasonalCapacity(world, nb.id, "hare", cal, 0) > 0));
+    const st = regionState(state, world, id);
     const k = seasonalCapacity(world, id, "hare", cal, 0);
     expect(k).toBeGreaterThan(10);
     st.pop.hare = k / 2;

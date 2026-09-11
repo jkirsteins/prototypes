@@ -12,6 +12,7 @@ import { regionState } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { cellAt, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { openCampWithForestNear } from "./world-facts";
 import { testAtmosphere } from "./weather-helpers";
 
 /**
@@ -100,6 +101,9 @@ describe("work in the dark", () => {
 describe("the runner keeps its night gate", () => {
   it("still skips a standing order for the forest after dark, with the reason it always gave", () => {
     const { state, world } = newGame(17, DECEMBER);
+    // A camp off forest ground: the gate under test is the one on work away
+    // from camp, and a camp standing in the wood is not away from anything.
+    placeAt(state, world, openCampWithForestNear(world, state.player.region).camp);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
@@ -131,7 +135,9 @@ describe("the collapse", () => {
     expect(c.state.task).toBeNull();
     advance(c.state, c.world, 1);
     expect(c.state.intent?.mode).toBe("care");
-    for (let i = 0; i < 300 && c.state.task?.id !== "rest"; i++) advance(c.state, c.world, 1);
+    // A walk home may stand between the collapse and the rest, and how long
+    // that walk is belongs to the ground.
+    for (let i = 0; i < 3000 && c.state.task?.id !== "rest"; i++) advance(c.state, c.world, 1);
     expect(c.state.task?.id).toBe("rest");
   });
 

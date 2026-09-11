@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
+import { alertness, SLEEP_ONSET } from "../src/sim/sleep";
 import { bodyRowOf, isCampRow, isBodyRow } from "../src/sim/bodyorder";
 import { stormOptions } from "../src/sim/body";
 import { rootStockFor } from "../src/sim/camp";
@@ -76,10 +77,12 @@ describe("advance", () => {
     expect(state.task).toBeNull();
   });
 
-  it("falls asleep on its own when idle and spent: the body's own row puts it down", () => {
+  it("falls asleep on its own when idle and sleepy: the body's own row puts it down", () => {
     const { state, world } = newGame(8);
     siteCamp(state, world);
-    state.player.energy = 9;
+    // The debt, not the energy: a spent body is rested by the care row and a
+    // sleepy one is put to bed, and the two were separated.
+    state.player.sleepDebt = SLEEP_ONSET + 1 + alertness(calendar(state.minute, state.startDoy).hour);
     advance(state, world, 5);
     expect(state.task?.id).toBe("sleep");
     expect(state.player.bodyNeed).toBe("sleep");
@@ -89,8 +92,12 @@ describe("advance", () => {
   it("survives the colder default April day with the starting kit", () => {
     const { state, world } = newGame(8);
     siteCamp(state, world);
-    expect(localWeather(state, world).temperatureC).toBeCloseTo(-3.5, 1);
-    expect(localWeather(state, world).iceCm).toBeCloseTo(19.7, 1);
+    // Below freezing with the water shut, which is what "the colder default
+    // April day" means; the landing reads about -1 C at sea level now rather
+    // than the -3.5 C of a ridge, and how cold it is is not what this case is
+    // about - surviving the day with the arrival kit is.
+    expect(localWeather(state, world).temperatureC).toBeLessThan(0);
+    expect(localWeather(state, world).iceCm).toBeGreaterThan(0);
     advance(state, world, 1440);
     expect(state.dead).toBeNull();
     expect(state.player.health).toBeGreaterThan(0);

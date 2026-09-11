@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { dailyCamp } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
-import { placeAt } from "../src/sim/position";
+import { cellOf, placeAt } from "../src/sim/position";
 import { DISABLED, disabled } from "../src/sim/probe";
 import { fishItem } from "../src/sim/species";
 import { check } from "../src/sim/tasks";
@@ -11,8 +11,9 @@ import { unexploited } from "../src/sim/reference";
 import { emptyBurn, emptyYield } from "../src/sim/ledger";
 import { addItem, pile } from "../src/sim/inventory";
 import { regionState } from "../src/sim/regionstate";
-import { cellIdx, regionAt } from "../src/world/gen";
+import { regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { lakeShoreNear, watersideNear } from "./world-facts";
 import { ensureGround } from "../src/sim/weather";
 import { testAtmosphere } from "./weather-helpers";
 
@@ -35,10 +36,15 @@ describe("the without probe and the unexploited line", () => {
     // The trap read the species table directly and never the probe, so a char-shore trap kept
     // filling its oily kilos with oilyFish shut and takeTrapFish produced them at camp. The
     // without table's oilyFish row was a partial shutdown.
-    // Seed 17's home region holds trout, the oily species the trap can draw here.
+    // The trap draws the oily species the region can hold, so the camp goes to
+    // the nearest lake shore whose region holds trout; a region without them
+    // has no oily side for the probe to shut.
     const { state, world } = newGame(17, 200);
+    const found = lakeShoreNear(world, state.player.region, (id) => (regionAt(world, id).capacity.trout ?? 0) > 0);
+    placeAt(state, world, found.cell);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
+    st.campCell = found.cell;
     expect(regionAt(world, state.player.region).capacity.trout).toBeGreaterThan(0);
     const cal = calendar(0, 200);
     st.trap = { cell: st.campCell!, kg: 0, oilyKg: 0, fish: ["trout"], age: 0 };
@@ -90,13 +96,13 @@ describe("the without probe and the unexploited line", () => {
     expect(after.find((u) => u.name === "bones uncracked")?.taken).toBe("none taken");
   });
 
-  // Seed 17's own coastline (the plants test's hand-found cell), not the landing
-  // region: a land cell beside a "sea"-kind water cell, stood on directly.
+  // A land cell beside a "sea"-kind water cell, stood on directly, rather than
+  // the landing region: seaweed is the sea's and nothing else's.
   it("the seaweed bullet reads the shore's ice exactly as the seaweed task does", () => {
     testAtmosphere({ temperatureC: 5 });
     const { state, world } = newGame(17, 90);
     siteCamp(state, world);
-    placeAt(state, world, cellIdx(world, 1224, 12));
+    placeAt(state, world, watersideNear(world, cellOf(state, world), "sea"));
     ensureGround(state, world, state.player.region).iceCm = 0;
     expect(unexploited(state, world).some((u) => u.name === "seaweed")).toBe(true);
     ensureGround(state, world, state.player.region).iceCm = 2;
