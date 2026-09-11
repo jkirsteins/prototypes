@@ -239,26 +239,36 @@ function detailHash(seed: number, x: number, y: number, n: number): number {
  * stylesheet's three overlay durations are these periods. Presentation only.
  */
 export const WATER_RIPPLES = [
-  { direction: 0.35, wavelength: 5, periodS: 2.5 },
-  { direction: 2.27, wavelength: 3.5, periodS: 1.875 },
-  { direction: 4.54, wavelength: 8, periodS: 4 },
+  { direction: 0.35, wavelength: 4, periodS: 2.5 },
+  { direction: 2.27, wavelength: 2.5, periodS: 1.875 },
+  { direction: 4.54, wavelength: 6, periodS: 4 },
 ] as const;
 
 /**
  * A water cell's phase in each ripple, in radians within one turn: the
  * cell's position projected on the ripple's direction, divided by the zoom
- * so a coarse block keeps the same step per drawn cell, plus a little
- * seeded jitter so the fronts are not ruled. Neighbours land near each
- * other, which is what makes the light travel instead of blink.
+ * so a coarse block keeps the same step per drawn cell, plus up to a
+ * radian of seeded jitter either way so the fronts are ragged. Neighbours
+ * still land near each other, which is what makes the light travel
+ * instead of blink; the jitter is what keeps it from sliding as one sheet.
  */
 export function waterRipplePhases(seed: number, x: number, y: number, zoom: number): [number, number, number] {
   const turn = 2 * Math.PI;
   return WATER_RIPPLES.map((ripple, i) => {
     const along = x * Math.cos(ripple.direction) + y * Math.sin(ripple.direction);
-    const jitter = (detailHash(seed, x, y, 149 + 2 * i) % 1000) / 1000 * 0.5 - 0.25;
+    const jitter = (detailHash(seed, x, y, 149 + 2 * i) % 1000) / 1000 * 2 - 1;
     const phase = (along / zoom / ripple.wavelength) * turn + jitter;
     return Math.round(((phase % turn) + turn) % turn * 1000) / 1000;
   }) as [number, number, number];
+}
+
+/**
+ * How bright one cell's overlay for one ripple peaks, 0.25 to 0.5: with the
+ * strong phase jitter, the reason the sum reads as light on water and not
+ * as one texture sliding over it. Texture from the seed, like the phases.
+ */
+export function waterRipplePeak(seed: number, x: number, y: number, wave: number): number {
+  return Math.round((0.25 + (detailHash(seed, x, y, 163 + 2 * wave) % 1000) / 1000 * 0.25) * 1000) / 1000;
 }
 
 /** The same phases as a start offset into each ripple's cycle, in seconds, for the overlays' animation delay. */
@@ -1016,7 +1026,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // same markup on every render and the morph has nothing to change.
     if (cls.includes("t-water") && seen === 2 && !cls.includes("memory") && !cls.includes("mk") && !cls.includes("ice-thin") && !cls.includes("ice-safe")) {
       cls.push("water-live");
-      content += waterRippleDelaysS(world.seed, cx, cy, z).map((delay, i) => `<i class="water-ripple water-ripple-${i + 1}" style="--water-delay:-${delay}s" aria-hidden="true"></i>`).join("");
+      content += waterRippleDelaysS(world.seed, cx, cy, z).map((delay, i) => `<i class="water-ripple water-ripple-${i + 1}" style="--water-delay:-${delay}s;--water-peak:${waterRipplePeak(world.seed, cx, cy, i)}" aria-hidden="true"></i>`).join("");
     }
     const style = styles.length ? ` style="${styles.join(";")}"` : "";
     parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${style}>${content}</span>`);

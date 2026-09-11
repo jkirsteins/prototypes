@@ -1494,7 +1494,7 @@ button.act small.gives, span.act small.gives,
 .grid .c.water-live .water-ripple-3 { animation-duration: calc(4s / var(--water-shimmer-speed, 1)); }
 @keyframes water-ripple {
   0%, 100% { opacity: 0; }
-  50% { opacity: 0.4; }
+  50% { opacity: var(--water-peak, 0.4); }
 }
 /* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
    depth palette. Thin ice remains dark and uncertain; safe ice forms the
