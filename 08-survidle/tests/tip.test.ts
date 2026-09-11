@@ -223,13 +223,13 @@ describe("what the tooltip says", () => {
     site.emergencyMinutes = 90;
     const key = tipKey(state, world, 523074);
     expect(tipHtml(state, world, cal, 523074)).toContain("high profile");
-    expect(tipHtml(state, world, cal, 523074)).toContain("lee ground");
+    expect(tipHtml(state, world, cal, 523074)).toContain("sheltered from the wind");
     site.cover = 2;
     expect(tipKey(state, world, 523074)).not.toBe(key);
     expect(tipHtml(state, world, cal, 523074)).toContain("low profile");
     placeAt(state, world, 523076);
     markKnown(state, 523076);
-    expect(tipHtml(state, world, cal, 523076)).toContain("exposed to wind");
+    expect(tipHtml(state, world, cal, 523076)).toContain("open to the wind");
   });
 
   it("does not reveal an unearned gale through tooltip text or its cache key", () => {

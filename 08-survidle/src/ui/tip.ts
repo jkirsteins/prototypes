@@ -205,7 +205,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   const site = st.sites[cell] ?? null;
   if (site) lines.push(`<div><b>Protection:</b> ${esc(PROTECTION_WORDS[protectionOf(site)])}</div>`);
   if (site && protectionOf(site) > 0) lines.push(`<div>${profileOf(site)} profile</div>`);
-  if (terrain !== "water") lines.push(`<div>${isLee(world, cell) ? "lee ground" : "exposed to wind"}</div>`);
+  if (terrain !== "water") lines.push(`<div>${isLee(world, cell) ? "sheltered from the wind" : "open to the wind"}</div>`);
 
   for (const animal of animalsAt(state, world, cal, cell)) lines.push(`<div>${esc(animal)}</div>`);
 
