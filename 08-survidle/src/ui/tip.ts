@@ -22,12 +22,12 @@ import { isRead, readLine } from "../sim/knowledge";
 import { isKnown } from "../sim/mapped";
 import { campCellOf, cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { regionState } from "../sim/regionstate";
-import { isLee, profileOf, protectionOf, PROTECTION_WORDS } from "../sim/shelter";
+import { leeScore, profileOf, protectionOf, PROTECTION_WORDS, windName } from "../sim/shelter";
 import { check, whereIs } from "../sim/tasks";
 import type { Carcass, GameState, Inventory } from "../sim/types";
 import { plain } from "../sim/voice";
 import { fmtDuration, fmtKg } from "../units";
-import { localWeather } from "../sim/weather";
+import { atmosphereAt, localWeather } from "../sim/weather";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
 import { cellAt, regionAt, type World } from "../world/gen";
 import { SPECIES_DEFS } from "../sim/species";
@@ -205,7 +205,16 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   const site = st.sites[cell] ?? null;
   if (site) lines.push(`<div><b>Protection:</b> ${esc(PROTECTION_WORDS[protectionOf(site)])}</div>`);
   if (site && protectionOf(site) > 0) lines.push(`<div>${profileOf(site)} profile</div>`);
-  if (terrain !== "water") lines.push(`<div>${isLee(world, cell) ? "lee ground" : "exposed to wind"}</div>`);
+  // Lee is relative to the wind of the moment, so the line names the wind it read.
+  if (terrain !== "water") {
+    const wind = atmosphereAt(state, world, cell).windBearingDeg;
+    const lee = leeScore(world, cell, wind);
+    const from = windName(wind);
+    lines.push(`<div>${esc(lee.by === "canopy" ? "under the spruce"
+      : lee.score < 0.5 ? `exposed to the ${from} wind`
+      : lee.by === "wood" ? `sheltered by the wood to the ${from}`
+      : `lee of the slope to the ${from}`)}</div>`);
+  }
 
   for (const animal of animalsAt(state, world, cal, cell)) lines.push(`<div>${esc(animal)}</div>`);
 

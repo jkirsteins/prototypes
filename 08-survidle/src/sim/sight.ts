@@ -34,7 +34,7 @@ const FOREST_RANGE_CELLS = 1;
 /** Mean Earth radius, metres; enough here to stop an elevated view claiming ground below its geometric horizon. */
 const EARTH_RADIUS_M = 6_371_000;
 /** Representative mature canopy tops above the generated ground surface. */
-const CANOPY_HEIGHT_M: Partial<Record<Terrain, number>> = { spruce: 22, pine: 17, birch: 14 };
+export const CANOPY_HEIGHT_M: Partial<Record<Terrain, number>> = { spruce: 22, pine: 17, birch: 14 };
 /** A bright point source remains distinguishable at 2% transmitted contrast, below the 5% daylight terrain threshold. */
 export const CAMPFIRE_CONTRAST_LIMIT = 0.02;
 const CAMPFIRE_MAX_OPTICAL_DEPTH = -Math.log(CAMPFIRE_CONTRAST_LIMIT);

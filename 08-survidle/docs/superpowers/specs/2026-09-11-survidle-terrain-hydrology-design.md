@@ -271,8 +271,11 @@ property. `fieldsAt` is removed. The new readers on the world are
   floored at 0. The seasonal curve keeps its 62 N calibration until the
   latitude-by-row item. Gate readings will move because the lowland stops
   being cooled; they are reported, not tuned.
-- **Lee** (`src/sim/shelter.ts`). Unchanged rule on `heightAt`; erosion
-  removes the cell-scale speckle so it reads real hollows.
+- **Lee** (`src/sim/shelter.ts`). Lee for the gale rule is relative
+  blocking of the wind: the highest ratio of upwind ground plus canopy
+  above the cell over its distance, sampled 300 m to 1.5 km upwind; a
+  ratio of 0.05 is lee, 0.1 full shelter, spruce is full shelter by
+  canopy. Rock, fell, water and river are never lee.
 - **Water access**. `watersideCell` and `isShore` count a stream cell
   and a river neighbour as water beside. Seeps: a stream cell is a shore
   and refuses a seep as today. Fishing spots need lake, sea or river; a

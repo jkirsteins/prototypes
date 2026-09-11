@@ -9,6 +9,7 @@
 import { installNodeWorldCache } from "../src/world/solvecache.node";
 import { generateWorld, heightAt, terrainOf, waterKindOf } from "../src/world/gen";
 import { coastKmOfCell } from "../src/world/classify";
+import { leeScore } from "../src/sim/shelter";
 import { FLAG_STREAM, KIND } from "../src/world/solve";
 import { NO_FLOW, receiverOf } from "../src/world/hydro";
 import { latitudeAt, TERRAINS, WORLD_H, WORLD_W } from "../src/world/terrain";
@@ -86,6 +87,20 @@ for (const seed of seeds) {
   const winds = new Array(8).fill(0);
   for (let i = 0; i < n; i++) { if (s.kind[i] !== KIND.river || s.flowDir[i] === NO_FLOW) continue; const x = i % W, y = (i - x) / W; const c = coastKmOfCell(x, y, W, H); if (c < 0 || c > 150) continue; winds[s.flowDir[i]]++; }
   console.log(`river flow winds E SE S SW W NW N NE: ${winds.join(" ")}   (expected W and SW to dominate on the Atlantic side)`);
+  // Lee share: land the wind is half blocked from by the ground and wood
+  // upwind of it. No target beyond the shape of the thing - a landscape of
+  // valleys and woods shelters tens of percent of its ground, and a number in
+  // the low single digits would mean the rule had gone extinct again.
+  const leeShare = (windBearingDeg: number) => {
+    let lee = 0, cells = 0;
+    for (let i = 0; i < n; i++) {
+      if (s.kind[i] !== KIND.land) continue;
+      cells++;
+      if (leeScore(world, i, windBearingDeg).score >= 0.5) lee++;
+    }
+    return 100 * lee / Math.max(1, cells);
+  };
+  console.log(`lee share of land: west wind ${leeShare(270).toFixed(1)}% north wind ${leeShare(0).toFixed(1)}%   (no target; tens of percent is a sheltered landscape)`);
   const heights = [...s.height].filter((_, i) => s.kind[i] === KIND.land);
   console.log(`land height m: p50 ${pct(heights, 0.5)} p90 ${pct(heights, 0.9)} max ${pct(heights, 1)}`);
   console.log(`start ${world.startCell} at row ${Math.floor(world.startCell / W)} (${latitudeAt(Math.floor(world.startCell / W), H).toFixed(2)} N), height ${heightAt(world, world.startCell % W, Math.floor(world.startCell / W))} m, terrain ${terrainOf(world, world.startCell % W, Math.floor(world.startCell / W))}, shore ${waterKindOf(world, world.startCell + 1) ?? waterKindOf(world, world.startCell - 1) ?? "?"}`);

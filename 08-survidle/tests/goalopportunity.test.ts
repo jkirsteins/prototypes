@@ -17,7 +17,7 @@ import { current } from "../src/sim/record";
 import { readSave, serialize } from "../src/sim/save";
 import { startTask, stepTask } from "../src/sim/tasks";
 import type { GameState, GoalId } from "../src/sim/types";
-import { skyReadDay, stepWeather } from "../src/sim/weather";
+import { atmosphereAt, skyReadDay, stepWeather } from "../src/sim/weather";
 import { cellAt, regionAt } from "../src/world/gen";
 import { findRoute, passable, routeMinutes } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
@@ -806,7 +806,7 @@ describe("Chapter 3 refuge storm evidence", () => {
       const region = regionAt(world, id);
       const land = region.cells.filter((cell) => passable(cellAt(world, cell).terrain));
       return land.some((cell) => straightKm(world, region.campCell, cell) > 1)
-        && land.some((cell) => cellAt(world, cell).terrain === "meadow" && !isLee(world, cell))
+        && land.some((cell) => cellAt(world, cell).terrain === "meadow" && !isLee(world, cell, atmosphereAt(state, world, cell).windBearingDeg))
         && land.some((cell) => cellAt(world, cell).terrain === "spruce");
     }));
     state.goals.opportunity = {
@@ -855,7 +855,8 @@ describe("Chapter 3 refuge storm evidence", () => {
 
     const gale = newGame(17);
     const galeAttempt = remoteAttempt(gale.state, gale.world, 93);
-    const exposed = galeAttempt.remote.cells.find((cell) => cellAt(gale.world, cell).terrain === "meadow" && !isLee(gale.world, cell))!;
+    const exposed = galeAttempt.remote.cells.find((cell) => cellAt(gale.world, cell).terrain === "meadow"
+      && !isLee(gale.world, cell, atmosphereAt(gale.state, gale.world, cell).windBearingDeg))!;
     placeAt(gale.state, gale.world, exposed);
     siteFor(regionState(gale.state, gale.world, galeAttempt.remote.id), exposed).structures.leanTo = true;
     gale.state.weather.storm = { id: 93, source: "natural", kind: "gale", from: gale.state.minute, until: gale.state.minute + 60, warned: true };

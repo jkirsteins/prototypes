@@ -12,9 +12,9 @@
  * a region or two and never a route search.
  */
 import { cellAt, fordAt, hasSpot, heightAt, neighbours, regionAt, regionOf, streamAt, terrainOf, waterKindOf, type World } from "../src/world/gen";
+import { CANOPY_HEIGHT_M } from "../src/sim/sight";
 import { passable } from "../src/world/route";
 import type { Terrain } from "../src/sim/types";
-import { TERRAIN_INDEX } from "../src/world/terrain";
 
 const xOf = (world: World, cell: number) => cell % world.w;
 const yOf = (world: World, cell: number) => Math.floor(cell / world.w);
@@ -226,53 +226,66 @@ export function regionsOutward(world: World, home: number, limit = 120): number[
 }
 
 /**
- * A cell of one terrain near `home` that is lower in metres than all four of
- * its cardinal neighbours, or, with `dip` false, one that is not. A dip is what
- * the shelter rules call lee ground, so which cells are dips and which are not
- * is a fact tests about lee have to find rather than name.
+ * A cell of one terrain near `home` with ground or wood upwind high enough to
+ * block the wind, or, with `blocked` false, one with nothing upwind at all.
+ * The shelter rule calls the first lee, so which cells are sheltered under a
+ * given wind is a fact tests about lee have to find rather than name. The
+ * search is geometry only and ignores which terrains the rule refuses lee to,
+ * so a rock or a fell standing behind a ridge can be found and asked about.
  */
-export function dipCellNear(world: World, home: number, terrain: Terrain, dip = true): number {
+export function leeCellNear(world: World, home: number, terrain: Terrain, windBearingDeg: number, blocked = true): number {
+  // Five samples of 300 m upwind, the reach the shelter rule uses.
+  const eighth = ((Math.round(windBearingDeg / 45) % 8) + 8) % 8;
+  const [dx, dy] = UPWIND_STEP[eighth];
   for (const id of regionsOutward(world, home, 400)) {
     for (const cell of regionAt(world, id).cells) {
-      if (terrainOf(world, xOf(world, cell), yOf(world, cell)) !== terrain) continue;
-      const around = neighbours(world, cell);
-      if (around.length !== 4) continue;
-      const h = heightAt(world, xOf(world, cell), yOf(world, cell));
-      const lower = around.every((other) => heightAt(world, xOf(world, other), yOf(world, other)) > h);
-      if (lower === dip) return cell;
-    }
-  }
-  // A drainage solve fills interior pits so water can run to the sea, which
-  // leaves a dip on land rare: about two in a thousand cells on seed 17, and
-  // none in the several hundred regions around a southern landing. The rule is
-  // still the rule, so the search widens to the whole world rather than the case
-  // going untested.
-  return dipCellAnywhere(world, terrain, dip);
-}
-
-const dipsByWorld = new WeakMap<World, Map<string, number>>();
-
-/** The first cell of each terrain that is, and is not, a local dip: one pass over the solved arrays, remembered per world. */
-function dipCellAnywhere(world: World, terrain: Terrain, dip: boolean): number {
-  let found = dipsByWorld.get(world);
-  if (!found) {
-    found = new Map<string, number>();
-    const { height, terrain: kinds } = world.solved;
-    for (let y = 1; y < world.h - 1; y++) {
-      for (let x = 1; x < world.w - 1; x++) {
-        const i = y * world.w + x;
-        const h = height[i];
-        const isDip = height[i - 1] > h && height[i + 1] > h && height[i - world.w] > h && height[i + world.w] > h;
-        const key = `${kinds[i]}:${isDip}`;
-        if (!found.has(key)) found.set(key, i);
+      const x = xOf(world, cell);
+      const y = yOf(world, cell);
+      if (terrainOf(world, x, y) !== terrain) continue;
+      const h = heightAt(world, x, y);
+      let over = 0;
+      let samples = 0;
+      for (let d = 1; d <= 5; d++) {
+        const sx = x + dx * d;
+        const sy = y + dy * d;
+        if (sx < 0 || sy < 0 || sx >= world.w || sy >= world.h) break;
+        samples++;
+        const top = heightAt(world, sx, sy) + (CANOPY_HEIGHT_M[terrainOf(world, sx, sy)] ?? 0) - h;
+        over = Math.max(over, top / (d * 300));
       }
+      if (samples < 5) continue;
+      // Half shelter is a ratio of 0.05; clear of it either way, never on the line.
+      if (blocked ? over > 0.06 : over < 0.04) return cell;
     }
-    dipsByWorld.set(world, found);
   }
-  const cell = found.get(`${TERRAIN_INDEX[terrain]}:${dip}`);
-  if (cell === undefined) throw new Error(`this world holds no ${terrain} that ${dip ? "is" : "is not"} a local dip`);
-  return cell;
+  // Fell is the ground above the treeline, so it sits on the tops and has
+  // nothing upwind of it for several hundred regions around a southern
+  // landing. The rule is still the rule, so the search widens to the whole
+  // world rather than the case going untested.
+  return leeCellAnywhere(world, terrain, dx, dy, blocked);
 }
+
+function leeCellAnywhere(world: World, terrain: Terrain, dx: number, dy: number, blocked: boolean): number {
+  for (let y = 5; y < world.h - 5; y++) {
+    for (let x = 5; x < world.w - 5; x++) {
+      if (terrainOf(world, x, y) !== terrain) continue;
+      const h = heightAt(world, x, y);
+      let over = 0;
+      for (let d = 1; d <= 5; d++) {
+        const top = heightAt(world, x + dx * d, y + dy * d) + (CANOPY_HEIGHT_M[terrainOf(world, x + dx * d, y + dy * d)] ?? 0) - h;
+        over = Math.max(over, top / (d * 300));
+      }
+      if (blocked ? over > 0.06 : over < 0.04) return y * world.w + x;
+    }
+  }
+  throw new Error(`this world holds no ${terrain} that is ${blocked ? "" : "un"}blocked upwind`);
+}
+
+/** One cell toward where the wind comes from, indexed by eighth of the compass from north. */
+const UPWIND_STEP: readonly (readonly [number, number])[] = [
+  [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1],
+];
+
 
 /**
  * Cells in a straight cardinal line whose terrains read as `pattern`, all inside

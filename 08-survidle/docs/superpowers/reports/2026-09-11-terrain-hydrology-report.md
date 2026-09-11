@@ -625,13 +625,16 @@ chain of tarns linked by short reaches - but it means "the river from the
 crest to the sea" is not a thing the map can draw, and at 900 m per glyph and
 coarser the channel is not drawn at all.
 
-**Lee ground from a depression is nearly unreachable.** `isLee` calls a cell
-lee when it is lower than all four cardinal neighbours. A drainage solve
-fills interior pits, so on seed 17 only 4,669 of 2,405,522 land cells - two in
-a thousand - are strict local minima, and none lies within the several hundred
-regions around the landing. Spruce still gives lee, so the rule is not dead,
-but the depression half of it is now a rarity the player will not meet.
-`tests/storms.test.ts` finds its depression by searching the whole world.
+**Lee by upwind blocking.** The depression rule that stood here read a cell as
+lee only when it was lower than all four cardinal neighbours, and a drainage
+solve fills interior pits, so on seed 17 only two land cells in a thousand
+qualified and none lay within the several hundred regions around the landing.
+Lee is now relative blocking: the highest ratio of upwind ground plus canopy
+above the cell over its distance, sampled 300 m to 1.5 km upwind, with 0.05
+lee and 0.1 full shelter. `npm run terrain -- 42` reports the share of land
+cells that are lee: **31.2% under a west wind and 32.4% under a north wind**.
+Valleys, gullies, the downwind side of a ridge, banks and terraces all shelter
+while draining normally, and a wood upwind shelters as a barrier does.
 
 **The heir gate's time is the route search, called from the hunting chooser.**
 `scripts/reference.ts --heir` runs 24 lives of a year. Measured on seed 42, a
