@@ -3,7 +3,7 @@ import { WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { newGame } from "../src/sim/newgame";
 import { derived, grades, medianPerson, QUIRKS, quirkFear, quirkLine, rollCandidates } from "../src/sim/person";
 import { BASE_KCAL_PER_HOUR, COMFORT_C } from "../src/sim/player";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import type { Person } from "../src/sim/types";
 import { PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../src/units";
 import { siteCamp } from "./siting-helpers";
@@ -129,7 +129,7 @@ describe("the person", () => {
     const g = newGame(17, undefined, custom);
     siteCamp(g.state, g.world);
     expect(g.state.survivors[0].person).toEqual(custom);
-    const back = deserialize(serialize(g.state))!;
+    const back = readSave(serialize(g.state))!;
     expect(back.state.survivors[0].person).toEqual(custom);
     expect(JSON.parse(serialize(g.state)).version).toBe(10);
   });
@@ -137,9 +137,8 @@ describe("the person", () => {
   it("gives a record from before the person the median with the sex its name says", () => {
     const { state } = newGame(17);
     const raw = JSON.parse(serialize(state)) as { version: number; state: { survivors: Record<string, unknown>[] } };
-    raw.version = 6;
     delete raw.state.survivors[0].person;
-    const back = deserialize(JSON.stringify(raw))!;
+    const back = readSave(JSON.stringify(raw))!;
     const p = back.state.survivors[0].person;
     expect(p.axes).toEqual({ strength: 0, build: 0, hands: 0, eyes: 0 });
     expect(p.quirks).toEqual([]);

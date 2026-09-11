@@ -238,3 +238,27 @@ CDP at both widths: at 1440 by 900 every step above held; at 390 wide the
 cards stacked and nothing scrolled sideways, and the thumb sizing under
 `(hover: none)` was read from the CSS test rather than the page, since
 raw CDP does not trip that media query.
+
+## Solving worlds for tests and scripts
+
+A test or script that needs a full-size world calls
+`installNodeWorldCache()` from `src/world/solvecache.node.ts` before
+touching the world, which keeps solved worlds under
+`node_modules/.cache/survidle-worlds/` keyed by seed, size and
+`GENERATOR_VERSION` from `src/world/solve.ts`. The first run against a
+given seed pays the real solve, about 6 seconds at full size on this
+machine; every run after that reads the cached arrays in tens of
+milliseconds, so a report that touches the same seeds repeatedly (`npm
+run terrain`, `npm run reference`, `npm run year`) is fast except its
+first pass. Bumping `GENERATOR_VERSION` is how a change to the solve
+invalidates the cache: the version is baked into the cache file name, so
+an old file can never be read as a new one. `installNodeWorldCache()`
+deletes any file in the directory whose name does not carry the current
+version, since a cached world is about 44 MB and a bump would otherwise
+leave a full set of them on disk for good. Browser code must never import the node cache module.
+
+`tests/slow/terrain-budget.test.ts` is the solve's own budget: it solves
+one full-size world with no cache and asserts under 20 seconds, run as
+part of `npm run test:slow` (`tests/slow/**/*.test.ts` is picked up by
+the slow suite's glob, the same as the other files already in that
+directory, with no separate listing needed in `vitest.config.ts`).

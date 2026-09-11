@@ -19,6 +19,7 @@ import { levelMinutes } from "../../src/sim/skills";
 import { startTask, stepTask } from "../../src/sim/tasks";
 import type { GameState } from "../../src/sim/types";
 import { cellAt, neighbours, regionAt, type World } from "../../src/world/gen";
+import { passable } from "../../src/world/route";
 
 /**
  * A cell of nbId bordering homeId: a foothold to teleport onto and sweep
@@ -35,11 +36,27 @@ function borderCell(world: World, homeId: number, nbId: number): number | null {
   return null;
 }
 
-/** Sweeps the home region's first neighbour from its own border, at the given wayfinding level; real elapsed minutes. */
+/**
+ * The first neighbour of `homeId` there is ground to sweep in: one with a
+ * border cell to stand on and land of its own to map. A coast puts open water
+ * among a region's neighbours, and a sweep of water finishes in no minutes at
+ * all, which is not a measurement.
+ */
+function sweepableNeighbour(world: World, homeId: number): { id: number; cell: number } {
+  for (const nb of regionAt(world, homeId).neighbours) {
+    const cell = borderCell(world, homeId, nb.id);
+    if (cell === null) continue;
+    if (!regionAt(world, nb.id).cells.some((c) => passable(cellAt(world, c).terrain))) continue;
+    return { id: nb.id, cell };
+  }
+  throw new Error(`no neighbour of ${homeId} holds ground to sweep`);
+}
+
+/** Sweeps a neighbour with ground in it from its own border, at the given wayfinding level; real elapsed minutes. */
 function sweepMinutes(state: GameState, world: World, level: number, cap = 2000): number {
   const home = regionAt(world, state.player.region);
-  const nb = home.neighbours[0]!;
-  const cell = borderCell(world, home.id, nb.id)!;
+  const nb = sweepableNeighbour(world, home.id);
+  const cell = nb.cell;
   placeAt(state, world, cell);
   if (level > 1) state.skills.wayfinding.xp = levelMinutes(level);
   startTask(state, world, calendar(state.minute), "explore", `region:${nb.id}`);

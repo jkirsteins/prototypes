@@ -9,7 +9,10 @@ import { activateWildlife, evaluateWildlifeDisturbance } from "../src/sim/wildli
 import { metricAreaForCell, resolveSpatialEstimate } from "../src/sim/wildlife-space";
 import { cellAt, neighbours, regionAt, type World } from "../src/world/gen";
 import { passable } from "../src/world/route";
+import { installNodeWorldCache } from "../src/world/solvecache.node";
 import type { GameState } from "../src/sim/types";
+
+installNodeWorldCache();
 
 export const STARTLE_KINDS = ["visible", "heard-only", "same-area-remain", "bog", "snow", "blocked-edge"] as const;
 export type StartleScenarioKind = typeof STARTLE_KINDS[number];

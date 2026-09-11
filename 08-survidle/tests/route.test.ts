@@ -2,21 +2,28 @@ import { describe, expect, it } from "vitest";
 import { isKnown, knowledgeGen, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { cellAt, cellIdx, regionAt } from "../src/world/gen";
-import { findRoute, knownRoute } from "../src/world/route";
+import { findRoute, knownRoute, passable } from "../src/world/route";
 import * as routes from "../src/world/route";
+import { flatWorld, paintWorld } from "./world-fixture";
+import { openBlock } from "./world-facts";
 
 describe("knownRoute", () => {
   it("will not leave known ground, and takes the long way round rather than cross the dark", () => {
     const { state, world } = newGame(1);
-    const cx = Math.floor(state.player.x);
-    const cy = Math.floor(state.player.y);
-    const idx = (dx: number, dy: number) => cellIdx(world, cx + dx, cy + dy);
     const known = (c: number) => isKnown(state, c);
+    // Which way from the landing the walkable ground runs is the world's
+    // business, so the corridor is laid out on a block of it rather than on a
+    // compass direction. The block is ground nobody has mapped, so the only
+    // known way over it is the one this test marks.
+    const idx = openBlock(
+      world, cellIdx(world, Math.floor(state.player.x), Math.floor(state.player.y)), 21, 6,
+      (c) => passable(cellAt(world, c).terrain) && !known(c),
+    );
 
     const from = idx(0, 0);
     const to = idx(20, 0);
-    // The direct row stays dark. A dip five cells south of it is the only
-    // mapped way across: down, along, and back up.
+    // The direct row stays dark. A dip five cells off it is the only mapped way
+    // over: off, along, and back.
     for (let dy = 1; dy <= 5; dy++) markKnown(state, idx(0, dy));
     for (let dx = 0; dx <= 20; dx++) markKnown(state, idx(dx, 5));
     for (let dy = 5; dy >= 0; dy--) markKnown(state, idx(20, dy));
@@ -34,10 +41,8 @@ describe("knownRoute", () => {
 
   it("serves a fresh route once new ground is known", () => {
     const { state, world } = newGame(1);
-    const cx = Math.floor(state.player.x);
-    const cy = Math.floor(state.player.y);
-    const idx = (dx: number, dy: number) => cellIdx(world, cx + dx, cy + dy);
     const known = (c: number) => isKnown(state, c);
+    const idx = openBlock(world, cellIdx(world, Math.floor(state.player.x), Math.floor(state.player.y)), 4, 1, (c) => passable(cellAt(world, c).terrain) && known(c));
 
     const from = idx(0, 0);
     const to = idx(3, 0);
@@ -59,13 +64,20 @@ describe("knownRoute", () => {
 describe("remaining walking time", () => {
   it("counts the actual mixed-terrain minute steps without moving the route", () => {
     expect(routes.remainingWalkMinutes).toBeTypeOf("function");
-    const { world } = newGame(17);
-    const position = { x: 847254 % world.w + 0.5, y: Math.floor(847254 / world.w) + 0.5 };
+    // A hand-made world, so the two speeds the count is made of are named here
+    // rather than found wherever the generator puts a terrain edge. The walker
+    // starts in the middle of a meadow cell and the path is two cell centres
+    // west, the second of them bog: 450 m of meadow at 3 km/h times 1.1, then
+    // 150 m of bog at 3 km/h times 0.7, counted in whole minutes at the speed
+    // of the cell the feet are in.
+    const world = flatWorld({ w: 8, h: 3, terrain: "meadow" });
+    paintWorld(world, [9], "bog");
+    const position = { x: 3.5, y: 1.5 };
     const before = { ...position };
-    const path = [847253, 847252];
-    expect(routes.remainingWalkMinutes(world, position, path, 3, "none")).toBe(13);
+    const path = [10, 9];
+    expect(routes.remainingWalkMinutes(world, position, path, 3, "none")).toBe(12);
     expect(position).toEqual(before);
-    expect(path).toEqual([847253, 847252]);
+    expect(path).toEqual([10, 9]);
   });
 
   it.each(["safe", "thin"] as const)("uses the %s ice route's walking speed", ice => {

@@ -11,6 +11,7 @@ import { insertWalkAtTop, isWalkOrder } from "../src/sim/walkorders";
 import { siteCamp } from "./siting-helpers";
 import { Rng } from "../src/rng";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
+import { walkableNeighbour } from "./world-facts";
 import { passable } from "../src/world/route";
 import { regionState } from "../src/sim/regionstate";
 
@@ -82,7 +83,9 @@ describe("visible walk orders", () => {
   it("keeps a cross-region walk owned by and removes it from its source queue", () => {
     const { state, world } = newGame(3);
     const source = state.player.region;
-    const destination = regionAt(world, source).neighbours[0].id;
+    // A neighbour with ground to walk to: a region's neighbours include the far
+    // side of any water it borders, and those hold no passable cell at all.
+    const destination = walkableNeighbour(world, source);
     mapRegion(state, world, source);
     mapRegion(state, world, destination);
     const target = regionAt(world, destination).cells.find((cell) => passable(cellAt(world, cell).terrain));

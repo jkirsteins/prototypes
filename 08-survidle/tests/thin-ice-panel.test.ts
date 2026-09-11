@@ -10,9 +10,12 @@ import { ensureGround } from "../src/sim/weather";
 import { placesHtml, thinIceButton } from "../src/ui/panels";
 import { cellAt, regionAt } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
+import { iceShortcut, regionsOutward } from "./world-facts";
 
-const REMOTE_REGION = 5624;
-const REMOTE_CELL = 1095478;
+// Ground across the water from the landing, where the ice is the shorter way
+// there than the walk round, which is what puts a thin-ice offer on the row.
+const CROSSING_WORLD = newGame(42).world;
+const { region: REMOTE_REGION, target: REMOTE_CELL } = iceShortcut(CROSSING_WORLD, CROSSING_WORLD.start, CROSSING_WORLD.startCell);
 
 function crossing() {
   const g = newGame(42);
@@ -53,15 +56,29 @@ describe("thin-ice route offers", () => {
   it("ignores thin regional ice under land when reporting actual water-crossing risk", () => {
     const { state, world } = newGame(42);
     const from = cellOf(state, world);
-    const target = 1068470;
-    const route = findRoute(world, from, target, "thin")!;
-    const waterRegions = new Set(route.filter((cell) => cellAt(world, cell).terrain === "water").map((cell) => cellAt(world, cell).region));
-    const landOnlyRegions = new Set(route.filter((cell) => cellAt(world, cell).terrain !== "water").map((cell) => cellAt(world, cell).region));
-    for (const region of waterRegions) {
-      landOnlyRegions.delete(region);
-      ensureGround(state, world, region).iceCm = 8;
+    // A walk that crosses water in some regions and only land in others: which
+    // regions those are is the world's business, and the case needs both kinds on
+    // the one route.
+    let target = -1;
+    let route: number[] = [];
+    let waterRegions = new Set<number>();
+    let landOnlyRegions = new Set<number>();
+    for (const region of regionsOutward(world, state.player.region, 30)) {
+      const candidate = regionAt(world, region).campCell;
+      const way = findRoute(world, from, candidate, "thin");
+      if (!way) continue;
+      const wet = new Set(way.filter((cell) => cellAt(world, cell).terrain === "water").map((cell) => cellAt(world, cell).region));
+      const dry = new Set(way.filter((cell) => cellAt(world, cell).terrain !== "water").map((cell) => cellAt(world, cell).region));
+      for (const r of wet) dry.delete(r);
+      if (!wet.size || !dry.size) continue;
+      target = candidate;
+      route = way;
+      waterRegions = wet;
+      landOnlyRegions = dry;
+      break;
     }
-    expect([...landOnlyRegions]).toEqual(expect.arrayContaining([5494, 5495]));
+    expect(target).toBeGreaterThan(0);
+    for (const region of waterRegions) ensureGround(state, world, region).iceCm = 8;
     for (const region of landOnlyRegions) ensureGround(state, world, region).iceCm = 6;
     for (const cell of route) markKnown(state, cell);
 

@@ -108,11 +108,16 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   the old one, and the region panel says what the cell offers first.
 - **Orders belong to a camp.** Walk into a new region and its list is
   empty; come back and the old list resumes.
-- **A big north.** The world is about 540 by 390 km, the shape of the far
-  north: sea and fjords to the northwest, a fell spine inland, lakes and bog
-  to the east. It is generated as you touch it, so loading is instant.
-  Regions are about 4 km across; country you have never entered is fog, and
-  the next valley over is dimly seen. The map is always centred on you;
+- **A big north.** The world is about 540 by 667 km, real ground from 61 N
+  to 67 N: height in metres above the sea, valleys cut by erosion and
+  drainage rather than drawn in, lakes that each have an outlet, streams and
+  rivers running down to fjords on the west coast, stone exposed at the
+  rate real geology gives it, and the treeline set by latitude and distance
+  from the sea. Solving that takes a few seconds at the start of a run,
+  shown by a loading bar; after that, the map and regions are still built
+  as you touch them, the same as before. Regions are about 4 km across;
+  country you have never entered is fog, and the next valley over is
+  dimly seen. The map is always centred on you;
   the fog is per cell, not per region: what you have walked is a thread
   through the black, and what the eye reaches from where you stand is a
   blot around it. Closed spruce shows you the ground underfoot and no
@@ -534,10 +539,15 @@ limit could never reveal.
     npm run test:slow
     npm run build
     npm run weather:profile
+    npm run terrain
 
 `npm test` is the commit gate and stays under twenty seconds; it excludes
 `tests/slow/`, which holds the runs measured in whole simulated seasons -
-the three-life lineage on seed 17. `npm run test:slow` runs those, and is
+the three-life lineage on seed 17. A fresh clone pays for the worlds
+first: the fast suite touches about fourteen full-size seeds, each solved
+once and cached, which is around seventy seconds and six hundred MB under
+`node_modules/.cache/` before the twenty-second runs begin. See
+`docs/testing.md` for the cache. `npm run test:slow` runs those, and is
 worth a run when the reference player, the lineage or the landing moves.
 
 Every browser pass runs at 1440 by 900 and at 390 wide against
@@ -550,14 +560,14 @@ are 300 m cell coordinates:
 
 | shot | minute | x | y | simulated feature |
 | --- | ---: | ---: | ---: | --- |
-| clear | 1,440 | 450 | 1,100 | clear comparison above rock |
+| clear | 1,440 | 1,696 | 880 | clear comparison above rock |
 | sunny-clouds | 170,160 | 700 | 950 | dry midsummer sun under a broken cloud field |
 | approaching-rain | 86,760 | 1,040 | 150 | rain-band edge |
-| local-rain | 108,720 | 1,300 | 376 | 11.53 mm/h rain core |
-| persisted-snow | 480,480 | 296 | 1,200 | 10.66 cm/h snow over 39 cm retained ground snow |
-| valley-fog | 19,560 | 840 | 1,000 | dry 0.39 fog in a local bog depression |
+| local-rain | 108,720 | 1,112 | 400 | 12.42 mm/h rain core |
+| persisted-snow | 480,480 | 872 | 864 | 14.71 cm/h snow over 60 cm retained ground snow |
+| valley-fog | 19,560 | 1,432 | 1,036 | dry 0.57 fog in a local bog depression |
 | windward-lee | 3,960 | 700 | 950 | terrain-modified extinction gradient |
-| obscured | 480,480 | 450 | 1,100 | 0.21 km MOR at the clear comparison rock |
+| obscured | 480,480 | 1,696 | 880 | 0.36 km MOR at the clear comparison rock |
 
 The URL only selects a catalog entry. Normal `GameState`, `WeatherWorld`,
 `visibleCells` and `mapHtml` generate every class, variable, glyph and known
@@ -575,13 +585,23 @@ ASCII ripple glyphs. Reduced-motion mode freezes those glyphs.
 The sunny-cloud pair advances the normal simulation by 60 game minutes and
 captures the resulting cloud-shadow field before and after; it does not assign
 or modify rendering classes.
-The valley cell's normalized elevation is 0.321; its west, east, north and
-south samples 6 km away are 0.490, 0.446, 0.408 and 0.424. `fog-frame-a.png`
+The valley cell stands at 108 m; its west, east, north and south samples 6 km
+away are at 509, 457, 388 and 506 m. `fog-frame-a.png`
 and `fog-frame-b.png` hold the same frozen simulation minute and visibility
 footprint 3.2 real seconds apart; only presentation animation continues.
 
 `scripts/mapstats.ts` prints a downsampled view of the whole world and its
-terrain shares: `npx vite-node scripts/mapstats.ts 42`.
+terrain shares, plus the full-resolution water kinds, stream count, rock
+share and a height histogram: `npx vite-node scripts/mapstats.ts 42`.
+
+`npm run terrain` is the realism report: for seeds 42, 1 and 7 it solves
+(or reads the cached solve) and prints each measure from the
+terrain-hydrology spec's section 6 beside its real target - distance from
+land to water, lake share, the largest river mouths, coastline length,
+exposed rock by band, bog share by latitude, valley bearings, mean slope
+per class and the solve time. `npm run terrain -- <seed>` runs one seed;
+`npm run terrain -- --time` runs the older stage-by-stage timing spike
+instead of the report.
 
 `npm run reference` runs the day-one order list a competent player would
 write, headless, on five seeds, about ten seconds; the gate is alive and

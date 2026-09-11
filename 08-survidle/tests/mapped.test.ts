@@ -9,7 +9,7 @@ describe("mapped cells", () => {
     // The landing already maps the home region whole; a neighbour, never
     // visited, still has ground nobody has walked.
     const region = regionAt(world, state.player.region).neighbours[0].id;
-    const cells = world.regions.get(region)!.cells;
+    const cells = regionAt(world, region).cells;
     const fresh = cells.find((c) => !isKnown(state, c))!;
     const g0 = knowledgeGen();
     markKnown(state, fresh);

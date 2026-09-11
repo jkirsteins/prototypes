@@ -7,11 +7,11 @@
  */
 import type { IceMode, Terrain } from "../sim/types";
 import { CELL_KM } from "../units";
-import { terrainOf, type World } from "./cells";
+import { fordAt, terrainOf, type World } from "./cells";
 
 /** Walking speed on this ground relative to open forest. */
 export const TERRAIN_SPEED: Record<Terrain, number> = {
-  water: 0, fell: 0.5, rock: 0.75, bog: 0.7, spruce: 1, pine: 1, birch: 1, meadow: 1.1,
+  water: 0, river: 0, fell: 0.5, rock: 0.75, bog: 0.7, spruce: 1, pine: 1, birch: 1, meadow: 1.1,
 };
 
 /** Walking on ice relative to open forest. */
@@ -27,14 +27,15 @@ export type RouteIce = IceMode | RouteConditions;
 const iceAt = (ice: RouteIce, cell: number): IceMode => typeof ice === "string" ? ice : ice.iceAt(cell);
 const iceKey = (ice: RouteIce): string => typeof ice === "string" ? ice : ice.key;
 
-/** Speed on this ground given the ice mode a route is willing to cross water with. */
-export function speedOf(t: Terrain, ice: IceMode): number {
+/** Speed on this ground given the ice mode a route is willing to cross water with, and whether a ford lets this river cell be crossed at bog's speed. */
+export function speedOf(t: Terrain, ice: IceMode, ford = false): number {
   if (t === "water") return ice === "none" ? 0 : ICE_SPEED;
+  if (t === "river") return ford ? TERRAIN_SPEED.bog : ice === "none" ? 0 : ICE_SPEED;
   return TERRAIN_SPEED[t];
 }
 
-export function passable(t: Terrain, ice: IceMode = "none"): boolean {
-  return speedOf(t, ice) > 0;
+export function passable(t: Terrain, ice: IceMode = "none", ford = false): boolean {
+  return speedOf(t, ice, ford) > 0;
 }
 
 /** Cells of slack around the endpoints' bounding box. */
@@ -63,6 +64,9 @@ export function findRoute(world: World, from: number, to: number, ice: RouteIce 
   cache.set(key, route);
   return route ? route.slice() : null;
 }
+
+/** Routes kept per world for the knowledge-limited search; see the note where it is trimmed. */
+const KNOWN_ROUTE_CACHE = 4096;
 
 const knownCaches = new WeakMap<World, Map<string, number[] | null>>();
 
@@ -101,15 +105,22 @@ export function knownRoute(
   const hit = cache.get(key);
   if (hit !== undefined) return hit ? hit.slice() : null;
   const route = astar(world, from, to, ice, avoidFell, known);
-  // Local weather revisions can create a fresh key every minute while travelling.
-  if (cache.size >= 512) cache.delete(cache.keys().next().value!);
+  // Local weather revisions can create a fresh key every minute while
+  // travelling, so the cache is bounded. It has to be wide enough to hold one
+  // caller's whole sweep, though, or the start of a sweep is evicted before
+  // the end of it and searched again on the next one. The widest sweep left is
+  // `exploreFrontier` in src/sim/tasks.ts: one route per frontier cell of the
+  // region, bounded only by how many cells the region has, so a few hundred
+  // entries in one decision. Everything else asks for tens - the hunting
+  // chooser's shortlist is two routes for each of HUNT_SHORTLIST cells.
+  if (cache.size >= KNOWN_ROUTE_CACHE) cache.delete(cache.keys().next().value!);
   cache.set(key, route);
   return route ? route.slice() : null;
 }
 
 function astar(world: World, from: number, to: number, ice: RouteIce, avoidFell: boolean, known?: (cell: number) => boolean): number[] | null {
   // A walker who will not go up on the fell treats it as water with no ice.
-  const sp = (t: Terrain, cell: number) => ((avoidFell && t === "fell") || (typeof ice !== "string" && ice.blockedAt?.(cell)) ? 0 : speedOf(t, t === "water" ? iceAt(ice, cell) : "none"));
+  const sp = (t: Terrain, cell: number) => ((avoidFell && t === "fell") || (typeof ice !== "string" && ice.blockedAt?.(cell)) ? 0 : speedOf(t, t === "water" || t === "river" ? iceAt(ice, cell) : "none", fordAt(world, cell)));
   const W = world.w;
   const fx = from % W;
   const fy = Math.floor(from / W);
@@ -229,7 +240,7 @@ export function routeKm(path: number[]): number {
 export function routeMinutes(world: World, path: number[], baseKmh: number, ice: RouteIce = "none"): number {
   let minutes = 0;
   for (const c of path) {
-    const v = baseKmh * speedOf(terrainOf(world, c % world.w, Math.floor(c / world.w)), iceAt(ice, c));
+    const v = baseKmh * speedOf(terrainOf(world, c % world.w, Math.floor(c / world.w)), iceAt(ice, c), fordAt(world, c));
     if (v <= 0 || (typeof ice !== "string" && ice.blockedAt?.(c))) return Infinity;
     minutes += (CELL_KM / Math.max(0.05, v)) * 60;
   }
@@ -277,7 +288,9 @@ export function remainingWalkMinutes(
   const remaining = [...path];
   let minutes = 0;
   while (remaining.length) {
-    const speed = baseKmh * speedOf(terrainOf(world, Math.floor(feet.x), Math.floor(feet.y)), ice);
+    const fx = Math.floor(feet.x);
+    const fy = Math.floor(feet.y);
+    const speed = baseKmh * speedOf(terrainOf(world, fx, fy), ice, fordAt(world, fy * world.w + fx));
     if (speed <= 0) return Number.POSITIVE_INFINITY;
     walkPath(world, feet, remaining, speed / 60);
     minutes++;

@@ -629,7 +629,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return iced ? { ...o, detail: `${o.detail}; cuts the hole first, wearing the axe`, duration: 25 } : o;
     }
     case "iceHole": {
-      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "camp", label: "Open an ice hole", detail: "20 minutes with the axe; skins over by morning", duration: 20 }));
+      // The same water fishing wants: a hole is cut in a lake, the sea or a river, never in a brook.
+      const o = ground(watersideCell(world, at, "fishing"), "shore", "water", opt({ group: "camp", label: "Open an ice hole", detail: "20 minutes with the axe; skins over by morning", duration: 20 }));
       if (!o.ok) return o;
       if (localWeather(state, world, at).iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open" };
       if (iceHoleOpen(state, at)) return { ...o, ok: false, why: "already open here" };
@@ -679,8 +680,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         const c = candidates(state, world, cal, "fish", at);
         const inRegion = fishSpecies().filter((k) => r.capacity[k] && popOf(st, k) >= 1 && !absence(SPECIES_DEFS[k], cal, localWeather(state, world, at).iceCm));
         // The count is what this water holds: a lake's fish are no comfort at a sea shore.
-        const kinds = inRegion.filter((k) => watersideCell(world, at, waterOf(k) ?? "any"));
-        const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Fish for anything", duration: 60, repeatable: true, detail: `whatever bites; ${kinds.length} kind${kinds.length === 1 ? "" : "s"} here` }));
+        const kinds = inRegion.filter((k) => watersideCell(world, at, waterOf(k) ?? "fishing"));
+        const o = ground(watersideCell(world, at, "fishing"), "shore", "water", opt({ group: "hunt", label: "Fish for anything", duration: 60, repeatable: true, detail: `whatever bites; ${kinds.length} kind${kinds.length === 1 ? "" : "s"} here` }));
         if (!o.ok) return o;
         if (!toolNear(p, "fishingSpear", toolInvs)) return { ...o, ok: false, why: "needs a fishing spear" };
         // Fish in the region but none in this water is the wrong water, not an empty one.
@@ -690,7 +691,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const s = arg as Species;
       const def = SPECIES_DEFS[s];
       if (!def?.hunt || !isFish(s)) return { ...opt({ group: "hunt", label: "Fish" }), ok: false, why: "no such fish" };
-      const water = waterOf(s) ?? "any";
+      const water = waterOf(s) ?? "fishing";
       const d = regionDensity(state, world, p.region, s, cal);
       const kg = fishKg(state, s) * yieldFactor(state, "fishing");
       const o = ground(watersideCell(world, at, water), "shore", "water", opt({
@@ -699,7 +700,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       }));
       if (!o.ok) {
         // Standing by the wrong water reads as the wrong water, not as no water at all.
-        if (watersideCell(world, at) && !watersideCell(world, at, water)) return { ...o, why: water === "lake" ? `no ${def.name} in salt water` : `no ${def.name} in a lake` };
+        if (watersideCell(world, at, "fishing") && !watersideCell(world, at, water)) return { ...o, why: water === "lake" ? `no ${def.name} in salt water` : `no ${def.name} in a lake` };
         return o;
       }
       if (stormNow(localWeather(state, world, at), state.minute)) return { ...o, ok: false, why: "too rough" };

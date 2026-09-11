@@ -13,8 +13,9 @@ import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "..
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
 import { campSite, regionState } from "../src/sim/regionstate";
-import { cellAt, regionAt } from "../src/world/gen";
+import { cellAt, hasSpot, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { lakeShoreNear, regionNear, seaShoreBesideLake, walkableNeighbour } from "./world-facts";
 import { isWorkOrder } from "../src/sim/types";
 import { ensureGround } from "../src/sim/weather";
 import { activateWildlife } from "../src/sim/wildlife-agents";
@@ -135,8 +136,9 @@ describe("tasks", () => {
     const g = newGame(3);
     siteCamp(g.state, g.world);
     const { state, world } = g;
-    const r = regionAt(world, state.player.region);
-    const nb = r.neighbours[0];
+    // A neighbour the survivor can actually walk to: a coast puts the far side
+    // of a fjord among a region's neighbours, and no route crosses it.
+    const nb = { id: walkableNeighbour(world, state.player.region) };
     mapRegion(state, world, state.player.region);
     mapRegion(state, world, nb.id);
     const go = check(state, world, cal, "travel", `region:${nb.id}`);
@@ -217,8 +219,11 @@ describe("tasks", () => {
 
   it("turns a successful hunt into field work before any meat is recovered", () => {
     const g = newGame(3);
-    siteCamp(g.state, g.world);
     const { state, world } = g;
+    // A region that can hold deer at all: a hunt cannot bring one down where
+    // the species has no capacity.
+    placeAt(state, world, regionAt(world, regionNear(world, state.player.region, (id) => (regionAt(world, id).capacity.deer ?? 0) > 0)).campCell);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     state.player.tools.push({ id: "bow", durability: 100 });
     addItem(state.player.pack, "arrow", 40);
@@ -339,9 +344,10 @@ describe("tasks", () => {
     const { state, world } = newGame(4);
     siteCamp(state, world);
     const ids = new Set(availableTasks(state, world, calendar(0)).map((o) => o.id));
-    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "read", "setTrap", "emptyTrap", "cook", "craft", "repair", "sharpen", "build", "light", "walk", "haul", "rest", "sleep", "travel"]) {
-      expect(ids.has(id as never)).toBe(true);
-    }
+    // Sleep is not among them: it is body-owned work the runner starts, not a
+    // row the player is offered.
+    const want = ["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "read", "setTrap", "emptyTrap", "cook", "craft", "repair", "sharpen", "build", "light", "walk", "haul", "rest", "travel"];
+    expect(want.filter((id) => !ids.has(id as never))).toEqual([]);
   });
 
   it("legality can be judged at a cell you do not stand on", () => {
@@ -459,25 +465,25 @@ describe("anything", () => {
   });
 
   it("fishing for anything at a sea shore never lands a lake fish", () => {
-    // No start region touches the sea: findStart wants forest, land and little water, and the
-    // coast lies far northwest of where it looks, so no seed puts the player on one. Seed 3's
-    // region 1865 is a coast with both a lake shore and a sea shore; change it if the map
-    // changes, with the reason here.
+    // The case wants salt water under foot in a region that also holds a lake, so a
+    // draw that ignored which water this is would land a lake fish. Where such a
+    // coast lies is the world's business; the finder asks for the pairing, and for
+    // lake fish the region actually holds.
     const g = newGame(3);
     siteCamp(g.state, g.world);
     const { state, world } = g;
     armed(g);
-    const r = regionAt(world, 1865);
-    const sea = r.cells.find((c) => cellAt(world, c).terrain !== "water" && watersideCell(world, c, "sea") && !watersideCell(world, c, "lake"));
-    expect(sea).toBeDefined();
-    expect(watersideCell(world, sea!, "lake")).toBe(false);
-    placeAt(state, world, sea!);
+    const lakeFish = (id: number) => fishSpecies().some((s) => waterOf(s) === "lake" && (regionAt(world, id).capacity[s] ?? 0) >= 1);
+    const { cell: sea } = seaShoreBesideLake(world, state.player.region, (id) => lakeFish(id));
+    expect(watersideCell(world, sea, "sea")).toBe(true);
+    expect(watersideCell(world, sea, "lake")).toBe(false);
+    placeAt(state, world, sea);
     const st = regionState(state, world, state.player.region);
     // Lake fish are about in this region: a draw that ignored the water would land one.
     expect(fishSpecies().some((s) => waterOf(s) === "lake" && (st.pop[s] ?? 0) >= 1)).toBe(true);
     const rng = new Rng(2);
     for (let i = 0; i < 30; i++) {
-      const s = drawSpecies(state, world, cal, rng, "fish", sea!);
+      const s = drawSpecies(state, world, cal, rng, "fish", sea);
       if (s) expect(SPECIES_DEFS[s].habitat.sea).toBeDefined();
     }
   });
@@ -500,31 +506,36 @@ describe("anything", () => {
 });
 
 describe("away for the season", () => {
-  // Seed 5's region 1865 is a coast with a lake shore, mallard on the lake and bear in its forest,
-  // which the start regions have not got. Change it if the map changes, with the reason here.
-  const REGION = 1865;
-  function armedAt(seed: number, cell: number) {
+  // A coast region with a lake shore, mallard on the lake, bear in its forest and
+  // sea fish of its own, which the start regions have not got. Found by those
+  // rather than named: which region holds them together is the world's business,
+  // not the test's. The sea fish matter to the last case, which stands on the lake
+  // shore and asks what bites there.
+  function lakeAndBear(world: G["world"], home: number): { region: number; cell: number } {
+    return lakeShoreNear(world, home, (id) => {
+      const r = regionAt(world, id);
+      if (!hasSpot(r, "forest") || (r.capacity.mallard ?? 0) < 1 || (r.capacity.bear ?? 0) < 1) return false;
+      return fishSpecies().some((s) => waterOf(s) === "sea" && (r.capacity[s] ?? 0) >= 1);
+    });
+  }
+  /** Armed on the found region's lake shore, or at its forest spot. */
+  function armedAt(seed: number, where: "lakeShore" | "forest") {
     const g = newGame(seed);
     siteCamp(g.state, g.world);
+    const { region, cell } = lakeAndBear(g.world, g.state.player.region);
     g.state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false }, { id: "fishingSpear", durability: 100, litres: 0, frozen: false });
     addItem(g.state.player.pack, "arrow", 10);
-    placeAt(g.state, g.world, cell);
+    placeAt(g.state, g.world, where === "forest" ? spotOf(regionAt(g.world, region), "forest")!.cell : cell);
     ensureGround(g.state, g.world, g.state.player.region).iceCm = 0;
-    return g;
-  }
-  function lakeShore(world: G["world"]): number {
-    const cell = regionAt(world, REGION).cells.find((c) => cellAt(world, c).terrain !== "water" && watersideCell(world, c, "lake"));
-    expect(cell).toBeDefined();
-    return cell!;
+    return { ...g, region };
   }
 
   it("a migrant gone for the year is away, not merely scarce", () => {
-    const world = newGame(5).world;
-    const g = armedAt(5, lakeShore(world));
+    const g = armedAt(5, "lakeShore");
     const { state } = g;
     const october = calendar(1440 * 200);
     // The flock decays by a tenth a day, so weeks after it left the numbers still say there are mallard here.
-    expect(regionState(state, g.world, REGION).pop.mallard!).toBeGreaterThan(1);
+    expect(regionState(state, g.world, g.region).pop.mallard!).toBeGreaterThan(1);
     const o = check(state, g.world, october, "hunt", "mallard");
     expect(o.ok).toBe(false);
     expect(o.why).toBe("gone until April");
@@ -534,9 +545,7 @@ describe("away for the season", () => {
   });
 
   it("a denned bear says so in its own word", () => {
-    const world = newGame(5).world;
-    const forest = spotOf(regionAt(world, REGION), "forest")!.cell;
-    const g = armedAt(5, forest);
+    const g = armedAt(5, "forest");
     const january = calendar(1440 * 275);
     const o = check(g.state, g.world, january, "hunt", "bear");
     expect(o.ok).toBe(false);
@@ -544,8 +553,7 @@ describe("away for the season", () => {
   });
 
   it("ice takes the lake birds off the row and leaves the fish under it", () => {
-    const world = newGame(5).world;
-    const g = armedAt(5, lakeShore(world));
+    const g = armedAt(5, "lakeShore");
     const { state } = g;
     const june = calendar(1440 * 70);
     ensureGround(state, g.world, state.player.region).iceCm = 10;
@@ -560,8 +568,7 @@ describe("away for the season", () => {
   });
 
   it("the card and the row say the same thing about an absent species", () => {
-    const world = newGame(5).world;
-    const g = armedAt(5, lakeShore(world));
+    const g = armedAt(5, "lakeShore");
     const october = calendar(1440 * 200);
     // The roster that used to print this is gone; a bird that is away says so
     // on its own row, which is where somebody looking to hunt it is standing.
@@ -569,15 +576,14 @@ describe("away for the season", () => {
   });
 
   it("a generic hunt does not reveal a hidden roster, and a cast counts only this water's fish", () => {
-    const world = newGame(5).world;
-    const g = armedAt(5, lakeShore(world));
+    const g = armedAt(5, "lakeShore");
     const { state } = g;
     const june = calendar(1440 * 70);
     const hunt = check(state, g.world, june, "hunt", "any");
     expect(hunt.detail).toBe("follow whatever sign you find");
     expect(hunt.detail).not.toMatch(/\d+ kinds? here/);
     // The lake shore counts lake fish; the region's sea fish are no comfort there.
-    const st = regionState(state, g.world, REGION);
+    const st = regionState(state, g.world, g.region);
     for (const s of fishSpecies()) if (waterOf(s) === "lake") st.pop[s] = 0;
     const cast = check(state, g.world, june, "fish", "any");
     expect(cast.ok).toBe(false);

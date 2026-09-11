@@ -21,14 +21,19 @@ import { herePile } from "../src/sim/inventory";
 import { inventoryHtml, landingHtml, logHtml, ordersHtml } from "../src/ui/panels";
 import { regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { regionsOutward } from "./world-facts";
 
 describe("the names are Norwegian", () => {
   it("the letters are the real ones, not the nearest ASCII", () => {
     // A plain "a" where an "å" belongs is a different sound, and a native
     // speaker read "Bjorklia" aloud and it was wrong.
+    //
+    // The letters live in a handful of the name stems, so a handful of names is
+    // a draw and not a reading: the neighbourhood two regions deep is the
+    // sample, which is about the pools the generator draws from.
     const { world, state } = newGame(21);
-    const home = regionAt(world, state.player.region);
-    const names = [home, ...home.neighbours.map((n) => regionAt(world, n.id))].map((r) => r.name);
+    const names = regionsOutward(world, state.player.region, 40).map((id) => regionAt(world, id).name);
+    expect(names.length).toBeGreaterThan(20);
     expect(names.join(" ")).toMatch(/[åøæÅØÆ]/);
   });
 });

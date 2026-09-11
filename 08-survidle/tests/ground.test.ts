@@ -2,22 +2,30 @@ import { describe, expect, it } from "vitest";
 import { BOG_WET, MEADOW_DAMP, MEADOW_DRY, groundGlyph, toneCuts, toneOf, VARIANTS } from "../src/ui/ground";
 import { legendHtml } from "../src/ui/map";
 import type { Terrain } from "../src/sim/types";
-import { fieldsAt, terrainAt } from "../src/world/terrain";
+import { generateWorld, moistureAt, terrainOf, WORLD_H, WORLD_W } from "../src/world/gen";
 
-/** Moisture of every bog or meadow cell in a sample of several worlds. */
+/** The worlds the quantiles are measured over; the rest of the file reuses the first, so the file solves or loads three. */
+const SAMPLE_SEEDS = [1000010, 17, 42];
+
+/**
+ * Moisture of every bog or meadow cell in a sample of several worlds. Three
+ * worlds, not more: a solved world is 44 MB and `npm test` stays fast, and the
+ * quantiles are a property of the classifier rather than of any one seed.
+ */
 function bandMoisture(): Record<string, number[]> {
   const out: Record<string, number[]> = { bog: [], meadow: [] };
-  for (const seed of [1000010, 3, 17, 19, 77]) {
+  for (const seed of SAMPLE_SEEDS) {
+    const world = generateWorld(seed);
     let s = seed;
     const rnd = () => {
       s = (s * 1103515245 + 12345) & 0x7fffffff;
       return s / 0x7fffffff;
     };
     for (let i = 0; i < 20000; i++) {
-      const x = Math.floor(rnd() * 1800);
-      const y = Math.floor(rnd() * 1300);
-      const t = terrainAt(seed, x, y);
-      if (t === "bog" || t === "meadow") out[t].push(fieldsAt(seed, x, y).m);
+      const x = Math.floor(rnd() * WORLD_W);
+      const y = Math.floor(rnd() * WORLD_H);
+      const t = terrainOf(world, x, y);
+      if (t === "bog" || t === "meadow") out[t].push(moistureAt(world, x, y));
     }
   }
   return out;
@@ -39,19 +47,21 @@ describe("the ground's forms", () => {
 
   it("gives a lake and the sea different water", () => {
     // Both kinds exist in a world; whichever a cell is, the two never share a glyph.
+    const world = generateWorld(SAMPLE_SEEDS[0]);
     const seen = new Set<string>();
     for (let i = 0; i < 40000 && seen.size < 2; i++) {
-      const x = (i * 37) % 1800;
-      const y = (i * 53) % 1300;
-      if (terrainAt(1000010, x, y) !== "water") continue;
-      seen.add(groundGlyph(1000010, x, y, "water", "~"));
+      const x = (i * 37) % WORLD_W;
+      const y = (i * 53) % WORLD_H;
+      if (terrainOf(world, x, y) !== "water") continue;
+      seen.add(groundGlyph(world, x, y, "water", "~"));
     }
     expect([...seen].sort()).toEqual(["-", "~"]);
   });
 
   it("leaves terrain without forms alone", () => {
+    const world = generateWorld(SAMPLE_SEEDS[0]);
     for (const t of ["spruce", "pine", "birch", "rock", "fell"] as Terrain[]) {
-      expect(groundGlyph(1000010, 900, 650, t, "A")).toBe("A");
+      expect(groundGlyph(world, 900, 650, t, "A")).toBe("A");
     }
   });
 

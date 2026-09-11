@@ -536,7 +536,7 @@ function planInputs(
   const site = siteAt(state.regions[region], cell);
   const protection = protectionOf(site);
   const knowledge = forecastKnowledge(state, storm);
-  const effectiveProtection = knowledge.kind === "gale" ? galeProtection(world, cell, site) : protection;
+  const effectiveProtection = knowledge.kind === "gale" ? galeProtection(state, world, cell, site) : protection;
   const fire = fireAt(state, world, cell);
   const packedGear: Partial<Record<ToolId, number>> = {};
   for (const id of Object.keys(TOOLS) as ToolId[]) {
@@ -574,6 +574,7 @@ interface ShelterPreparation {
 
 function projectedShelter(
   inputs: StormPlanInputs,
+  state: GameState,
   world: World,
   cell: number,
   site: ReturnType<typeof siteAt>,
@@ -589,7 +590,7 @@ function projectedShelter(
   };
   const protection = protectionOf(projected);
   const effectiveProtection = inputs.forecast.kind === "gale"
-    ? galeProtection(world, cell, projected)
+    ? galeProtection(state, world, cell, projected)
     : protection;
   return { protection, effectiveProtection };
 }
@@ -619,7 +620,7 @@ function shelterPreparation(
   const maximum = Math.min(3, coverCeiling(world, cell) + 1) as Protection;
   const adequate = () => inputs.forecast.kind === "snow" ? effectiveProtection >= 1 : effectiveProtection >= 2;
   const project = () => {
-    ({ protection, effectiveProtection } = projectedShelter(inputs, world, cell, site, cover, built));
+    ({ protection, effectiveProtection } = projectedShelter(inputs, state, world, cell, site, cover, built));
   };
   const improveFoundCover = () => {
     while (cover < maximum && !adequate()) {

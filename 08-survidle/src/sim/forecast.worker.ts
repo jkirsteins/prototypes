@@ -14,9 +14,16 @@ let seed = Number.NaN;
 let latest = 0;
 
 ctx.onmessage = async (ev) => {
+  if (ev.data.kind === "world") {
+    // The main thread has solved this seed already; building from its arrays costs nothing.
+    world = generateWorld(ev.data.seed, ev.data.solved);
+    seed = ev.data.seed;
+    return;
+  }
   const { id, state } = ev.data;
   latest = id;
   if (!world || seed !== state.seed) {
+    // Only where the main thread never sent a world: the solve runs here, slowly.
     world = generateWorld(state.seed);
     seed = state.seed;
   }

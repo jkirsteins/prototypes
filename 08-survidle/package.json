@@ -18,6 +18,7 @@
     "weather:profile": "vite-node scripts/weather-profile.ts",
     "hunt-stress": "vite-node scripts/hunt-stress.ts",
     "december": "vite-node scripts/december.ts",
+    "terrain": "vite-node scripts/terrain.ts",
     "startle-seeds": "vite-node scripts/startle-seeds.ts",
     "startle-shots": "node scripts/startle-shots.mjs",
     "shots": "node scripts/map-shots.mjs",

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { mapRegion, markKnown } from "../src/sim/mapped";
@@ -15,6 +15,10 @@ import { cellAt, neighbours, regionPeek } from "../src/world/gen";
 import { passable } from "../src/world/route";
 import { css, rule } from "./css";
 import { neighbourLandCell } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
+
+// A test that installs a controlled atmosphere owns it only for its own case.
+afterEach(() => vi.restoreAllMocks());
 
 describe("the map's compositing layers", () => {
   it("turns frozen water from liquid blue into distinct thin and safe ice surfaces", () => {
@@ -179,7 +183,12 @@ describe("the map's compositing layers", () => {
     const { state, world } = newGame(79);
     const ui = newUiState();
     ui.zoom = 0;
+    // Snow on the ground here, not merely in the run's weather: the cell classes
+    // read the region's own ground. Fog puts an atmospheric glyph on the cell,
+    // which is the layer this case is about stacking.
     state.weather.snowCm = 10;
+    ensureGround(state, world, state.player.region).snowCm = 10;
+    testAtmosphere({ fog: 0.2 });
     enqueueWildlifeStartle(ui, {
       id: "layer-startle", subjectId: 999,
       source: { xM: state.player.x * 300, yM: state.player.y * 300 },
@@ -243,6 +252,7 @@ describe("the map's compositing layers", () => {
     const ui = newUiState();
     ui.zoom = 0;
     state.weather.snowCm = 10;
+    ensureGround(state, world, state.player.region).snowCm = 10;
     mapRegion(state, world, state.player.region);
     const region = state.regions[state.player.region];
     region.campCell = neighbourLandCell(world, cellOf(state, world));

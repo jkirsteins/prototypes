@@ -16,6 +16,7 @@ import { setWildlifeEventSink } from "./sim/wildlife-events";
 import type { WildlifeStartleEvent } from "./sim/wildlife-encounter";
 import { since } from "./sim/epitaph";
 import { createForecaster, noteMonthRow } from "./sim/forecaster";
+import { log } from "./sim/log";
 import { startIntent, type Where } from "./sim/intent";
 import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
@@ -61,8 +62,10 @@ import { updateSky } from "./ui/sky";
 import { newSpeedHistory, updateSpeedHistory } from "./ui/speed-history";
 import { shoppingHtml, shoppingQuery } from "./ui/shopping";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
+import { hideLoading, showLoading } from "./ui/loading";
 import { recognitionHtml } from "./ui/wildlife-panel";
-import { generateWorld, regionAt, type World } from "./world/gen";
+import { regionAt, type World } from "./world/gen";
+import { loadWorld } from "./world/worldloader";
 
 const params = new URLSearchParams(location.search);
 // The face self-test page: a page of generated faces to judge, in place of the game.
@@ -143,11 +146,30 @@ function resetForecastAt(): void {
 // Assigned once mountAwayDial() runs, below; fresh() runs once before that during
 // boot(), when there is nothing yet to refresh.
 let awayDial: AwayDial | null = null;
+// Assigned once the forecaster exists, below; fresh() runs once before that
+// during boot(), when there is no forecast waiting on a world.
+let tellForecaster: ((w: World) => void) | null = null;
 
-function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0) {
-  const g = newWorld(seed, boat, startDoy);
-  state = g.state;
-  world = g.world;
+// A world is being made. The run underneath stands still while it is: the
+// frame does nothing, and a second click cannot start a second solve.
+let solving = false;
+
+/** A new run: the world is solved behind the bar first, so nothing starts on a world that is not there yet. */
+async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0): Promise<void> {
+  if (solving) return;
+  solving = true;
+  // The finally is what makes the flag and the bar safe to hold: a solve that
+  // throws would otherwise leave the frame standing still with every later
+  // click a no-op, behind a full-page overlay that never comes down.
+  try {
+    const loaded = await loadWorld(seed, showLoading);
+    const g = newWorld(seed, boat, startDoy, loaded);
+    state = g.state;
+    world = g.world;
+  } finally {
+    hideLoading();
+    solving = false;
+  }
   wasDead = false;
   ui.selected = null;
   ui.away = null;
@@ -162,17 +184,25 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   resetForecastAt();
   persistGame();
   awayDial?.refresh();
+  tellForecaster?.(world);
 }
 
-function boot() {
+async function boot() {
   ui.panes = loadPanes(localStorage);
-  const saved = forcedSeed || startDoy !== undefined ? null : loadGame();
+  let refusal = "";
+  const saved = forcedSeed || startDoy !== undefined ? null : loadGame(localStorage, (reason) => { refusal = reason; });
   if (saved) {
     state = saved.state;
     // Set before the catch-up below runs, so a death the catch-up itself deals
     // is not already read as "seen": the first frame must still emit died for it.
     wasDead = Boolean(saved.state.dead);
-    world = generateWorld(state.seed);
+    solving = true;
+    try {
+      world = await loadWorld(state.seed, showLoading);
+    } finally {
+      hideLoading();
+      solving = false;
+    }
     fillPopulations(state, world);
     knowLoadedGround(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
@@ -188,7 +218,9 @@ function boot() {
       persistGame();
     }
   } else {
-    fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy);
+    await fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy);
+    // A save this build cannot read is not silently dropped: the new run says why it is new.
+    if (refusal) log(state, refusal);
   }
 }
 
@@ -342,6 +374,13 @@ let lastSave = performance.now();
 const RENDER_INTERVAL_MS = 100;
 let lastRender = -Infinity;
 function frame(now: number) {
+  if (solving) {
+    // The clock moves on while a world is solved; the run does not, so the
+    // wait cannot be read later as time the survivor lived through.
+    lastReal = now;
+    requestAnimationFrame(frame);
+    return;
+  }
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
   if (import.meta.env.DEV && startleRestore) {
@@ -537,7 +576,7 @@ function onClick(ev: Event) {
       break;
     case "next-boat":
       // The first boat has no world to run yet: it is rebuilt a week later from the same seed.
-      if (state.landing && state.landing.oldCamp === null) fresh(state.seed, startDoy, state.landing.boat + 1);
+      if (state.landing && state.landing.oldCamp === null) void fresh(state.seed, startDoy, state.landing.boat + 1);
       else nextBoat(state, world);
       resetForecastAt();
       break;
@@ -576,7 +615,7 @@ function onClick(ev: Event) {
     case "reset-world":
       if (!window.confirm("Reset all world data? This cannot be undone.")) break;
       clearSave();
-      fresh();
+      void fresh();
       ui.settings = false;
       lastReal = performance.now();
       render();
@@ -644,7 +683,7 @@ function onClick(ev: Event) {
       ui.cemetery = false;
       ui.confirmLeave = false;
       clearSave();
-      fresh();
+      void fresh();
       break;
     case "dismiss":
       ui.away = null;
@@ -750,7 +789,15 @@ function zoomBy(delta: number) {
   ui.zoom = Math.max(0, Math.min(LEVELS.length - 1, ui.zoom + delta));
 }
 
-boot();
+try {
+  await boot();
+} catch (err) {
+  // The bar is the whole of the UI until the world exists, so a solve that
+  // fails says so there rather than leaving a blank overlay and a dead module.
+  // Nothing below can run without a world, so the failure still ends the load.
+  showLoading(`the world could not be made: ${err instanceof Error ? err.message : String(err)}`, 0);
+  throw err;
+}
 const weatherShot = weatherShotName ? weatherShotFixture(weatherShotName) : null;
 if (weatherShot) {
   state = weatherShot.state;
@@ -768,6 +815,9 @@ const forecaster = createForecaster(
   typeof Worker === "undefined" ? undefined : new Worker(new URL("./sim/forecast.worker.ts", import.meta.url), { type: "module" }),
 );
 forecaster.onRow = (row) => { noteMonthRow(state, row); };
+// The worker builds its world from these arrays instead of solving the seed itself.
+forecaster.setWorld(world);
+tellForecaster = (w) => forecaster.setWorld(w);
 /** The actions that change what the forecast reads: orders, needs, camp state. */
 const FORECAST_ACTS = [
   "task", "stop", "intent", "row-kind", "finish", "order-up", "order-down", "order-remove", "order-pin", "dismiss",

@@ -12,7 +12,7 @@ import { BASE_KCAL_PER_HOUR, coldBurnFactor, feltTemperature, stepPlayer, WALK_K
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { beginTask } from "../src/sim/tasks";
 import { cellAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
@@ -94,7 +94,7 @@ describe("the ledger", () => {
     const text = serialize(state);
     const raw = JSON.parse(text);
     delete raw.state.ledger;
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     expect(file.state.ledger).toEqual([]);
   });
 
@@ -104,7 +104,7 @@ describe("the ledger", () => {
     const raw = JSON.parse(serialize(state));
     raw.state.player.pack.items.berries = 1.5;
     delete raw.state.player.pack.stacks.berries;
-    const pack = deserialize(JSON.stringify(raw))!.state.player.pack;
+    const pack = readSave(JSON.stringify(raw))!.state.player.pack;
     expect(qty(pack, "berries")).toBe(1.5);
     expect(pack.stacks.berries).toEqual([{ kg: 1.5, age: 0 }]);
     expect(pack.items.berries).toBeUndefined();

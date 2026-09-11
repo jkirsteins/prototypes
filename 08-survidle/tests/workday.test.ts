@@ -11,15 +11,16 @@ import { taskDrain } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
 import { regionState, siteFor } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { alertness, RESTED_AT, sleepiness, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { beginTask, setAside, startTask } from "../src/sim/tasks";
 import type { GameState } from "../src/sim/types";
 import type { World } from "../src/world/gen";
 import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/sim/water";
 import { ensureGround, stormComing, stormNow } from "../src/sim/weather";
-import { regionAt, spotOf } from "../src/world/gen";
+import { hasSpot, regionAt, spotOf } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { shoreCampWithDryForest } from "./world-facts";
 import { testAtmosphere } from "./weather-helpers";
 
 beforeEach(() => testAtmosphere());
@@ -72,7 +73,7 @@ describe("the working day", () => {
     raw.state.player.restUntil = 12345;
     raw.state.player.sleptTonight = true;
     raw.state.player.workHours = 9;
-    const p = deserialize(JSON.stringify(raw))!.state.player as unknown as Record<string, unknown>;
+    const p = readSave(JSON.stringify(raw))!.state.player as unknown as Record<string, unknown>;
     expect(p.sleepDebt).toBe(30);
     expect(p.sleeping).toBeNull();
     expect(p.restUntil).toBeUndefined();
@@ -85,7 +86,7 @@ describe("the working day", () => {
     const raw = JSON.parse(serialize(state));
     delete raw.state.player.bodyNeed;
     delete raw.state.player.coldSpent;
-    const p = deserialize(JSON.stringify(raw))!.state.player;
+    const p = readSave(JSON.stringify(raw))!.state.player;
     expect(p.bodyNeed).toBeNull();
     expect(p.coldSpent).toBe(false);
   });
@@ -95,7 +96,7 @@ describe("the working day", () => {
     const raw = JSON.parse(serialize(state));
     raw.state.player.sleeping = { collapsed: true };
     raw.state.player.bodyNeed = "sleep";
-    const p = deserialize(JSON.stringify(raw))!.state.player;
+    const p = readSave(JSON.stringify(raw))!.state.player;
     expect(p.sleeping).toBeNull();
     expect(p.collapsed).toBe(true);
     expect(p.bodyNeed).toBe("spent");
@@ -108,7 +109,7 @@ describe("the working day", () => {
     state.player.water = WATER_FULL;
     expect(currentNeed(state, world, cal)).toBe("sleep");
     expect(state.player.sleeping).toEqual({ collapsed: false });
-    const back = deserialize(serialize(state))!.state;
+    const back = readSave(serialize(state))!.state;
     expect(back.player.sleeping).toEqual({ collapsed: false });
   });
 
@@ -339,8 +340,18 @@ describe("checking the snares", () => {
    * never be asked to rank against anything.
    */
   function thirstyWithACatch() {
-    const g = felling();
+    const g = newGame(17);
     const { state, world } = g;
+    // The camp on the water with the region's forest spot off it, and a heath
+    // for the snares: the felling has to happen away from any water, or the
+    // thirst is answered where he stands and never ranks against anything.
+    const region = shoreCampWithDryForest(world, state.player.region, (id) => hasSpot(regionAt(world, id), "heath"));
+    placeAt(state, world, regionAt(world, region).campCell);
+    siteCamp(state, world);
+    kitOut(state, world);
+    state.player.energy = 100;
+    addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "forest" }, "grind");
+    advance(state, world, 1);
     const st = regionState(state, world, state.player.region);
     for (let m = 0; m < 600 && state.task?.id !== "chop"; m++) advance(state, world, 1);
     expect(state.task?.id).toBe("chop");

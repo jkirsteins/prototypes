@@ -11,15 +11,15 @@ import { mapRegion } from "../src/sim/mapped";
 import { land } from "../src/sim/landing";
 import { setSkillLevel } from "../src/sim/horizon";
 import { discoverAvailableOpportunities } from "../src/sim/opportunity-catalog";
-import { deserialize, knowLoadedGround, serialize } from "../src/sim/save";
+import { knowLoadedGround, readSave, serialize } from "../src/sim/save";
 import { resetTeaching } from "../src/sim/teach";
 import { TASK_IDS, type OpportunityKey, type Season } from "../src/sim/types";
 import { allOpportunityDefs } from "../src/sim/opportunity-catalog";
 
 const cal = calendar(0);
 
-/** Seed 3's landing ground identifies these four foods, so they arrive on the first frames. */
-const INITIAL_FORAGE = ["forage:berries", "forage:eggs", "forage:barkFlour", "forage:cookedRoots"] as const;
+/** Seed 3 lands on a salt shore with bog and pine behind it, so these five foods arrive on the first frames. */
+const INITIAL_FORAGE = ["forage:berries", "forage:eggs", "forage:barkFlour", "forage:cookedRoots", "forage:seaweed"] as const;
 
 /** Nothing gates a tool recipe or a shelter, so all fifteen are known from world start. */
 const DAY_ONE_CAPABILITIES = [
@@ -135,7 +135,7 @@ describe("the authored opportunity journey", () => {
     // written before these leaves existed looks like on the next load.
     state.opportunities = newOpportunities(cal.season);
     state.opportunities.notices = [];
-    const loaded = deserialize(serialize(state, 0));
+    const loaded = readSave(serialize(state, 0));
     if (!loaded) throw new Error("the save did not round-trip");
     knowLoadedGround(loaded.state, world);
     expect(loaded.state.opportunities.discoveredAt["forage:berries"]).toBeDefined();
@@ -444,14 +444,13 @@ describe("opportunities are the world's, not a life's", () => {
     const { state } = newGame(3);
     const raw = JSON.parse(serialize(state)) as { version: number; state: Record<string, unknown> };
     delete raw.state.opportunities;
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     expect(file.state.opportunities).toEqual(newOpportunities(calendar(state.minute, state.startDoy).season));
   });
 
   it("migrates known legacy deeds, compatible steps, and queued facts without replay", () => {
     const { state } = newGame(3);
     const raw = JSON.parse(serialize(state));
-    raw.version = 9;
     delete raw.state.opportunities;
     raw.state["goals"] = {
       done: { site: true, drink: true, spring: true, obsolete: true },
@@ -461,7 +460,7 @@ describe("opportunities are the world's, not a life's", () => {
       queue: ["drink", "obsolete"], noticeQueue: ["Weather passed."],
       chapter3HomeRegion: 77, lastSeason: "summer",
     };
-    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const loaded = readSave(JSON.stringify(raw))!.state;
     expect(loaded.opportunities.current).toBe("firewood");
     expect(loaded.opportunities.completedAt).toEqual({ site: 0, drink: 0, "season:spring": 0 });
     expect(loaded.opportunities.discoveredAt.fire).toBe(0);
@@ -479,7 +478,7 @@ describe("opportunities are the world's, not a life's", () => {
     const raw = JSON.parse(serialize(state));
     delete raw.state.opportunities;
     raw.state["goals"] = { introduced: { remoteRefuge: true } };
-    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const loaded = readSave(JSON.stringify(raw))!.state;
     expect(loaded.opportunities.context.chapter3HomeRegion).toBeNull();
   });
 
@@ -488,14 +487,13 @@ describe("opportunities are the world's, not a life's", () => {
     const home = state.player.region;
     state.regions[home].campCell = cellOf(state, world);
     const raw = JSON.parse(serialize(state));
-    raw.version = 9;
     raw.state.minute = 42720;
     delete raw.state.opportunities;
     raw.state["goals"] = {
       done: Object.fromEntries(["site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook", "findUsefulCover", "makeUsefulShelter", "testShelter", "readWeather", "prepareWeather", "surviveForecast"].map((id) => [id, true])),
       introduced: {}, chapter3HomeRegion: null,
     };
-    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const loaded = readSave(JSON.stringify(raw))!.state;
     expect(loaded.opportunities.discoveredAt.remoteRefuge).toBeDefined();
     expect(loaded.opportunities.context.chapter3HomeRegion).toBeNull();
     expect(loaded.opportunities.completedAt.remoteRefuge).toBeUndefined();
@@ -523,9 +521,9 @@ describe("opportunities are the world's, not a life's", () => {
     delete raw.state.opportunities;
     raw.state["goals"] = { done: Object.fromEntries(["site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook", "findUsefulCover", "makeUsefulShelter", "testShelter"].map((id) => [id, true])), introduced: {} };
     raw.state.minute = 9599;
-    expect(deserialize(JSON.stringify(raw))!.state.opportunities.current).toBe("snareMeal");
+    expect(readSave(JSON.stringify(raw))!.state.opportunities.current).toBe("snareMeal");
     raw.state.minute = 9600;
-    expect(deserialize(JSON.stringify(raw))!.state.opportunities.current).toBe("readWeather");
+    expect(readSave(JSON.stringify(raw))!.state.opportunities.current).toBe("readWeather");
   });
 
   it("moves a legacy weather reservation and home without inspecting the world", () => {
@@ -537,7 +535,7 @@ describe("opportunities are the world's, not a life's", () => {
       announcedAt: 300, resolvedAt: null, minutesByProtection: [1, 2, 3, 4],
       atCampMinutes: 5, awayFromCampMinutes: 6, maxWetness: 70, readerIndex: 2, plan: null };
     raw.state["goals"] = { opportunity: weather, chapter3HomeRegion: 5 };
-    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const loaded = readSave(JSON.stringify(raw))!.state;
     const { goal: _goal, ...legacyContext } = weather;
     expect(loaded.opportunities.context).toEqual({
       weather: { ...legacyContext, opportunity: "remoteStorm" },
@@ -552,7 +550,7 @@ describe("opportunities are the world's, not a life's", () => {
     state.regions[origin] = structuredClone(state.regions[target]);
     state.regions[origin].campCell = 123;
     state.task = { id: "explore", arg: `region:${target}`, progress: 4, duration: 10, repeat: false };
-    const loaded = deserialize(serialize(state))!.state;
+    const loaded = readSave(serialize(state))!.state;
     expect(loaded.task?.originRegion).toBe(origin);
   });
 });

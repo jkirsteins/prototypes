@@ -8,15 +8,15 @@ import { ensureGround } from "./weather";
 import { regionPeek, type World } from "../world/gen";
 
 export const WEATHER_SHOTS = {
-  clear: { seed: 17, minute: 1440, x: 450, y: 1100, zoom: 2, note: "clear air above the comparison rock" },
+  clear: { seed: 17, minute: 1440, x: 1696, y: 880, zoom: 2, note: "clear air above the comparison rock" },
   "sunny-clouds": { seed: 17, minute: 170160, x: 700, y: 950, zoom: 2, note: "dry midsummer sun with a broken cloud field" },
   "approaching-rain": { seed: 17, minute: 86760, x: 1040, y: 150, zoom: 2, note: "edge of a rain band approaching from the west" },
-  "local-rain": { seed: 17, minute: 108720, x: 1300, y: 376, zoom: 2, note: "the dense part of a local rain band" },
-  "persisted-snow": { seed: 17, minute: 480480, x: 296, y: 1200, zoom: 2, note: "falling snow above snow retained by stationary ground state" },
+  "local-rain": { seed: 17, minute: 108720, x: 1112, y: 400, zoom: 2, note: "the dense part of a local rain band" },
+  "persisted-snow": { seed: 17, minute: 480480, x: 872, y: 864, zoom: 2, note: "falling snow above snow retained by stationary ground state" },
   "frozen-water": { seed: 17, minute: 481200, x: 175, y: 50, zoom: 2, note: "safe winter ice over naturally frozen coastal water" },
-  "valley-fog": { seed: 17, minute: 19560, x: 840, y: 1000, zoom: 2, note: "dry fog pooled over bog ground" },
+  "valley-fog": { seed: 17, minute: 19560, x: 1432, y: 1036, zoom: 2, note: "dry fog pooled over bog ground" },
   "windward-lee": { seed: 17, minute: 3960, x: 700, y: 950, zoom: 2, note: "a terrain-modified extinction gradient" },
-  obscured: { seed: 17, minute: 480480, x: 450, y: 1100, zoom: 2, note: "dense snow and fog above the comparison rock" },
+  obscured: { seed: 17, minute: 480480, x: 1696, y: 880, zoom: 2, note: "dense snow and fog above the comparison rock" },
 } as const;
 
 export type WeatherShotName = keyof typeof WEATHER_SHOTS;

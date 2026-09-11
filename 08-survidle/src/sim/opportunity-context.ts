@@ -66,7 +66,7 @@ export function recordStormMinute(state: GameState, world: World, stormId: numbe
   if (opportunity.opportunity !== "remoteStorm" && straightKm(world, area.centre, cell) > area.radiusKm) return;
   const site = siteAt(state.regions[state.player.region], cell);
   const protection = stormKind === "gale"
-    ? galeProtection(world, cell, site)
+    ? galeProtection(state, world, cell, site)
     : protectionOf(site);
   opportunity.minutesByProtection[protection] += minutes;
 }

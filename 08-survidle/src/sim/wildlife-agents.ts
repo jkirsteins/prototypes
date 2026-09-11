@@ -8,7 +8,7 @@ import { regionState, siteAt } from "./regionstate";
 import { oddsFactor, skillLevel } from "./skills";
 import { noteHuntSign } from "./hunting";
 import { recordOpportunityEvent } from "./opportunities";
-import type { AgentSpecies, GameState, Species, WildlifeMode, WildlifeState, WildlifeSubject } from "./types";
+import type { AgentSpecies, GameState, Species, Terrain, WildlifeMode, WildlifeState, WildlifeSubject } from "./types";
 import { cellOf } from "./position";
 import { visibleCells } from "./sight";
 import { record } from "./record";
@@ -153,7 +153,7 @@ export function activateWildlife(state: GameState, world: World, rng: Rng): void
   }
 }
 
-const COVER = { water: 0, fell: 0.05, rock: 0.1, bog: 0.2, spruce: 0.85, pine: 0.5, birch: 0.4, meadow: 0.1 };
+const COVER: Record<Terrain, number> = { water: 0, river: 0, fell: 0.05, rock: 0.1, bog: 0.2, spruce: 0.85, pine: 0.5, birch: 0.4, meadow: 0.1 };
 const NOISY_WORK = new Set(["chop", "split", "splitWedges", "build", "mend", "iceHole", "crack", "stone"]);
 type EncounterRolls = Pick<UngulateEncounterInput, "detectionRoll" | "auditoryDetectionRoll" | "sightRoll" | "hearingRoll">;
 

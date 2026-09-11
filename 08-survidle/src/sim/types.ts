@@ -15,7 +15,7 @@ export type Protection = 0 | 1 | 2 | 3;
 
 export type Terrain =
   | "water" | "fell" | "rock" | "bog"
-  | "spruce" | "pine" | "birch" | "meadow";
+  | "spruce" | "pine" | "birch" | "meadow" | "river";
 
 /** Whether a route may step onto water, and how: safe ice bears weight without risk, thin ice risks a fall. */
 export type IceMode = "none" | "safe" | "thin";

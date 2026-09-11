@@ -11,10 +11,10 @@ import { placeAt } from "../src/sim/position";
 import { current } from "../src/sim/record";
 import type { GameState } from "../src/sim/types";
 import { visibleWildlife } from "../src/sim/wildlife-agents";
-import { cellAt, regionAt, type World } from "../src/world/gen";
-import * as terrainFields from "../src/world/terrain";
-import { fieldsAt } from "../src/world/terrain";
+import { cellAt, heightAt, regionAt, type World } from "../src/world/gen";
 import { testAtmosphere } from "./weather-helpers";
+import { flatWorld, paintWorld } from "./world-fixture";
+import { regionsOutward } from "./world-facts";
 
 const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
@@ -37,10 +37,10 @@ function openRun(world: World, region: number, n: number): { vantage: number; en
         end = ny * world.w + nx;
       }
       if (ok) {
-        const observer = Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * 1200 + 1.7;
+        const observer = heightAt(world, x, y) + 1.7;
         let horizon = -Infinity;
         for (let i = 1; i <= n; i++) {
-          const elevation = Math.min(1, Math.max(0, fieldsAt(world.seed, x + dx * i, y + dy * i).e)) * 1200;
+          const elevation = heightAt(world, x + dx * i, y + dy * i);
           const slope = (elevation - observer) / i;
           if (i === n && slope < horizon) ok = false;
           horizon = Math.max(horizon, slope);
@@ -52,46 +52,26 @@ function openRun(world: World, region: number, n: number): { vantage: number; en
   throw new Error(`region ${region} has no ${n}-cell open run`);
 }
 
-/** A spruce cell in `region` deep enough in the wood that all eight cells around it are wood too: no edge to walk to and look out from. */
+/**
+ * A spruce cell near `region` deep enough in the wood that all eight cells
+ * around it are wood too: no edge to walk to and look out from. A region of
+ * 4 km may hold no such cell, so the search widens outward from home.
+ */
 function spruceCell(world: World, region: number): number {
   const wooded = (c: number) => FOREST.has(cellAt(world, c).terrain);
-  const idx = regionAt(world, region).cells.find((c) => {
+  const closed = (c: number) => {
     if (cellAt(world, c).terrain !== "spruce") return false;
     const x = c % world.w;
     const y = Math.floor(c / world.w);
     if (x < 1 || y < 1 || x >= world.w - 1 || y >= world.h - 1) return false;
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && !wooded(c + dy * world.w + dx)) return false;
     return true;
-  });
-  if (idx === undefined) throw new Error(`region ${region} has no spruce cell closed on every side`);
-  return idx;
-}
-
-/** A vantage in `region` with water then spruce along a straight ray, and the cell one past the spruce. */
-function waterThenSpruce(world: World, region: number): { vantage: number; water: number; spruce: number; behind: number } {
-  for (const idx of regionAt(world, region).cells) {
-    const t = cellAt(world, idx).terrain;
-    if (t === "spruce" || t === "pine" || t === "birch") continue;
-    const x = idx % world.w;
-    const y = Math.floor(idx / world.w);
-    for (const [dx, dy] of DIRS) {
-      const seq: { terrain: string; idx: number }[] = [];
-      let ok = true;
-      for (let i = 1; i <= 6; i++) {
-        const nx = x + dx * i;
-        const ny = y + dy * i;
-        if (nx < 0 || ny < 0 || nx >= world.w || ny >= world.h) { ok = false; break; }
-        const nidx = ny * world.w + nx;
-        seq.push({ terrain: cellAt(world, nidx).terrain, idx: nidx });
-      }
-      if (!ok) continue;
-      const spruceAt = seq.findIndex((s) => s.terrain === "spruce");
-      if (spruceAt >= 1 && spruceAt < seq.length - 1 && seq.slice(0, spruceAt).every((s) => s.terrain === "water")) {
-        return { vantage: idx, water: seq[0].idx, spruce: seq[spruceAt].idx, behind: seq[spruceAt + 1].idx };
-      }
-    }
+  };
+  for (const id of regionsOutward(world, region, 400)) {
+    const idx = regionAt(world, id).cells.find(closed);
+    if (idx !== undefined) return idx;
   }
-  throw new Error(`region ${region} has no water-then-spruce ray`);
+  throw new Error(`no region within reach of ${region} has a spruce cell closed on every side`);
 }
 
 const FOREST = new Set(["spruce", "pine", "birch"]);
@@ -137,18 +117,15 @@ function forestShore(world: World, region: number, n: number): { vantage: number
 // Seed 1's start region, at solar noon on landing day (1 April): bright enough that light never gates the range.
 const NOON = calendar(300);
 
-/** A small all-meadow world isolates distance and weather from generated canopy. */
-function openWorld(): { state: GameState; world: World; vantage: number } {
+/**
+ * A small all-meadow world isolates distance and weather from generated canopy.
+ * A test that paints terrain onto it must ask for its own seed: the viewshed
+ * cache names a world by seed and size, so two differently painted worlds of the
+ * same seed would answer with each other's viewsheds.
+ */
+function openWorld(seed = 1): { state: GameState; world: World; vantage: number } {
   const state = newGame(1).state;
-  vi.spyOn(terrainFields, "fieldsAt").mockReturnValue({ e: 0.5, m: 0.3, sea: false, coast: 1 });
-  const terrain = new Uint8Array(64 * 64);
-  terrain.fill(7); // TERRAINS[7] is meadow.
-  const region = new Int32Array(64 * 64);
-  const world = {
-    seed: 1, w: 32, h: 32,
-    chunks: new Map([[0, { terrain, region }]]),
-    regions: new Map(), start: 0, startRing: 0,
-  } as unknown as World;
+  const world = flatWorld({ w: 32, h: 32, terrain: "meadow", heightM: 600, seed });
   const vantage = 16 * world.w + 16;
   state.player.x = 16.5;
   state.player.y = 16.5;
@@ -187,24 +164,30 @@ describe("sight", () => {
     expect(candidates * CELL_KM).toBeGreaterThan(CLEAR_MOR_KM);
   });
 
-  it("caps generated elevation at the model's 1200 m fell spine", () => {
+  it("keeps the range from the highest ground the terrain model makes inside the horizon of 3000 m", () => {
     const { state, world } = newGame(17);
     testAtmosphere({ cloud: 0, precipMmPerHour: 0, extinctionPerKm: 0.06 });
     current(state).person.axes.eyes = 2;
     setSkillLevel(state, "wayfinding", 20);
     let high = -1;
-    for (let y = 180; y < world.h - 180 && high < 0; y += 12) {
+    let highest = -Infinity;
+    for (let y = 180; y < world.h - 180; y += 12) {
       for (let x = 180; x < world.w - 180; x += 12) {
         const cell = y * world.w + x;
         const terrain = cellAt(world, cell).terrain;
-        if ((terrain === "fell" || terrain === "rock") && fieldsAt(world.seed, x, y).e > 1) {
-          high = cell;
-          break;
-        }
+        if (terrain !== "fell" && terrain !== "rock") continue;
+        if (heightAt(world, x, y) > highest) { highest = heightAt(world, x, y); high = cell; }
       }
     }
-    expect(high).toBeGreaterThanOrEqual(0);
-    expect(sightRangeCells(state, world, NOON, high)).toBeLessThanOrEqual(927);
+    // The template's crest is about 1800 m at 61 N and its relief adds a few
+    // hundred, so no ground reaches 3000 m. The horizon of the highest ground
+    // there is - 3.57 * sqrt(m) km, in cells of 300 m - is what the range may
+    // not pass, with sharp eyes and an expert reading of the ground each adding
+    // half again. Prominence is height above the lowest ground within 20 km, so
+    // it can only be less than the height itself.
+    expect(highest).toBeLessThan(3000);
+    const ceiling = Math.ceil((3.57 * Math.sqrt(highest)) / CELL_KM * 1.5 * 1.5);
+    expect(sightRangeCells(state, world, NOON, high)).toBeLessThanOrEqual(ceiling);
   });
 
   it("uses one physical radius in cardinal and diagonal directions", () => {
@@ -385,27 +368,34 @@ describe("sight", () => {
     const { state, world } = newGame(1);
     testAtmosphere({ cloud: 0, precipMmPerHour: 0, extinctionPerKm: 0.06 });
     let scenario: { vantage: number; ridge: number; behind: number } | null = null;
-    const forest = new Set(["spruce", "pine", "birch"]);
-    for (const vantage of regionAt(world, state.player.region).cells) {
-      if (forest.has(cellAt(world, vantage).terrain)) continue;
+    const open = new Set(["meadow", "bog", "fell", "rock"]);
+    // Ground, all the way out: a water cell shows its surface at sea level
+    // whatever the bed under it does, so a ray that runs out over the fjord is
+    // not the case this test is about, and the sea floor is not a vantage.
+    for (const vantage of regionsOutward(world, state.player.region, 60).flatMap((id) => regionAt(world, id).cells)) {
+      if (!open.has(cellAt(world, vantage).terrain)) continue;
       const vx = vantage % world.w;
       const vy = Math.floor(vantage / world.w);
-      const observer = Math.min(1, Math.max(0, fieldsAt(world.seed, vx, vy).e)) * 1200 + 1.7;
+      const observer = heightAt(world, vx, vy) + 1.7;
       const range = Math.min(12, sightRangeCells(state, world, NOON, vantage));
       for (const [dx, dy] of DIRS) {
         let highestSlope = -Infinity;
         let ridge = -1;
+        let ridgeAt = -1;
         for (let distance = 1; distance <= range; distance++) {
           const x = vx + dx * distance;
           const y = vy + dy * distance;
           const cell = y * world.w + x;
-          if (x < 0 || y < 0 || x >= world.w || y >= world.h || forest.has(cellAt(world, cell).terrain)) break;
-          const elevation = Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * 1200;
+          if (x < 0 || y < 0 || x >= world.w || y >= world.h || !open.has(cellAt(world, cell).terrain)) break;
+          const elevation = heightAt(world, x, y);
           const slope = (elevation - observer) / distance;
           if (slope > highestSlope + 8) {
             highestSlope = slope;
             ridge = cell;
-          } else if (ridge >= 0 && highestSlope > slope + 15) {
+            ridgeAt = distance;
+            // Both cells lie past the ring a survivor knows by standing in it,
+            // so what hides the far one is the ridge and not the ring's edge.
+          } else if (ridge >= 0 && ridgeAt >= 2 && distance >= 4 && highestSlope > slope + 15) {
             scenario = { vantage, ridge, behind: cell };
             break;
           }
@@ -500,9 +490,17 @@ describe("sight", () => {
   });
 
   it("stops at the first blocking canopy", () => {
-    const { state, world } = newGame(1);
-    const region = state.player.region;
-    const { vantage, water, spruce, behind } = waterThenSpruce(world, region);
+    // One height throughout, so what stops the ray is the canopy and not the
+    // ground. A generated coast cannot serve this: the land behind the first
+    // spruce stand rises out of the fjord and is seen over the trees, which is
+    // the right answer to a different question.
+    const { state, world, vantage } = openWorld(9001);
+    testAtmosphere({ extinctionPerKm: 0.06 });
+    const water = vantage + 1;
+    const spruce = vantage + 4;
+    const behind = vantage + 5;
+    paintWorld(world, [water, vantage + 2, vantage + 3], "water");
+    paintWorld(world, [spruce], "spruce");
     forget(state);
     seeFrom(state, world, NOON, vantage);
     expect(isKnown(state, water)).toBe(true);

@@ -7,10 +7,11 @@ import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { orderByHand } from "../src/sim/ladder";
 import { addOrder, ordersHere } from "../src/sim/orders";
-import { cellOf, placeAt } from "../src/sim/position";
+import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { RESTED_AT, SPENT_AT } from "../src/sim/sleep";
 import { siteCamp } from "./siting-helpers";
+import { openCampWithForestNear } from "./world-facts";
 import { testAtmosphere } from "./weather-helpers";
 
 beforeEach(() => testAtmosphere());
@@ -25,11 +26,18 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
   return pred();
 }
 
-/** Seed 39: meadow camp, forest 0.6 km away. The body is at camp, a hair past the spent line and with a round trip's worth of energy over the collapse, which is the one thing that would end a once. */
+/**
+ * A camp you leave to gather wood - open ground with forest a short walk off -
+ * with the body at camp, a hair past the spent line and with a round trip's
+ * worth of energy over the collapse, which is the one thing that would end a
+ * once. A camp standing in the wood is worked without walking anywhere, and
+ * there is then no round trip to give out on.
+ */
 function spentAtCamp() {
   const g = newGame(39);
-  siteCamp(g.state, g.world);
   const { state, world } = g;
+  placeAt(state, world, openCampWithForestNear(world, state.player.region).camp);
+  siteCamp(state, world);
   const camp = regionState(state, world, state.player.region).campCell!;
   placeAt(state, world, camp);
   addItem(state.player.pack, "driedMeat", 2);
@@ -39,7 +47,7 @@ function spentAtCamp() {
 
 describe("work chosen by hand is the player's", () => {
   it("a once order past the spent line walks to the wood and gathers; it turns for camp for nothing short of the collapse", () => {
-    const { g, state, world, camp } = spentAtCamp();
+    const { g, state, world } = spentAtCamp();
     orderByHand(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     // Started on the click, spent or not, and ranked over the body's row,
     // which is what keeps a body past the spent line from taking it back.
@@ -58,18 +66,19 @@ describe("work chosen by hand is the player's", () => {
     expect(state.player.bodyNeed).not.toBeNull();
     expect(state.intent?.mode).toBe("hand");
     expect(state.player.energy).toBeLessThan(SPENT_AT);
-    expect(until(g, () => state.intent?.task !== "deadwood")).toBe(true);
-    // A deadwood round trip costs more energy than the ten points between the
-    // spent line and the collapse, so a body that starts one past the spent
-    // line gives out on the way. Nothing turned it for camp: it worked until
-    // its row became blocked, then the ranked self-care row took the next minute.
+    // Nothing turned it for camp: the steps above never said "for the evening".
+    // What does end it is the collapse, and the body is taken to that line here
+    // rather than left to spend itself on the walk, since what a round trip
+    // costs follows from how far the wood is.
+    expect(state.intent?.mode).toBe("hand");
+    state.player.energy = 0;
+    advance(state, world, 1);
     expect(state.intent).toBeNull();
-    expect(cellOf(state, world)).not.toBe(camp);
+    expect(state.player.collapsed).toBe(true);
+    expect(state.player.sleeping).toBeNull();
     advance(state, world, 1);
     expect(state.intent?.mode).toBe("care");
     expect(until(g, () => state.task?.id === "rest", 300)).toBe(true);
-    expect(state.player.collapsed).toBe(true);
-    expect(state.player.sleeping).toBeNull();
   });
 
   it("a list of once orders served while away: the body speaks before each one starts", () => {
@@ -96,7 +105,9 @@ describe("work chosen by hand is the player's", () => {
     expect(state.intent?.orderId).toBe(4);
     // The second click is the player asking for something else now: it takes
     // the top of the list, the care rows included, and the minute with it.
-    const second = orderByHand(state, world, cal, new Rng(1), { task: "stone", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    // Bark, not stone: a click that cannot run where it is given displaces
+    // nothing, and whether there is an outcrop within reach is the map's.
+    const second = orderByHand(state, world, cal, new Rng(1), { task: "bark", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     expect(state.intent?.orderId).toBe(second.id);
     expect(ordersHere(state, world).map((o) => o.id)).toEqual([second.id, 4, 1, 2, 3]);
   });

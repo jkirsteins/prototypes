@@ -1,8 +1,7 @@
 /** Deterministic moving air. No random stream, world chunks or ground records are changed here. */
 import { derive } from "../rng";
 import { CELL_KM } from "../units";
-import type { World } from "../world/cells";
-import { fieldsAt } from "../world/terrain";
+import { heightAt, moistureAt, waterKindOf, type World } from "../world/cells";
 import { START_MINUTE_OF_DAY } from "./calendar";
 import type { AtmosphereSample } from "./types";
 
@@ -191,9 +190,9 @@ export function terrainModifiers(elevationKm: number, upwindElevationKm: number,
   };
 }
 
-function elevationKm(seed: number, x: number, y: number): number {
-  const f = fieldsAt(seed, x, y);
-  return f.sea ? 0 : Math.max(0, f.e) * 1.2;
+/** Ground height in km above sea level; the sea and its floor read zero. Cell coordinates may be fractional. */
+function elevationKm(world: World, x: number, y: number): number {
+  return Math.max(0, heightAt(world, Math.floor(x), Math.floor(y))) / 1000;
 }
 
 /** Constant translation of the weather systems, separate from the local surface wind. */
@@ -231,13 +230,14 @@ export function sampleAtmosphere(weather: ClimateState, world: World, minute: nu
   const humidity = field(world, 721, airX, airY, BROAD_LATTICE_KM);
   const anomaly = field(world, 722, airX, airY, BROAD_LATTICE_KM);
   const detail = field(world, 723, airX, airY, DETAIL_LATTICE_KM);
-  const terrain = fieldsAt(world.seed, x, y);
-  const height = terrain.sea ? 0 : Math.max(0, terrain.e) * 1.2;
+  const cx = Math.floor(x);
+  const cy = Math.floor(y);
+  const height = waterKindOf(world, cy * world.w + cx) === "sea" ? 0 : elevationKm(world, cx, cy);
   const dx = windKmh > 0 ? windXKmh / windKmh * 20 : 0;
   const dy = windKmh > 0 ? windYKmh / windKmh * 20 : 0;
-  const upwind = elevationKm(world.seed, x - dx, y - dy);
-  const downwind = elevationKm(world.seed, x + dx, y + dy);
-  const modifiers = terrainModifiers(height, upwind, (upwind + downwind) / 2, terrain.m);
+  const upwind = elevationKm(world, x - dx, y - dy);
+  const downwind = elevationKm(world, x + dx, y + dy);
+  const modifiers = terrainModifiers(height, upwind, (upwind + downwind) / 2, moistureAt(world, cx, cy));
   const parentHumidity = clamp(0.45 + 0.55 * humidity + 0.15 * (0.5 - pressure));
   // Clouds begin at 55% humidity; substantial rain support needs 65% cloud.
   // Terrain and subordinate detail may shape rain inside this broad support only.

@@ -5,7 +5,7 @@ import { calendar } from "../src/sim/calendar";
 import { bodyRowOf, campRowOf } from "../src/sim/bodyorder";
 import { addItem, herePile, pile } from "../src/sim/inventory";
 import { createCarcass, noteHuntSign } from "../src/sim/hunting";
-import { startIntent } from "../src/sim/intent";
+import { resolveCell, startIntent } from "../src/sim/intent";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { isKnown, knownShare, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -18,7 +18,7 @@ import { current } from "../src/sim/record";
 import { discovery, regionState, SEEN, siteFor } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
-import { ambientTemperature, ensureGround } from "../src/sim/weather";
+import { ambientTemperature, conditionsAt, ensureGround } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, playerVisualSlot, viewOrigin, visualGround, ZOOMS } from "../src/ui/map";
@@ -66,6 +66,9 @@ describe("reachability: everything in the catalogue has a button", () => {
   const localGame = huntedLand().filter((s) => regionAt(world, state.player.region).capacity[s]);
   for (const species of localGame) noteHuntSign(state, cellOf(state, world), species);
   const html = allActions(state, world);
+  // The felling's mastery key names the tree the nearest forest holds, and which
+  // tree that is belongs to the ground.
+  const fellingKind = cellAt(world, resolveCell(state, world, calendar(state.minute), "chop", undefined, "nearest").cell).terrain;
 
   it("every recipe", () => {
     for (const id of RECIPE_IDS) expect(html).toContain(`data-opt="intent:craft:${id}"`);
@@ -102,7 +105,9 @@ describe("reachability: everything in the catalogue has a button", () => {
     const cal = calendar(state.minute);
     const ways = travelHtml(state, world, cal);
     for (const nb of regionAt(world, state.player.region).neighbours) {
-      expect(ways).toContain(`data-arg="region:${nb.id}"`);
+      // A neighbour across water has no dry road out, so the button it gets is
+      // the ice crossing; every neighbour has one or the other.
+      expect(ways).toContain(`data-arg="region:${nb.id}`);
     }
   });
   it("shows a legal button, not a greyed one, when the inputs are there", () => {
@@ -130,7 +135,7 @@ describe("reachability: everything in the catalogue has a button", () => {
     // named beside it, so "Woodcraft > Spruce felling 1" under "Woodcraft 2" in
     // the Skills panel reads as one tree rather than two numbers that disagree.
     expect(document.querySelector('[data-opt="intent:chop:"] small.crumb')?.textContent)
-      .toBe("Woodcraft > Spruce felling 1");
+      .toBe(`Woodcraft > ${fellingKind[0].toUpperCase()}${fellingKind.slice(1)} felling 1`);
     // Walking trains nothing, so it carries neither breadcrumb nor bar.
     expect(document.querySelector('[data-opt="intent:rest:"] small.crumb')).toBeNull();
     expect(document.querySelector('[data-opt="intent:hunt:elk"] small.rec.warn')?.textContent).toBe("Hunting 8, you are 1");
@@ -142,7 +147,7 @@ describe("reachability: everything in the catalogue has a button", () => {
     // that rather than toward the next digit, which is 0.25% speed and unfelt.
     const bar = document.querySelector('[data-opt="intent:chop:"] .bar.mastery');
     expect(bar?.getAttribute("title")).toBe("an extra stick per tree at 20");
-    expect(bar?.querySelector(".fill")?.getAttribute("data-fill")).toBe("masteryTo:woodcraft|chop:spruce");
+    expect(bar?.querySelector(".fill")?.getAttribute("data-fill")).toBe(`masteryTo:woodcraft|chop:${fellingKind}`);
     // Gathering dead wood is speed only: it has a breadcrumb and no bar to fill.
     expect(document.querySelector('[data-opt="intent:deadwood:"] small.crumb')).not.toBeNull();
     expect(document.querySelector('[data-opt="intent:deadwood:"] .bar.mastery')).toBeNull();
@@ -208,7 +213,11 @@ describe("panels", () => {
     siteCamp(state, world);
     // Dusk, where the light is well away from the stylesheet's daylight defaults.
     const cal = calendar(19 * 60);
-    const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
+    // The map is lit by the air where the survivor stands, the same sample
+    // updateSky reads, so the figures compared here come from that and not from
+    // the region's mean.
+    const air = conditionsAt(state, world, cal, cellOf(state, world));
+    const light = lighting(cal, air, air.temperatureC);
     expect(light.brightness).toBeLessThan(1);
     setPanel("map", mapHtml(world, state, newUiState(), cal));
     const style = document.querySelector("#map .scroll-x")!.getAttribute("style")!;
@@ -980,7 +989,9 @@ describe("the Do panel", () => {
     // the bar's, which bars.ts writes every frame.
     expect(html).toContain("<b>Fell any tree</b>");
     expect(html).not.toContain("until camp has");
-    expect(html).toMatch(/walking [0-9.]+ km to forest/);
+    // The verb belongs to the ground crossed - a bog is picked through, not
+    // walked over - so the row is read for the distance and the destination.
+    expect(html).toMatch(/[0-9.]+ km to forest/);
     expect(html).toContain('data-act="stop"');
     // A tree half felled and stopped does not create a second finish control.
     placeAtSpot(g.state, g.world, g.state.player.region, "forest");
