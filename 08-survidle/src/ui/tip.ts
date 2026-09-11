@@ -36,8 +36,7 @@ import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./trav
 import { compactEquipmentHtml } from "./equipment";
 import { visibleCells } from "../sim/sight";
 import { cellKnowledge, cellPresentation } from "./cellpresentation";
-import { glyphScale, type MapTarget, terrainComposition } from "./map";
-import { aggregateSummary } from "../world/aggregate";
+import { glyphScale, glyphSummary, type MapTarget, terrainComposition } from "./map";
 
 /**
  * Everything the tooltip's text depends on, as one string.
@@ -164,7 +163,7 @@ export function mapInventoryHtml(state: GameState, world: World, calOrHighlighte
 function aggregateLines(world: World, cell: number, target: MapTarget | null): string[] {
   if (!target || target.aggregate.size <= 1) return [];
   const { x0, y0, size } = target.aggregate;
-  const lines = [`<div class="dim">${esc(`${glyphScale(size)} glyph: ${terrainComposition(aggregateSummary(world, Math.max(0, x0), Math.max(0, y0), size))}`)}</div>`];
+  const lines = [`<div class="dim">${esc(`${glyphScale(size)} glyph: ${terrainComposition(glyphSummary(world, x0, y0, size))}`)}</div>`];
   const others = target.features.filter((feature) => feature.patch !== cell);
   if (others.length) lines.push(`<div class="dim">${esc(`also in this glyph: ${others.map((feature) => feature.label).join(", ")}`)}</div>`);
   return lines;

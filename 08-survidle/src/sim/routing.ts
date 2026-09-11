@@ -75,6 +75,18 @@ export function frontierRoute(
 }
 
 /**
+ * A rejection-only connectivity prefilter with exactly survivorRoute's
+ * knowledge, ice and blocked-patch rules. Retained candidates still need
+ * their own exact route; what this buys is not having to ask for one per
+ * patch of a block that holds thousands.
+ */
+export function survivorRouteCandidates(
+  state: GameState, world: World, from: number, candidates: readonly number[], ice: IceMode = "none",
+): number[] {
+  return knownRouteCandidates(world, from, candidates, (cell) => isKnown(state, cell), knowledgeGen(), routeConditions(state, world, ice));
+}
+
+/**
  * A route while exploring `region`: known ground as always, plus the
  * region's own unmapped ground. Walking into the dark is what exploring
  * is - refusing it is what leaves two cells passing the survivor back and

@@ -12,16 +12,16 @@
  */
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { mapRegion } from "../src/sim/mapped";
+import { isKnown, mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
-import { DEFAULT_ZOOM, LEVELS, levelAt, mapHtml, mapTargetAtPoint, terrainComposition, viewOrigin, ZOOMS, zoomLabel } from "../src/ui/map";
+import { DEFAULT_ZOOM, glyphSummary, LEVELS, levelAt, mapHtml, mapTargetAtPoint, terrainComposition, viewOrigin, ZOOMS, zoomLabel } from "../src/ui/map";
 import { newUiState, type UiState } from "../src/ui/render";
 import { tipHtml } from "../src/ui/tip";
-import { aggregateSummary, worldCacheStats } from "../src/world/aggregate";
-import { findRoute } from "../src/world/route";
+import { worldCacheStats } from "../src/world/aggregate";
+import { frontierRoute, survivorRoute } from "../src/sim/routing";
 import { PATCH_M } from "../src/world/spatial";
-import type { World } from "../src/world/gen";
+import { neighbours, type World } from "../src/world/gen";
 import type { GameState } from "../src/sim/types";
 
 const CAL = calendar(10);
@@ -107,7 +107,9 @@ describe("a click on a block", () => {
     const target = mapTargetAtPoint(world, state, ui, p.x + levelAt(1).px * 2, p.y);
     expect(target?.aggregate.size).toBe(2);
     expect(target?.patch).not.toBeNull();
-    expect(findRoute(world, here, target!.patch!)).not.toBeNull();
+    // Asked of the sim's own door, which is the one the walk will be planned
+    // through: known ground only, under the survivor's ice and fears.
+    expect(survivorRoute(state, world, here, target!.patch!)).not.toBeNull();
   });
 
   it("gives a block holding an exact mark that mark's own patch", () => {
@@ -155,7 +157,7 @@ describe("a click on a block", () => {
     const target = mapTargetAtPoint(world, state, ui, p.x, p.y)!;
     const tip = tipHtml(state, world, CAL, target.patch!, "both", target);
     expect(tip).toContain("300 m glyph:");
-    const summary = aggregateSummary(world, target.aggregate.x0, target.aggregate.y0, target.aggregate.size);
+    const summary = glyphSummary(world, target.aggregate.x0, target.aggregate.y0, target.aggregate.size);
     expect(summary.samples).toBe(36);
     expect(tip).toContain(terrainComposition(summary));
   });
@@ -166,7 +168,7 @@ describe("a click on a block", () => {
     const ui = open(1);
     const here = cellOf(state, world);
     const target = mapTargetAtPoint(world, state, ui, pointOf(world, state, ui, here).x, pointOf(world, state, ui, here).y)!;
-    const summary = aggregateSummary(world, target.aggregate.x0, target.aggregate.y0, 2);
+    const summary = glyphSummary(world, target.aggregate.x0, target.aggregate.y0, 2);
     expect(summary.samples).toBe(4);
     const total = Object.values(summary.terrainCounts).reduce((a, b) => a + b, 0);
     expect(total).toBe(4);
@@ -207,5 +209,81 @@ describe("unknown ground", () => {
     const after = worldCacheStats(world);
     expect(document.querySelectorAll("#map .c.fog").length).toBeGreaterThan(2000);
     expect(after.fineChunkBuilds - before.fineChunkBuilds).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("firelight at night", () => {
+  // Firelight is not the sky's light. visibleCells is gated by lux, so on a
+  // moonless night it is empty while the ground round a lit fire is plainly
+  // lit; reading the rings off the viewshed put the camp fire out.
+  function litCamp() {
+    const { state, world } = newGame(21);
+    mapRegion(state, world, state.player.region);
+    const region = state.regions[state.player.region];
+    region.campCell = cellOf(state, world);
+    region.fire.lit = true;
+    region.fire.fuelKg = 6;
+    // A run opens at 08:00, so midnight of the first night is minute 960.
+    const night = calendar(16 * 60, state.startDoy);
+    expect(night.isNight).toBe(true);
+    return { state, world, night };
+  }
+
+  it("lights the ground round a lit camp fire at the closest rung", () => {
+    const { state, world, night } = litCamp();
+    const ui = open(0);
+    document.body.innerHTML = `<div id="map">${mapHtml(world, state, ui, night)}</div>`;
+    expect(document.querySelectorAll("#map .c.lit-0").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll("#map .c.lit-1").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll("#map .c.lit-2").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the source lit at the default rung, where the glow fits inside one glyph", () => {
+    // A ring of glyphs at 300 m each would claim 600 m of firelight, so the
+    // rings shrink as the glyph grows and only the source is left.
+    const { state, world, night } = litCamp();
+    const ui = open(DEFAULT_ZOOM);
+    document.body.innerHTML = `<div id="map">${mapHtml(world, state, ui, night)}</div>`;
+    expect(document.querySelectorAll("#map .c.lit-0").length).toBe(1);
+    expect(document.querySelectorAll("#map .c.lit-1, #map .c.lit-2").length).toBe(0);
+  });
+});
+
+describe("clicking fog", () => {
+  it("resolves a block of nothing but fog to its frontier, so the walk into the dark still works", () => {
+    const { state, world } = newGame(21);
+    const ui = open(1);
+    const here = cellOf(state, world);
+    const p = pointOf(world, state, ui, here);
+    // The first block east of the survivor holding no ground they know. A
+    // fresh survivor knows a blob about a hundred metres across, so it is
+    // only a glyph or two out.
+    let target = null;
+    for (let step = 1; step < 20 && !target; step++) {
+      const candidate = mapTargetAtPoint(world, state, ui, p.x + levelAt(1).px * step, p.y);
+      if (candidate?.patch !== null && candidate !== null && !isKnown(state, candidate.patch)) target = candidate;
+    }
+    expect(target).not.toBeNull();
+    expect(target!.patch).not.toBeNull();
+    expect(isKnown(state, target!.patch!)).toBe(false);
+    // The frontier is what frontierRoute needs: unknown, with known ground
+    // next to it.
+    expect(neighbours(world, target!.patch!).some((cell) => isKnown(state, cell))).toBe(true);
+    expect(frontierRoute(state, world, here, target!.patch!)).not.toBeNull();
+  });
+});
+
+describe("drawing known aggregates", () => {
+  it("composes a wide glyph from cached parent summaries instead of generating its fringe twice", () => {
+    const { state, world } = newGame(21);
+    mapRegion(state, world, state.player.region);
+    // The first render pays for the ground the survivor knows; the second
+    // must pay nothing, or every frame at a block rung rebuilds chunks.
+    draw(world, state, open(3));
+    const afterFirst = worldCacheStats(world).fineChunkBuilds;
+    draw(world, state, open(3));
+    draw(world, state, open(4));
+    draw(world, state, open(4));
+    expect(worldCacheStats(world).fineChunkBuilds).toBe(afterFirst);
   });
 });

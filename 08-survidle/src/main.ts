@@ -20,7 +20,7 @@ import { startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
 import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
-import { isKnown } from "./sim/mapped";
+import { isKnown, knowledgeGen } from "./sim/mapped";
 import { frontierRoute } from "./sim/routing";
 import { newWorld } from "./sim/newgame";
 import { moveOrderByHand, pinOrderByHand, removeOrderByHand } from "./sim/orders";
@@ -46,7 +46,7 @@ import { introduceGoals, unintroducedGoals } from "./sim/goals";
 import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalNoticeToOpen, goalsHtml } from "./ui/goalpanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { levelAt, LEVELS, legendHtml, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, viewOrigin } from "./ui/map";
+import { levelAt, LEVELS, legendHtml, mapAggregateAtPoint, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, type TargetResolution, viewOrigin } from "./ui/map";
 import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
@@ -878,13 +878,25 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     glyph.classList.add("target");
     targetGlyph = glyph;
   };
-  const targetUnder = (ev: { clientX: number; clientY: number }) => {
+  const targetUnder = (ev: { clientX: number; clientY: number }, resolution: TargetResolution) => {
     const grid = board.querySelector<HTMLElement>(".grid");
     if (!grid) return null;
-    return mapTargetAtClient(world, state, ui, ev.clientX, ev.clientY, grid.getBoundingClientRect(), calendar(state.minute, state.startDoy));
+    const rect = grid.getBoundingClientRect();
+    return mapTargetAtClient(world, state, ui, ev.clientX, ev.clientY, rect, calendar(state.minute, state.startDoy), resolution);
   };
+  // A pointer crossing the board fires per pixel and a block is the same
+  // block for a glyph's width of them, so the work is done once per block
+  // entered. Knowledge moves what a block resolves to, so its stamp is part
+  // of what "the same block" means.
+  let hoverBlock = "";
   board.addEventListener("pointermove", (ev) => {
-    hoverTarget = targetUnder(ev);
+    const grid = board.querySelector<HTMLElement>(".grid");
+    const rect = grid?.getBoundingClientRect();
+    const box = rect ? mapAggregateAtPoint(world, state, ui, ev.clientX - rect.left, ev.clientY - rect.top) : null;
+    const block = box ? `${box.x0}:${box.y0}:${box.size}:${knowledgeGen()}` : "";
+    if (block === hoverBlock && hoverTarget) return;
+    hoverBlock = block;
+    hoverTarget = targetUnder(ev, "geometric");
     ui.hover = hoverTarget?.patch ?? null;
   });
   board.addEventListener("pointerdown", (ev) => {
@@ -899,7 +911,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     // the exact patch it resolves to is shown first and the click after it -
     // on the same resolved patch - is what gives the order. At 50 m a glyph
     // is the patch and there is nothing to disclose, so one click walks.
-    const target = targetUnder(ev);
+    const target = targetUnder(ev, "routed");
     const cell = target?.patch ?? null;
     if (cell === null || cell === cellOf(state, world)) return;
     const disclosing = target!.aggregate.size > 1 && ui.destination !== cell;

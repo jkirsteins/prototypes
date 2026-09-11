@@ -22,19 +22,20 @@ import { visitedCamps } from "../sim/light";
 import { discovery, siteAt, VISITED } from "../sim/regionstate";
 import type { AgentSpecies, AtmosphereSample, GameState, LocalGroundWeather, RegionState, Terrain, WildlifeSubject } from "../sim/types";
 import { atmosphereAt, conditionsAt, conditionsWithGround, DEEP_SNOW_CM, groundAt, iceMode } from "../sim/weather";
-import { cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
+import { cellIdx, neighbours, regionPeek, terrainPeek, type World } from "../world/gen";
 import { fieldsAtPatch } from "../world/fine-terrain";
 import { WORLD_H, WORLD_W } from "../world/terrain";
-import { type AggregateSummary, aggregateSummary } from "../world/aggregate";
-import { PATCH_KM, PATCH_M, type PatchId } from "../world/spatial";
-import { findRoute, passable } from "../world/route";
+import { parentSummary } from "../world/aggregate";
+import { FINE_PER_PARENT, PATCH_KM, PATCH_M, type PatchId } from "../world/spatial";
+import { passable, type RouteConditions } from "../world/route";
+import { routeConditions, survivorRoute, survivorRouteCandidates } from "../sim/routing";
 import { activeWildlifeStartles, esc, type UiState } from "./render";
 import { elevationAt, offshoreAt, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
 import { lighting } from "./sky";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
 import { metricPointForWildlife } from "../sim/wildlife-space";
-import { campfireVisible, sightRangeCells, visibleCells } from "../sim/sight";
+import { campfireVisible, hasLineOfSight, sightRangeCells, visibleCells } from "../sim/sight";
 import { SNOW_SHOWN_CM, terrainHeading } from "../sim/cellstatus";
 import { aggregatePresentation, cellKnowledge as presentationKnowledge, cellPresentation, TERRAIN_GLYPH } from "./cellpresentation";
 
@@ -193,13 +194,14 @@ export interface MapTarget {
 }
 
 /**
- * How many patches round the block's middle are tried against a real route
- * before the answer falls back to the nearest known passable one. A wide
- * glyph holds thousands of patches and routing every one of them would cost
- * more than the walk; the ones nearest the middle are the ones a player
- * pointing at the block meant anyway.
+ * How a block's ordinary ground is resolved to one patch.
+ *
+ * "geometric" is the pointer's answer: the nearest known passable patch,
+ * with no route asked for. A pointer crossing the board resolves a block per
+ * move, and routing there would put the map's budget through the floor.
+ * "routed" is the click's answer, and the only one an order is given from.
  */
-const ROUTED_CANDIDATES = 8;
+export type TargetResolution = "geometric" | "routed";
 
 /**
  * The glyph column and row under a point inside the map grid, or null when
@@ -278,29 +280,86 @@ function distanceToMiddle(world: World, box: MapAggregate, patch: PatchId): numb
  * known passable patch is still the answer, so the tooltip can say why the
  * walk is refused instead of the click doing nothing at all.
  */
-function resolveTarget(state: GameState, world: World, box: MapAggregate, features: MapFeature[]): PatchId | null {
-  const marks = features.filter((f) => f.mark);
-  if (marks.length) {
-    return marks.reduce((best, f) => (distanceToMiddle(world, box, f.patch) < distanceToMiddle(world, box, best.patch) ? f : best)).patch;
-  }
+/**
+ * The block's own patches that could carry a destination: known ground the
+ * survivor could stand on, nearest the middle first.
+ *
+ * Ice decides what water is, so passability is asked of the same conditions
+ * the walk will be planned under rather than of bare terrain. Unknown ground
+ * is skipped before its terrain is ever asked for, which is what keeps a
+ * wide rung from generating the world to answer a click.
+ */
+function knownCandidates(state: GameState, world: World, box: MapAggregate, conditions: RouteConditions): PatchId[] {
   const x1 = Math.min(world.w, box.x0 + box.size);
   const y1 = Math.min(world.h, box.y0 + box.size);
   const candidates: PatchId[] = [];
   for (let y = Math.max(0, box.y0); y < y1; y++) {
     for (let x = Math.max(0, box.x0); x < x1; x++) {
       const patch = cellIdx(world, x, y);
-      // Unknown ground is never a destination, and asking it for terrain is
-      // what would generate the ground this rung exists not to generate.
       if (!isKnown(state, patch)) continue;
-      if (!passable(terrainPeek(world, x, y))) continue;
+      if (!passable(terrainPeek(world, x, y), conditions.iceAt(patch))) continue;
+      if (conditions.blockedAt?.(patch)) continue;
       candidates.push(patch);
     }
   }
-  if (!candidates.length) return null;
-  candidates.sort((a, b) => distanceToMiddle(world, box, a) - distanceToMiddle(world, box, b) || a - b);
+  return candidates.sort((a, b) => distanceToMiddle(world, box, a) - distanceToMiddle(world, box, b) || a - b);
+}
+
+/**
+ * The patch a block of nothing but fog means: the one nearest the middle
+ * that stands on the frontier, with known ground next to it.
+ *
+ * A click on fog is how the survivor walks into the dark, and frontierRoute
+ * is what carries them. Without this the whole gesture existed at 50 m and
+ * nowhere else, because every block wider than a patch resolved to nothing
+ * and the click fell through.
+ */
+function frontierCandidate(state: GameState, world: World, box: MapAggregate): PatchId | null {
+  const x1 = Math.min(world.w, box.x0 + box.size);
+  const y1 = Math.min(world.h, box.y0 + box.size);
+  let best: PatchId | null = null;
+  for (let y = Math.max(0, box.y0); y < y1; y++) {
+    for (let x = Math.max(0, box.x0); x < x1; x++) {
+      const patch = cellIdx(world, x, y);
+      if (isKnown(state, patch)) continue;
+      if (!neighbours(world, patch).some((cell) => isKnown(state, cell))) continue;
+      if (best === null || distanceToMiddle(world, box, patch) < distanceToMiddle(world, box, best)) best = patch;
+    }
+  }
+  return best;
+}
+
+/**
+ * The exact patch a click on a block means: an exact mark standing in it
+ * wins, and ordinary ground resolves to the patch nearest the middle the
+ * survivor can actually walk to.
+ *
+ * Reachability is asked of the sim's own door, so it means what the walk
+ * will mean: known ground only, under the ice and the fears the survivor is
+ * actually walking under. knownRouteCandidates rejects the unreachable in
+ * bulk through parent connectivity, so the exact route is asked for once in
+ * the ordinary case rather than once per patch of the block.
+ *
+ * Where nothing in the block routes, the nearest known passable patch is
+ * still the answer, so the tooltip can say why the walk is refused instead
+ * of the click doing nothing at all. Where the block is all fog, the answer
+ * is its frontier, which is a walk into the dark and not a refusal.
+ */
+function resolveTarget(
+  state: GameState, world: World, box: MapAggregate, features: MapFeature[], resolution: TargetResolution,
+): PatchId | null {
+  const marks = features.filter((f) => f.mark);
+  if (marks.length) {
+    return marks.reduce((best, f) => (distanceToMiddle(world, box, f.patch) < distanceToMiddle(world, box, best.patch) ? f : best)).patch;
+  }
+  const candidates = knownCandidates(state, world, box, routeConditions(state, world));
+  if (!candidates.length) return frontierCandidate(state, world, box);
+  if (resolution === "geometric") return candidates[0];
   const from = cellOf(state, world);
-  for (const patch of candidates.slice(0, ROUTED_CANDIDATES)) {
-    if (patch === from || findRoute(world, from, patch)) return patch;
+  if (candidates.includes(from)) return from;
+  for (const patch of survivorRouteCandidates(state, world, from, candidates)
+    .sort((a, b) => distanceToMiddle(world, box, a) - distanceToMiddle(world, box, b) || a - b)) {
+    if (survivorRoute(state, world, from, patch)) return patch;
   }
   return candidates[0];
 }
@@ -312,7 +371,7 @@ function resolveTarget(state: GameState, world: World, box: MapAggregate, featur
  * because a hover resolves ground, and only the tooltip's feature list
  * needs to know which wildlife is on show.
  */
-export function mapTargetAtPoint(world: World, state: GameState, ui: UiState, x: number, y: number, cal: Calendar | null = null): MapTarget | null {
+export function mapAggregateAtPoint(world: World, state: GameState, ui: UiState, x: number, y: number): MapAggregate | null {
   const l = levelAt(ui.zoom);
   const at = glyphAtPoint(l, x, y);
   if (!at) return null;
@@ -320,12 +379,21 @@ export function mapTargetAtPoint(world: World, state: GameState, ui: UiState, x:
   const box: MapAggregate = { x0: x0 + at.col * l.finePerGlyph, y0: y0 + at.row * l.finePerGlyph, size: l.finePerGlyph };
   // The view can hang over the world's edge, and void is not ground.
   if (box.x0 + box.size <= 0 || box.y0 + box.size <= 0 || box.x0 >= world.w || box.y0 >= world.h) return null;
+  return box;
+}
+
+export function mapTargetAtPoint(
+  world: World, state: GameState, ui: UiState, x: number, y: number,
+  cal: Calendar | null = null, resolution: TargetResolution = "routed",
+): MapTarget | null {
+  const box = mapAggregateAtPoint(world, state, ui, x, y);
+  if (!box) return null;
   const features = featuresIn(state, world, cal, box);
   if (box.size === 1) {
     const patch = box.x0 < 0 || box.y0 < 0 ? null : cellIdx(world, box.x0, box.y0);
     return { aggregate: box, patch, features };
   }
-  return { aggregate: box, patch: resolveTarget(state, world, box, features), features };
+  return { aggregate: box, patch: resolveTarget(state, world, box, features, resolution), features };
 }
 
 /** Converts a screen position through the grid's real, possibly centered, origin. */
@@ -337,8 +405,9 @@ export function mapTargetAtClient(
   clientY: number,
   grid: Pick<DOMRect, "left" | "top">,
   cal: Calendar | null = null,
+  resolution: TargetResolution = "routed",
 ): MapTarget | null {
-  return mapTargetAtPoint(world, state, ui, clientX - grid.left, clientY - grid.top, cal);
+  return mapTargetAtPoint(world, state, ui, clientX - grid.left, clientY - grid.top, cal, resolution);
 }
 
 /** The scroll viewport clips a centered grid on small panels and short windows. */
@@ -365,12 +434,79 @@ export function glyphScale(finePerGlyph: number): string {
 }
 
 /**
+ * What a glyph's block is made of, and how high it stands.
+ *
+ * Not aggregateSummary directly: a glyph's box lands wherever the view's
+ * origin puts it, and an unaligned box takes aggregateSummary's per-patch
+ * path, which asks terrainAt for every member - building chunks for ground
+ * nobody has been to, every render, at every rung. This composes the block
+ * out of whole parent summaries wherever it can, which are cached beside
+ * the chunk they came from, and reads only the fringe left over. The fringe
+ * goes through terrainPeek and the pure field function, so a patch that has
+ * never been generated stays ungenerated.
+ */
+export interface GlyphSummary {
+  samples: number;
+  terrainCounts: Record<Terrain, number>;
+  minElevationM: number;
+  maxElevationM: number;
+}
+
+function emptyTerrainCounts(): Record<Terrain, number> {
+  return { water: 0, fell: 0, rock: 0, bog: 0, spruce: 0, pine: 0, birch: 0, meadow: 0 };
+}
+
+export function glyphSummary(world: World, x0: number, y0: number, size: number): GlyphSummary {
+  const bx0 = Math.max(0, x0);
+  const by0 = Math.max(0, y0);
+  const bx1 = Math.min(world.w, x0 + size);
+  const by1 = Math.min(world.h, y0 + size);
+  const out: GlyphSummary = {
+    samples: 0,
+    terrainCounts: emptyTerrainCounts(),
+    minElevationM: Number.POSITIVE_INFINITY,
+    maxElevationM: Number.NEGATIVE_INFINITY,
+  };
+  if (bx1 <= bx0 || by1 <= by0) return out;
+  // The whole parents the block covers, and the rectangle they fill.
+  const px0 = Math.ceil(bx0 / FINE_PER_PARENT);
+  const py0 = Math.ceil(by0 / FINE_PER_PARENT);
+  const px1 = Math.floor(bx1 / FINE_PER_PARENT);
+  const py1 = Math.floor(by1 / FINE_PER_PARENT);
+  const wholeX0 = px1 > px0 ? px0 * FINE_PER_PARENT : bx0;
+  const wholeX1 = px1 > px0 ? px1 * FINE_PER_PARENT : bx0;
+  const wholeY0 = py1 > py0 ? py0 * FINE_PER_PARENT : by0;
+  const wholeY1 = py1 > py0 ? py1 * FINE_PER_PARENT : by0;
+  for (let py = py0; py < py1; py++) {
+    for (let px = px0; px < px1; px++) {
+      const parent = parentSummary(world, px, py);
+      out.samples += parent.samples;
+      for (const terrain of TIE_ORDER) out.terrainCounts[terrain] += parent.terrainCounts[terrain];
+      out.minElevationM = Math.min(out.minElevationM, parent.minElevationM);
+      out.maxElevationM = Math.max(out.maxElevationM, parent.maxElevationM);
+    }
+  }
+  for (let y = by0; y < by1; y++) {
+    const insideY = y >= wholeY0 && y < wholeY1;
+    for (let x = bx0; x < bx1; x++) {
+      if (insideY && x >= wholeX0 && x < wholeX1) continue;
+      out.samples++;
+      out.terrainCounts[terrainPeek(world, x, y)]++;
+      const elevationM = fieldsAtPatch(world.seed, cellIdx(world, x, y)).elevationM;
+      out.minElevationM = Math.min(out.minElevationM, elevationM);
+      out.maxElevationM = Math.max(out.maxElevationM, elevationM);
+    }
+  }
+  return out;
+}
+
+/**
  * What a block is made of, commonest ground first, as shares of the patches
  * it actually holds. A block that is all one thing says so in one word; a
  * mixed one names what is in it rather than letting its dominant letter
  * stand for ground it is only half of.
  */
-export function terrainComposition(summary: AggregateSummary): string {
+export function terrainComposition(summary: Pick<GlyphSummary, "terrainCounts" | "samples">): string {
   const parts = TIE_ORDER
     .map((terrain) => ({ terrain, count: summary.terrainCounts[terrain] }))
     .filter((part) => part.count > 0)
@@ -469,7 +605,7 @@ export interface GlyphGround {
   seen: 0 | 1 | 2;
   knowledge: KnowledgeComposition;
   /** The block's real terrain and relief, computed only where the block reads as known. */
-  summary: AggregateSummary | null;
+  summary: GlyphSummary | null;
 }
 
 /** A patch's own knowledge: 0 unknown, 1 dim (only the journal has it), 2 known this life. */
@@ -536,7 +672,7 @@ function glyphGround(state: GameState, world: World, visible: Set<number> | null
     : knownBright / knownAny > BLOCK_MAJORITY ? 2 : 1;
   if (seen === 0) return { terrain: "water", region, seen, knowledge, summary: null };
   if (z === 1) return { terrain: terrainPeek(world, x0, y0), region, seen, knowledge, summary: null };
-  const summary = aggregateSummary(world, Math.max(0, x0), Math.max(0, y0), z);
+  const summary = glyphSummary(world, x0, y0, z);
   return { terrain: dominantByPriority(summary.terrainCounts), region, seen, knowledge, summary };
 }
 
@@ -1026,9 +1162,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       const t = terrains[i];
       cls.push(`t-${t}`);
       const lightRing = rings.get(i);
-      // The viewshed already answers this, once for the whole board. A ray
-      // per glyph asked the same question 2,592 times and got the same answer.
-      const firelit = lightRing !== undefined && currentVisible.has(mechanicalCell);
+      // Firelight is its own light and cannot be read off the viewshed: the
+      // viewshed is what the sky lights, and on a moonless night it is empty
+      // while the ground round the fire is plainly lit. Only a glyph that
+      // already carries a ring asks - at most the two glyphs round a source
+      // inside a kilometre - so this is a few dozen rays, not one per glyph.
+      const firelit = lightRing !== undefined && hasLineOfSight(world, playerCell, mechanicalCell, 0.5);
       const surfaceCurrent = weatherVisibleGlyphs.has(i);
       const current = surfaceCurrent || visibleFireDistance.has(mechanicalCell) || firelit;
       if (seen === 1 && !current) cls.push("dim");
