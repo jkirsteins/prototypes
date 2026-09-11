@@ -36,6 +36,8 @@ import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./trav
 import { compactEquipmentHtml } from "./equipment";
 import { visibleCells } from "../sim/sight";
 import { cellKnowledge, cellPresentation } from "./cellpresentation";
+import { glyphScale, type MapTarget, terrainComposition } from "./map";
+import { aggregateSummary } from "../world/aggregate";
 
 /**
  * Everything the tooltip's text depends on, as one string.
@@ -46,10 +48,11 @@ import { cellKnowledge, cellPresentation } from "./cellpresentation";
  * on every mousemove would be the map's whole budget.
  */
 export function tipKey(state: GameState, world: World, cell: number): string;
-export function tipKey(state: GameState, world: World, cal: Calendar, cell: number): string;
-export function tipKey(state: GameState, world: World, calOrCell: Calendar | number, cellArg?: number): string {
+export function tipKey(state: GameState, world: World, cal: Calendar, cell: number, target?: MapTarget | null): string;
+export function tipKey(state: GameState, world: World, calOrCell: Calendar | number, cellArg?: number, target: MapTarget | null = null): string {
   const cal = typeof calOrCell === "object" ? calOrCell : calendar(state.minute, state.startDoy);
   const cell = typeof calOrCell === "object" ? cellArg! : calOrCell;
+  const block = target ? `${target.aggregate.size}@${target.aggregate.x0}.${target.aggregate.y0}:${target.features.map((f) => `${f.patch}${f.label}`).join(".")}` : "";
   const st = regionState(state, world, state.player.region);
   const heap = state.piles[cell] ? weight(state.piles[cell]).toFixed(1) : "";
   const known = isKnown(state, cell) ? "k" : "";
@@ -69,7 +72,7 @@ export function tipKey(state: GameState, world: World, calOrCell: Calendar | num
     .filter((subject) => subject.active?.cell === cell)
     .map((subject) => `${subject.id}:${wildlifeMembers(subject)}:${subject.active?.intent}:${state.wildlife.recognized[subject.id] ? subject.name ?? "" : ""}`)
     .join(",");
-  return `${cell}|${cellOf(state, world)}|${known}|${ground}|${heap}|${carcasses}|${ambient}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}|${protection}|${field ? "field" : ""}|${wildlife}`;
+  return `${cell}|${cellOf(state, world)}|${known}|${ground}|${heap}|${carcasses}|${ambient}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}|${protection}|${field ? "field" : ""}|${wildlife}|${block}`;
 }
 
 function animalsAt(state: GameState, world: World, cal: Calendar, cell: number): string[] {
@@ -151,7 +154,23 @@ export function mapInventoryHtml(state: GameState, world: World, calOrHighlighte
   return rows || equipment ? `<div class="mapinv-label">Inventory</div>${rows}${equipment}` : "";
 }
 
-export function tipHtml(state: GameState, world: World, cal: Calendar, cell: number, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
+/**
+ * What a block adds to the patch under the pointer: how much ground the
+ * glyph stands for, what that ground is made of, and everything else exact
+ * standing in it. A glyph at the wide rungs can hold a camp, a trap and a
+ * herd at once, and picking one of them silently is how a player comes to
+ * believe the map is lying to them.
+ */
+function aggregateLines(world: World, cell: number, target: MapTarget | null): string[] {
+  if (!target || target.aggregate.size <= 1) return [];
+  const { x0, y0, size } = target.aggregate;
+  const lines = [`<div class="dim">${esc(`${glyphScale(size)} glyph: ${terrainComposition(aggregateSummary(world, Math.max(0, x0), Math.max(0, y0), size))}`)}</div>`];
+  const others = target.features.filter((feature) => feature.patch !== cell);
+  if (others.length) lines.push(`<div class="dim">${esc(`also in this glyph: ${others.map((feature) => feature.label).join(", ")}`)}</div>`);
+  return lines;
+}
+
+export function tipHtml(state: GameState, world: World, cal: Calendar, cell: number, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY, target: MapTarget | null = null): string {
   const region = cellAt(world, cell).region;
   const regionName = esc(head(regionAt(world, region).name));
   const heading = (name: string, where = "") => `<div class="tiphead"><b>${esc(head(name))}</b><span class="dim">${regionName}${where ? `, ${esc(where)}` : ""}</span></div>`;
@@ -224,6 +243,8 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
     const read = readLine(state, world, cal, cell);
     if (read) lines.push(`<div class="dim">${esc(plain(read))}</div>`);
   }
+
+  lines.push(...aggregateLines(world, cell, target));
 
   const possibilities = cellPossibilities(world, cell);
   if (possibilities.length) lines.push(`<div class="dim">${esc(possibilities.join(", "))}</div>`);

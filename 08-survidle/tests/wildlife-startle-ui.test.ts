@@ -44,8 +44,14 @@ describe("transient wildlife map cues", () => {
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
     const cue = document.querySelector(".wildlife-startle")!;
     expect(cue?.className).toBe("wildlife-startle heard");
-    const sourceCell = Math.floor(event.source.yM / PATCH_M) * world.w + Math.floor(event.source.xM / PATCH_M);
-    expect(document.querySelector(`[data-map-cell="${sourceCell}"]`)?.classList.contains("fog")).toBe(true);
+    // The glyph the source falls in is a block of patches, and its data-map-cell
+    // names the block's first patch rather than the source's own.
+    const level = levelAt(ui.zoom);
+    const origin = viewOrigin(state, world, ui.zoom);
+    const gx = Math.floor((Math.floor(event.source.xM / PATCH_M) - origin.x0) / level.finePerGlyph);
+    const gy = Math.floor((Math.floor(event.source.yM / PATCH_M) - origin.y0) / level.finePerGlyph);
+    const blockCell = (origin.y0 + gy * level.finePerGlyph) * world.w + origin.x0 + gx * level.finePerGlyph;
+    expect(document.querySelector(`[data-map-cell="${blockCell}"]`)?.classList.contains("fog")).toBe(true);
     expect(cue?.parentElement?.classList.contains("grid")).toBe(true);
     expect(cue?.textContent).toBe("!");
     expect(cue?.getAttribute("aria-hidden")).toBe("true");
@@ -81,10 +87,9 @@ describe("transient wildlife map cues", () => {
     expect(first).not.toBeNull();
     expect(first.parentElement).toBe(player.closest(".grid"));
     expect(player.firstChild?.textContent).toBe("@");
-    if (zoom < DEFAULT_ZOOM) {
-      expect(player.closest(".c")?.querySelectorAll(".micro-ground")).toHaveLength(zoom === 0 ? 36 : 9);
-      expect(player.classList.contains("micro-mark")).toBe(true);
-    }
+    // Every rung draws one glyph per block and none inside it.
+    expect(player.classList.contains("c")).toBe(true);
+    expect(document.querySelectorAll(".micro-ground")).toHaveLength(0);
     expect(first.getAttribute("style")).toContain("--wildlife-start:1000ms");
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1500));
     expect(document.querySelector(".wildlife-startle")).toBe(first);
@@ -115,10 +120,13 @@ describe("transient wildlife map cues", () => {
     expect(animal?.firstChild?.textContent).toBe(original);
     expect(animal?.closest(".grid")?.querySelector(".wildlife-startle.seen")?.textContent).toBe("!");
     expect(animal?.getAttribute("style")).toContain("--wildlife-start:1000ms");
-    if (zoom < DEFAULT_ZOOM) {
-      expect(animal?.classList.contains("micro-mark")).toBe(true);
+    // Only the closest rung carries the herd's own metre position, laid over
+    // the grid; the block rungs put its letter on the glyph it stands in.
+    if (zoom === 0) {
       expect(animal?.classList.contains("wildlife-map-mark")).toBe(true);
       expect(animal?.parentElement?.classList.contains("grid")).toBe(true);
+    } else {
+      expect(animal?.closest(".c")).not.toBeNull();
     }
     const heardUi = newUiState();
     heardUi.zoom = zoom;
@@ -130,7 +138,7 @@ describe("transient wildlife map cues", () => {
     const { state, world, ui, cal, event } = scene();
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const level = levelAt(ui.zoom);
-    event.source = { xM: (x0 + level.w + 10) * PATCH_M, yM: (y0 + 4.5) * PATCH_M };
+    event.source = { xM: (x0 + (level.w + 10) * level.finePerGlyph) * PATCH_M, yM: (y0 + 4.5 * level.finePerGlyph) * PATCH_M };
     event.uncertaintyM = 0;
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
@@ -150,7 +158,8 @@ describe("transient wildlife map cues", () => {
       { left: 266, top: 232, right: 566, bottom: 392 },
     );
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
-    event.source = { xM: (x0 + 68.5) * PATCH_M, yM: (y0 + 20.5) * PATCH_M };
+    const glyphPatches = levelAt(ui.zoom).finePerGlyph;
+    event.source = { xM: (x0 + 68.5 * glyphPatches) * PATCH_M, yM: (y0 + 20.5 * glyphPatches) * PATCH_M };
     event.uncertaintyM = 0;
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
@@ -176,8 +185,8 @@ describe("transient wildlife map cues", () => {
     ui.zoom = 0;
     ui.mapViewport = { left: 0, top, right: 792, bottom: 504 };
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
-    // A source near the top of a detailed cell is visible, but its raised cue
-    // needs clamping to keep the pop and rise inside the viewport.
+    // A source near the top of a patch is visible, but its raised cue needs
+    // clamping to keep the pop and rise inside the viewport.
     event.source = { xM: (x0 + 6.5) * PATCH_M, yM: (y0 + row + 0.2) * PATCH_M };
     event.bearingRad = -Math.PI / 2;
     event.uncertaintyM = 0;
@@ -188,7 +197,7 @@ describe("transient wildlife map cues", () => {
     expect(cues[0].classList.contains("edge")).toBe(true);
     expect(cues[0].classList.contains("bearing-north")).toBe(true);
     expect(cues[0].parentElement?.classList.contains("grid")).toBe(true);
-    expect(cues[0].style.left).toBe("429px");
+    expect(cues[0].style.left).toBe("71.5px");
     expect(cues[0].style.top).toBe(cueTop);
     expect(cues[0].style.getPropertyValue("--wildlife-start")).toBe("1000ms");
   });

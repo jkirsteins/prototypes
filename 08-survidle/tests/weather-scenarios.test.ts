@@ -40,7 +40,7 @@ describe("simulation-backed weather screenshot fixtures", () => {
 
     const fixture = weatherShotFixture("sunny-clouds");
     const root = document.createElement("div");
-    root.innerHTML = mapHtml(fixture.world, fixture.state, newUiState(), fixture.cal);
+    root.innerHTML = mapHtml(fixture.world, fixture.state, { ...newUiState(), zoom: fixture.definition.zoom }, fixture.cal);
     expect(root.querySelectorAll(".cloud-shadow").length).toBeGreaterThan(0);
     expect(root.querySelector(".wx-rain, .wx-snowing")).toBeNull();
     expect(root.querySelector(".ground-snow")).toBeNull();
@@ -55,7 +55,7 @@ describe("simulation-backed weather screenshot fixtures", () => {
 
     const fixture = weatherShotFixture("frozen-water");
     const root = document.createElement("div");
-    root.innerHTML = mapHtml(fixture.world, fixture.state, newUiState(), fixture.cal);
+    root.innerHTML = mapHtml(fixture.world, fixture.state, { ...newUiState(), zoom: fixture.definition.zoom }, fixture.cal);
     expect(root.querySelectorAll(".t-water.ice-safe").length).toBeGreaterThan(20);
     const hereCell = root.querySelector<HTMLElement>(`[data-map-cell="${fixture.cell}"]`)!;
     const visibleIce = root.querySelector<HTMLElement>(".t-water.ice-safe:not(.mk) .terrain-visual")!;
@@ -89,7 +89,7 @@ describe("simulation-backed weather screenshot fixtures", () => {
 
   it("renders live weather only on the fixture's known visible ground", () => {
     const shot = weatherShotFixture("local-rain");
-    const html = mapHtml(shot.world, shot.state, newUiState(), shot.cal);
+    const html = mapHtml(shot.world, shot.state, { ...newUiState(), zoom: shot.definition.zoom }, shot.cal);
     const root = document.createElement("div");
     root.innerHTML = html;
     expect(html).toContain("wx-rain");
@@ -103,7 +103,7 @@ describe("simulation-backed weather screenshot fixtures", () => {
     // The rain scene has no fog to draw; the fog scene is where that layer has
     // to be a per-patch glyph and not a sheet laid over the map.
     const shot = weatherShotFixture("valley-fog");
-    const html = mapHtml(shot.world, shot.state, newUiState(), shot.cal);
+    const html = mapHtml(shot.world, shot.state, { ...newUiState(), zoom: shot.definition.zoom }, shot.cal);
     expect(html).toContain("fog-ripple");
     expect(html).not.toContain('class="fog-field"');
   });

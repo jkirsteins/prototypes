@@ -46,7 +46,7 @@ import { introduceGoals, unintroducedGoals } from "./sim/goals";
 import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalNoticeToOpen, goalsHtml } from "./ui/goalpanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, mapViewportBounds, viewOrigin } from "./ui/map";
+import { levelAt, LEVELS, legendHtml, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, viewOrigin } from "./ui/map";
 import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
@@ -189,6 +189,12 @@ function boot() {
 }
 
 let lastTipKey = "";
+/**
+ * The block the pointer last resolved through, so the tooltip can say what
+ * else the glyph holds. Hover set from a Do row names a patch and no block,
+ * and clears this with it.
+ */
+let hoverTarget: MapTarget | null = null;
 let lastMapKey = "";
 let lastWeatherKey = "";
 function render(nowMs = performance.now()) {
@@ -247,10 +253,10 @@ function render(nowMs = performance.now()) {
   const tip = document.getElementById("maptip")!;
   tip.hidden = ui.hover === null;
   if (ui.hover !== null) {
-    const tk = tipKey(state, world, cal, ui.hover);
+    const tk = tipKey(state, world, cal, ui.hover, hoverTarget);
     if (tk !== lastTipKey) {
       lastTipKey = tk;
-      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay));
+      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay, hoverTarget));
     }
   }
   setPanel("dopurposes", doPurposesHtml(state, world, ui));
@@ -864,36 +870,55 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const x = cell % world.w;
     const y = Math.floor(cell / world.w);
-    const gx = Math.floor((x - x0) / l.cells);
-    const gy = Math.floor((y - y0) / l.cells);
+    const gx = Math.floor((x - x0) / l.finePerGlyph);
+    const gy = Math.floor((y - y0) / l.finePerGlyph);
     if (gx < 0 || gy < 0 || gx >= l.w || gy >= l.h) return;
     const glyph = document.querySelector<HTMLElement>("#mapdyn .grid")?.children.item(gy * l.w + gx);
     if (!(glyph instanceof HTMLElement) || !glyph.classList.contains("c")) return;
     glyph.classList.add("target");
     targetGlyph = glyph;
   };
-  const cellUnder = (ev: { clientX: number; clientY: number }): number | null => {
+  const targetUnder = (ev: { clientX: number; clientY: number }) => {
     const grid = board.querySelector<HTMLElement>(".grid");
-    return grid ? cellFromClient(world, state, ui, ev.clientX, ev.clientY, grid.getBoundingClientRect()) : null;
+    if (!grid) return null;
+    return mapTargetAtClient(world, state, ui, ev.clientX, ev.clientY, grid.getBoundingClientRect(), calendar(state.minute, state.startDoy));
   };
   board.addEventListener("pointermove", (ev) => {
-    ui.hover = cellUnder(ev);
+    hoverTarget = targetUnder(ev);
+    ui.hover = hoverTarget?.patch ?? null;
   });
   board.addEventListener("pointerdown", (ev) => {
     pointerType = ev.pointerType;
   });
   board.addEventListener("click", (ev) => {
-    // Touch keeps its first tap for inspecting the cell. A mouse click on
+    // Touch keeps its first tap for inspecting the ground. A mouse click on
     // known ground in this region is an explicit destination in its own
-    // right, whether or not generation happened to name that cell a place.
-    const cell = cellUnder(ev);
+    // right, whether or not generation happened to name that patch a place.
+    //
+    // A glyph at the block rungs stands for up to a few thousand patches, so
+    // the exact patch it resolves to is shown first and the click after it -
+    // on the same resolved patch - is what gives the order. At 50 m a glyph
+    // is the patch and there is nothing to disclose, so one click walks.
+    const target = targetUnder(ev);
+    const cell = target?.patch ?? null;
     if (cell === null || cell === cellOf(state, world)) return;
+    const disclosing = target!.aggregate.size > 1 && ui.destination !== cell;
     if (pointerType === "touch" && touchCell !== cell) {
       touchCell = cell;
+      hoverTarget = target;
+      ui.hover = cell;
+      ui.destination = cell;
+      render();
+      return;
+    }
+    if (disclosing) {
+      ui.destination = cell;
+      hoverTarget = target;
       ui.hover = cell;
       render();
       return;
     }
+    ui.destination = cell;
     const cal = calendar(state.minute, state.startDoy);
     const frontier = !isKnown(state, cell)
       ? frontierRoute(state, world, cellOf(state, world), cell, "none")
@@ -908,10 +933,14 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     render();
   });
   board.addEventListener("pointerleave", (ev) => {
-    if (ev.pointerType !== "touch") ui.hover = null;
+    if (ev.pointerType !== "touch") {
+      hoverTarget = null;
+      ui.hover = null;
+    }
   });
   board.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
+      hoverTarget = null;
       ui.hover = null;
       board.querySelector<HTMLElement>(".grid")?.focus();
       render();
@@ -934,7 +963,12 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     if (!next) return;
     ev.preventDefault();
     next.focus();
-    ui.hover = Number(next.dataset.mapCell);
+    // The arrow keys land on a glyph, and a glyph at the block rungs is not
+    // a patch. Resolve it through its own middle so the keyboard reads out
+    // the patch a click on it would walk to.
+    const level = levelAt(ui.zoom);
+    hoverTarget = mapTargetAtPoint(world, state, ui, (x + 0.5) * level.px, (y + 0.5) * level.line, calendar(state.minute, state.startDoy));
+    ui.hover = hoverTarget?.patch ?? Number(next.dataset.mapCell);
     render();
   });
 
@@ -947,6 +981,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     if (!row) return;
     const cell = Number(row.dataset.at);
     if (Number.isFinite(cell)) {
+      hoverTarget = null;
       ui.hover = cell;
       showTarget(cell);
     }
@@ -955,6 +990,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     const from = (ev.target as HTMLElement | null)?.closest?.("[data-at]");
     const to = (ev.relatedTarget as HTMLElement | null)?.closest?.("[data-at]");
     if (from && !to && ev.pointerType !== "touch") {
+      hoverTarget = null;
       ui.hover = null;
       clearTarget();
     }

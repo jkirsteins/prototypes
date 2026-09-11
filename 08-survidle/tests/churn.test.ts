@@ -24,7 +24,7 @@ import { newGame } from "../src/sim/newgame";
 import { startTask } from "../src/sim/tasks";
 import { Rng } from "../src/rng";
 import { doHtml } from "../src/ui/dopanel";
-import { cellFromPoint, levelAt, mapHtml, mapKey } from "../src/ui/map";
+import { levelAt, mapHtml, mapKey, mapTargetAtPoint } from "../src/ui/map";
 import { tipHtml, tipKey } from "../src/ui/tip";
 import { campHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, logHtml, skillsHtml, statsHtml, taskHtml, travelHtml, weatherHtml, weatherKey } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
@@ -244,7 +244,7 @@ describe("sweeping the pointer does not redraw the map", () => {
     const l = levelAt(ui.zoom);
     let changed = 0;
     for (let f = 0; f < FRAMES; f++) {
-      ui.hover = cellFromPoint(world, state, ui, (f * 7) % (l.w * l.px), (f * 11) % (l.h * l.line));
+      ui.hover = mapTargetAtPoint(world, state, ui, (f * 7) % (l.w * l.px), (f * 11) % (l.h * l.line))?.patch ?? null;
       const now = `${mapKey(state, world, ui, cal)}|${mapHtml(world, state, ui, cal)}`;
       if (now !== still) changed++;
     }
@@ -262,7 +262,7 @@ describe("sweeping the pointer does not redraw the map", () => {
     let cells = 0;
     let lastCell: number | null = null;
     for (let x = 0; x < 200; x++) {
-      const cell = cellFromPoint(world, state, ui, x, l.line / 2);
+      const cell = mapTargetAtPoint(world, state, ui, x, l.line / 2)?.patch ?? null;
       if (cell === null) continue;
       if (cell !== lastCell) cells++;
       lastCell = cell;

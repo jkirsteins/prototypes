@@ -570,7 +570,6 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 }
 .grid .c.wx-glyph:not(.mk) > .cell-ground > .terrain-visual { visibility: hidden; }
 .grid .c.mk > .cell-weather { display: none; }
-.grid .c.has-map-signal > .cell-weather { display: none; }
 .grid .c .cloud-shadow {
   position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none;
   background: rgb(0 0 0 / var(--wx-shadow));
@@ -637,44 +636,22 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   color: var(--dim);
 }
 
-/* At the two closest rungs a simulation cell becomes a field of cosmetic
-   details. The parent remains the one hit target, route step and accessibility
-   cell. Its border is gone so neighbouring fields join without a grid seam;
-   only genuine region boundaries restore one side below. */
-.grid.detailed .c { position: relative; overflow: hidden; }
-.grid.detailed .cell-ground { position: absolute; inset: 0; }
-.grid.detailed .detail-ground {
-  position: absolute; inset: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--detail), 1fr);
-  grid-template-rows: repeat(var(--detail), 1fr);
-  pointer-events: none;
-}
-.grid.detailed .micro-ground {
-  display: flex; align-items: center; justify-content: center;
-  min-width: 0; min-height: 0;
-  font: inherit; font-style: normal;
-  line-height: 1;
-  opacity: 0.82;
-}
-.grid.detailed .micro-mark {
+/* At the closest rung a glyph is one 50 m patch, so a herd's own metre
+   position inside that patch is worth drawing. Its mark is laid over the grid
+   rather than inside a glyph, which is what lets it sit between two of them
+   and slide as the herd moves. */
+.grid.fine > .micro-mark {
   position: absolute;
-  left: calc(var(--sx) * 100% / var(--detail));
-  top: calc(var(--sy) * 100% / var(--detail));
-  width: calc(100% / var(--detail)); height: calc(100% / var(--detail));
-  z-index: 2;
+  left: calc(var(--animal-x) - var(--px) / 2);
+  top: calc(var(--animal-y) - var(--line) / 2);
+  width: var(--px);
+  height: var(--line);
+  z-index: var(--map-signal);
   display: flex; align-items: center; justify-content: center;
   line-height: 1;
   transition: left 0.18s linear, top 0.18s linear;
   box-shadow: 0 0 0 1px rgba(5, 7, 12, 0.42);
   pointer-events: none;
-}
-.grid.detailed > .wildlife-map-mark {
-  left: calc(var(--animal-x) - var(--px) / var(--detail) / 2);
-  top: calc(var(--animal-y) - var(--line) / var(--detail) / 2);
-  width: calc(var(--px) / var(--detail));
-  height: calc(var(--line) / var(--detail));
-  z-index: var(--map-signal);
 }
 .grid .c.t-water { color: #3a6fd8; background-color: #0a1633; }
 .grid .c.t-spruce { color: #1f8f3a; background-color: #0b1f11; }
@@ -755,13 +732,11 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
    border below already say at region scale, and 69 of them read as graph paper
    laid over the ground rather than as a place. */
 .grid .c.cur { box-shadow: inset 0 0 0 20px rgba(255, 255, 255, 0.07); }
-.grid.detailed .c.cur { box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.07); }
 .grid .c.cur.bl { border-left-color: var(--accent); }
 .grid .c.cur.br { border-right-color: var(--accent); }
 .grid .c.cur.bt { border-top-color: var(--accent); }
 .grid .c.cur.bb { border-bottom-color: var(--accent); }
 .grid .c.sel { box-shadow: inset 0 0 0 20px rgba(230, 194, 41, 0.18); }
-.grid.detailed .c.sel { box-shadow: inset 0 0 0 100px rgba(230, 194, 41, 0.18); }
 /*
  * What stays legible once the night sheet is down: where you are, where camp
  * is, and the line of your walk. Those are the three things you would know in
@@ -778,9 +753,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
  * glow below rather than fog with the shelter and the trap.
  */
 .grid .c.mk { font-weight: bold; position: relative; }
-.grid .c.has-map-signal { z-index: var(--map-signal); }
 .grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire, .grid .c.mk-coals { z-index: var(--map-signal); }
-.grid .micro-mark.mk-player, .grid .micro-mark.mk-camp, .grid .micro-mark.mk-fire, .grid .micro-mark.mk-coals { z-index: var(--map-signal); }
 .grid .c.mk-player { color: #fff; background: #b8860b; }
 .grid .c.mk-fire { color: #fff; background: #b8431a; }
 /* Dimmer than mk-fire's #b8431a: the same fire, banked. */
@@ -837,14 +810,6 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 
 /* Close-map marks occupy one visual subcell instead of repainting all 300 m
    of their parent. They repeat the established mark palette exactly. */
-.grid .micro-mark.mk-player { color: #fff; background: #b8860b; }
-.grid .micro-mark.mk-fire { color: #fff; background: #b8431a; }
-.grid .micro-mark.mk-coals { color: #fff; background: #7a3d1a; }
-.grid .micro-mark.mk-shelter { color: #fff; background: #4a5a78; }
-.grid .micro-mark.mk-camp { color: #0c0f14; background: #6fcf6f; }
-.grid .micro-mark.mk-trap { color: #fff; background: #4a5a78; }
-.grid .micro-mark.mk-seep { color: #0c0f14; background: #6fa8dc; }
-.grid .micro-mark.mk-den { color: #d6aa72; background: #1a1c20; }
 .grid .micro-mark.mk-animal { color: #111; background: #b7ad87; }
 .grid .micro-mark.mk-animal.wildlife-0 { background: #e5a84b; }
 .grid .micro-mark.mk-animal.wildlife-1 { background: #76c7b7; }
@@ -886,15 +851,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   --m0: #b8860b; --m1: #d8a327;
   animation: mood-toil 1.2s ease-in-out infinite alternate;
 }
-.grid .micro-mark.mk-player.mood-walk {
-  --m0: #b8860b; --m1: #d8a327;
-  animation: mood-toil 1.2s ease-in-out infinite alternate;
-}
 .grid .c.mk-player.mood-work {
-  --m0: #b8860b; --m1: #d8a327;
-  animation: mood-toil 2.4s ease-in-out infinite alternate;
-}
-.grid .micro-mark.mk-player.mood-work {
   --m0: #b8860b; --m1: #d8a327;
   animation: mood-toil 2.4s ease-in-out infinite alternate;
 }
@@ -966,12 +923,11 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 /* Somebody who has asked their system for less motion is asking this screen too. */
 @media (prefers-reduced-motion: reduce) {
   .grid .c.mk-player.mood-walk, .grid .c.mk-player.mood-work,
-  .grid .micro-mark.mk-player.mood-walk, .grid .micro-mark.mk-player.mood-work,
   .stat-face.mood-walk, .stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep,
   .portrait.is-focused, .portrait.is-cold, .portrait.is-firelit::before, .portrait.is-firelit::after {
     animation: none;
   }
-  .grid.detailed .micro-mark { transition: none; }
+  .grid.fine > .micro-mark { transition: none; }
   .portrait.is-firelit::before { opacity: .32; transform: none; }
   .portrait.is-firelit::after { opacity: .18; transform: none; }
 }

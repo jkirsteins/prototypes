@@ -39,13 +39,12 @@ function glyphBox(glyph: HTMLElement, zoom: number) {
   const level = levelAt(zoom);
   if (glyph.classList.contains("wildlife-map-mark")) return {
     x: Number.parseFloat(glyph.style.getPropertyValue("--animal-x")),
-    top: Number.parseFloat(glyph.style.getPropertyValue("--animal-y")) - level.line / level.detail / 2,
+    top: Number.parseFloat(glyph.style.getPropertyValue("--animal-y")) - level.line / 2,
   };
   const cell = glyph.closest<HTMLElement>(".c")!;
-  const slot = Number(glyph.dataset.visualSlot ?? 0);
   return {
-    x: Number(cell.dataset.mapX) * level.px + ((slot % level.detail) + 0.5) * level.px / level.detail,
-    top: Number(cell.dataset.mapY) * level.line + Math.floor(slot / level.detail) * level.line / level.detail,
+    x: (Number(cell.dataset.mapX) + 0.5) * level.px,
+    top: Number(cell.dataset.mapY) * level.line,
   };
 }
 
@@ -68,12 +67,16 @@ describe("wildlife cue anchors", () => {
     const cue = document.querySelector<HTMLElement>(".wildlife-startle.seen")!;
     const box = glyphBox(glyph, zoom);
     expect(Number.parseFloat(cue.style.left)).toBeCloseTo(box.x);
-    expect(Number.parseFloat(cue.style.top) + 18).toBeLessThanOrEqual(box.top);
+    expect(Number.parseFloat(cue.style.top) + 18).toBeLessThanOrEqual(box.top + 1e-6);
     expect(cue.parentElement?.classList.contains("grid")).toBe(true);
     expect(glyph.classList.contains("wildlife-recoil")).toBe(true);
   });
 
-  it.each([0, 1])("uses the animal's exact position when it shares ground with the player at zoom %i", (zoom) => {
+  // Only the closest rung draws a herd's own metre position; at the block
+  // rungs a glyph holds one mark and the survivor's owns it, so an animal on
+  // their patch is named in the tooltip rather than drawn over them.
+  it("uses the animal's exact position when it shares ground with the player", () => {
+    const zoom = 0;
     const { state, animal, ui, event, draw } = scene(zoom);
     animal.active!.intent = "rest";
     animal.active!.position = { xM: state.player.xM, yM: state.player.yM };
@@ -82,10 +85,10 @@ describe("wildlife cue anchors", () => {
     const glyph = document.querySelector<HTMLElement>(`[data-wildlife-id="${animal.id}"]`)!;
     const cue = document.querySelector<HTMLElement>(".wildlife-startle.seen")!;
     expect(Number.parseFloat(cue.style.left)).toBeCloseTo(glyphBox(glyph, zoom).x);
-    expect(Number.parseFloat(cue.style.top) + 18).toBeLessThanOrEqual(glyphBox(glyph, zoom).top);
+    expect(Number.parseFloat(cue.style.top) + 18).toBeLessThanOrEqual(glyphBox(glyph, zoom).top + 1e-6);
   });
 
-  it.each(["heard", "seen"] as const)("projects an unrendered %s source within its detailed cell without disclosing identity", (kind) => {
+  it.each(["heard", "seen"] as const)("projects an unrendered %s source inside its own patch without disclosing identity", (kind) => {
     const { state, animal, ui, event, draw } = scene(0);
     animal.active = null;
     state.knowledge = newKnowledge();
@@ -95,8 +98,8 @@ describe("wildlife cue anchors", () => {
     enqueueWildlifeStartle(ui, event, 1000);
     draw();
     const cue = document.querySelector<HTMLElement>(".wildlife-startle")!;
-    expect(Number.parseFloat(cue.style.left)).toBeCloseTo(409.2);
-    expect(Number.parseFloat(cue.style.top)).toBeCloseTo(290);
+    expect(Number.parseFloat(cue.style.left)).toBeCloseTo(398.2);
+    expect(Number.parseFloat(cue.style.top)).toBeCloseTo(237.5);
     expect(document.querySelector(".mk-animal")).toBeNull();
     expect(document.body.innerHTML).not.toContain("987654321");
     const key = cue.dataset.startle;
@@ -119,8 +122,8 @@ describe("wildlife cue anchors", () => {
     expect(document.querySelector(`[data-wildlife-id="${animal.id}"]`)).not.toBeNull();
     expect(document.querySelector(".wildlife-recoil")).toBeNull();
     const cue = document.querySelector<HTMLElement>(".wildlife-startle")!;
-    expect(Number.parseFloat(cue.style.left)).toBeCloseTo(409.2);
-    expect(Number.parseFloat(cue.style.top)).toBeCloseTo(290);
+    expect(Number.parseFloat(cue.style.left)).toBeCloseTo(398.2);
+    expect(Number.parseFloat(cue.style.top)).toBeCloseTo(237.5);
     expect(cue.hasAttribute("data-wildlife-id")).toBe(false);
   });
 

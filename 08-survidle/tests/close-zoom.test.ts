@@ -1,0 +1,211 @@
+/**
+ * The close rungs draw real ground, and a click on any rung resolves to a
+ * real patch.
+ *
+ * The two closest rungs used to hold one 300 m cell and scatter a made-up
+ * field of letters inside it. Nothing under those letters was true: the
+ * ground did not change from one to the next, a click anywhere in the field
+ * meant the same cell, and the survivor's mark slid about inside a cell it
+ * never left. Sections 5 and 9 of the authoritative-close-zoom spec replace
+ * both: every glyph is a square block of real 50 m patches, and every click
+ * names the exact patch an order would be given for.
+ */
+import { describe, expect, it } from "vitest";
+import { calendar } from "../src/sim/calendar";
+import { mapRegion } from "../src/sim/mapped";
+import { newGame } from "../src/sim/newgame";
+import { cellOf } from "../src/sim/position";
+import { DEFAULT_ZOOM, LEVELS, levelAt, mapHtml, mapTargetAtPoint, terrainComposition, viewOrigin, ZOOMS, zoomLabel } from "../src/ui/map";
+import { newUiState, type UiState } from "../src/ui/render";
+import { tipHtml } from "../src/ui/tip";
+import { aggregateSummary, worldCacheStats } from "../src/world/aggregate";
+import { findRoute } from "../src/world/route";
+import { PATCH_M } from "../src/world/spatial";
+import type { World } from "../src/world/gen";
+import type { GameState } from "../src/sim/types";
+
+const CAL = calendar(10);
+
+function open(zoom: number): UiState {
+  return { ...newUiState(), zoom, welcome: false };
+}
+
+/** The middle of the glyph a patch falls in, in the board's own pixels. */
+function pointOf(world: World, state: GameState, ui: UiState, patch: number) {
+  const l = levelAt(ui.zoom);
+  const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+  const gx = Math.floor((patch % world.w - x0) / l.finePerGlyph);
+  const gy = Math.floor((Math.floor(patch / world.w) - y0) / l.finePerGlyph);
+  return { x: (gx + 0.5) * l.px, y: (gy + 0.5) * l.line };
+}
+
+function draw(world: World, state: GameState, ui: UiState): void {
+  document.body.innerHTML = `<div id="map">${mapHtml(world, state, ui, CAL)}</div>`;
+}
+
+describe("the zoom ladder", () => {
+  it("counts real patches per glyph and nothing else", () => {
+    expect(ZOOMS.slice(0, 5)).toEqual([1, 2, 6, 18, 54]);
+    expect(LEVELS.slice(0, 5).every((l) => l.w === 72 && l.h === 36)).toBe(true);
+    expect(LEVELS[DEFAULT_ZOOM].finePerGlyph * PATCH_M).toBe(300);
+    // The farthest rung is the smallest that fits the whole world.
+    expect(LEVELS[5].finePerGlyph).toBeGreaterThan(54);
+  });
+
+  it("names the ground one glyph stands for at every rung", () => {
+    expect([0, 1, 2, 3, 4].map(zoomLabel)).toEqual([
+      "50 m per glyph", "100 m per glyph", "300 m per glyph", "900 m per glyph", "2.7 km per glyph",
+    ]);
+  });
+});
+
+describe("the closest rung", () => {
+  it("draws 2592 ordinary real cells at 50 m", () => {
+    const { state, world } = newGame(21);
+    const ui = open(0);
+    draw(world, state, ui);
+    expect(document.querySelectorAll("#map .c")).toHaveLength(72 * 36);
+    expect(document.querySelectorAll("#map .micro-ground")).toHaveLength(0);
+    expect(document.querySelector("#map .maptools")?.textContent).toContain("50 m per glyph");
+  });
+
+  it("puts the survivor's mark on their patch and nowhere inside it", () => {
+    const { state, world } = newGame(21);
+    const ui = open(0);
+    // A metre position well inside the patch used to move the mark within
+    // its cell. The patch is the smallest thing the simulation has, so the
+    // mark sits on it whole.
+    state.player.xM = Math.floor(state.player.xM / PATCH_M) * PATCH_M + PATCH_M - 5;
+    state.player.yM = Math.floor(state.player.yM / PATCH_M) * PATCH_M + 5;
+    draw(world, state, ui);
+    const player = document.querySelector<HTMLElement>("#map .mk-player")!;
+    expect(player.classList.contains("c")).toBe(true);
+    expect(player.dataset.mapCell).toBe(String(cellOf(state, world)));
+    expect(player.querySelector("[data-visual-slot]")).toBeNull();
+  });
+
+  it("resolves a click on a glyph to that exact patch", () => {
+    const { state, world } = newGame(21);
+    const ui = open(0);
+    const here = cellOf(state, world);
+    const p = pointOf(world, state, ui, here);
+    const target = mapTargetAtPoint(world, state, ui, p.x, p.y);
+    expect(target?.aggregate.size).toBe(1);
+    expect(target?.patch).toBe(here);
+  });
+});
+
+describe("a click on a block", () => {
+  it("resolves an aggregate click to a reachable exact patch", () => {
+    const { state, world } = newGame(21);
+    mapRegion(state, world, state.player.region);
+    const ui = open(1);
+    const here = cellOf(state, world);
+    // A block two glyphs east of the survivor, so the answer is not simply
+    // the patch they already stand on.
+    const p = pointOf(world, state, ui, here);
+    const target = mapTargetAtPoint(world, state, ui, p.x + levelAt(1).px * 2, p.y);
+    expect(target?.aggregate.size).toBe(2);
+    expect(target?.patch).not.toBeNull();
+    expect(findRoute(world, here, target!.patch!)).not.toBeNull();
+  });
+
+  it("gives a block holding an exact mark that mark's own patch", () => {
+    const { state, world } = newGame(21);
+    mapRegion(state, world, state.player.region);
+    const ui = open(3);
+    const here = cellOf(state, world);
+    const p = pointOf(world, state, ui, here);
+    const target = mapTargetAtPoint(world, state, ui, p.x, p.y);
+    expect(target?.aggregate.size).toBe(18);
+    expect(target?.patch).toBe(here);
+  });
+
+  it("lists every exact feature in a block instead of choosing one", () => {
+    const { state, world } = newGame(21);
+    mapRegion(state, world, state.player.region);
+    const here = cellOf(state, world);
+    const ui = open(3);
+    const p = pointOf(world, state, ui, here);
+    // Both marks go inside the same block as the survivor, read off the
+    // block the click actually lands on rather than guessed from an offset.
+    const box = mapTargetAtPoint(world, state, ui, p.x, p.y)!.aggregate;
+    state.seeps[box.y0 * world.w + box.x0] = { class: "damp", litres: 4, ice: 0, dug: 0 };
+    state.wildlife.knownDens[box.y0 * world.w + box.x0 + 1] = true;
+    const target = mapTargetAtPoint(world, state, ui, p.x, p.y, CAL)!;
+    const labels = target.features.map((f) => f.label);
+    expect(labels).toContain("you");
+    expect(labels).toContain("seep");
+    expect(labels).toContain("known bear den");
+    // The block resolves to one of its marks, and the tooltip names the rest
+    // rather than letting them vanish behind the one that won.
+    const tip = tipHtml(state, world, CAL, target.patch!, "both", target);
+    const others = target.features.filter((f) => f.patch !== target.patch).map((f) => f.label);
+    expect(others.length).toBeGreaterThan(1);
+    for (const label of others) expect(tip).toContain(label);
+    expect(tip).toContain("also in this glyph");
+  });
+
+  it("states the block's scale and what its ground is made of", () => {
+    const { state, world } = newGame(21);
+    mapRegion(state, world, state.player.region);
+    const ui = open(2);
+    const here = cellOf(state, world);
+    const p = pointOf(world, state, ui, here);
+    const target = mapTargetAtPoint(world, state, ui, p.x, p.y)!;
+    const tip = tipHtml(state, world, CAL, target.patch!, "both", target);
+    expect(tip).toContain("300 m glyph:");
+    const summary = aggregateSummary(world, target.aggregate.x0, target.aggregate.y0, target.aggregate.size);
+    expect(summary.samples).toBe(36);
+    expect(tip).toContain(terrainComposition(summary));
+  });
+
+  it("reads a 100 m glyph off its own four patches", () => {
+    const { state, world } = newGame(21);
+    mapRegion(state, world, state.player.region);
+    const ui = open(1);
+    const here = cellOf(state, world);
+    const target = mapTargetAtPoint(world, state, ui, pointOf(world, state, ui, here).x, pointOf(world, state, ui, here).y)!;
+    const summary = aggregateSummary(world, target.aggregate.x0, target.aggregate.y0, 2);
+    expect(summary.samples).toBe(4);
+    const total = Object.values(summary.terrainCounts).reduce((a, b) => a + b, 0);
+    expect(total).toBe(4);
+  });
+
+  it("refuses a point off the board", () => {
+    const { state, world } = newGame(21);
+    const ui = open(2);
+    expect(mapTargetAtPoint(world, state, ui, -5, -5)).toBeNull();
+    const l = levelAt(2);
+    expect(mapTargetAtPoint(world, state, ui, l.w * l.px + 10, 5)).toBeNull();
+  });
+});
+
+describe("the resolved destination", () => {
+  it("is shown on the board before an order is given", () => {
+    const { state, world } = newGame(21);
+    mapRegion(state, world, state.player.region);
+    const ui = open(1);
+    const here = cellOf(state, world);
+    const p = pointOf(world, state, ui, here);
+    const target = mapTargetAtPoint(world, state, ui, p.x + levelAt(1).px * 2, p.y)!;
+    expect(target.patch).not.toBeNull();
+    ui.destination = target.patch;
+    draw(world, state, ui);
+    const marked = document.querySelectorAll("#map .c.target");
+    expect(marked).toHaveLength(1);
+  });
+});
+
+describe("unknown ground", () => {
+  it("is drawn as fog without generating the terrain under it", () => {
+    const { state, world } = newGame(21);
+    // The wide rung spans several thousand patches a glyph. Drawing it must
+    // not be what builds them: fog is the answer, and fog has no ground.
+    const before = worldCacheStats(world);
+    draw(world, state, open(4));
+    const after = worldCacheStats(world);
+    expect(document.querySelectorAll("#map .c.fog").length).toBeGreaterThan(2000);
+    expect(after.fineChunkBuilds - before.fineChunkBuilds).toBeLessThanOrEqual(1);
+  });
+});

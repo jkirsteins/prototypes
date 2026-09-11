@@ -54,6 +54,32 @@ export function cellKnowledge(state: GameState, cell: number, visible: boolean):
   return level === "inherited" ? "inherited" : "remembered";
 }
 
+/**
+ * How a block of patches reads: its commonest ground, dressed in the surface
+ * that ground is under now. A block has no single patch to take a glyph
+ * variant from, so it wears the terrain's plain letter; the snow and the ice
+ * are the region's own weather and are as true of the block as of a patch.
+ */
+export function aggregatePresentation(
+  terrain: Terrain,
+  water: "lake" | "sea",
+  knowledge: Exclude<CellKnowledge, "unknown">,
+  ground: Pick<LocalGroundWeather, "snowCm" | "iceCm"> | null,
+): { heading: string; glyph: string; classes: string[] } {
+  const glyph = TERRAIN_GLYPH[terrain];
+  if (knowledge !== "current" || !ground) {
+    return { heading: terrainHeading(terrain), glyph, classes: [`t-${terrain}`, knowledge === "remembered" ? "memory" : "dim"] };
+  }
+  const surface = surfaceOf(terrain, water, ground);
+  const classes = [`t-${terrain}`];
+  if (surface.kind === "water" && surface.ice !== "none") classes.push(surface.ice === "safe" ? "ice-safe" : "ice-thin");
+  if (surface.kind === "land" && surface.snow !== "none") {
+    classes.push("ground-snow");
+    if (surface.snow === "deep") classes.push("ground-snow-deep");
+  }
+  return { heading: surfaceHeading(surface), glyph, classes };
+}
+
 export function cellPresentation(
   state: GameState,
   world: World,

@@ -193,15 +193,16 @@ describe("the map's compositing layers", () => {
     document.body.append(map);
     try {
       const cue = map.querySelector(".wildlife-startle")!;
-      const player = map.querySelector(".mk-player")!;
-      const source = player.closest(".c")!;
+      // At the closest rung the survivor's glyph is the cell, so the filters
+      // and the dimming ride on the cell and its own signal, not on a mark
+      // nested inside it.
+      const source = map.querySelector(".mk-player")!;
+      const player = source.querySelector(".cell-signal")!;
       source.classList.add("tone-0", "dim");
       const z = (element: Element) => Number(getComputedStyle(element).zIndex);
-      expect(getComputedStyle(source).overflow).toBe("hidden");
       expect(getComputedStyle(source).filter).toBe("");
       expect(getComputedStyle(source).opacity).toBe("");
       expect(getComputedStyle(player).opacity).toBe("0.45");
-      expect(getComputedStyle(source.querySelector(".cell-weather")!).opacity).toBe("");
       expect(cue.parentElement).toBe(map.querySelector(".grid"));
       expect(z(cue)).toBeGreaterThan(z(player));
       expect(z(cue)).toBeGreaterThan(z(map.querySelector(".walk")!));
@@ -213,22 +214,30 @@ describe("the map's compositing layers", () => {
     }
   });
 
-  it("keeps detailed player and camp signals above routes without lifting ordinary animals", () => {
+  it("keeps player and camp signals above routes without lifting ordinary animals", () => {
     const sheet = document.createElement("style");
     sheet.textContent = css;
     document.head.append(sheet);
     const map = document.createElement("div");
     map.id = "mapdyn";
-    map.innerHTML = '<div class="scroll-x"><div class="grid detailed"><span class="c"><b class="micro-mark mk-player"></b><b class="micro-mark mk-camp"></b><b class="micro-mark mk-fire"></b><b class="micro-mark mk-coals"></b><b class="micro-mark mk-animal"></b></span><svg class="walk"></svg><i class="wildlife-startle"></i></div></div>';
+    // The three things you would know in the dark without looking sit above
+    // the walk line; a herd's glyph is ordinary ground and passes under it.
+    // The herd's exact mark at the closest rung is laid over the grid, so it
+    // rises with the rest of the signals.
+    map.innerHTML = '<div class="scroll-x"><div class="grid fine">'
+      + '<span class="c mk mk-player"></span><span class="c mk mk-camp"></span><span class="c mk mk-fire"></span>'
+      + '<span class="c mk mk-coals"></span><span class="c mk mk-animal"></span>'
+      + '<svg class="walk"></svg><b class="micro-mark wildlife-map-mark mk-animal"></b><i class="wildlife-startle"></i></div></div>';
     document.body.append(map);
     try {
       const z = (selector: string) => Number(getComputedStyle(map.querySelector(selector)!).zIndex);
       const route = z(".walk");
-      for (const signal of [".mk-player", ".mk-camp", ".mk-fire", ".mk-coals"]) {
+      for (const signal of [".c.mk-player", ".c.mk-camp", ".c.mk-fire", ".c.mk-coals"]) {
         expect(z(signal)).toBeGreaterThan(route);
         expect(z(signal)).toBeLessThan(z(".wildlife-startle"));
       }
-      expect(z(".mk-animal")).toBeLessThan(route);
+      expect(z(".c.mk-animal")).toBeLessThan(route);
+      expect(z(".micro-mark.mk-animal")).toBeGreaterThan(route);
     } finally {
       sheet.remove();
       map.remove();
@@ -258,21 +267,25 @@ describe("the map's compositing layers", () => {
     document.body.append(map);
     try {
       const route = Number(getComputedStyle(map.querySelector(".walk")!).zIndex);
-      for (const selector of [".mk-player", `.mk-${kind}`]) {
-        const cell = map.querySelector(selector)!.closest(".c")!;
-        // Exercise both snow filters on real map markup, independent of the
-        // generated cell's elevation rank within this particular viewport.
-        for (const [tone, filter] of [["tone-0", "brightness(0.82)"], ["tone-2", "brightness(1.18)"]]) {
-          cell.classList.remove("tone-0", "tone-2");
-          cell.classList.add(tone);
-          expect(getComputedStyle(cell).filter).toBe("");
-          expect(getComputedStyle(cell.querySelector(".terrain-visual")!).filter).toBe(filter);
-          expect(Number(getComputedStyle(cell).zIndex)).toBeGreaterThan(route);
-        }
+      // A glyph carrying one of the three essential marks rises above the
+      // walk line whatever the snow is doing to the ground around it.
+      for (const selector of [".c.mk-player", `.c.mk-${kind}`]) {
+        const cell = map.querySelector(selector)!;
+        expect(Number(getComputedStyle(cell).zIndex)).toBeGreaterThan(route);
+      }
+      // Exercise both snow filters on real map markup, on ground carrying no
+      // mark: a mark's glyph draws a letter and not the ground under it.
+      const terrainCell = [...map.querySelectorAll(".c:not(.fog):not(.void):not(.mk)")]
+        .find((cell) => cell.querySelector(".terrain-visual"))!;
+      terrainCell.classList.add("ground-snow");
+      for (const [tone, filter] of [["tone-0", "brightness(0.82)"], ["tone-2", "brightness(1.18)"]]) {
+        terrainCell.classList.remove("tone-0", "tone-2");
+        terrainCell.classList.add(tone);
+        expect(getComputedStyle(terrainCell).filter).toBe("");
+        expect(getComputedStyle(terrainCell.querySelector(".terrain-visual")!).filter).toBe(filter);
       }
       const animalMark = map.querySelector(`[data-wildlife-id="${animal.id}"]`)!;
       expect(Number(getComputedStyle(animalMark).zIndex)).toBeGreaterThan(route);
-      const terrainCell = [...map.querySelectorAll(".c:not(.fog):not(.void)")].find((cell) => !cell.querySelector(".micro-mark"))!;
       expect(Number(getComputedStyle(terrainCell).zIndex)).toBeLessThan(route);
     } finally {
       sheet.remove();

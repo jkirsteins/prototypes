@@ -23,7 +23,7 @@ import { seeFrom } from "../src/sim/sight";
 import { siteCamp } from "./siting-helpers";
 import { campCellOf, cellOf, placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
-import { cellFromClient, cellFromPoint, levelAt, viewOrigin } from "../src/ui/map";
+import { levelAt, mapTargetAtClient, mapTargetAtPoint, viewOrigin } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { mapInventoryHtml, tipHtml, tipKey } from "../src/ui/tip";
 import { cellAt, regionAt } from "../src/world/gen";
@@ -36,56 +36,54 @@ function pointOf(world: ReturnType<typeof newGame>["world"], state: ReturnType<t
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
-  return { x: ((x - x0) / l.cells) * l.px + l.px / 2, y: ((y - y0) / l.cells) * l.line + l.line / 2 };
+  return { x: ((x - x0) / l.finePerGlyph) * l.px + l.px / 2, y: ((y - y0) / l.finePerGlyph) * l.line + l.line / 2 };
 }
 
-describe("finding the cell under the pointer", () => {
+describe("finding the patch under the pointer", () => {
   const { state, world } = newGame(21);
   const ui = newUiState();
 
-  it("a point on the board resolves to a cell", () => {
-    expect(cellFromPoint(world, state, ui, 5, 5)).not.toBeNull();
+  it("a point on the board resolves to a block", () => {
+    expect(mapTargetAtPoint(world, state, ui, 5, 5)).not.toBeNull();
   });
 
   it("the middle glyph is the one the survivor stands on", () => {
     const here = cellOf(state, world);
     const p = pointOf(world, state, ui, here);
-    expect(cellFromPoint(world, state, ui, p.x, p.y)).toBe(here);
+    expect(mapTargetAtPoint(world, state, ui, p.x, p.y)?.patch).toBe(here);
   });
 
-  it("every closest-rung detail resolves to its one containing simulation cell", () => {
+  it("every point inside a glyph resolves to that one glyph's block", () => {
     const close = newUiState();
     close.zoom = 0;
     const here = cellOf(state, world);
     const centre = pointOf(world, state, close, here);
     const l = levelAt(close.zoom);
-    for (let x = 0; x < l.detail; x++) {
-      for (let y = 0; y < l.detail; y++) {
-        const dx = (x + 0.5) / l.detail - 0.5;
-        const dy = (y + 0.5) / l.detail - 0.5;
-        expect(cellFromPoint(world, state, close, centre.x + dx * l.px, centre.y + dy * l.line)).toBe(here);
+    for (const dx of [-0.4, 0, 0.4]) {
+      for (const dy of [-0.4, 0, 0.4]) {
+        expect(mapTargetAtPoint(world, state, close, centre.x + dx * l.px, centre.y + dy * l.line)?.patch).toBe(here);
       }
     }
   });
 
-  it("subtracts a centered grid's screen offset before resolving a cell", () => {
+  it("subtracts a centered grid's screen offset before resolving a patch", () => {
     const here = cellOf(state, world);
     const p = pointOf(world, state, ui, here);
-    expect(cellFromClient(world, state, ui, p.x + 137, p.y + 41, { left: 137, top: 41 })).toBe(here);
+    expect(mapTargetAtClient(world, state, ui, p.x + 137, p.y + 41, { left: 137, top: 41 })?.patch).toBe(here);
   });
 
-  it("a point off the board resolves to nothing rather than to cell zero", () => {
-    expect(cellFromPoint(world, state, ui, -50, -50)).toBeNull();
+  it("a point off the board resolves to nothing rather than to patch zero", () => {
+    expect(mapTargetAtPoint(world, state, ui, -50, -50)).toBeNull();
     const l = levelAt(ui.zoom);
-    expect(cellFromPoint(world, state, ui, l.w * l.px + 40, 5)).toBeNull();
+    expect(mapTargetAtPoint(world, state, ui, l.w * l.px + 40, 5)).toBeNull();
   });
 
   it("it reads the pointer's position, so nothing is needed on a glyph", () => {
     // A glyph replaced under the pointer fires an enter and a glyph detached
     // under it never fires a leave, so hover state kept per element gets
     // stuck. There is no per-glyph attribute to go stale here.
-    const a = cellFromPoint(world, state, ui, 30, 30);
-    expect(cellFromPoint(world, state, ui, 30, 30)).toBe(a);
+    const a = mapTargetAtPoint(world, state, ui, 30, 30)?.patch;
+    expect(mapTargetAtPoint(world, state, ui, 30, 30)?.patch).toBe(a);
   });
 });
 
