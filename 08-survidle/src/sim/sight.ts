@@ -3,9 +3,11 @@
  * opens for walking. Range is what the vantage allows and the canopy
  * cuts short; the dark takes it away. Marks cells, never regions.
  */
-import { CELL_KM } from "../units";
+import { parentSummary } from "../world/aggregate";
+import { FINE_CHUNK } from "../world/cells";
 import { regionPeek, terrainOf, type World } from "../world/gen";
-import { fieldsAt } from "../world/terrain";
+import { FINE_PER_PARENT, PATCH_KM, PATCH_M } from "../world/spatial";
+import { fieldsAtPatch } from "../world/fine-terrain";
 import type { Calendar } from "./calendar";
 import { CLEAR_MOR_KM, MAX_OPTICAL_DEPTH, sampleAtmosphere } from "./climate";
 import { lightFactor, skyLux, SPOT_LUX, WALK_LUX } from "./light";
@@ -25,20 +27,9 @@ const HORIZON_KM_PER_SQRT_M = 3.57;
  * on, whatever the horizon formula would say.
  */
 const SPRUCE_RANGE_CELLS = 0;
-/**
- * Pine and birch keep about 150 m of visibility between the trunks -
- * short of a cell's own 300 m width, so it is read as the immediate ring
- * rather than rounded away to nothing.
- */
+/** Pine and birch keep about 150 m of visibility between the trunks: three 50 m patches. */
 const FOREST_VISIBILITY_M = 150;
-const FOREST_RANGE_CELLS = 1;
-/**
- * The coastal spine this world is drawn from rises to about 1200 m; the
- * elevation field is 0..1 (fell opens at 0.84), so a vantage's height above
- * the lowland is its own elevation times this figure. The one number here
- * worth arguing with.
- */
-const FELL_SPINE_M = 1200;
+const FOREST_RANGE_CELLS = Math.round(FOREST_VISIBILITY_M / PATCH_M);
 /** Mean Earth radius, metres; enough here to stop an elevated view claiming ground below its geometric horizon. */
 const EARTH_RADIUS_M = 6_371_000;
 /** Representative mature canopy tops above the generated ground surface. */
@@ -75,10 +66,40 @@ function retainViewshed(key: string, cells: ReadonlySet<number>): ReadonlySet<nu
   return cells;
 }
 
-/** Cells to the horizon for a vantage this many metres up, floored: reaching a little short of the true line is safer than claiming ground unseen. */
+/** Patches to the horizon for a vantage this many metres up, floored: reaching a little short of the true line is safer than claiming ground unseen. */
 function horizonCells(heightM: number): number {
-  return Math.floor((HORIZON_KM_PER_SQRT_M * Math.sqrt(Math.max(0, heightM))) / CELL_KM);
+  return Math.floor((HORIZON_KM_PER_SQRT_M * Math.sqrt(Math.max(0, heightM))) / PATCH_KM);
 }
+
+/**
+ * How far the eye is traced patch by patch, and how far a viewshed is
+ * enumerated at all.
+ *
+ * Inside EXACT_SIGHT_M every 50 m patch on a ray is read for itself: that is
+ * the close view, where a boulder field, a lone spruce and the far bank of a
+ * stream are all separate ground. Past it the ray steps a 300 m parent at a
+ * time and only descends into one whose own elevation and obstruction bounds
+ * cannot settle it either way, which is what makes a long view affordable.
+ *
+ * The enumerated reach stops at one fine chunk, 4.8 km. That is not what an
+ * eye can do - clear air carries terrain contrast to CLEAR_MOR_KM, and a fell
+ * vantage looks far past that - it is how far this world holds ground at 50 m,
+ * and a viewshed that ran to the clear-air range would mark millions of
+ * patches from one look. Beyond it the country is read from map aggregates
+ * rather than patch by patch, and a vantage's own reach (sightReachCells)
+ * keeps saying how far it sees.
+ */
+const EXACT_SIGHT_M = FINE_PER_PARENT * PATCH_M;
+/** The grain the air is sampled and integrated at, in metres and in patches. */
+const OPTICAL_SAMPLE_M = FINE_PER_PARENT * PATCH_M;
+const OPTICAL_SAMPLE_PATCHES = OPTICAL_SAMPLE_M / PATCH_M;
+const EXACT_SIGHT_PATCHES = EXACT_SIGHT_M / PATCH_M;
+const FINE_VIEWSHED_PATCHES = FINE_CHUNK;
+
+/** Exact patch obstructions read since the counter was last cleared: the visibility work count. */
+let obstacleReads = 0;
+export function obstacleReadCount(): number { return obstacleReads; }
+export function clearObstacleReadCount(): void { obstacleReads = 0; }
 
 /** Open ground and water: the plain standing-eye horizon. */
 const OPEN_RANGE_CELLS = horizonCells(EYE_HEIGHT_M);
@@ -87,7 +108,7 @@ const OPEN_RANGE_CELLS = horizonCells(EYE_HEIGHT_M);
 function vantageBaseCells(world: World, t: Terrain, x: number, y: number): number {
   if (t === "spruce") return SPRUCE_RANGE_CELLS;
   if (t === "pine" || t === "birch") return FOREST_RANGE_CELLS;
-  if (t === "fell" || t === "rock") return horizonCells(Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * FELL_SPINE_M);
+  if (t === "fell" || t === "rock") return horizonCells(groundHeightM(world, x, y));
   return OPEN_RANGE_CELLS;
 }
 
@@ -174,9 +195,35 @@ function ringCells(lux: number): number {
   return lightFactor(lux, WALK_LUX, 0) >= 1 ? 1 : 0;
 }
 
+/**
+ * Ground height in metres at one patch, straight from the physical field, so
+ * that a ray and the obstruction bounds of the parent it crosses are reading
+ * the same ground. Terrain and elevation are immutable, so a viewshed that
+ * crosses the same ground on many rays pays the field once. The cache belongs
+ * to the world object, never to save state, and is dropped whole when full.
+ */
+const GROUND_HEIGHT_LIMIT = 262_144;
+const groundHeights = new WeakMap<World, Map<number, number>>();
+
+function groundHeightM(world: World, x: number, y: number): number {
+  let heights = groundHeights.get(world);
+  if (!heights) {
+    heights = new Map();
+    groundHeights.set(world, heights);
+  }
+  const cell = y * world.w + x;
+  const cached = heights.get(cell);
+  if (cached !== undefined) return cached;
+  const height = Math.max(0, fieldsAtPatch(world.seed, cell).elevationM);
+  if (heights.size >= GROUND_HEIGHT_LIMIT) heights.clear();
+  heights.set(cell, height);
+  return height;
+}
+
 /** Height in metres of the surface that can hide ground behind this cell. */
 function obstacleHeightM(world: World, x: number, y: number, distM: number): number {
-  const ground = Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * FELL_SPINE_M;
+  obstacleReads++;
+  const ground = groundHeightM(world, x, y);
   const terrain = terrainOf(world, x, y);
   const canopy = terrain === "spruce" || distM > FOREST_VISIBILITY_M ? CANOPY_HEIGHT_M[terrain] ?? 0 : 0;
   return ground + canopy;
@@ -197,9 +244,9 @@ export function hasLineOfSight(world: World, observerCell: number, targetCell: n
   const dy = ty - cy;
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
   const totalCells = Math.hypot(dx, dy);
-  const totalM = totalCells * CELL_KM * 1000;
-  const observerM = Math.min(1, Math.max(0, fieldsAt(world.seed, cx, cy).e)) * FELL_SPINE_M + EYE_HEIGHT_M;
-  const targetM = Math.min(1, Math.max(0, fieldsAt(world.seed, tx, ty).e)) * FELL_SPINE_M + targetHeightM - (totalM * totalM) / (2 * EARTH_RADIUS_M);
+  const totalM = totalCells * PATCH_M;
+  const observerM = groundHeightM(world, cx, cy) + EYE_HEIGHT_M;
+  const targetM = groundHeightM(world, tx, ty) + targetHeightM - curvatureDropM(totalM);
   let previous = observerCell;
   for (let i = 1; i < steps; i++) {
     const x = cx + Math.round((dx * i) / steps);
@@ -208,32 +255,101 @@ export function hasLineOfSight(world: World, observerCell: number, targetCell: n
     if (cell === previous) continue;
     previous = cell;
     const distanceCells = Math.hypot(x - cx, y - cy);
-    const distM = distanceCells * CELL_KM * 1000;
-    const curvatureDropM = (distM * distM) / (2 * EARTH_RADIUS_M);
+    const distM = distanceCells * PATCH_M;
     const rayM = observerM + (targetM - observerM) * (distanceCells / totalCells);
-    if (obstacleHeightM(world, x, y, distM) - curvatureDropM >= rayM) return false;
+    if (obstacleHeightM(world, x, y, distM) - curvatureDropM(distM) >= rayM) return false;
   }
   return true;
 }
 
-/** Marches one sightline, retaining the highest apparent surface angle met so ridges and canopies hide lower ground beyond them. */
+/** The drop of the curved earth under a level line this far out. */
+function curvatureDropM(distM: number): number {
+  return (distM * distM) / (2 * EARTH_RADIUS_M);
+}
+
+/**
+ * The steepest and shallowest apparent angle anything inside one 300 m parent
+ * could stand at, seen from `observerM` between `nearM` and `farM` out.
+ *
+ * The high bound puts the parent's tallest obstruction at its nearest possible
+ * distance and the low bound puts its lowest bare ground at its farthest, so a
+ * ray whose horizon is above the high bound has provably nothing to see in
+ * there, and one below the low bound has provably nothing hidden.
+ */
+function parentSlopeBounds(world: World, px: number, py: number, observerM: number, nearM: number, farM: number) {
+  const summary = parentSummary(world, px, py);
+  return {
+    high: (summary.maxObstructionM - curvatureDropM(nearM) - observerM) / nearM,
+    low: (summary.minElevationM - curvatureDropM(farM) - observerM) / farM,
+    /** Ground and crowns inside this parent stand within this many metres of each other. */
+    reliefM: summary.maxObstructionM - summary.minElevationM,
+  };
+}
+
+/**
+ * How flat a parent must be before its bounds may stand in for the patches
+ * inside it on the seen side. A ray that crosses a uniform node takes its
+ * upper bound as the new horizon, which is wrong by at most this much height
+ * over the distance crossed; open water and a bare flat are uniform, and a
+ * stand of spruce never is.
+ */
+const UNIFORM_RELIEF_M = 1;
+
+/**
+ * Marches one sightline, retaining the highest apparent surface angle met so
+ * ridges and canopies hide lower ground beyond them. Close in it reads every
+ * patch; farther out it takes a parent at a time whenever that parent's
+ * bounds settle the whole run of patches the ray crosses inside it.
+ */
 function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, range: number, seen: Set<number>): void {
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
-  const observerM = Math.min(1, Math.max(0, fieldsAt(world.seed, cx, cy).e)) * FELL_SPINE_M + EYE_HEIGHT_M;
+  const observerM = groundHeightM(world, cx, cy) + EYE_HEIGHT_M;
   let horizonSlope = -Infinity;
   let previous = -1;
+  const xAt = (i: number) => cx + Math.round((dx * i) / steps);
+  const yAt = (i: number) => cy + Math.round((dy * i) / steps);
   for (let i = 1; i <= steps; i++) {
-    const x = cx + Math.round((dx * i) / steps);
-    const y = cy + Math.round((dy * i) / steps);
+    const x = xAt(i);
+    const y = yAt(i);
     if (x < 0 || y < 0 || x >= world.w || y >= world.h) return;
-    const cell = y * world.w + x;
-    if (cell === previous) continue;
-    previous = cell;
     const distance = Math.hypot(x - cx, y - cy);
     if (distance > range) return;
-    const distM = distance * CELL_KM * 1000;
-    const curvatureDropM = (distM * distM) / (2 * EARTH_RADIUS_M);
-    const slope = (obstacleHeightM(world, x, y, distM) - curvatureDropM - observerM) / distM;
+    const cell = y * world.w + x;
+    if (cell === previous) continue;
+
+    // A run of steps inside one parent, past the close view, may be settled whole.
+    if (distance > EXACT_SIGHT_PATCHES) {
+      const px = Math.floor(x / FINE_PER_PARENT);
+      const py = Math.floor(y / FINE_PER_PARENT);
+      let last = i;
+      while (last + 1 <= steps) {
+        const nx = xAt(last + 1);
+        const ny = yAt(last + 1);
+        if (nx < 0 || ny < 0 || nx >= world.w || ny >= world.h) break;
+        if (Math.floor(nx / FINE_PER_PARENT) !== px || Math.floor(ny / FINE_PER_PARENT) !== py) break;
+        if (Math.hypot(nx - cx, ny - cy) > range) break;
+        last++;
+      }
+      const farM = Math.hypot(xAt(last) - cx, yAt(last) - cy) * PATCH_M;
+      const bounds = parentSlopeBounds(world, px, py, observerM, distance * PATCH_M, farM);
+      if (bounds.high < horizonSlope - 1e-9) {
+        // Nothing in here reaches over the horizon already met.
+        previous = yAt(last) * world.w + xAt(last);
+        i = last;
+        continue;
+      }
+      if (bounds.reliefM <= UNIFORM_RELIEF_M && bounds.low >= horizonSlope - 1e-9) {
+        for (let j = i; j <= last; j++) seen.add(yAt(j) * world.w + xAt(j));
+        horizonSlope = Math.max(horizonSlope, bounds.high);
+        previous = yAt(last) * world.w + xAt(last);
+        i = last;
+        continue;
+      }
+    }
+
+    previous = cell;
+    const distM = distance * PATCH_M;
+    const slope = (obstacleHeightM(world, x, y, distM) - curvatureDropM(distM) - observerM) / distM;
     if (slope >= horizonSlope - 1e-9) seen.add(cell);
     horizonSlope = Math.max(horizonSlope, slope);
   }
@@ -243,15 +359,27 @@ export interface OpticalSampler {
   extinction(midX: number, midY: number): number;
 }
 
-/** Bilinear midpoint extinction from fixed cell-centre samples; query order cannot change it. */
+/**
+ * Bilinear midpoint extinction from fixed sample points; query order cannot
+ * change it.
+ *
+ * The air is sampled every OPTICAL_SAMPLE_M rather than at every patch. The
+ * finest thing in the atmosphere is the subordinate 1.2 km detail lattice, so
+ * a 300 m grid already resolves its shortest wave four times over, and a ray
+ * across kilometres of country costs tens of atmospheric samples instead of
+ * thousands.
+ */
 export function opticalSampler(state: GameState, world: World): OpticalSampler {
   const air = new Map<number, number>();
   const ground = new Map<number, LocalGroundWeather>();
   const minute = state.minute + state.weather.elapsedMinutes;
-  const at = (x: number, y: number): number => {
-    const cell = y * world.w + x;
-    const cached = air.get(cell);
+  // Sample indices are grid nodes OPTICAL_SAMPLE_PATCHES apart, in patches.
+  const at = (ix: number, iy: number): number => {
+    const key = iy * world.w + ix;
+    const cached = air.get(key);
     if (cached !== undefined) return cached;
+    const x = Math.min(world.w - 1, ix * OPTICAL_SAMPLE_PATCHES);
+    const y = Math.min(world.h - 1, iy * OPTICAL_SAMPLE_PATCHES);
     const region = regionPeek(world, x, y);
     let localGround = ground.get(region);
     if (!localGround) {
@@ -262,18 +390,22 @@ export function opticalSampler(state: GameState, world: World): OpticalSampler {
       { startDoy: state.weather.startDoy, snowCm: localGround.snowCm },
       world, minute, x, y,
     ).extinctionPerKm;
-    air.set(cell, extinction);
+    air.set(key, extinction);
     return extinction;
   };
   return {
     extinction(midX, midY) {
       if (midX < 0 || midY < 0 || midX > world.w - 1 || midY > world.h - 1) return Number.POSITIVE_INFINITY;
-      const x0 = Math.floor(midX);
-      const y0 = Math.floor(midY);
-      const x1 = Math.min(world.w - 1, x0 + 1);
-      const y1 = Math.min(world.h - 1, y0 + 1);
-      const tx = midX - x0;
-      const ty = midY - y0;
+      const nodeX = midX / OPTICAL_SAMPLE_PATCHES;
+      const nodeY = midY / OPTICAL_SAMPLE_PATCHES;
+      const lastX = Math.floor((world.w - 1) / OPTICAL_SAMPLE_PATCHES);
+      const lastY = Math.floor((world.h - 1) / OPTICAL_SAMPLE_PATCHES);
+      const x0 = Math.min(lastX, Math.floor(nodeX));
+      const y0 = Math.min(lastY, Math.floor(nodeY));
+      const x1 = Math.min(lastX, x0 + 1);
+      const y1 = Math.min(lastY, y0 + 1);
+      const tx = nodeX - x0;
+      const ty = nodeY - y0;
       const top = at(x0, y0) * (1 - tx) + at(x1, y0) * tx;
       const bottom = at(x0, y1) * (1 - tx) + at(x1, y1) * tx;
       return top * (1 - ty) + bottom * ty;
@@ -281,18 +413,22 @@ export function opticalSampler(state: GameState, world: World): OpticalSampler {
   };
 }
 
-/** Cumulative extinction can only remove contrast. Clear air after a dense band never restores it. */
+/**
+ * Cumulative extinction can only remove contrast. Clear air after a dense band
+ * never restores it. The ray is integrated in OPTICAL_SAMPLE_M steps, the same
+ * grain the air itself is sampled at.
+ */
 function contrastReaches(cx: number, cy: number, dx: number, dy: number, sampler: OpticalSampler, maxOpticalDepth = MAX_OPTICAL_DEPTH): boolean {
   const distanceCells = Math.hypot(dx, dy);
   const unitX = dx / distanceCells;
   const unitY = dy / distanceCells;
-  const segments = Math.ceil(distanceCells);
+  const segments = Math.ceil(distanceCells / OPTICAL_SAMPLE_PATCHES);
   let opticalDepth = 0;
   for (let i = 0; i < segments; i++) {
-    const lengthCells = Math.min(1, distanceCells - i);
-    const midpointCells = i + lengthCells / 2;
+    const lengthCells = Math.min(OPTICAL_SAMPLE_PATCHES, distanceCells - i * OPTICAL_SAMPLE_PATCHES);
+    const midpointCells = i * OPTICAL_SAMPLE_PATCHES + lengthCells / 2;
     opticalDepth += sampler.extinction(cx + unitX * midpointCells, cy + unitY * midpointCells)
-      * lengthCells * CELL_KM;
+      * lengthCells * PATCH_KM;
     if (opticalDepth > maxOpticalDepth + 1e-12) return false;
   }
   return true;
@@ -314,9 +450,15 @@ export function campfireVisible(state: GameState, world: World, observerCell: nu
   );
 }
 
-/** Includes the first whole-cell centre beyond clear MOR so the ray test owns the exact boundary. */
+/**
+ * Candidates a viewshed will actually enumerate, in patches. Clear air itself
+ * reaches the contrast threshold at CLEAR_MOR_KM, so nothing farther can be
+ * optically visible; the fine viewshed stops sooner still, at FINE_VIEWSHED_PATCHES.
+ * The first whole patch beyond the limit is included so the ray test owns the
+ * exact boundary.
+ */
 export function opticalCandidateRangeCells(terrainRange: number): number {
-  return Math.min(terrainRange, Math.ceil(CLEAR_MOR_KM / CELL_KM));
+  return Math.min(terrainRange, FINE_VIEWSHED_PATCHES, Math.ceil(CLEAR_MOR_KM / PATCH_KM));
 }
 
 /**

@@ -8,7 +8,7 @@ import { cellAt, regionAt } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { FIRE_LOW_KG } from "../src/sim/items";
 import type { Species } from "../src/sim/species";
-import { ensureGround } from "../src/sim/weather";
+import { ensureGround, patchGroundModifiers } from "../src/sim/weather";
 import { siteCamp, requireCamp } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
 
@@ -60,7 +60,8 @@ describe("surroundings", () => {
       placeAt(state, world, bog);
       expect(surroundings(state, world, 10).footing).toBe("bog");
     }
-    ground.snowCm = 6;
+    // Enough of a fall for 6 cm to be lying under the crowns of this patch.
+    ground.snowCm = 6 / patchGroundModifiers(world, forest!).snow;
     placeAt(state, world, forest!);
     expect(surroundings(state, world, -3).footing).toBe("snow");
     ground.snowCm = 0;

@@ -4,7 +4,10 @@ import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import type { Weather } from "../src/sim/types";
-import { ambientTemperature } from "../src/sim/weather";
+import { ambientTemperature, conditionsAt } from "../src/sim/weather";
+import { cellOf } from "../src/sim/position";
+import type { GameState } from "../src/sim/types";
+import type { World } from "../src/world/gen";
 import { placesHtml, weatherHtml } from "../src/ui/panels";
 import { mapHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
@@ -13,6 +16,16 @@ import { siteCamp } from "./siting-helpers";
 import { current } from "../src/sim/record";
 import { levelMinutes } from "../src/sim/skills";
 import { stormOptions } from "../src/sim/body";
+
+/** The first landing whose local air is clear: the sky tests that need an open sky say so rather than hoping. */
+function clearSkyGame(): { state: GameState; world: World } {
+  for (const seed of [31, 39, 19, 33, 12]) {
+    const game = newGame(seed);
+    const cal = calendar(game.state.minute, game.state.startDoy);
+    if (conditionsAt(game.state, game.world, cal, cellOf(game.state, game.world)).cloud < 0.05) return game;
+  }
+  throw new Error("no clear landing among the sampled seeds");
+}
 
 const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
 /** Minutes since the run start for a clock hour on day one. */
@@ -259,7 +272,9 @@ describe("sky in the page", () => {
   });
 
   it("moves the sun and lights the map grid every frame", () => {
-    const { state, world } = newGame(21);
+    // The sun is drawn through the air the survivor is standing under, so this
+    // one needs a landing whose own sky is clear rather than any landing.
+    const { state, world } = clearSkyGame();
     const cal = at(13);
     // The sky is drawn in the weather widget now, not the clock line.
     setPanel("weather", weatherHtml(state, world, cal, ambientTemperature(cal, state.weather)));

@@ -9,16 +9,17 @@ import type { GameState } from "./types";
 import { ensureGround } from "./weather";
 import { regionPeek, type World } from "../world/gen";
 
+/** Coordinates are fine 50 m patches: each shot names the physical place its note describes. */
 export const WEATHER_SHOTS = {
-  clear: { seed: 17, minute: 1440, x: 450, y: 1100, zoom: 2, note: "clear air above the comparison rock" },
-  "sunny-clouds": { seed: 17, minute: 170160, x: 700, y: 950, zoom: 2, note: "dry midsummer sun with a broken cloud field" },
-  "approaching-rain": { seed: 17, minute: 86760, x: 1040, y: 150, zoom: 2, note: "edge of a rain band approaching from the west" },
-  "local-rain": { seed: 17, minute: 108720, x: 1300, y: 376, zoom: 2, note: "the dense part of a local rain band" },
-  "persisted-snow": { seed: 17, minute: 480480, x: 296, y: 1200, zoom: 2, note: "falling snow above snow retained by stationary ground state" },
-  "frozen-water": { seed: 17, minute: 481200, x: 175, y: 50, zoom: 2, note: "safe winter ice over naturally frozen coastal water" },
-  "valley-fog": { seed: 17, minute: 19560, x: 840, y: 1000, zoom: 2, note: "dry fog pooled over bog ground" },
-  "windward-lee": { seed: 17, minute: 3960, x: 700, y: 950, zoom: 2, note: "a terrain-modified extinction gradient" },
-  obscured: { seed: 17, minute: 480480, x: 450, y: 1100, zoom: 2, note: "dense snow and fog above the comparison rock" },
+  clear: { seed: 17, minute: 1440, x: 2700, y: 6600, zoom: 2, note: "clear air above the comparison rock" },
+  "sunny-clouds": { seed: 17, minute: 170160, x: 4200, y: 5700, zoom: 2, note: "dry midsummer sun with a broken cloud field" },
+  "approaching-rain": { seed: 17, minute: 86760, x: 6270, y: 894, zoom: 2, note: "edge of a rain band approaching from the west" },
+  "local-rain": { seed: 17, minute: 108720, x: 7926, y: 4416, zoom: 2, note: "the dense part of a local rain band" },
+  "persisted-snow": { seed: 17, minute: 480480, x: 1776, y: 7200, zoom: 2, note: "falling snow above snow retained by stationary ground state" },
+  "frozen-water": { seed: 17, minute: 481200, x: 1050, y: 300, zoom: 2, note: "safe winter ice over naturally frozen coastal water" },
+  "valley-fog": { seed: 17, minute: 19560, x: 5052, y: 5988, zoom: 2, note: "dry fog pooled over bog ground" },
+  "windward-lee": { seed: 17, minute: 3960, x: 4200, y: 5700, zoom: 2, note: "a terrain-modified extinction gradient" },
+  obscured: { seed: 17, minute: 480480, x: 2700, y: 6600, zoom: 2, note: "dense snow and fog above the comparison rock" },
 } as const;
 
 export type WeatherShotName = keyof typeof WEATHER_SHOTS;

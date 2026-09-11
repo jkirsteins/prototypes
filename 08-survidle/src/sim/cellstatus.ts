@@ -1,7 +1,7 @@
 import { cellAt, type World } from "../world/gen";
 import { fieldsAt } from "../world/terrain";
 import type { GameState, IceMode, LocalGroundWeather, Terrain } from "./types";
-import { DEEP_SNOW_CM, groundAt, iceMode } from "./weather";
+import { DEEP_SNOW_CM, groundAtPatch, iceMode } from "./weather";
 
 export const SNOW_SHOWN_CM = 5;
 
@@ -61,7 +61,8 @@ export function surfaceOf(
 export function cellSurface(state: GameState, world: World, cell: number): CellSurface {
   const groundCell = cellAt(world, cell);
   const water = fieldsAt(world.seed, groundCell.x, groundCell.y).sea ? "sea" : "lake";
-  return surfaceOf(groundCell.terrain, water, groundAt(state, world, groundCell.region));
+  // Snow is read where the survivor is looking, not averaged over the region.
+  return surfaceOf(groundCell.terrain, water, groundAtPatch(state, world, cell));
 }
 
 export function surfaceHeading(surface: CellSurface): string {

@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as climate from "../src/sim/climate";
 import type { AtmosphereSample, LocalGroundWeather } from "../src/sim/types";
-import { atmosphereAt, integrateGroundHour } from "../src/sim/weather";
+import { atmosphereAt, integrateGroundHour, patchGroundModifiers } from "../src/sim/weather";
 import { conditionsAt, dryGroundAt, ensureGround, groundAt } from "../src/sim/weather";
 import { rebaseWeather } from "../src/sim/weather";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { migrate, serialize, deserialize } from "../src/sim/save";
 import { cellOf } from "../src/sim/position";
-import { regionAt } from "../src/world/gen";
+import { cellAt, regionAt, type World } from "../src/world/gen";
+import { markKnown } from "../src/sim/mapped";
+import { routeConditions, survivorRoute } from "../src/sim/routing";
+import { ICE_SAFE_CM, ICE_THIN_CM } from "../src/sim/weather";
 import { advance } from "../src/sim/advance";
 import { stepSeeps } from "../src/sim/seep";
 import { check } from "../src/sim/tasks";
@@ -24,6 +27,14 @@ import { sourceLitres } from "../src/sim/water";
 import { watersideCell } from "../src/sim/position";
 
 afterEach(() => vi.restoreAllMocks());
+
+/**
+ * What a region's cover comes to where it actually lies. The region drives
+ * the snow; the patch's own crown and exposure decide its depth there.
+ */
+function lying(world: World, cell: number, regionSnowCm: number): number {
+  return regionSnowCm * patchGroundModifiers(world, cell).snow;
+}
 
 function ground(over: Partial<LocalGroundWeather> = {}): LocalGroundWeather {
   return { updatedHour: 0, snowCm: 0, surfaceWaterMm: 0, soilMoisture: 0.5, frost: 0, iceCm: 0, dryHours: 0, temperatureSum: 0, temperatureHours: 0, ...over };
@@ -80,6 +91,43 @@ describe("local ground integration", () => {
     for (let h = 0; h < 24; h++) g = integrateGroundHour(g, air({ temperatureC: h < 12 ? -1 : 3 }));
     expect(g.iceCm).toBeCloseTo(Math.sqrt(72) - 2);
     expect(g.temperatureHours).toBe(0);
+  });
+});
+
+describe("ground on one patch", () => {
+  it("lies deeper on open ground than under a closed crown in the same region", () => {
+    const { state, world } = newGame(42, 334);
+    const region = state.player.region;
+    const cells = regionAt(world, region).cells;
+    const open = cells.find((cell) => cellAt(world, cell).terrain === "meadow" || cellAt(world, cell).terrain === "bog");
+    const under = cells.find((cell) => cellAt(world, cell).terrain === "spruce");
+    expect(open).toBeDefined();
+    expect(under).toBeDefined();
+    ensureGround(state, world, region).snowCm = 40;
+    const cal = calendar(state.minute, state.startDoy);
+    const depth = (cell: number) => conditionsAt(state, world, cal, cell).ground.snowCm;
+    // One region drives both; the crown holds part of it off the ground below.
+    expect(depth(under!)).toBeLessThan(depth(open!));
+    expect(depth(under!)).toBeGreaterThan(0);
+    expect(groundAt(state, world, region).snowCm).toBe(40);
+  });
+
+  it("stops a cached route from crossing water once its ice is no longer safe", () => {
+    const { state, world } = newGame(42, 334);
+    const region = state.player.region;
+    const from = cellOf(state, world);
+    const water = regionAt(world, region).cells.find((cell) => cellAt(world, cell).terrain === "water");
+    expect(water).toBeDefined();
+    for (const cell of regionAt(world, region).cells) markKnown(state, cell);
+    ensureGround(state, world, region).iceCm = ICE_SAFE_CM + 5;
+    const overIce = survivorRoute(state, world, from, water!);
+    expect(overIce).not.toBeNull();
+    const safeKey = routeConditions(state, world).key;
+
+    ensureGround(state, world, region).iceCm = ICE_THIN_CM - 1;
+    // The cache is keyed by the conditions, so the safe-ice answer cannot survive the thaw.
+    expect(routeConditions(state, world).key).not.toBe(safeKey);
+    expect(survivorRoute(state, world, from, water!)).toBeNull();
   });
 });
 
@@ -173,9 +221,11 @@ describe("persistent regional weather", () => {
     atmosphereAt(state, world, cell, 0);
     Object.assign(state.weather, { version: undefined, ground: undefined, snowCm: 17, iceCm: 0, dryDays: 0, wetDay: false });
     migrate(state);
-    expect(conditionsAt(state, world, calendar(state.minute, state.startDoy), cell).ground.snowCm).toBe(17);
+    const lies = lying(world, cell, 17);
+    expect(lies).toBeGreaterThan(0);
+    expect(conditionsAt(state, world, calendar(state.minute, state.startDoy), cell).ground.snowCm).toBeCloseTo(lies, 10);
     expect(sample).toHaveBeenCalledTimes(2);
-    expect(sample.mock.calls[1][0].snowCm).toBe(17);
+    expect(sample.mock.calls[1][0].snowCm).toBeCloseTo(lies, 10);
   });
 
   it("checks water and split wood at the requested remote cell", () => {
@@ -262,7 +312,9 @@ describe("persistent regional weather", () => {
     const { state, world } = newGame(42, 334);
     siteCamp(state, world);
     state.weather.snowCm = 0;
-    ensureGround(state, world, state.player.region).snowCm = 45;
+    // Deep enough to build in where the survivor stands, whatever this patch's
+    // crown and exposure take off the region's cover.
+    ensureGround(state, world, state.player.region).snowCm = 45 / patchGroundModifiers(world, cellOf(state, world)).snow;
     expect(check(state, world, calendar(0, 334), "build", "snowShelter").ok).toBe(true);
   });
 
@@ -330,8 +382,8 @@ describe("persistent regional weather", () => {
     ensureGround(state, world, state.player.region).snowCm = 43;
     ensureGround(state, world, other).snowCm = 3;
     const before = serialize(state, 0);
-    expect(conditionsAt(state, world, calendar(state.minute, state.startDoy), here).ground.snowCm).toBe(43);
-    expect(conditionsAt(state, world, calendar(state.minute, state.startDoy), cell).ground.snowCm).toBe(3);
+    expect(conditionsAt(state, world, calendar(state.minute, state.startDoy), here).ground.snowCm).toBeCloseTo(lying(world, here, 43), 10);
+    expect(conditionsAt(state, world, calendar(state.minute, state.startDoy), cell).ground.snowCm).toBeCloseTo(lying(world, cell, 3), 10);
     expect(groundAt(state, world, other).snowCm).toBe(3);
     expect(serialize(state, 0)).toBe(before);
   });

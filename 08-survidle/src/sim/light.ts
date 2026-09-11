@@ -131,7 +131,16 @@ export function visitedCamps(state: GameState): { id: number; st: RegionState; c
   return out;
 }
 
-/** The light to work by at a cell: the sky, plus a lit fire at its own camp and a lit torch wherever it is carried. */
+/**
+ * The light to work by at a patch: the sky, plus a lit fire at its own camp
+ * and a lit torch wherever it is carried.
+ *
+ * A flame lights the patch it burns on and no other. The same 500 lm fire
+ * that puts CAMP_FIRE_LUX on the ground a person sits at is 40 cd at the next
+ * patch's 50 m, which is 0.016 lux - under a hundredth of what the least
+ * demanding work in NIGHT_WORK asks for, and less than a clear night's own
+ * moonlight. Inverse square, not a neighbourhood rule.
+ */
 export function illuminance(state: GameState, world: World, cal: Calendar, cell: number): number {
   const weather = localWeather(state, world, cell);
   let lux = skyLux(cal, weather.clear, weather.snowCm);

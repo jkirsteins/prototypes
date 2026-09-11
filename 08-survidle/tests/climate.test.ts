@@ -15,7 +15,7 @@ describe("deterministic local atmosphere", () => {
     let wetHours = 0;
     let peakMmPerHour = 0;
     for (let hour = 0; hour < 365 * 24; hour++) {
-      const air = sampleAtmosphere({ startDoy: 90, snowCm: 0 }, world, hour * 60, 1254, 470);
+      const air = sampleAtmosphere({ startDoy: 90, snowCm: 0 }, world, hour * 60, 7524, 2820);
       liquidMm += air.precipMmPerHour;
       if (air.precipMmPerHour >= 0.2) wetHours++;
       peakMmPerHour = Math.max(peakMmPerHour, air.precipMmPerHour);
@@ -30,48 +30,51 @@ describe("deterministic local atmosphere", () => {
   it("reuses exact lattice nodes and bounds the per-world field cache", () => {
     const world = newWorld(17);
     const sine = vi.spyOn(Math, "sin");
-    const first = sampleAtmosphere(weather, world, 1234, 650, 720);
+    const first = sampleAtmosphere(weather, world, 1234, 3900, 4320);
     sine.mockClear();
-    expect(sampleAtmosphere(weather, world, 1234, 650, 720)).toEqual(first);
+    expect(sampleAtmosphere(weather, world, 1234, 3900, 4320)).toEqual(first);
     expect(sine).toHaveBeenCalledTimes(1);
     sine.mockRestore();
-    const negative = sampleAtmosphere(weather, world, 1234, -650, -720);
+    const negative = sampleAtmosphere(weather, world, 1234, -3900, -4320);
     expect(cachedAtmosphereFieldWaves(world)).toBe(4);
 
     for (let i = 0; i < 2_000; i++) sampleAtmosphere(weather, world, 1234, i * 30, i * 17);
     expect(cachedAtmosphereFieldNodes(world)).toBeLessThanOrEqual(MAX_ATMOSPHERE_FIELD_NODES);
-    expect(sampleAtmosphere(weather, world, 1234, -650, -720)).toEqual(negative);
+    expect(sampleAtmosphere(weather, world, 1234, -3900, -4320)).toEqual(negative);
     world.seed = 19;
-    const changedSeed = sampleAtmosphere(weather, world, 1234, -650, -720);
+    const changedSeed = sampleAtmosphere(weather, world, 1234, -3900, -4320);
     expect(changedSeed).not.toEqual(negative);
-    expect(changedSeed).toEqual(sampleAtmosphere(weather, newWorld(19), 1234, -650, -720));
+    expect(changedSeed).toEqual(sampleAtmosphere(weather, newWorld(19), 1234, -3900, -4320));
   });
 
   it("repeats across sample order and fresh worlds without materializing terrain or mutating inputs", () => {
     const world = newWorld(17);
     const before = structuredClone(world);
-    const first = sampleAtmosphere(weather, world, 1234, 650, 720);
-    sampleAtmosphere(weather, world, 60000, 1500, 1000);
-    expect(sampleAtmosphere(weather, world, 1234, 650, 720)).toEqual(first);
-    expect(sampleAtmosphere(weather, newWorld(17), 1234, 650, 720)).toEqual(first);
-    expect(sampleAtmosphere(weather, newWorld(19), 1234, 650, 720)).not.toEqual(first);
+    const first = sampleAtmosphere(weather, world, 1234, 3900, 4320);
+    sampleAtmosphere(weather, world, 60000, 9000, 6000);
+    expect(sampleAtmosphere(weather, world, 1234, 3900, 4320)).toEqual(first);
+    expect(sampleAtmosphere(weather, newWorld(17), 1234, 3900, 4320)).toEqual(first);
+    expect(sampleAtmosphere(weather, newWorld(19), 1234, 3900, 4320)).not.toEqual(first);
     expect(world).toEqual(before);
     expect(weather).toEqual({ startDoy: 180, snowCm: 0 });
   });
 
-  it("keeps adjacent 300 m atmospheric samples coherent while distant weather differs", () => {
+  it("keeps adjacent 50 m atmospheric samples coherent while weather 30 km away differs", () => {
     const world = newWorld(17);
     let adjacentPressure = 0;
     let distantPressure = 0;
-    for (let x = 0; x < 150; x += 10) {
+    // 50 m is one patch; 30 km is 600 of them, well past the 12 km broad lattice.
+    for (let x = 0; x < 900; x += 60) {
       // The northern sea removes elevation differences from the field comparison.
       const a = sampleAtmosphere(weather, world, 1440, x, 0);
       const b = sampleAtmosphere(weather, world, 1440, x + 1, 0);
-      const far = sampleAtmosphere(weather, world, 1440, x + 250, 0);
+      const far = sampleAtmosphere(weather, world, 1440, x + 600, 0);
       adjacentPressure += Math.abs(a.pressureHpa - b.pressureHpa);
       distantPressure += Math.abs(a.pressureHpa - far.pressureHpa);
+      expect(Math.abs(a.temperatureC - b.temperatureC)).toBeLessThan(1);
       expect(Math.abs(a.relativeHumidity - b.relativeHumidity)).toBeLessThan(0.03);
       expect(Math.abs(a.cloud - b.cloud)).toBeLessThan(0.06);
+      expect(far).not.toEqual(a);
     }
     expect(adjacentPressure).toBeLessThan(distantPressure / 15);
     expect(distantPressure).toBeGreaterThan(10);
@@ -79,37 +82,37 @@ describe("deterministic local atmosphere", () => {
 
   it("advects the broad field over twenty minutes and stays continuous at lattice boundaries", () => {
     const world = newWorld(17);
-    const a = sampleAtmosphere(weather, world, 0, 100, 0);
-    const later = sampleAtmosphere(weather, world, 20, 100, 0);
+    const a = sampleAtmosphere(weather, world, 0, 600, 0);
+    const later = sampleAtmosphere(weather, world, 20, 600, 0);
     const transport = fieldTransport(world.seed);
-    const transported = sampleAtmosphere(weather, world, 20, 100 + transport.xKmh / 0.9, transport.yKmh / 0.9);
+    const transported = sampleAtmosphere(weather, world, 20, 600 + transport.xKmh / 0.15, transport.yKmh / 0.15);
     expect(later.pressureHpa).not.toBeCloseTo(a.pressureHpa, 3);
     expect(transported.pressureHpa).toBeCloseTo(a.pressureHpa, 9);
-    const left = sampleAtmosphere(weather, world, 0, 40 - 0.00001, 0);
-    const right = sampleAtmosphere(weather, world, 0, 40 + 0.00001, 0);
+    const left = sampleAtmosphere(weather, world, 0, 240 - 0.00001, 0);
+    const right = sampleAtmosphere(weather, world, 0, 240 + 0.00001, 0);
     expect(Math.abs(left.pressureHpa - right.pressureHpa)).toBeLessThan(0.0001);
   });
 
   it("changes local wind smoothly as pressure systems pass and across neighbouring positions", () => {
     const world = newWorld(17);
-    const here = sampleAtmosphere(weather, world, 0, 100, 0);
-    const next = sampleAtmosphere(weather, world, 0, 101, 0);
-    const far = sampleAtmosphere(weather, world, 0, 200, 0);
-    const soon = sampleAtmosphere(weather, world, 0.001, 100, 0);
-    const later = sampleAtmosphere(weather, world, 20, 100, 0);
+    const here = sampleAtmosphere(weather, world, 0, 600, 0);
+    const next = sampleAtmosphere(weather, world, 0, 606, 0);
+    const far = sampleAtmosphere(weather, world, 0, 1200, 0);
+    const soon = sampleAtmosphere(weather, world, 0.001, 600, 0);
+    const later = sampleAtmosphere(weather, world, 20, 600, 0);
     const difference = (a: typeof here, b: typeof here) => Math.hypot(a.windXKmh - b.windXKmh, a.windYKmh - b.windYKmh);
     expect(difference(here, far)).toBeGreaterThan(1);
     expect(difference(here, later)).toBeGreaterThan(0.1);
     expect(difference(here, next)).toBeLessThan(1);
     expect(difference(here, soon)).toBeLessThan(0.01);
-    for (let x = 0; x < world.w; x += 60) {
-      const wind = sampleAtmosphere(weather, world, 1440, x, 500);
+    for (let x = 0; x < world.w; x += 360) {
+      const wind = sampleAtmosphere(weather, world, 1440, x, 3000);
       expect(wind.windKmh).toBeGreaterThanOrEqual(0);
       expect(wind.windKmh).toBeLessThanOrEqual(60);
       expect(Math.hypot(wind.windXKmh, wind.windYKmh)).toBeCloseTo(wind.windKmh, 10);
     }
-    const left = sampleAtmosphere(weather, world, 0, 40 - 0.00001, 0);
-    const right = sampleAtmosphere(weather, world, 0, 40 + 0.00001, 0);
+    const left = sampleAtmosphere(weather, world, 0, 240 - 0.00001, 0);
+    const right = sampleAtmosphere(weather, world, 0, 240 + 0.00001, 0);
     expect(difference(left, right)).toBeLessThan(0.0001);
   });
 
@@ -118,8 +121,8 @@ describe("deterministic local atmosphere", () => {
     let dry = 0;
     let wet = 0;
     const rates: number[] = [];
-    for (let x = 0; x < world.w; x += 30) {
-      const sample = sampleAtmosphere(weather, world, 1440, x, 500);
+    for (let x = 0; x < world.w; x += 180) {
+      const sample = sampleAtmosphere(weather, world, 1440, x, 3000);
       if (sample.cloud <= 0.65) {
         expect(sample.precipMmPerHour).toBe(0);
         expect(sample.precip).toBe("none");
@@ -147,9 +150,9 @@ describe("deterministic local atmosphere", () => {
 
   it("uses the requested season and only develops blowing snow over cold snow cover", () => {
     const world = newWorld(17);
-    const summer = sampleAtmosphere(weather, world, 0, 500, 600);
-    const winter = sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, 500, 600);
-    const bare = sampleAtmosphere({ startDoy: 15 }, world, 0, 500, 600);
+    const summer = sampleAtmosphere(weather, world, 0, 3000, 3600);
+    const winter = sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, 3000, 3600);
+    const bare = sampleAtmosphere({ startDoy: 15 }, world, 0, 3000, 3600);
     expect(winter.temperatureC).toBeLessThan(summer.temperatureC - 15);
     expect(winter.windKmh).toBeGreaterThan(18);
     expect(winter.blowingSnow).toBeGreaterThan(0);
@@ -164,8 +167,8 @@ describe("deterministic local atmosphere", () => {
     expect(Math.hypot(transport.xKmh, transport.yKmh)).toBeLessThan(18);
     let calm = 0;
     let drifting = 0;
-    for (let x = 200; x < 1400; x += 60) {
-      const sample = sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, x, 600);
+    for (let x = 1200; x < 8400; x += 360) {
+      const sample = sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, x, 3600);
       expect(sample.temperatureC).toBeLessThan(0);
       if (sample.windKmh <= 18) {
         expect(sample.blowingSnow).toBe(0);
@@ -210,9 +213,9 @@ describe("optical extinction", () => {
   it("supplies both rain and snow to extinction while atmospheric precipitation is mixed", () => {
     const world = newWorld(17);
     let mixed = 0;
-    for (let x = 200; x < 1500; x += 100) {
+    for (let x = 1200; x < 9000; x += 600) {
       for (let startDoy = 70; startDoy < 160; startDoy += 5) {
-        const sample = sampleAtmosphere({ startDoy }, world, 0, x, 500);
+        const sample = sampleAtmosphere({ startDoy }, world, 0, x, 3000);
         if (sample.temperatureC <= -1 || sample.temperatureC >= 1 || sample.precipMmPerHour === 0) continue;
         expect(sample.rainMmPerHour).toBeGreaterThan(0);
         expect(sample.snowCmPerHour).toBeGreaterThan(0);

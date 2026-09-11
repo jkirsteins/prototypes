@@ -1,8 +1,8 @@
 /** Deterministic moving air. No random stream, world chunks or ground records are changed here. */
 import { derive } from "../rng";
-import { CELL_KM } from "../units";
 import type { World } from "../world/cells";
-import { fieldsAt } from "../world/terrain";
+import { fieldsAtMetric } from "../world/fine-terrain";
+import { PATCH_KM } from "../world/spatial";
 import { START_MINUTE_OF_DAY } from "./calendar";
 import type { AtmosphereSample } from "./types";
 
@@ -178,9 +178,12 @@ function field(world: World, salt: number, xKm: number, yKm: number, spacingKm: 
   return top * (1 - fy) + bottom * fy;
 }
 
+/** How far upwind and downwind the lift across a slope is measured, in km of true ground. */
+const LIFT_SPAN_KM = 6;
+
 /** Pure terrain response, with elevations in km and moisture in 0..1. */
 export function terrainModifiers(elevationKm: number, upwindElevationKm: number, meanElevationKm: number, moisture: number) {
-  // Lift across 6 km: cap the response so steep terrain cannot create a storm.
+  // Lift across LIFT_SPAN_KM: cap the response so steep terrain cannot create a storm.
   const lift = clamp(elevationKm - upwindElevationKm, -0.6, 0.6);
   return {
     temperatureOffsetC: -6.5 * elevationKm,
@@ -191,9 +194,10 @@ export function terrainModifiers(elevationKm: number, upwindElevationKm: number,
   };
 }
 
-function elevationKm(seed: number, x: number, y: number): number {
-  const f = fieldsAt(seed, x, y);
-  return f.sea ? 0 : Math.max(0, f.e) * 1.2;
+/** Ground height in km at a point given in km of true distance. */
+function elevationKm(seed: number, xKm: number, yKm: number): number {
+  const f = fieldsAtMetric(seed, { xM: xKm * 1000, yM: yKm * 1000 });
+  return f.sea ? 0 : Math.max(0, f.elevationM) / 1000;
 }
 
 /** Constant translation of the weather systems, separate from the local surface wind. */
@@ -221,23 +225,29 @@ function localWind(world: World, airX: number, airY: number, prevailing: { xKmh:
   return { windXKmh, windYKmh, windKmh, windBearingDeg };
 }
 
-/** x/y are world cell coordinates (fractional midpoints allowed); minute is absolute run time. */
+/**
+ * x/y are fine patch coordinates (fractional midpoints allowed); minute is
+ * absolute run time. Everything the air is made of is measured in km of true
+ * distance, so a storm keeps its size and speed whatever the lattice under it.
+ */
 export function sampleAtmosphere(weather: ClimateState, world: World, minute: number, x: number, y: number): AtmosphereSample {
   const transport = fieldTransport(world.seed);
-  const airX = x * CELL_KM - transport.xKmh * minute / 60;
-  const airY = y * CELL_KM - transport.yKmh * minute / 60;
+  const xKm = x * PATCH_KM;
+  const yKm = y * PATCH_KM;
+  const airX = xKm - transport.xKmh * minute / 60;
+  const airY = yKm - transport.yKmh * minute / 60;
   const { windKmh, windBearingDeg, windXKmh, windYKmh } = localWind(world, airX, airY, transport);
   const pressure = field(world, 720, airX, airY, BROAD_LATTICE_KM);
   const humidity = field(world, 721, airX, airY, BROAD_LATTICE_KM);
   const anomaly = field(world, 722, airX, airY, BROAD_LATTICE_KM);
   const detail = field(world, 723, airX, airY, DETAIL_LATTICE_KM);
-  const terrain = fieldsAt(world.seed, x, y);
-  const height = terrain.sea ? 0 : Math.max(0, terrain.e) * 1.2;
-  const dx = windKmh > 0 ? windXKmh / windKmh * 20 : 0;
-  const dy = windKmh > 0 ? windYKmh / windKmh * 20 : 0;
-  const upwind = elevationKm(world.seed, x - dx, y - dy);
-  const downwind = elevationKm(world.seed, x + dx, y + dy);
-  const modifiers = terrainModifiers(height, upwind, (upwind + downwind) / 2, terrain.m);
+  const terrain = fieldsAtMetric(world.seed, { xM: xKm * 1000, yM: yKm * 1000 });
+  const height = terrain.sea ? 0 : Math.max(0, terrain.elevationM) / 1000;
+  const dxKm = windKmh > 0 ? windXKmh / windKmh * LIFT_SPAN_KM : 0;
+  const dyKm = windKmh > 0 ? windYKmh / windKmh * LIFT_SPAN_KM : 0;
+  const upwind = elevationKm(world.seed, xKm - dxKm, yKm - dyKm);
+  const downwind = elevationKm(world.seed, xKm + dxKm, yKm + dyKm);
+  const modifiers = terrainModifiers(height, upwind, (upwind + downwind) / 2, terrain.moisture);
   const parentHumidity = clamp(0.45 + 0.55 * humidity + 0.15 * (0.5 - pressure));
   // Clouds begin at 55% humidity; substantial rain support needs 65% cloud.
   // Terrain and subordinate detail may shape rain inside this broad support only.

@@ -2,7 +2,7 @@ import { knowledgeCounts } from "../src/sim/fineknowledge";
 import { describe, expect, it } from "vitest";
 import { mapHtml } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
-import { conditionsAt, iceMode } from "../src/sim/weather";
+import { conditionsAt, iceMode, patchGroundModifiers } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture, weatherShotSimulation } from "../src/sim/weather-scenarios";
 import { fieldsAt, terrainAt } from "../src/world/terrain";
 import { tipHtml } from "../src/ui/tip";
@@ -15,7 +15,7 @@ describe("simulation-backed weather screenshot fixtures", () => {
     const fog = weatherShotSimulation("valley-fog");
     const snow = weatherShotSimulation("persisted-snow");
 
-    expect(clear.definition).toMatchObject({ seed: 17, minute: 1440, x: 450, y: 1100 });
+    expect(clear.definition).toMatchObject({ seed: 17, minute: 1440, x: 2700, y: 6600 });
     expect(conditionsAt(clear.state, clear.world, clear.cal, clear.cell).extinctionPerKm).toBeLessThan(0.3);
     expect(conditionsAt(rain.state, rain.world, rain.cal, rain.cell).rainMmPerHour).toBeGreaterThan(10);
     expect(conditionsAt(fog.state, fog.world, fog.cal, fog.cell).fog).toBeGreaterThan(0.35);
@@ -23,7 +23,10 @@ describe("simulation-backed weather screenshot fixtures", () => {
     const snowHere = conditionsAt(snow.state, snow.world, snow.cal, snow.cell);
     expect(snowHere.snowCmPerHour).toBeGreaterThan(5);
     expect(snowHere.ground.snowCm).toBeGreaterThan(5);
-    expect(snow.state.weather.ground[snow.state.player.region]?.snowCm).toBe(snowHere.ground.snowCm);
+    // The region record drives it; what lies on this patch is that record
+    // after the patch's own crown and exposure.
+    const driver = snow.state.weather.ground[snow.state.player.region]!.snowCm;
+    expect(snowHere.ground.snowCm).toBeCloseTo(driver * patchGroundModifiers(snow.world, snow.cell).snow, 10);
   });
 
   it("provides a dry sunny reference with spatially varying cloud shadows", () => {
@@ -46,7 +49,7 @@ describe("simulation-backed weather screenshot fixtures", () => {
   it("provides a naturally frozen water reference with safe ice across the visible surface", () => {
     const shot = weatherShotSimulation("frozen-water");
     const here = conditionsAt(shot.state, shot.world, shot.cal, shot.cell);
-    expect(shot.definition).toMatchObject({ seed: 17, minute: 481200, x: 175, y: 50 });
+    expect(shot.definition).toMatchObject({ seed: 17, minute: 481200, x: 1050, y: 300 });
     expect(terrainAt(shot.world.seed, shot.definition.x, shot.definition.y)).toBe("water");
     expect(iceMode({ iceCm: here.ground.iceCm })).toBe("safe");
 
@@ -65,8 +68,10 @@ describe("simulation-backed weather screenshot fixtures", () => {
 
   it("keeps one coherent field spatially varied instead of rolling weather per cell", () => {
     const shot = weatherShotSimulation("approaching-rain");
-    const samples = Array.from({ length: 21 }, (_, dx) =>
-      conditionsAt(shot.state, shot.world, shot.cal, shot.cell - 10 + dx).rainMmPerHour,
+    // Every 300 m across 6 km of the band: one coherent field varies over
+    // kilometres, and never jumps between neighbouring samples.
+    const samples = Array.from({ length: 21 }, (_, i) =>
+      conditionsAt(shot.state, shot.world, shot.cal, shot.cell - 60 + i * 6).rainMmPerHour,
     );
     expect(Math.max(...samples) - Math.min(...samples)).toBeGreaterThan(1);
     expect(Math.max(...samples.slice(1).map((v, i) => Math.abs(v - samples[i])))).toBeLessThan(8);
@@ -76,7 +81,8 @@ describe("simulation-backed weather screenshot fixtures", () => {
     const shot = weatherShotSimulation("valley-fog");
     const { x, y } = shot.definition;
     const center = fieldsAt(shot.world.seed, x, y).e;
-    for (const [dx, dy] of [[-20, 0], [20, 0], [0, -20], [0, 20]]) {
+    // 6 km is 120 patches.
+    for (const [dx, dy] of [[-120, 0], [120, 0], [0, -120], [0, 120]]) {
       expect(fieldsAt(shot.world.seed, x + dx, y + dy).e).toBeGreaterThan(center);
     }
   });
@@ -88,10 +94,18 @@ describe("simulation-backed weather screenshot fixtures", () => {
     root.innerHTML = html;
     expect(html).toContain("wx-rain");
     expect(html).not.toContain('class="fog-field"');
-    expect(html).toContain("fog-ripple");
     expect(html).toContain("unknown ground");
     expect(root.querySelector(".c.fog.wx-local")).toBeNull();
     expect(root.querySelector(".c.memory.wx-local, .c.dim.wx-local")).toBeNull();
+  });
+
+  it("draws fog where the air is foggy rather than over the whole viewport", () => {
+    // The rain scene has no fog to draw; the fog scene is where that layer has
+    // to be a per-patch glyph and not a sheet laid over the map.
+    const shot = weatherShotFixture("valley-fog");
+    const html = mapHtml(shot.world, shot.state, newUiState(), shot.cal);
+    expect(html).toContain("fog-ripple");
+    expect(html).not.toContain('class="fog-field"');
   });
 
   it("makes a dense band's actual current sight footprint smaller than clear air at the same rock", () => {

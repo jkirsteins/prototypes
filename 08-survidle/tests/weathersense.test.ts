@@ -330,7 +330,7 @@ describe("the storm choice", () => {
     const { state, world } = rockReturn();
     runOrders(state, world, calendar(0), new Rng(1));
     expect(state.task?.id).toBe("walk");
-    weather.ensureGround(state, world, state.player.region).snowCm = 40;
+    weather.ensureGround(state, world, state.player.region).snowCm = 120;
     advance(state, world, 1);
     expect(state.task?.id).toBe("findShelter");
     expect(state.route).toBeNull();
@@ -374,7 +374,9 @@ describe("the storm choice", () => {
     const r = regionAt(world, state.player.region);
     const camp = requireCamp(r);
     regionState(state, world, r.id).campCell = camp;
-    // The far corner of the region under 40 cm of snow. A walk this long needs
+    // The far corner of the region under deep snow the whole way: the driver
+    // is set high enough that even the scoured ridges and the ground under the
+    // crowns on the route still lie deep. A walk this long needs
     // generated ground: its search evicts and regenerates painted chunks.
     const { x, y } = cellAt(world, camp);
     const far = r.cells.reduce((best, cell) => {
@@ -384,7 +386,7 @@ describe("the storm choice", () => {
       return d > best.d ? { cell, d } : best;
     }, { cell: camp, d: -1 }).cell;
     placeAt(state, world, far);
-    weather.ensureGround(state, world, state.player.region).snowCm = 40;
+    weather.ensureGround(state, world, state.player.region).snowCm = 120;
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
     const minutes = minutesToCamp(state, world, calendar(0))!;
     expect(minutes).toBeCloseTo(193.25, 2);
