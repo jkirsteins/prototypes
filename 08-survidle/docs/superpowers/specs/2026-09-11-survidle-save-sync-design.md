@@ -1,5 +1,16 @@
 # Survidle Save Sync and Lease Design
 
+**Status:** specced 2026-09-11, not built, postponed to its roadmap slot:
+after the first tester round, and only if the round's testers ask for the
+phone. The round is recruited as single-device so that the asking is a
+finding. The phone check-in page that builds on this waits further, for
+roadmap item P's camp view and camp sheet. See "The save sync" in
+`2026-09-03-survidle-realism-roadmap.md`.
+
+Before building, re-read the two catch-up sites in `src/main.ts` named
+under "The rule in front of every catch-up". Item P restructures the page,
+and the code this spec names by behaviour may have moved.
+
 ## Purpose
 
 The save is local storage, so a phone is a different world from the

@@ -459,8 +459,11 @@ a producer, a camp that holds and was chosen, orders, a forecast that
 makes away risk legible, a person to lose), so twenty testers go in there, as a kill-or-continue check of the hybrid and
 not the commercial gate, before any content deepens a loop that has not
 earned it; then the save sync if the round asks for it (the section of
-that name below: a code on the settings panel and the two-device rule),
-and the south if the round's first deaths are not followed by a restart
+that name below: a sync code, a Cloudflare Worker with one Durable Object
+per code, and a lease that lets one device run the world at a time;
+spec `2026-09-11-survidle-save-sync-design.md`), then the phone check-in
+page on top of it once P's camp view and camp sheet stand (the same
+section: a second entry page over the same engine, no map), and the south if the round's first deaths are not followed by a restart
 (the section of that name below: the landing month first, then the map
 extended south);
 then the second half of I (the found places, and the card reading the
@@ -2147,11 +2150,34 @@ save put to a key-value store on every save and fetched on every open,
 Cloudflare's free tier being enough; and Steam cloud for the Steam
 build. The storage is trivial. The item is the two-device rule: a tab
 left open on the desktop and a phone check-in both run the simulation
-forward and diverge, the same problem two tabs have today. Last writer
-by save time wins, the loser reloads and takes over, and the away
-report says which happened. It lands after the round, if the round's
-testers ask for the phone, and not before, so that the round is
-recruited as single-device and the asking is a finding.
+forward and diverge, the same problem two tabs have today. It lands
+after the round, if the round's testers ask for the phone, and not
+before, so that the round is recruited as single-device and the asking
+is a finding.
+
+Specced 2026-09-11 in `2026-09-11-survidle-save-sync-design.md`, not
+built. The spec replaces "last writer by save time wins": with
+permadeath it lets the survivor die on one device and live on the
+other. Instead one device holds a lease and runs the world; any other
+device shows the latest save read-only and can take over, and the old
+holder learns it at once over a WebSocket and stops. No device ever
+advances the world from a save that is not the store's latest. The
+store is a Cloudflare Worker with one Durable Object per sync code,
+because Durable Object storage is strongly consistent and KV is not,
+and "close the laptop, open the phone" falls inside KV's window. No
+push and no accounts.
+
+**The phone check-in page** is the second half, and waits for both the
+sync and P. The phone is a companion to a desktop run, not a smaller
+copy of it: everything on it must feed a decision made at a check-in,
+so there is no map and no Do catalog. What it carries: the camp
+sheet's two numbers and the away report read against it, the Ahead
+rows, reordering the order list, the once orders startable now, the
+self-care row, the away dial, and acting on an opportunity. It is a
+second Vite entry page over the same engine, reached by the sync link.
+It waits for P because P's camp view and camp sheet are the check-in
+it would otherwise invent; built after them it is the camp view shaped
+for a phone. Not specced.
 
 ### The south
 
