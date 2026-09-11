@@ -295,10 +295,10 @@ function landingIn(world: World, lx: number, ly: number): number {
       if (!isShelteredShore(world, cell)) continue;
       const forest = forestShareWithin(world, cell, START_FOREST_CELLS);
       if (forest < START_FOREST_SHARE || forest <= bestForest) continue;
-      // The forest must be walkable from the shore.
+      // The forest must exist in the region and be walkable from the shore.
       const r = regionAt(world, regionOf(world, x, y));
-      const target = r.spots.find((s) => s.id === "forest") ?? null;
-      if (target && findRoute(world, cell, target.cell) === null) continue;
+      const target = r.spots.find((s) => s.id === "forest");
+      if (!target || findRoute(world, cell, target.cell) === null) continue;
       best = cell;
       bestForest = forest;
     }
