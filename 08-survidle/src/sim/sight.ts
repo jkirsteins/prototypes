@@ -1,7 +1,8 @@
 /**
  * What the eye reaches from where the survivor stands, and what that
  * opens for walking. Range is what the vantage allows and the canopy
- * cuts short; the dark takes it away. Marks cells, never regions.
+ * cuts short, side by side; the dark takes it away. Marks cells, never
+ * regions.
  */
 import { CELL_KM } from "../units";
 import { regionPeek, terrainOf, type World } from "../world/gen";
@@ -23,21 +24,26 @@ const HORIZON_KM_PER_SQRT_M = 3.57;
 /**
  * Closed spruce lets almost nothing through: the trunks and the dark below
  * them close the view down to the ground the survivor is already standing
- * on, whatever the horizon formula would say.
+ * on, whatever the horizon formula would say. Closed means wood on every
+ * side; trees at a lakeshore or a clearing's edge open onto whatever lies
+ * that way, and only the wooded sides stay shut.
  */
 const SPRUCE_RANGE_CELLS = 0;
 /**
  * Pine and birch keep about 150 m of visibility between the trunks -
  * short of a cell's own 300 m width, so it is read as the immediate ring
- * rather than rounded away to nothing.
+ * rather than rounded away to nothing. The same edge rule applies.
  */
 const FOREST_VISIBILITY_M = 150;
 const FOREST_RANGE_CELLS = 1;
 /**
  * The coastal spine this world is drawn from rises to about 1200 m; the
- * elevation field is 0..1 (fell opens at 0.84), so a vantage's height above
- * the lowland is its own elevation times this figure. The one number here
- * worth arguing with.
+ * elevation field is 0..1 (fell opens at 0.84), so this figure turns the
+ * field into metres for the ray geometry and a fell vantage's horizon. The
+ * field has no sea-level datum - its lowest land reads about 0.3 - so the
+ * horizon it gives a fell is generous; the terrain and hydrology spec
+ * replaces it with heights in metres and a prominence cap. The one number
+ * here worth arguing with.
  */
 const FELL_SPINE_M = 1200;
 /** Mean Earth radius, metres; enough here to stop an elevated view claiming ground below its geometric horizon. */
@@ -81,14 +87,45 @@ function horizonCells(heightM: number): number {
   return Math.floor((HORIZON_KM_PER_SQRT_M * Math.sqrt(Math.max(0, heightM))) / CELL_KM);
 }
 
+/** The elevation field clamped to the span FELL_SPINE_M scales. */
+function groundE(world: World, x: number, y: number): number {
+  return Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e));
+}
+
 /** Open ground and water: the plain standing-eye horizon. */
 const OPEN_RANGE_CELLS = horizonCells(EYE_HEIGHT_M);
 
-/** The vantage's own canopy or height, before light and eyes ever touch it. */
+function isForest(t: Terrain): boolean {
+  return t === "spruce" || t === "pine" || t === "birch";
+}
+
+/**
+ * Whether a wooded cell touches open ground or water on any side. A cell is
+ * 300 m across and a survivor walks it: standing in trees at a lakeshore they
+ * go to the edge and look out, so the wood closes only the sides where the
+ * next cell is more wood.
+ */
+function atWoodEdge(world: World, x: number, y: number): boolean {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= world.w || ny >= world.h) continue;
+      if (!isForest(terrainOf(world, nx, ny))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The vantage's own canopy or height, before light and eyes ever touch it:
+ * closed wood shows its ring at most; a wood edge sees out like the open
+ * ground beside it.
+ */
 function vantageBaseCells(world: World, t: Terrain, x: number, y: number): number {
-  if (t === "spruce") return SPRUCE_RANGE_CELLS;
-  if (t === "pine" || t === "birch") return FOREST_RANGE_CELLS;
-  if (t === "fell" || t === "rock") return horizonCells(Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * FELL_SPINE_M);
+  if (isForest(t) && !atWoodEdge(world, x, y)) return t === "spruce" ? SPRUCE_RANGE_CELLS : FOREST_RANGE_CELLS;
+  if (t === "fell" || t === "rock") return horizonCells(groundE(world, x, y) * FELL_SPINE_M);
   return OPEN_RANGE_CELLS;
 }
 
@@ -177,7 +214,7 @@ function ringCells(lux: number): number {
 
 /** Height in metres of the surface that can hide ground behind this cell. */
 function obstacleHeightM(world: World, x: number, y: number, distM: number): number {
-  const ground = Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * FELL_SPINE_M;
+  const ground = groundE(world, x, y) * FELL_SPINE_M;
   const terrain = terrainOf(world, x, y);
   const canopy = terrain === "spruce" || distM > FOREST_VISIBILITY_M ? CANOPY_HEIGHT_M[terrain] ?? 0 : 0;
   return ground + canopy;
@@ -199,8 +236,8 @@ export function hasLineOfSight(world: World, observerCell: number, targetCell: n
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
   const totalCells = Math.hypot(dx, dy);
   const totalM = totalCells * CELL_KM * 1000;
-  const observerM = Math.min(1, Math.max(0, fieldsAt(world.seed, cx, cy).e)) * FELL_SPINE_M + EYE_HEIGHT_M;
-  const targetM = Math.min(1, Math.max(0, fieldsAt(world.seed, tx, ty).e)) * FELL_SPINE_M + targetHeightM - (totalM * totalM) / (2 * EARTH_RADIUS_M);
+  const observerM = groundE(world, cx, cy) * FELL_SPINE_M + EYE_HEIGHT_M;
+  const targetM = groundE(world, tx, ty) * FELL_SPINE_M + targetHeightM - (totalM * totalM) / (2 * EARTH_RADIUS_M);
   let previous = observerCell;
   for (let i = 1; i < steps; i++) {
     const x = cx + Math.round((dx * i) / steps);
@@ -217,10 +254,15 @@ export function hasLineOfSight(world: World, observerCell: number, targetCell: n
   return true;
 }
 
-/** Marches one sightline, retaining the highest apparent surface angle met so ridges and canopies hide lower ground beyond them. */
-function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, range: number, seen: Set<number>): void {
+/**
+ * Marches one sightline, retaining the highest apparent surface angle met so
+ * ridges and canopies hide lower ground beyond them. From inside a wood the
+ * trees close each side whose first cell is more wood: that cell is the ring
+ * and nothing lies past it, whatever the ground would say.
+ */
+function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, range: number, inWood: boolean, seen: Set<number>): void {
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
-  const observerM = Math.min(1, Math.max(0, fieldsAt(world.seed, cx, cy).e)) * FELL_SPINE_M + EYE_HEIGHT_M;
+  const observerM = groundE(world, cx, cy) * FELL_SPINE_M + EYE_HEIGHT_M;
   let horizonSlope = -Infinity;
   let previous = -1;
   for (let i = 1; i <= steps; i++) {
@@ -229,9 +271,14 @@ function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, 
     if (x < 0 || y < 0 || x >= world.w || y >= world.h) return;
     const cell = y * world.w + x;
     if (cell === previous) continue;
+    const first = previous === -1;
     previous = cell;
     const distance = Math.hypot(x - cx, y - cy);
     if (distance > range) return;
+    if (first && inWood && isForest(terrainOf(world, x, y))) {
+      seen.add(cell);
+      return;
+    }
     const distM = distance * CELL_KM * 1000;
     const curvatureDropM = (distM * distM) / (2 * EARTH_RADIUS_M);
     const slope = (obstacleHeightM(world, x, y, distM) - curvatureDropM - observerM) / distM;
@@ -342,15 +389,16 @@ export function visibleCells(state: GameState, world: World, cal: Calendar, cell
     if (r > 0) {
       const cx = cell % world.w;
       const cy = Math.floor(cell / world.w);
+      const inWood = isForest(terrainOf(world, cx, cy));
       // Cast to the enclosing square for dense angular coverage, but stop each
       // ray at the Euclidean radius. Range is a real distance, not a square.
       for (let d = -r; d <= r; d++) {
-        marchRay(world, cx, cy, d, -r, r, terrain);
-        marchRay(world, cx, cy, d, r, r, terrain);
+        marchRay(world, cx, cy, d, -r, r, inWood, terrain);
+        marchRay(world, cx, cy, d, r, r, inWood, terrain);
       }
       for (let d = -r + 1; d <= r - 1; d++) {
-        marchRay(world, cx, cy, -r, d, r, terrain);
-        marchRay(world, cx, cy, r, d, r, terrain);
+        marchRay(world, cx, cy, -r, d, r, inWood, terrain);
+        marchRay(world, cx, cy, r, d, r, inWood, terrain);
       }
     }
     terrainVisible = retainViewshed(key, terrain);

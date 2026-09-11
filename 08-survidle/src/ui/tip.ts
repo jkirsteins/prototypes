@@ -17,7 +17,7 @@
 import { calendar, type Calendar } from "../sim/calendar";
 import { cellPossibilities } from "../sim/camp";
 import { listItems, weight } from "../sim/inventory";
-import { itemLabel } from "../sim/items";
+import { itemLabel, TOOLS } from "../sim/items";
 import { isRead, readLine } from "../sim/knowledge";
 import { isKnown } from "../sim/mapped";
 import { campCellOf, cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
@@ -84,11 +84,19 @@ function animalsAt(state: GameState, world: World, cal: Calendar, cell: number):
     });
 }
 
-/** The named place this cell is, if it is one. */
-function spotAt(world: World, cell: number): string | null {
-  const r = regionAt(world, cellAt(world, cell).region);
+/**
+ * The named place this cell is, if it is one. The generated "camp" spot is
+ * the ground a region offers for a camp, not a camp: it reads as one only
+ * once somebody has made theirs there. Read straight off the spot list it
+ * told a tester who had never made camp that his landing was one.
+ */
+function spotAt(state: GameState, world: World, cell: number): string | null {
+  const region = cellAt(world, cell).region;
+  const r = regionAt(world, region);
   const spot = r.spots.find((s) => s.cell === cell);
-  return spot ? SPOT_WORDS[spot.id] : null;
+  if (!spot) return null;
+  if (spot.id === "camp" && state.regions[region]?.campCell !== cell) return null;
+  return SPOT_WORDS[spot.id];
 }
 
 /** A heading is a heading wherever it came from: a region's name, a spot's, or a terrain's. */
@@ -110,8 +118,17 @@ function inventoryItems(inv: Inventory | undefined): string {
   return items.length ? items.map(({ item, qty }) => itemLabel(item, qty)).join(", ") : "nothing";
 }
 
-function inventoryRow(label: string, inv: Inventory | undefined): string {
-  return inv && weight(inv) > 0 ? `<div><b>${label}:</b> ${esc(inventoryItems(inv))}</div>` : "";
+/**
+ * Everything on the body, tools first: a line that named the pack and not
+ * the tools told a tester he carried meat and nothing else, with an axe on
+ * his belt the whole time. If the tools outgrow the line, they split off
+ * beside the Gear tab; for now one line is what "what do I have" needs.
+ */
+function carriedRow(state: GameState): string {
+  const tools = state.player.tools.map((t) => TOOLS[t.id].name);
+  const pack = weight(state.player.pack) > 0 ? [inventoryItems(state.player.pack)] : [];
+  const all = [...tools, ...pack];
+  return all.length ? `<div><b>Carried:</b> ${esc(all.join(", "))}</div>` : "";
 }
 
 function carcassLine(carcass: Carcass, ambient: number): string {
@@ -141,7 +158,7 @@ export function mapInventoryHtml(state: GameState, world: World, calOrHighlighte
   const here = cellOf(state, world);
   const rows = [
     cellInventoryRow(state, world, "Camp", camp),
-    inventoryRow("Carried", state.player.pack),
+    carriedRow(state),
     here !== camp ? cellInventoryRow(state, world, "Here", here) : "",
     highlighted !== null && highlighted !== camp && highlighted !== here && isKnown(state, highlighted)
       ? cellInventoryRow(state, world, "Highlighted", highlighted)
@@ -162,7 +179,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   // controlled by the map and surveying lives under Explore.
   if (region !== state.player.region) {
     if (presentation.knowledge === "unknown") return `${heading("Unknown ground")}<div class="dim">You have never been here.</div>`;
-    const spot = spotAt(world, cell);
+    const spot = spotAt(state, world, cell);
     return `${heading(spot ?? presentation.heading)}${spot ? `<div>${esc(head(presentation.heading))}</div>` : ""}`;
   }
 
@@ -177,7 +194,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   const st = regionState(state, world, state.player.region);
 
   const terrain = presentation.terrain;
-  const spot = spotAt(world, cell);
+  const spot = spotAt(state, world, cell);
   const name = spot ?? presentation.heading;
 
   const lines: string[] = [];
@@ -205,7 +222,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   const site = st.sites[cell] ?? null;
   if (site) lines.push(`<div><b>Protection:</b> ${esc(PROTECTION_WORDS[protectionOf(site)])}</div>`);
   if (site && protectionOf(site) > 0) lines.push(`<div>${profileOf(site)} profile</div>`);
-  if (terrain !== "water") lines.push(`<div>${isLee(world, cell) ? "lee ground" : "exposed to wind"}</div>`);
+  if (terrain !== "water") lines.push(`<div>${isLee(world, cell) ? "sheltered from the wind" : "open to the wind"}</div>`);
 
   for (const animal of animalsAt(state, world, cal, cell)) lines.push(`<div>${esc(animal)}</div>`);
 

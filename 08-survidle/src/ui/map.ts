@@ -233,6 +233,52 @@ function detailHash(seed: number, x: number, y: number, n: number): number {
   return h >>> 0;
 }
 
+/**
+ * The three ripples that light open water: a direction in radians, a
+ * wavelength in drawn cells and a period in real seconds each. The
+ * stylesheet's three overlay durations are these periods. Presentation only.
+ */
+export const WATER_RIPPLES = [
+  { direction: 0.35, wavelength: 4, periodS: 5 },
+  { direction: 2.27, wavelength: 2.5, periodS: 3.75 },
+  { direction: 4.54, wavelength: 6, periodS: 8 },
+] as const;
+
+/**
+ * A water cell's phase in each ripple, in radians within one turn: the
+ * cell's position projected on the ripple's direction, divided by the zoom
+ * so a coarse block keeps the same step per drawn cell, plus up to a
+ * radian of seeded jitter either way so the fronts are ragged. Neighbours
+ * still land near each other, which is what makes the light travel
+ * instead of blink; the jitter is what keeps it from sliding as one sheet.
+ */
+export function waterRipplePhases(seed: number, x: number, y: number, zoom: number): [number, number, number] {
+  const turn = 2 * Math.PI;
+  return WATER_RIPPLES.map((ripple, i) => {
+    const along = x * Math.cos(ripple.direction) + y * Math.sin(ripple.direction);
+    const jitter = (detailHash(seed, x, y, 149 + 2 * i) % 1000) / 1000 * 2 - 1;
+    const phase = (along / zoom / ripple.wavelength) * turn + jitter;
+    return Math.round(((phase % turn) + turn) % turn * 1000) / 1000;
+  }) as [number, number, number];
+}
+
+/**
+ * How bright one cell's overlay for one ripple peaks, 0.25 to 0.5: with the
+ * strong phase jitter, the reason the sum reads as light on water and not
+ * as one texture sliding over it. Texture from the seed, like the phases.
+ */
+export function waterRipplePeak(seed: number, x: number, y: number, wave: number): number {
+  return Math.round((0.25 + (detailHash(seed, x, y, 163 + 2 * wave) % 1000) / 1000 * 0.25) * 1000) / 1000;
+}
+
+/** The same phases as a start offset into each ripple's cycle, in seconds, for the overlays' animation delay. */
+export function waterRippleDelaysS(seed: number, x: number, y: number, zoom: number): [number, number, number] {
+  return waterRipplePhases(seed, x, y, zoom).map((phase, i) => {
+    const delay = Math.round(phase / (2 * Math.PI) * WATER_RIPPLES[i].periodS * 1000) / 1000;
+    return delay >= WATER_RIPPLES[i].periodS ? 0 : delay;
+  }) as [number, number, number];
+}
+
 /** Presentation-only fog motion. Density and location still come exclusively from the atmosphere sample. */
 export function fogGlyphHtml(seed: number, x: number, y: number): string {
   const shapes = [".", ":", "~", "="];
@@ -973,6 +1019,14 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (weatherGlyphs) cls.push("wx-glyph");
       if (ui.cloudShadows && weather.cloud >= 0.15) content += `<i class="cloud-shadow" aria-hidden="true"></i>`;
       if (weatherGlyphs) content += `<i class="cell-weather" aria-hidden="true">${weatherGlyphs}</i>`;
+    }
+    // Open water in sight catches the light: three overlays, one per ripple,
+    // whose opacity the compositor animates off the main thread. Each delay
+    // is a function of the cell and the seed, so the same cell writes the
+    // same markup on every render and the morph has nothing to change.
+    if (cls.includes("t-water") && seen === 2 && !cls.includes("memory") && !cls.includes("mk") && !cls.includes("ice-thin") && !cls.includes("ice-safe")) {
+      cls.push("water-live");
+      content += waterRippleDelaysS(world.seed, cx, cy, z).map((delay, i) => `<i class="water-ripple water-ripple-${i + 1}" style="--water-delay:-${delay}s;--water-peak:${waterRipplePeak(world.seed, cx, cy, i)}" aria-hidden="true"></i>`).join("");
     }
     const style = styles.length ? ` style="${styles.join(";")}"` : "";
     parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${style}>${content}</span>`);

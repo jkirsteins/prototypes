@@ -78,6 +78,11 @@ body { display: flex; flex-direction: column; height: 100vh; }
    three panes that are hidden would paint on top of the one that is not.
    The DOM says hidden and the screen said otherwise. */
 .pane[hidden] { display: none; }
+/* A pane's content scrolls inside the pane. The tab box clips at its own
+   height and the Do pane scrolls its rows itself; the other five drew their
+   content straight into the clip, so a Gear list longer than the box had a
+   bottom nobody could reach. */
+#camp, #inventory, #gear, #log, #journal { min-height: 0; overflow-y: auto; }
 
 .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
 .tabs .tab {
@@ -214,6 +219,13 @@ small, .dim { color: var(--dim); }
      unreachable. It is read, never pointed at. */
   pointer-events: none;
 }
+.bar .lbl .val { display: inline-flex; align-items: center; gap: 4px; pointer-events: auto; }
+/* The trend mark: a small triangle drawn in CSS, pointing the way the reading
+   has gone over the last ten game minutes; a dash while it holds. */
+.bar .trend { display: inline-block; width: 0; height: 0; opacity: 0.85; }
+.bar .trend[data-dir="up"] { border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 6px solid #fff; }
+.bar .trend[data-dir="down"] { border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid #fff; }
+.bar .trend[data-dir="steady"] { width: 6px; height: 0; border-top: 2px solid rgba(255, 255, 255, 0.55); }
 /* Text belongs only in a full-height readout. Compact meters are graphical
    and put their caption beside the bar, outside its clipped box. The guard
    keeps a future compact meter from silently reintroducing cut-off text. */
@@ -342,7 +354,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   100% { opacity: 0; transform: translate(-32px, 32px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sky-meteor, .weather-ripple, .fog-ripple, .cloud-ripple, .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
+  .sky-meteor, .weather-ripple, .fog-ripple, .cloud-ripple, .water-live .water-ripple, .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
   .weather-ripple:not(:first-child), .fog-ripple:not(:first-child), .cloud-ripple:not(:first-child) { display: none; }
   .weather-ripple:first-child, .fog-ripple:first-child, .cloud-ripple:first-child { opacity: var(--wx-glyph-opacity); }
   .sky-meteor { opacity: 0; }
@@ -680,7 +692,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   height: calc(var(--line) / var(--detail));
   z-index: var(--map-signal);
 }
-.grid .c.t-water { color: #3a6fd8; background-color: #0a1633; }
+.grid .c.t-water { color: #3a6fd8; background-color: #0a1633; --water-rest: #0a1633; --water-lit: #24468f; }
 .grid .c.t-spruce { color: #1f8f3a; background-color: #0b1f11; }
 .grid .c.t-pine { color: #3fbf5a; background-color: #0e2415; }
 .grid .c.t-birch { color: #9be36a; background-color: #1a2a12; }
@@ -1504,8 +1516,43 @@ button.act small.gives, span.act small.gives,
    shallows are the lit end and the open water the dark one - the way water
    reads standing on a beach. A lake has no offshore and keeps the plain
    colour. */
-.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; }
-.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; }
+.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; --water-rest: #102047; --water-lit: #3160b0; }
+.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; --water-rest: #060d20; --water-lit: #1a3474; }
+/* Light on open water: rippling, faked for the eye. Three smooth waves
+   cross the sheet in different directions, with different wavelengths and
+   speeds, and each cell shows their sum. A cell's start in each wave comes
+   from its position, so neighbours move together and the light travels and
+   spreads rather than blinking in place; three directions crossing means
+   no stripe.
+
+   Each wave is an overlay in the cell's lit blue whose opacity swells and
+   fades. Opacity is the one thing here the compositor animates by itself,
+   so a lake of two hundred cells costs the main thread nothing per frame;
+   a colour computed in place repainted every cell every frame and starved
+   the page. The overlay sits below the glyph inside the cell's own
+   stacking context. Wall clock, never the simulation's; remembered water
+   and ice lie still. */
+.grid .c.water-live { position: relative; isolation: isolate; }
+.grid .c.water-live .water-ripple {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--water-lit);
+  opacity: 0;
+  will-change: opacity;
+  animation: water-ripple 5s ease-in-out infinite;
+  /* ?shimmer= on the page sets the speed factor on the root; the delay scales with it so the pattern keeps its shape. */
+  animation-delay: calc(var(--water-delay) / var(--water-shimmer-speed, 1));
+}
+.grid .c.water-live .water-ripple-1 { animation-duration: calc(5s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-2 { animation-duration: calc(3.75s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-3 { animation-duration: calc(8s / var(--water-shimmer-speed, 1)); }
+/* At the two close rungs a cell is a 33 or 66 px block, and a peak that
+   reads as a glint on an 11 px glyph reads as a flat wash that swallows
+   the detail glyphs. Half the gain there keeps the ~ and = legible. */
+.grid.detailed .c.water-live .water-ripple { --water-gain: 0.5; }
+@keyframes water-ripple {
+  0%, 100% { opacity: 0; }
+  50% { opacity: calc(var(--water-peak, 0.4) * var(--water-gain, 1)); }
+}
 /* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
    depth palette. Thin ice remains dark and uncertain; safe ice forms the
    lighter continuous sheet. Marks still own their whole cell. */

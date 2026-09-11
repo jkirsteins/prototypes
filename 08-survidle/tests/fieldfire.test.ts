@@ -8,7 +8,6 @@ import { hourlyHazards } from "../src/sim/hazards";
 import { tipHtml, tipKey } from "../src/ui/tip";
 import { firelit } from "../src/sim/player";
 import { illuminance } from "../src/sim/light";
-import { instantHtml } from "../src/ui/panels";
 import { stepCamp } from "../src/sim/camp";
 import { addItem, carried, pile, qty, removeItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
@@ -263,10 +262,9 @@ describe("a fire where you stand", () => {
     addItem(state.player.pack, "firewood", 2);
     expect(fireStep(state, world, cal, cellOf(state, world))?.id).toBe("light");
   });
-  it("lights the current cell and offers manual feeding", () => {
+  it("lights the current cell and lights it up", () => {
     const { state, world } = lightField();
     expect(firelit(state, world)).toBe(true);
-    expect(instantHtml(state, world)).toContain('data-act="feed"');
     const lit = illuminance(state, world, cal, cellOf(state, world));
     state.player.fieldFire = null;
     expect(lit - illuminance(state, world, cal, cellOf(state, world))).toBeCloseTo(20);

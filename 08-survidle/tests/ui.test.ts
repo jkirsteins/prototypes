@@ -6,7 +6,7 @@ import { bodyRowOf, campRowOf } from "../src/sim/bodyorder";
 import { addItem, herePile, pile } from "../src/sim/inventory";
 import { createCarcass, noteHuntSign } from "../src/sim/hunting";
 import { startIntent } from "../src/sim/intent";
-import { LEAN_KCAL_PER_DAY, RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
+import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { isKnown, knownShare, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { SPECIES_DEFS, type Species } from "../src/sim/species";
@@ -24,11 +24,11 @@ import { updateBars } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, playerVisualSlot, viewOrigin, visualGround, ZOOMS } from "../src/ui/map";
 import { lighting } from "../src/ui/sky";
 import { doHtml } from "../src/ui/dopanel";
-import { campHtml, forecastHtml, rosterHtml, instantHtml, inventoryHtml, placesHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml, weatherHtml } from "../src/ui/panels";
+import { campHtml, forecastHtml, rosterHtml, inventoryHtml, placesHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml, weatherHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
 import { allPanesHtml, paneFor, paneHtml } from "./pane";
 import { tipHtml } from "../src/ui/tip";
-import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
+import { advanceHurry, hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
 import { huntedLand } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, speciesHere, spotOf } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
@@ -588,6 +588,16 @@ describe("panels", () => {
     expect(document.querySelector("#val-health")!.textContent).toBe("42");
     expect(document.querySelector<HTMLElement>('[data-bar="task"]')!.style.width).toBe("50.0%");
     expect(document.querySelector('[data-val="task"]')!.textContent).toContain("30 min left (30 s)");
+    // With the frame loop's clock beside it, the bracket is the wall clock
+    // under the hurry: a hand-started once action runs at up to 6x.
+    const h = newHurry();
+    advanceHurry(h, state, world, 0.05);
+    updateBars(state, world, document, { hurry: h, speed: 1 });
+    const text = document.querySelector('[data-val="task"]')!.textContent!;
+    expect(text).toContain("30 min left (");
+    const secs = Number(/\((\d+) s\)/.exec(text)?.[1]);
+    expect(secs).toBeGreaterThan(0);
+    expect(secs).toBeLessThan(10);
   });
 
   it("region card shows the travel button for another region, and the spots and loose piles for here", () => {
@@ -882,19 +892,14 @@ describe("the Do panel", () => {
     expect(html).not.toContain('class="tabs"');
   });
 
-  it("a lean food past the day's ceiling shows a disabled eat button with its own reason; fat's stays open", () => {
+  it("the pack draws no eat button: the self-care row is the one route to a meal", () => {
     const g = newGame(21);
     siteCamp(g.state, g.world);
     const p = g.state.player;
-    // Lean kcal lives on the shared gut counter's leanKcal field.
-    p.gut = { day: 1, kg: {}, leanKcal: LEAN_KCAL_PER_DAY };
     addItem(p.pack, "cookedMeat", 1);
     addItem(p.pack, "fat", 1);
-    const html = instantHtml(g.state, g.world);
-    expect(html).toContain('data-act="eat" data-food="cookedMeat" disabled');
-    expect(html).toContain("not more lean meat today");
-    expect(html).toContain('data-act="eat" data-food="fat" >');
-    expect(html).not.toContain('data-act="eat" data-food="fat" disabled');
+    const html = inventoryHtml(g.state, g.world, calendar(g.state.minute));
+    expect(html).not.toContain('data-act="eat"');
   });
 
   it("the Hunt group also offers reading the shore and setting and emptying the trap", () => {

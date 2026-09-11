@@ -8,7 +8,12 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { startTask } from "../src/sim/tasks";
-import { advanceHurry, hurryClick, hurryFrame, hurryKind, newHurry, PEAK, PULSE_MIN, PULSE_S, pulseLeft } from "../src/ui/hurry";
+import { workSpeed } from "../src/sim/player";
+import { WORK_TASKS } from "../src/sim/tasks";
+import type { GameState } from "../src/sim/types";
+import { advanceHurry, autoRate, type HurryState, hurryClick, hurryFrame, hurryKind, newHurry, PEAK, PULSE_MIN, PULSE_S, pulseLeft, realSecondsForOrder, realSecondsLeft } from "../src/ui/hurry";
+import { GAME_MINUTES_PER_REAL_SECOND } from "../src/units";
+import type { World } from "../src/world/gen";
 import { queueHtml } from "../src/ui/panels";
 
 const cal = calendar(0);
@@ -212,5 +217,114 @@ describe("what is hurried", () => {
     advance(state, world, 1);
     expect(hurryKind(state)).toBe("auto");
     expect(queueHtml(state, world, calendar(state.minute, state.startDoy))).not.toContain("click to hurry");
+  });
+});
+
+describe("the wall clock a step will take", () => {
+  /**
+   * Drives the frame loop the way main.ts does - the frame's own minute plus
+   * the hurry's extra, advanced at the body's pace - and counts the real
+   * seconds until the task is done. The estimate is only right if it agrees
+   * with this.
+   */
+  function drive(state: GameState, world: World, h: HurryState, speed = 1): number {
+    const t = state.task;
+    if (!t) throw new Error("no task to drive");
+    const dt = 0.05;
+    let seconds = 0;
+    for (let i = 0; i < 100000 && t.progress < t.duration; i++) {
+      const extra = advanceHurry(h, state, world, dt);
+      const pace = WORK_TASKS.has(t.id) ? workSpeed(state, world) : 1;
+      t.progress += pace * (dt * GAME_MINUTES_PER_REAL_SECOND * speed + extra);
+      seconds += dt;
+    }
+    return seconds;
+  }
+
+  /** The order given and the runner past its walk, so the task in hand is the work itself. */
+  function working(until: { kind: "once" } | { kind: "times"; n: number }, seed = 3) {
+    const { state, world } = newGame(seed);
+    addOrder(state, world, { task: "sticks", until, deliver: "leave", where: "nearest" }, "job");
+    for (let i = 0; i < 600 && state.task?.id !== "sticks"; i++) advance(state, world, 1);
+    if (state.task?.id !== "sticks") throw new Error(`the work did not start: ${state.task?.id}`);
+    return { state, world };
+  }
+
+  function onceJob(seed = 3) {
+    return working({ kind: "once" }, seed);
+  }
+
+  it("autoRate is the curve the frames read", () => {
+    expect(autoRate(0, false, false)).toBe(1);
+    expect(autoRate(0.075, false, false)).toBeCloseTo(1 + (PEAK - 1) / 2, 9);
+    expect(autoRate(0.15, false, false)).toBeCloseTo(PEAK, 9);
+    expect(autoRate(0.5, false, false)).toBeCloseTo(PEAK, 9);
+    expect(autoRate(0.925, false, false)).toBeCloseTo(1 + (PEAK - 1) / 2, 9);
+    expect(autoRate(0.925, false, true)).toBe(PEAK);
+    expect(autoRate(0.05, true, false)).toBe(PEAK);
+    expect(autoRate(1, false, false)).toBe(1);
+  });
+
+  it("a once job halfway through reads the hurried seconds, not the one scale", () => {
+    const { state, world } = onceJob();
+    state.task!.progress = state.task!.duration * 0.55;
+    const h = newHurry();
+    advanceHurry(h, state, world, 0.05);
+    const left = state.task!.duration - state.task!.progress;
+    const est = realSecondsLeft(state, world, h);
+    expect(est).not.toBeNull();
+    expect(est!).toBeLessThan(left / 3);
+    expect(Math.abs(est! - drive(state, world, h))).toBeLessThan(0.2);
+  });
+
+  it("from the start it includes the ease-in and the ease-out", () => {
+    const { state, world } = onceJob();
+    const h = newHurry();
+    const est = realSecondsLeft(state, world, h)!;
+    expect(Math.abs(est - drive(state, world, h))).toBeLessThan(0.2);
+  });
+
+  it("a tired body's pace stretches the wait", () => {
+    const { state, world } = onceJob();
+    const h = newHurry();
+    const fresh = realSecondsLeft(state, world, h)!;
+    state.player.energy = 10;
+    expect(workSpeed(state, world)).toBeCloseTo(0.5, 9);
+    const tired = realSecondsLeft(state, world, h)!;
+    expect(tired).toBeCloseTo(fresh * 2, 6);
+    expect(Math.abs(tired - drive(state, world, h))).toBeLessThan(0.2);
+  });
+
+  it("a counted order reads the one scale, and a live pulse takes its minutes off the front", () => {
+    const { state, world } = working({ kind: "times", n: 5 });
+    const t = state.task!;
+    const h = newHurry();
+    advanceHurry(h, state, world, 0.05);
+    const pace = workSpeed(state, world);
+    expect(realSecondsLeft(state, world, h)!).toBeCloseTo((t.duration - t.progress) / pace, 6);
+    expect(hurryClick(h, hurryKind(state), state.intent?.orderId ?? null)).toBe(true);
+    const est = realSecondsLeft(state, world, h)!;
+    expect(est).toBeLessThan((t.duration - t.progress) / pace - PULSE_MIN / 2);
+    expect(Math.abs(est - drive(state, world, h))).toBeLessThan(0.2);
+  });
+
+  it("the speed test aid scales the frame's minutes and not the hurry", () => {
+    const { state, world } = onceJob();
+    const h = newHurry();
+    const est = realSecondsLeft(state, world, h, 4)!;
+    expect(Math.abs(est - drive(state, world, h, 4))).toBeLessThan(0.2);
+  });
+
+  it("an order not yet given previews the same seconds the bar will show once it starts", () => {
+    const { state, world } = onceJob();
+    const t = state.task!;
+    const h = newHurry();
+    expect(realSecondsForOrder(state, world, t.id, t.arg, t.duration, true)).toBeCloseTo(realSecondsLeft(state, world, h)!, 6);
+    expect(realSecondsForOrder(state, world, t.id, t.arg, t.duration, false)).toBeCloseTo(t.duration / workSpeed(state, world), 6);
+  });
+
+  it("nothing running reads nothing", () => {
+    const { state, world } = newGame(3);
+    expect(realSecondsLeft(state, world, newHurry())).toBeNull();
   });
 });

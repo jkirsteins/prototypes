@@ -223,13 +223,13 @@ describe("what the tooltip says", () => {
     site.emergencyMinutes = 90;
     const key = tipKey(state, world, 523074);
     expect(tipHtml(state, world, cal, 523074)).toContain("high profile");
-    expect(tipHtml(state, world, cal, 523074)).toContain("lee ground");
+    expect(tipHtml(state, world, cal, 523074)).toContain("sheltered from the wind");
     site.cover = 2;
     expect(tipKey(state, world, 523074)).not.toBe(key);
     expect(tipHtml(state, world, cal, 523074)).toContain("low profile");
     placeAt(state, world, 523076);
     markKnown(state, 523076);
-    expect(tipHtml(state, world, cal, 523076)).toContain("exposed to wind");
+    expect(tipHtml(state, world, cal, 523076)).toContain("open to the wind");
   });
 
   it("does not reveal an unearned gale through tooltip text or its cache key", () => {
@@ -356,10 +356,10 @@ describe("the map inventory", () => {
 
     const resting = read(mapInventoryHtml(state, world, null));
     expect(resting).toContain("Camp: 20 kg firewood");
-    expect(resting).toContain("Carried: 4 sticks");
+    expect(resting).toContain("Carried: iron axe, 4 sticks");
     const hovered = read(mapInventoryHtml(state, world, highlighted));
     expect(hovered).toContain("Camp: 20 kg firewood");
-    expect(hovered).toContain("Carried: 4 sticks");
+    expect(hovered).toContain("Carried: iron axe, 4 sticks");
     expect(hovered).toContain("Highlighted: 2 logs");
   });
 
@@ -383,6 +383,7 @@ describe("the map inventory", () => {
     const empty = regionAt(world, state.player.region).cells.find((cell) => cell !== camp)!;
     markKnown(state, empty);
     state.player.pack = emptyInventory();
+    state.player.tools = [];
 
     expect(mapInventoryHtml(state, world, camp)).toBe("");
     expect(mapInventoryHtml(state, world, empty)).toBe("");

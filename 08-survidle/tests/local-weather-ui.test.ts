@@ -7,6 +7,7 @@ import { opticalCandidateRangeCells, sightRangeCells, visibleCells } from "../sr
 import type { AtmosphereSample, LocalGroundWeather } from "../src/sim/types";
 import { ensureGround } from "../src/sim/weather";
 import { cellIdx, regionPeek } from "../src/world/gen";
+import { LATTICE, LATTICE_W } from "../src/world/terrain";
 import { cloudGlyphHtml, levelAt, mapHtml, mapKey, viewOrigin } from "../src/ui/map";
 import { weatherHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
@@ -62,28 +63,38 @@ describe("local weather presentation", () => {
       const gy = Math.floor((cy - y0) / level.cells);
       return gy * level.w + gx;
     }).filter((glyph) => glyph >= 0 && glyph < level.w * level.h)).size;
-    const visibleRegions = new Set([...visible].filter((cell) => {
-      const cx = cell % world.w;
-      const cy = Math.floor(cell / world.w);
-      const gx = Math.floor((cx - x0) / level.cells);
-      const gy = Math.floor((cy - y0) / level.cells);
-      return gx >= 0 && gy >= 0 && gx < level.w && gy < level.h;
-    }).map((cell) => regionPeek(world, cell % world.w, Math.floor(cell / world.w))));
+    // Ground history is replayed at one fixed point per region, so the point
+    // names the region without relying on which jittered seed is nearest to it.
+    const historyByPoint = new Map<string, number>();
+    for (const [, , minute, x, y] of renderCalls) {
+      if (minute >= currentMinute) continue;
+      historyByPoint.set(`${x},${y}`, (historyByPoint.get(`${x},${y}`) ?? 0) + 1);
+    }
+    const storedPoints = new Set([...regions].map((region) => `${(region % LATTICE_W + 0.5) * LATTICE},${(Math.floor(region / LATTICE_W) + 0.5) * LATTICE}`));
     const sightSamples = currentSamples - visibleGlyphs;
     const sightRange = opticalCandidateRangeCells(sightRangeCells(state, world, cal, cellOf(state, world)));
     // The ray sampler bilinearly reads cell centres in the candidate square,
     // plus the player's one local sample used to establish sight range.
     const maxSightSamples = 1 + (2 * sightRange + 2) ** 2;
-    const representedGroundSamples = visibleRegions.size * 24;
-    const sightGroundSamples = historicalSamples - representedGroundSamples;
-    const maxSightGroundSamples = (2 * sightRange + 1) ** 2 * 24;
 
-    // Ground history remains one replay per represented or ray-crossed region,
-    // while each visible glyph and the one current viewshed read current atmosphere.
-    // Neither bounded ray cost may become replay per glyph (about 65k here).
-    expect(sightGroundSamples).toBeGreaterThanOrEqual(0);
-    expect(sightGroundSamples % 24).toBe(0);
-    expect(sightGroundSamples).toBeLessThanOrEqual(maxSightGroundSamples);
+    // Ground history remains one replay per region per reader, never per glyph
+    // (about 65k here). A stored record is caught up by whole hours, 24 since
+    // its record, once for each reader that wants it: the glyph render, the ray
+    // sampler, and the sight range read for the key and again for the viewshed.
+    // A region only a ray crosses has no record: it is read fresh through the
+    // shadow memo, one seed sample at the run's origin and one per hour since,
+    // and the memo answers every reader after the first.
+    const storedReaders = 4;
+    expect(historyByPoint.size).toBeGreaterThan(0);
+    for (const [point, count] of historyByPoint) {
+      if (storedPoints.has(point)) {
+        expect(count % 24, point).toBe(0);
+        expect(count, point).toBeLessThanOrEqual(24 * storedReaders);
+      } else {
+        expect(count, point).toBe(24 + 1);
+      }
+    }
+    expect(historyByPoint.size).toBeLessThanOrEqual(regions.size + (2 * sightRange + 1) ** 2);
     expect(currentSamples).toBe(visibleGlyphs + sightSamples);
     expect(sightSamples).toBeGreaterThan(0);
     expect(sightSamples).toBeLessThanOrEqual(maxSightSamples);

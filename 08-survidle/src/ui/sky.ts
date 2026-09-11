@@ -461,7 +461,10 @@ export function updateSky(state: GameState, cal: Calendar, ambient: number, root
 /** One sky, at the shape it was drawn: where the body sits, what colour the air is, and what is falling through it. */
 function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: number): void {
   const forecast = forecastText(state);
-  svg.setAttribute("aria-label", forecast ? `sky: ${forecast}` : "sky");
+  // Compare before writing, here and below: this runs on every render, and
+  // an attribute set to the value it already holds still invalidates style.
+  const ariaLabel = forecast ? `sky: ${forecast}` : "sky";
+  if (svg.getAttribute("aria-label") !== ariaLabel) svg.setAttribute("aria-label", ariaLabel);
   const d = (svg as unknown as HTMLElement).dataset;
   const g: SkyGeom = {
     w: Number(d.skyW ?? SKY_W), h: Number(d.skyH ?? SKY_H),
@@ -544,7 +547,9 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   const glow = Math.max(0, 1 - near / 1.6);
   // By class rather than by id: the gradient's id carries this sky's own
   // suffix, and the class is what stays the same across all of them.
-  root.querySelector(".glowgrad")?.setAttribute("cx", f(g.cx + (dusking ? g.arcR : -g.arcR) * 0.85));
+  const glowCx = f(g.cx + (dusking ? g.arcR : -g.arcR) * 0.85);
+  const glowgrad = root.querySelector(".glowgrad");
+  if (glowgrad && glowgrad.getAttribute("cx") !== glowCx) glowgrad.setAttribute("cx", glowCx);
   setAttr(root, "sky-glow", "opacity", glow.toFixed(2));
   for (const id of ["sky-glow-in", "sky-glow-mid", "sky-glow-out"]) {
     setAttr(root, id, "stop-color", css(dusking ? GLOW_DUSK : GLOW_DAWN));

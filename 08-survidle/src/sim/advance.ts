@@ -1,6 +1,5 @@
 import { Rng } from "../rng";
 import { regionAt, type World } from "../world/gen";
-import { autoEat } from "./actions";
 import { dailyAnimals } from "./animals";
 import { stormOptions } from "./body";
 import { calendar, DAILY_HOUR } from "./calendar";
@@ -22,7 +21,6 @@ import type { GameState } from "./types";
 import type { WildlifeMode } from "./types";
 import { stepSeeps } from "./seep";
 import { advanceWildlifeMotion, dailyWildlife, stepWildlife } from "./wildlife-agents";
-import { autoDrink } from "./water";
 import { stepCarcasses } from "./hunting";
 import { conditionsAt, ensureGround, forecastKnowledge, forecastStage, forecastText, localStorm, localWeather, NO_FORECAST_KNOWLEDGE, sameForecastKnowledge, stormAirMatches, stormComing } from "./weather";
 
@@ -203,8 +201,11 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   let drains: Drains | null = null;
   if (!nobody) {
     drains = stepPlayer(state, world, cal, ambient, dt);
-    autoEat(state, world, rng);
-    autoDrink(state, world);
+    // Nothing eats or drinks here. Hunger and thirst are the self-care
+    // row's, served on the minutes the player's ranking gives that row: an
+    // eat on every step behind the row's back was what made the row read as
+    // a mystery, and a meal in the middle of a once order the player had
+    // not asked for.
     iceUnderFoot(state, world, rng);
     // Attribute exactly the overlap of this elapsed interval to where the
     // survivor ended it, after its task or movement has taken effect.
