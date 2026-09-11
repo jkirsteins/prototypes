@@ -2167,18 +2167,6 @@ because Durable Object storage is strongly consistent and KV is not,
 and "close the laptop, open the phone" falls inside KV's window. No
 push and no accounts.
 
-**The phone check-in page** is the second half, and waits for both the
-sync and P. The phone is a companion to a desktop run, not a smaller
-copy of it: everything on it must feed a decision made at a check-in,
-so there is no map and no Do catalog. What it carries: the camp
-sheet's two numbers and the away report read against it, the Ahead
-rows, reordering the order list, the once orders startable now, the
-self-care row, the away dial, and acting on an opportunity. It is a
-second Vite entry page over the same engine, reached by the sync link.
-It waits for P because P's camp view and camp sheet are the check-in
-it would otherwise invent; built after them it is the camp view shaped
-for a phone. Not specced.
-
 **What the terrain work fixes for the sync.** The solved world is 44 MB
 of typed arrays per seed, held in IndexedDB as a cache and never in
 the save; localStorage's 5 MB cannot hold it and must not try. The
@@ -2212,6 +2200,18 @@ generator version at perhaps 10 MB compressed, is the named escape
 hatch if the phone solve turns out painful. It is not built until the
 phone solve is measured, because it adds a moving part the sync
 deliberately avoids and couples client and store versions harder.
+
+**The phone check-in page** is the second half, and waits for both the
+sync and P. The phone is a companion to a desktop run, not a smaller
+copy of it: everything on it must feed a decision made at a check-in,
+so there is no map and no Do catalog. What it carries: the camp
+sheet's two numbers and the away report read against it, the Ahead
+rows, reordering the order list, the once orders startable now, the
+self-care row, the away dial, and acting on an opportunity. It is a
+second Vite entry page over the same engine, reached by the sync link.
+It waits for P because P's camp view and camp sheet are the check-in
+it would otherwise invent; built after them it is the camp view shaped
+for a phone. Not specced.
 
 ### The south
 
