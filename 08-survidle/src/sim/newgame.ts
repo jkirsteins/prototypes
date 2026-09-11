@@ -9,7 +9,7 @@ import { FOODS, KCAL_FULL } from "./items";
 import { creditYield } from "./ledger";
 import { log } from "./log";
 import { newKnowledge } from "./fineknowledge";
-import { mapRegion } from "./mapped";
+import { mapRegion, markWalked } from "./mapped";
 import { newRecord } from "./record";
 import { rollName } from "./names";
 import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
@@ -90,6 +90,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
   // A person coming into being looks around: the ground underfoot and
   // whatever the eye reaches from it is the whole of what they know.
   seeFrom(state, world, calendar(state.minute, state.startDoy), cell);
+  markWalked(state, cell);
 }
 
 /** The first survivor's record for the direct path: a name for the sex the seed rolls, and the median person unless one is given. */
@@ -171,6 +172,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     rolledDay: local.rolledDay, dryDays: local.dryDays, wetDay: local.wetDay, iceCm: local.iceCm,
   });
   seeFrom(state, world, calendar(state.minute, state.startDoy), start.campCell);
+  markWalked(state, start.campCell);
   enterRegion(state, world, world.start);
   // A camp is chosen, and a choice needs the ground in front of you.
   mapRegion(state, world, world.start);

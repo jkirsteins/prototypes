@@ -41,7 +41,7 @@ import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, hasEmbers, lightingInRa
 import { goalDeed } from "./goals";
 import { builtProtection, coverCeiling, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
-import { isKnown, knownShare } from "./mapped";
+import { isKnown, knownShare, markWalked } from "./mapped";
 import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { seeFrom, sightReachCells } from "./sight";
@@ -1681,6 +1681,7 @@ function walkAlong(state: GameState, world: World, cal: Calendar, rng: Rng, dt: 
       p.yM = next.yM;
       setRegion(state, world, cellAt(world, cell).region);
       seeFrom(state, world, cal, cell);
+      markWalked(state, cell);
       route.walked.push(route.path.shift()!);
       km -= distKm;
       state.stats.km += distKm;
@@ -1696,10 +1697,13 @@ function walkAlong(state: GameState, world: World, cal: Calendar, rng: Rng, dt: 
       }
     } else {
       const f = km / distKm;
+      const left = patchAt(world, p);
       p.xM += dx * f;
       p.yM += dy * f;
       // The patch under foot changes on its boundary, not at the next centre.
-      setRegion(state, world, cellAt(world, patchAt(world, p)).region);
+      const entered = patchAt(world, p);
+      setRegion(state, world, cellAt(world, entered).region);
+      if (entered !== left) markWalked(state, entered);
       state.stats.km += km;
       km = 0;
     }

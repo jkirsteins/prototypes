@@ -25,9 +25,15 @@ export function markKnown(state: GameState, cell: number): void {
   if (markSeen(state.knowledge, cell)) generation++;
 }
 
-/** The patch under foot: standing on ground is a stronger claim than seeing it. */
+/**
+ * The patch under foot: standing on ground is a stronger claim than seeing
+ * it. Raising seen to visited changes nothing a route may cross, so only
+ * ground that was unknown moves the cache stamp - otherwise every minute of
+ * every walk would throw the route cache away.
+ */
 export function markWalked(state: GameState, cell: number): void {
-  if (markVisited(state.knowledge, cell)) generation++;
+  const wasUnknown = knowledgeAt(state.knowledge, cell) === "unknown";
+  if (markVisited(state.knowledge, cell) && wasUnknown) generation++;
 }
 
 export function mapRegion(state: GameState, world: World, region: number): void {

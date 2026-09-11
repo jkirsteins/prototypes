@@ -5,6 +5,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
+import { knowledgeAt } from "../src/sim/fineknowledge";
+import { knowledgeGen, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { patchOf, placeAtMetric, placeAtPatch } from "../src/sim/position";
 import { beginWalkToPatch } from "../src/sim/tasks";
@@ -60,5 +62,42 @@ describe("walking in metres", () => {
     const midEdge = { xM: patchCenter(from).xM + 20, yM: patchCenter(from).yM };
     expect(remainingKm(path, midEdge)).toBeCloseTo(0.08, 12);
     expect(remainingKm([], midEdge)).toBe(0);
+  });
+});
+
+describe("what walking knows", () => {
+  it("marks every patch the walk passes through as visited, and nothing ahead of it", () => {
+    const { state, world } = newGame(21);
+    const from = patchOf(state, world);
+    // A target several patches off, so the route has ground still ahead after a few minutes.
+    const xy = patchXY(from);
+    let target: number | null = null;
+    for (let step = 6; step <= 12 && target === null; step++) {
+      const candidate = patchId(xy.x + step, xy.y);
+      if (passable(cellAt(world, candidate).terrain)) target = candidate;
+    }
+    expect(target).not.toBeNull();
+    expect(beginWalkToPatch(state, world, target!)).toBe(true);
+    const ahead = state.route!.path[state.route!.path.length - 1];
+    advance(state, world, 3);
+    expect(state.route).not.toBeNull();
+    expect(state.route!.walked.length).toBeGreaterThan(0);
+    expect(state.route!.path.length).toBeGreaterThan(0);
+    for (const patch of state.route!.walked) expect(knowledgeAt(state.knowledge, patch)).toBe("visited");
+    expect(knowledgeAt(state.knowledge, patchOf(state, world))).toBe("visited");
+    // Ground the eye has read is known, but only feet make it visited.
+    expect(knowledgeAt(state.knowledge, ahead)).not.toBe("visited");
+  });
+
+  it("keeps the route cache while a walk crosses ground it already knows", () => {
+    const { state, world } = newGame(21);
+    const from = patchOf(state, world);
+    const to = fineNeighbours(world, from).find((edge) => !edge.diagonal && passable(cellAt(world, edge.patch).terrain))!.patch;
+    markKnown(state, to);
+    expect(beginWalkToPatch(state, world, to)).toBe(true);
+    const before = knowledgeGen();
+    advance(state, world, 60);
+    expect(knowledgeAt(state.knowledge, to)).toBe("visited");
+    expect(knowledgeGen()).toBe(before);
   });
 });
