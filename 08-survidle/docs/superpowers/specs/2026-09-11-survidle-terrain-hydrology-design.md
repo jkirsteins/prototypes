@@ -82,11 +82,15 @@ km, before erosion:
 **Treeline**, birch line in metres, from latitude and distance to the
 western sea in km:
 
-    treelineM(lat, coastKm) = 1100 - 75 * (lat - 61) - 350 * max(0, 1 - coastKm / 50)
+    treelineM(lat, coastKm) = 1100 - 75 * (lat - 61) - 350 * (1 - inland)
+    inland = clamp(coastKm / 50, 0, 1)
 
 About 1100 m at 61 N inland, 650 m at 67 N inland, and 300 to 400 m
-lower on the outer coast. Fell is ground above it, so fell area grows
-northward on its own.
+lower on the outer coast. `coastKm` is a perpendicular distance from
+the template's coast line, so a skerry or the seaward lip of a fjord
+reads below zero; the clamp holds those at the coastal value, since the
+birch line stops falling once the ground is at the water's edge. Fell
+is ground above it, so fell area grows northward on its own.
 
 Two consequences. `latitudeAt(y)` is exported for the roadmap's
 latitude-by-row item to consume; only the generator reads it in this
@@ -197,12 +201,16 @@ Water first, in this order, then land.
 | lake | a filled depression with a fill depth of 2 m or more somewhere in it; the surface is the fill height |
 | river | land with discharge above 40 cubic metres a second, about 50 m wide at bankfull; its own terrain, impassable except on ice or at a ford |
 | ford | a river cell whose gradient to its receiver is above 0.5 percent, a riffle; passable at bog's walking cost |
-| stream | a land cell with discharge above 0.05 cubic metres a second, a year-round brook; a flag on the cell, not a terrain, and it counts as water beside for drinking, seeps and camp siting |
+| stream | a land cell with discharge above 0.02 cubic metres a second, a year-round brook; a flag on the cell, not a terrain, and it counts as water beside for drinking, seeps and camp siting |
 
-At inland runoff a stream needs about 4 km2 of catchment and a river
-about 3300 km2; on the Atlantic side about 1 km2 and 800 km2. Rivers are
-the main valley rivers only, the Namsen and the Ume of the world, and a
-river cell continues downstream to a lake or the sea without a gap.
+Twenty litres a second is the perennial first-order brook of humid
+Fennoscandia, which carries 10 to 30 l/s; a higher threshold would call
+those channels dry ground and put the nearest water a kilometre away
+from country that really has a brook in every fold. At inland runoff a
+stream needs about 1.7 km2 of catchment and a river about 3300 km2; on
+the Atlantic side about 0.4 km2 and 800 km2. Rivers are the main valley
+rivers only, the Namsen and the Ume of the world, and a river cell
+continues downstream to a lake or the sea without a gap.
 
 Land classes keep today's names, so the tables, species habitats, orders
 and spots stay valid. The rules change. Inputs per cell: height, slope
@@ -219,8 +227,12 @@ two octaves at 2 km.
   (20 degrees), 0.35 in the 100 m under the treeline, 0.04 elsewhere.
   The highest applicable rate wins. Stone is therefore on every shore
   and in every steep valley at the frequency geology gives it.
-- **bog**: `s` under 0.02, `W` above 0.6, `p` above 0.3, not lake. The
-  share rises northward on its own because the plateau flattens.
+- **bog**: `s` under 0.02, `W` above 0.5, `p` above 0.2, not lake. The
+  share rises northward on its own because the plateau flattens. The
+  wetness and precipitation lines sit where they do because the tighter
+  pair leaves the southern bands near nothing: mire covers something
+  like a tenth of the low ground in this country, and a rule that a
+  plateau hollow under steady rain cannot satisfy is not describing it.
 - **moisture** `m = 0.5 * p + 0.4 * W + 0.1 * northFacing`, where
   `northFacing` is 1 for a receiver to the north, 0 to the south, 0.5
   otherwise. Moisture is no longer a separate noise.
@@ -232,8 +244,11 @@ two octaves at 2 km.
 - **pine**: the remaining forest ground.
 - **meadow**: open heath in the 60 m under the treeline that is not
   rock, and on the outer coast within 3 km of the sea where `n` is under
-  0.5 and the cell is not rock or birch by the rules above. Same name,
-  same walking speed.
+  0.5. Same name, same walking speed. Meadow is decided before birch, so
+  in the 3 km strip the two rules both claim, thin soil reads as coastal
+  heath rather than birch scrub: that strip is where the wind and the
+  salt keep the trees off, and the soil noise is what says which part of
+  it the trees hold.
 
 `TERRAINS` gains `river`. `TERRAIN_SPEED.river` is 0; a ford cell is
 still terrain `river` and `speedOf` returns bog's speed for it when the

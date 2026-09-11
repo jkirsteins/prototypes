@@ -252,8 +252,10 @@ milliseconds, so a report that touches the same seeds repeatedly (`npm
 run terrain`, `npm run reference`, `npm run year`) is fast except its
 first pass. Bumping `GENERATOR_VERSION` is how a change to the solve
 invalidates the cache: the version is baked into the cache file name, so
-an old file is simply never read again rather than needing to be found
-and deleted. Browser code must never import the node cache module.
+an old file can never be read as a new one. `installNodeWorldCache()`
+deletes any file in the directory whose name does not carry the current
+version, since a cached world is about 44 MB and a bump would otherwise
+leave a full set of them on disk for good. Browser code must never import the node cache module.
 
 `tests/slow/terrain-budget.test.ts` is the solve's own budget: it solves
 one full-size world with no cache and asserts under 20 seconds, run as

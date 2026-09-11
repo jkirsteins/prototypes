@@ -522,7 +522,11 @@ limit could never reveal.
 
 `npm test` is the commit gate and stays under twenty seconds; it excludes
 `tests/slow/`, which holds the runs measured in whole simulated seasons -
-the three-life lineage on seed 17. `npm run test:slow` runs those, and is
+the three-life lineage on seed 17. A fresh clone pays for the worlds
+first: the fast suite touches about fourteen full-size seeds, each solved
+once and cached, which is around seventy seconds and six hundred MB under
+`node_modules/.cache/` before the twenty-second runs begin. See
+`docs/testing.md` for the cache. `npm run test:slow` runs those, and is
 worth a run when the reference player, the lineage or the landing moves.
 
 Every browser pass runs at 1440 by 900 and at 390 wide against
