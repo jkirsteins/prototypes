@@ -115,6 +115,7 @@ export function newWorld(seed: number, boat = 0, startDoy = START_DOY): { state:
 }
 
 /** A fresh run: spring, an axe, the clothes on your back and a day's food. */
+// The start region's camp is the landing shore (gen.ts findStart).
 export function newGame(seed: number, startDoy = START_DOY, person?: Person): { state: GameState; world: World } {
   const world = generateWorld(seed);
   const start = regionAt(world, world.start);
