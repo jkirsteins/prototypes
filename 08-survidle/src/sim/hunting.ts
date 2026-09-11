@@ -1,10 +1,10 @@
 import type { Calendar } from "./calendar";
-import { absence } from "./animals";
+import { absence, regionDensity } from "./animals";
 import { body } from "./person";
 import { hasTool, produce } from "./inventory";
 import { campCellOf, cellOf, forestCell, heathCell, kmBetween, rockCell, watersideCell } from "./position";
 import { skillLevel, oddsFactor } from "./skills";
-import { huntedLand, SPECIES_DEFS, type Species } from "./species";
+import { anAnimal, huntedLand, SPECIES_DEFS, type Species } from "./species";
 import type { Carcass, CarcassYields, GameState } from "./types";
 import { cellAt, regionAt, type World } from "../world/gen";
 import { iceAt, localWeather } from "./weather";
@@ -12,6 +12,10 @@ import { noteHuntSpoiledKcal } from "./hunt-audit";
 import { FOODS } from "./items";
 import { ageHuntPressure, huntPressureFactor } from "./hunt-pressure";
 import { visibleCells } from "./sight";
+import { illuminance, lightFactor, SPOT_LUX } from "./light";
+import { log } from "./log";
+import { recordOpportunityEvent } from "./opportunities";
+import type { Rng } from "../rng";
 
 export { disturbHuntingGround, huntPressureFactor } from "./hunt-pressure";
 
@@ -243,6 +247,36 @@ export function knownHuntSpecies(state: GameState, world: World, region = state.
 export function huntSignOdds(state: GameState, density: number): number {
   if (density <= 0) return 0;
   return Math.min(0.95, 0.15 + skillLevel(state, "hunting") * 0.03 + Math.min(0.4, density * 0.4));
+}
+
+/**
+ * The share of a hunt attempt's chance of reading sign that one crossing of a
+ * cell carries. Walking is not searching: the eye is on the way ahead, and
+ * only what the boots happen to pass gets read. Set so that surveying a whole
+ * region that holds a common species at a healthy density finds its sign about
+ * once, which makes a single crossing of that region about a coin flip.
+ */
+const WALK_SIGN_FACTOR = 0.07;
+
+/**
+ * Sign read off the ground in passing. Every huntable land species the region
+ * actually holds is rolled for on its own, so the country a route crosses is
+ * what decides what the survivor comes to know. Open water holds no tracks and
+ * the dark hides the ones on land.
+ */
+export function noticeSignOnFoot(state: GameState, world: World, cal: Calendar, rng: Rng, cell: number): void {
+  const { terrain, region } = cellAt(world, cell);
+  if (terrain === "water") return;
+  const light = lightFactor(illuminance(state, world, cal, cell), SPOT_LUX, 0);
+  if (light <= 0) return;
+  for (const species of huntedLand()) {
+    const d = regionDensity(state, world, region, species, cal);
+    if (d <= 0) continue;
+    if (!rng.chance(huntSignOdds(state, d) * WALK_SIGN_FACTOR * light)) continue;
+    if (!noteHuntSign(state, cell, species)) continue;
+    log(state, `Fresh sign: ${anAnimal(species)}.`);
+    recordOpportunityEvent(state, { kind: "signFound", species });
+  }
 }
 
 /** General field knowledge, not knowledge of whether this region actually holds the species. */

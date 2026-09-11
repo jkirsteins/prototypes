@@ -45,7 +45,7 @@ import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { seeFrom, sightReachCells } from "./sight";
 import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
-import { fatSeason, fishItem, fishSpecies, inSpawn, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
+import { anAnimal, fatSeason, fishItem, fishSpecies, inSpawn, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type PausedTask, type RecipeId,
@@ -57,7 +57,7 @@ import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, ta
 import { ambientTemperature, DEEP_SNOW_CM, forecastKnowledge, forecastText, ICE_SAFE_CM, sameForecastKnowledge, skyReadDay, stormNow, walkableIce } from "./weather";
 import { plain } from "./voice";
 import { claimHuntableAnimal, knownBearDen, unknownBearDen } from "./wildlife-agents";
-import { carcassMinutes, createCarcass, disturbHuntingGround, hasRecentHuntSign, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteFailedHunt, noteHuntSign, processCarcass } from "./hunting";
+import { carcassMinutes, createCarcass, disturbHuntingGround, hasRecentHuntSign, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteFailedHunt, noteHuntSign, noticeSignOnFoot, processCarcass } from "./hunting";
 import { noteFieldRecovery, noteHauledHuntFood, noteHuntAttempt, noteHuntFoodTransformed, noteHuntPursuit, pendingHuntMinutes } from "./hunt-audit";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
@@ -300,13 +300,6 @@ function huntDetail(state: GameState, s: Species): string {
   if (x.bone) parts.push(`${x.bone} bone`);
   if (x.sinew) parts.push(`${x.sinew} sinew`);
   return parts.join(", ");
-}
-
-/** "a hare", "an elk": an animal named with the article its name takes; capitalised when it opens a sentence. */
-function anAnimal(s: Species, opening = false): string {
-  const { name } = SPECIES_DEFS[s];
-  const a = "aeiou".includes(name[0]) ? "an" : "a";
-  return `${opening ? a[0].toUpperCase() + a.slice(1) : a} ${name}`;
 }
 
 /**
@@ -1691,6 +1684,9 @@ function walkAlong(state: GameState, world: World, cal: Calendar, rng: Rng, dt: 
       route.walked.push(route.path.shift()!);
       km -= distKm;
       state.stats.km += distKm;
+      // What the ground says to a passer-by. Every leg reads it, so a walk, a
+      // travel and an exploring sweep all teach the same way.
+      noticeSignOnFoot(state, world, cal, rng, cell);
       const terrain = cellAt(world, cell).terrain;
       if (terrain === "water") {
         if (localWeather(state, world).iceCm < ICE_SAFE_CM) cue("iceCracks");
