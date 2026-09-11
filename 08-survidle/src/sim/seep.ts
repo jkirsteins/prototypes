@@ -5,7 +5,7 @@
  * on its own cell, stops in a long dry spell, and silts up after a year
  * unless re-dug. One per cell, kept in state.seeps by cell like the piles.
  */
-import { cellAt, neighbours, type World } from "../world/gen";
+import { cellAt, neighbours, streamAt, waterKindOf, type World } from "../world/gen";
 import { straightKm } from "./position";
 import type { GameState, Seep, SeepClass } from "./types";
 import { FREEZE_C, THAW_L_PER_HOUR } from "./water";
@@ -26,7 +26,7 @@ export function seepGround(world: World, cell: number): SeepClass | null {
   const c = cellAt(world, cell);
   if (c.terrain === "water" || c.terrain === "rock" || c.terrain === "fell" || c.terrain === "pine") return null;
   const nb = neighbours(world, cell).map((n) => cellAt(world, n).terrain);
-  if (nb.includes("water")) return null;
+  if (streamAt(world, cell) || neighbours(world, cell).some((n) => waterKindOf(world, n) !== null)) return null;
   if (c.terrain === "bog") return "bog";
   if (c.terrain === "spruce") return "damp";
   if ((c.terrain === "meadow" || c.terrain === "birch") && nb.includes("bog")) return "damp";

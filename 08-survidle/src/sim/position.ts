@@ -5,7 +5,7 @@ import { localWeather } from "./weather";
  * UI never shows coordinates; it shows what these functions say.
  */
 import { CELL_KM } from "../units";
-import { type Cell, cellAt, neighbours, regionAt, regionOf, waterKindOf, type World } from "../world/gen";
+import { type Cell, cellAt, neighbours, regionAt, regionOf, streamAt, waterKindOf, type World } from "../world/gen";
 import { routeKm } from "../world/route";
 import { calendar } from "./calendar";
 import { enterRegion, VISITED } from "./regionstate";
@@ -100,9 +100,10 @@ export function heathCell(world: World, idx: number): boolean {
   return t === "bog" || t === "meadow";
 }
 
-/** Land beside water: any water, or only a lake or only the sea. */
-export function watersideCell(world: World, idx: number, kind: "lake" | "sea" | "any" = "any"): boolean {
-  if (kind === "any") return neighbours(world, idx).some((n) => cellAt(world, n).terrain === "water");
+/** Land beside water: any water including a stream on the cell, or one kind only. */
+export function watersideCell(world: World, idx: number, kind: "lake" | "sea" | "river" | "stream" | "any" = "any"): boolean {
+  if (kind === "stream") return streamAt(world, idx);
+  if (kind === "any") return streamAt(world, idx) || neighbours(world, idx).some((n) => waterKindOf(world, n) !== null);
   return neighbours(world, idx).some((n) => waterKindOf(world, n) === kind);
 }
 

@@ -678,6 +678,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   z-index: var(--map-signal);
 }
 .grid .c.t-water { color: #3a6fd8; background-color: #0a1633; }
+.grid .c.t-river { color: var(--water); }
 .grid .c.t-spruce { color: #1f8f3a; background-color: #0b1f11; }
 .grid .c.t-pine { color: #3fbf5a; background-color: #0e2415; }
 .grid .c.t-birch { color: #9be36a; background-color: #1a2a12; }
@@ -845,6 +846,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .micro-mark.mk-camp { color: #0c0f14; background: #6fcf6f; }
 .grid .micro-mark.mk-trap { color: #fff; background: #4a5a78; }
 .grid .micro-mark.mk-seep { color: #0c0f14; background: #6fa8dc; }
+.grid .micro-mark.mk-stream { color: #0c0f14; background: var(--water); }
 .grid .micro-mark.mk-den { color: #d6aa72; background: #1a1c20; }
 .grid .micro-mark.mk-animal { color: #111; background: #b7ad87; }
 .grid .micro-mark.mk-animal.wildlife-0 { background: #e5a84b; }
@@ -863,6 +865,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 #map .legend b.mk-camp { color: #6fcf6f; }
 #map .legend b.mk-trap { color: #4a5a78; }
 #map .legend b.mk-seep { color: #6fa8dc; }
+#map .legend b.mk-stream { color: var(--water); }
 #map .legend b.mk-animal { color: #b7ad87; }
 #map .legend b.ice-thin,
 #map .legend b.ice-safe { color: #3a6fd8; padding: 0 2px; }

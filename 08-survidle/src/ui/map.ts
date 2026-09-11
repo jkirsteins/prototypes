@@ -18,11 +18,11 @@ import { visitedCamps } from "../sim/light";
 import { discovery, siteAt, VISITED } from "../sim/regionstate";
 import type { AgentSpecies, AtmosphereSample, GameState, LocalGroundWeather, RegionState, Terrain, WildlifeSubject } from "../sim/types";
 import { atmosphereAt, conditionsAt, conditionsWithGround, DEEP_SNOW_CM, groundAt, iceMode } from "../sim/weather";
-import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
+import { cellAt, cellIdx, regionPeek, streamAt, terrainPeek, type World } from "../world/gen";
 import { WORLD_H, WORLD_W } from "../world/terrain";
 import { CELL_KM } from "../units";
 import { activeWildlifeStartles, esc, type UiState } from "./render";
-import { elevationAt, offshoreAt, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
+import { elevationAt, offshoreAt, STREAM_MARK, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
 import { lighting } from "./sky";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
@@ -55,6 +55,7 @@ export const GLYPH = TERRAIN_GLYPH;
  * player ever locating it. Marking ground the world always had put four
  * tinted tiles around the camp for no act they enabled.
  */
+type Mark = { glyph: string; cls: string; label: string };
 export const MARKS = {
   you: { glyph: "@", cls: "mk-player", label: "you" },
   fire: { glyph: "F", cls: "mk-fire", label: "fire" },
@@ -65,7 +66,16 @@ export const MARKS = {
   trap: { glyph: "T", cls: "mk-trap", label: "trap" },
   seep: { glyph: "s", cls: "mk-seep", label: "seep" },
   den: { glyph: "D", cls: "mk-den", label: "known bear den" },
-} as const satisfies Record<string, { glyph: string; cls: string; label: string }>;
+} as const satisfies Record<string, Mark>;
+
+/**
+ * A stream is ground the world always had, not something the survivor built or
+ * found, so it stays out of MARKS (layout.test.ts holds that table to built-or-found
+ * marks only). It still needs a mark rather than a form - it can run across any
+ * terrain, not just its own band of one - so it is drawn and keyed the same way,
+ * just from its own table of one.
+ */
+const STREAM: Mark = { glyph: STREAM_MARK, cls: "mk-stream", label: "stream" };
 
 const ANIMAL_GLYPH: Record<AgentSpecies, string> = { deer: "d", reindeer: "r", elk: "E", wolf: "w", wolverine: "v", bear: "B" };
 
@@ -85,8 +95,11 @@ export function legendHtml(): string {
       return `<span>${forms} ${terrainHeading(t)}${v ? `: ${v.reads}` : ""}</span>`;
     })
     .join("");
+  const markSpan = (m: Mark) => `<span><b class="${m.cls}">${m.glyph}</b> ${m.label}</span>`;
+  // The stream is not in MARKS - it is ground, not a built or found feature - but the
+  // legend still owes it a line, put beside the seep's since both read as water underfoot.
   const marks = Object.values(MARKS)
-    .map((m) => `<span><b class="${m.cls}">${m.glyph}</b> ${m.label}</span>`)
+    .flatMap((m) => (m === MARKS.seep ? [markSpan(m), markSpan(STREAM)] : [markSpan(m)]))
     .join("");
   const animals = `<span><b class="mk-animal">d r E w v B</b> large wildlife</span>`;
   return (
@@ -569,7 +582,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (glyph >= 0) weatherVisibleGlyphs.add(glyph);
   }
 
-  const markerAt = new Map<number, (typeof MARKS)[keyof typeof MARKS]>();
+  const markerAt = new Map<number, Mark>();
   const visibleFireDistance = new Map<number, number>();
   const featuresAt = new Map<number, string[]>();
   const addFeature = (glyph: number, feature: string): void => {
@@ -582,7 +595,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (discovery(state, Number(idText)) !== VISITED) continue;
     for (const cell of markedCells(st)) {
       const isCamp = cell === st.campCell;
-      let m: (typeof MARKS)[keyof typeof MARKS];
+      let m: Mark;
       // Only the camp itself can carry the region's one fire; a site the camp has
       // moved away from is read by its roof alone.
       const live = visibleNow === null || visibleNow.has(cell);
@@ -880,6 +893,14 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
           }
         }
         if (l.detail > 1) detailGlyphs = visualGround(world.seed, x0 + gx, y0 + gy, t, detailBase, l.detail);
+        // A stream is drainage that has not yet earned its own terrain; it is worth
+        // marking, but only at the two close rungs where there is a detail field to
+        // mark it in. At the wider rungs the terrain's own glyph fills the cell and
+        // a stream mark there would cover ground the player has not actually seen.
+        if (l.detail > 1 && t !== "water" && t !== "river" && !markerAt.has(i) && streamAt(world, mechanicalCell)) {
+          markerAt.set(i, STREAM);
+          addFeature(i, STREAM.label);
+        }
       }
       if (lyingGlyphs.has(i) && seen === 2) cls.push("pl");
       const ring = current ? lightRing : undefined;
@@ -953,7 +974,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         const mid = Math.floor(l.detail / 2);
         const slot = m === MARKS.you ? playerVisualSlot(state, l.detail)
           : m === MARKS.trap ? (l.detail - 1) * l.detail
-            : m === MARKS.seep ? (l.detail - 1) * l.detail + mid
+            : m === MARKS.seep || m === STREAM ? (l.detail - 1) * l.detail + mid
               : m === MARKS.den ? l.detail - 1
                 : mid * l.detail + mid;
         used.add(slot);

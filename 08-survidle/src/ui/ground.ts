@@ -11,7 +11,7 @@
  * mixed ground and has no single value to report.
  */
 import type { Terrain } from "../sim/types";
-import { heightAt, moistureAt, waterKindOf, type World } from "../world/cells";
+import { fordAt, heightAt, moistureAt, waterKindOf, type World } from "../world/cells";
 
 export const TREES: Terrain[] = ["spruce", "pine", "birch"];
 
@@ -33,14 +33,19 @@ export const MEADOW_DRY = 0.257;
  */
 export const VARIANTS: Partial<Record<Terrain, { forms: string[]; reads: string }>> = {
   water: { forms: ["-", "~"], reads: "lake, sea" },
+  river: { forms: ["=", "#"], reads: "river, ford" },
   bog: { forms: [":", '"'], reads: "drier, wetter" },
   meadow: { forms: ["'", ".", ","], reads: "dry to damp" },
 };
 
+/** A stream on a land cell is a mark drawn over the terrain, not a form of it: the terrain's own glyph still names the ground. */
+export const STREAM_MARK = "~";
+
 /** The glyph for one cell: its terrain's letter, in the form the ground asks for. */
 export function groundGlyph(world: World, x: number, y: number, t: Terrain, base: string): string {
-  if (t !== "water" && t !== "bog" && t !== "meadow") return base;
+  if (t !== "water" && t !== "river" && t !== "bog" && t !== "meadow") return base;
   if (t === "water") return waterKindOf(world, y * world.w + x) === "sea" ? "~" : "-";
+  if (t === "river") return fordAt(world, y * world.w + x) ? "#" : "=";
   const m = moistureAt(world, x, y);
   if (t === "bog") return m >= BOG_WET ? '"' : ":";
   return m < MEADOW_DRY ? "'" : m < MEADOW_DAMP ? "." : ",";

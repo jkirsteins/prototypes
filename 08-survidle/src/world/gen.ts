@@ -7,7 +7,7 @@ import { Rng, derive } from "../rng";
 import { SPECIES_IDS } from "../sim/species";
 import type { Habitat, Species, SpotId, Terrain } from "../sim/types";
 import { CELL_KM } from "../units";
-import { type Cell, cellAt, cellIdx, neighbours, newWorld, regionOf, terrainOf, waterKindOf, type World } from "./cells";
+import { type Cell, cellAt, cellIdx, neighbours, newWorld, regionOf, streamAt, terrainOf, waterKindOf, type World } from "./cells";
 import { regionName } from "./names";
 import { findRoute, passable, routeKm } from "./route";
 import { KIND, type SolvedWorld } from "./solve";
@@ -77,12 +77,15 @@ export function latticeOf(id: number): { lx: number; ly: number } {
   return { lx: id % LATTICE_W, ly: Math.floor(id / LATTICE_W) };
 }
 
-/** Fishing happens from land beside water. */
-const isShore = (world: World) => (c: Cell) =>
-  passable(c.terrain) && neighbours(world, c.y * world.w + c.x).some((n) => {
-    const t = terrainOf(world, n % world.w, Math.floor(n / world.w));
-    return t === "water" || t === "river";
-  });
+/** Land beside water for camp siting: a stream counts, same as any water neighbour, since a camp on a brook is still a camp by water. */
+const campWaterside = (world: World) => (c: Cell) => {
+  const idx = c.y * world.w + c.x;
+  return passable(c.terrain) && (streamAt(world, idx) || neighbours(world, idx).some((n) => waterKindOf(world, n) !== null));
+};
+
+/** Fishing happens from land beside a lake, sea or river; a stream is too thin to fish and is drinking water only. */
+const fishingShore = (world: World) => (c: Cell) =>
+  passable(c.terrain) && neighbours(world, c.y * world.w + c.x).some((n) => waterKindOf(world, n) !== null);
 
 function buildRegion(world: World, id: number): RegionDef {
   const { lx, ly } = latticeOf(id);
@@ -135,7 +138,7 @@ function buildRegion(world: World, id: number): RegionDef {
   // Camp is the shore cell nearest the centroid: a survivor camps by the water,
   // and the centroid is only where the region's middle happens to be. A region
   // with no shore keeps the centroid camp.
-  const campCell = nearestCell(world, cells, cx, cy, isShore(world))
+  const campCell = nearestCell(world, cells, cx, cy, campWaterside(world))
     ?? nearestCell(world, cells, cx, cy, (c) => passable(c.terrain))
     ?? cells[0];
   const rng = new Rng(derive(world.seed, 1000 + id));
@@ -189,7 +192,7 @@ function placeSpots(world: World, r: RegionDef): Spot[] {
     { id: "outcrop", pick: IS_ROCK, km: 0.4 + 1.2 * (1 - r.rock), share: r.rock },
     // The camp stands on the shore, so the shore spot is the next shore cell along: the
     // fishing place a minute away, never the camp's own cell.
-    { id: "shore", pick: isShore(world), km: 0, share: r.frac.water },
+    { id: "shore", pick: fishingShore(world), km: 0, share: r.frac.water },
     { id: "heath", pick: IS_HEATH, km: 0.3 + 1.0 * (1 - r.frac.bog - r.frac.meadow), share: r.frac.bog + r.frac.meadow },
   ];
   for (const want of wants) {
