@@ -733,14 +733,18 @@ describe("large animal agents", () => {
     expect(st.pop.deer).toBeCloseTo(2.4, 9);
   });
 
-  it("does not claim a represented animal from another cell", () => {
+  it("does not claim a represented animal from beyond a hunter's reach", () => {
     const { state, world } = newGame(79);
     const region = state.player.region;
     const st = regionState(state, world, region);
     st.pop.deer = 2;
     activateWildlife(state, world, new Rng(1));
     const deer = state.wildlife.subjects.find((subject) => subject.species === "deer")!;
-    const encounter = regionAt(world, region).cells.find((cell) => cell !== deer.active?.cell)!;
+    const standing = patchXY(deer.active!.cell);
+    const encounter = regionAt(world, region).cells.find((cell) => {
+      const there = patchXY(cell);
+      return Math.hypot(there.x - standing.x, there.y - standing.y) * PATCH_M > 400;
+    })!;
 
     expect(claimHuntableAnimal(state, world, "deer", encounter)).toBe(false);
     expect(wildlifeMembers(deer)).toBe(2);

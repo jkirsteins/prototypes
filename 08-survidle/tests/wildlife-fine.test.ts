@@ -7,7 +7,7 @@ import { cellOf } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import type { GameState, WildlifeSubject } from "../src/sim/types";
 import { visibleCells } from "../src/sim/sight";
-import { AGENT_SPECIES, activateWildlife, dailyWildlife, evaluateWildlifeDisturbance, stepWildlife, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
+import { AGENT_SPECIES, activateWildlife, claimHuntableAnimal, dailyWildlife, evaluateWildlifeDisturbance, stepWildlife, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
 import { cellForMetricPoint, encounterGeometry, metricPointForPlayer, metricPointForWildlife } from "../src/sim/wildlife-space";
 import { cellAt, regionAt, type World } from "../src/world/gen";
 import { FINE_PER_PARENT, PATCH_M, patchAtMetric, patchCenter, patchId, patchXY } from "../src/world/spatial";
@@ -70,6 +70,34 @@ function wildlifeBarrierFixture(): BarrierScene {
     alarm: 0, intent: "forage", target: destination, route: [],
     escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
   };
+  return { state, world, calendar: calendar(state.minute, state.startDoy), animal: deer, barrierX, destination };
+}
+
+/**
+ * The same pen, split instead by a column of walkable ground that belongs to
+ * the neighbouring region's books. Terrain lets the herd through; the animal's
+ * own region does not, so the only path to the far side leaves its region.
+ */
+function regionSplitFixture(): BarrierScene {
+  const { state, world, deer } = loneDeer();
+  const here = patchXY(cellOf(state, world));
+  const region = state.player.region;
+  const x0 = here.x + 40;
+  const y0 = here.y;
+  const barrierX = x0 + 4;
+  paintBox(world, x0, y0, PEN_W, PEN_H, region, "water");
+  paintBox(world, x0 + 1, y0 + 1, PEN_W - 2, PEN_H - 2, region, "meadow");
+  for (let y = y0 + 1; y < y0 + PEN_H - 1; y++) paintPatch(world, patchId(barrierX, y), "meadow", region + 1);
+  const start = patchId(x0 + 1, y0 + 3);
+  const destination = patchId(x0 + PEN_W - 2, y0 + 3);
+  deer.region = region;
+  deer.active = {
+    cell: start, position: patchCenter(start), travel: null, hunger: 20, thirst: 20, rest: 20,
+    alarm: 0, intent: "forage", target: destination, route: [],
+    escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
+  };
+  state.minute = 0;
+  state.wildlife.lastSpatialTick = -1;
   return { state, world, calendar: calendar(state.minute, state.startDoy), animal: deer, barrierX, destination };
 }
 
@@ -140,6 +168,24 @@ describe("fine wildlife movement", () => {
     expect(cellAt(scene.world, scene.animal.active!.cell).terrain).toBe("meadow");
   });
 
+  it("reaches a target whose path leaves its region or gives it up, never standing on it", () => {
+    const scene = regionSplitFixture();
+    const active = scene.animal.active!;
+    const start = active.cell;
+    let held = 0;
+    let previous = active.cell;
+    for (let minute = 1; minute <= 120; minute++) {
+      scene.state.minute = minute;
+      stepWildlife(scene.state, scene.world, calendar(minute, scene.state.startDoy), new Rng(minute), 1, "detailed");
+      if (active.target === scene.destination && active.cell === previous) held++;
+      previous = active.cell;
+    }
+
+    expect(active.cell === scene.destination || active.target !== scene.destination).toBe(true);
+    expect(held).toBeLessThan(12);
+    expect(active.cell).not.toBe(start);
+  });
+
   it("spends escape metres in a straight line across fine patches", () => {
     const { state, world, deer, cal } = openGroundFixture();
     evaluateWildlifeDisturbance(state, world, cal, false, seesStartle);
@@ -154,6 +200,28 @@ describe("fine wildlife movement", () => {
     expect(moved).toBeCloseTo(200, 6);
     expect(deer.active!.escapeRemainingM).toBeCloseTo(500, 6);
     expect(cellAt(world, deer.active!.cell).terrain).not.toBe("water");
+  });
+});
+
+describe("fine hunting reach", () => {
+  it("claims an animal a field away but not one beyond a hunter's reach", () => {
+    const { state, world, deer } = loneDeer();
+    const st = regionState(state, world, state.player.region);
+    const here = patchXY(cellOf(state, world));
+    const shot = cellOf(state, world);
+
+    deer.active!.cell = patchId(here.x + 2, here.y);
+    expect(claimHuntableAnimal(state, world, "deer", shot, deer.id)).toBe(true);
+    expect(popOf(st, "deer")).toBe(3);
+
+    deer.active!.cell = patchId(here.x + 8, here.y);
+    expect(claimHuntableAnimal(state, world, "deer", shot, deer.id)).toBe(false);
+    expect(claimHuntableAnimal(state, world, "deer", shot)).toBe(false);
+    expect(popOf(st, "deer")).toBe(3);
+
+    deer.active!.cell = patchId(here.x, here.y + 2);
+    expect(claimHuntableAnimal(state, world, "deer", shot)).toBe(true);
+    expect(popOf(st, "deer")).toBe(2);
   });
 });
 
