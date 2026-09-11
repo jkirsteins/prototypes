@@ -25,7 +25,7 @@ import { atmosphereAt, conditionsAt, conditionsWithGround, DEEP_SNOW_CM, groundA
 import { cellIdx, neighbours, regionPeek, terrainPeek, type World } from "../world/gen";
 import { fieldsAtPatch } from "../world/fine-terrain";
 import { WORLD_H, WORLD_W } from "../world/terrain";
-import { parentSummary } from "../world/aggregate";
+import { emptyTerrainCounts, parentSummary } from "../world/aggregate";
 import { FINE_PER_PARENT, PATCH_KM, PATCH_M, type PatchId } from "../world/spatial";
 import { passable, type RouteConditions } from "../world/route";
 import { routeConditions, survivorRoute, survivorRouteCandidates } from "../sim/routing";
@@ -434,16 +434,27 @@ export function glyphScale(finePerGlyph: number): string {
 }
 
 /**
- * What a glyph's block is made of, and how high it stands.
+ * What a glyph's block is made of, and how high it stands - out of the
+ * patches the survivor actually knows, and no others.
  *
- * Not aggregateSummary directly: a glyph's box lands wherever the view's
- * origin puts it, and an unaligned box takes aggregateSummary's per-patch
- * path, which asks terrainAt for every member - building chunks for ground
- * nobody has been to, every render, at every rung. This composes the block
- * out of whole parent summaries wherever it can, which are cached beside
- * the chunk they came from, and reads only the fringe left over. The fringe
- * goes through terrainPeek and the pure field function, so a patch that has
- * never been generated stays ungenerated.
+ * Two rules, and the map path holds both. The first: never ask the world
+ * generator for a patch nobody has been to. `aggregateSummary` cannot be
+ * used here at all, because an unaligned box sends it down its per-patch
+ * `terrainAt` path and even its aligned path builds the whole 96 by 96
+ * chunk behind a parent - eighty thousand patches of untouched ground to
+ * draw one screen of a wide rung. The second: a parent summary is still
+ * worth having, because it is cached beside the chunk it came from and a
+ * second render of the same ground then costs nothing.
+ *
+ * So a parent whose thirty-six patches are all known takes `parentSummary`;
+ * the generation it forces is of ground the survivor has already walked or
+ * seen. A parent only partly known contributes the patches that are known,
+ * one `terrainPeek` each, which reads a built chunk if there is one and
+ * falls back to the pure generator if there is not. A parent nobody has
+ * been to contributes nothing: it is fog, and fog has no ground.
+ *
+ * Knowledge is two bits a patch, so deciding which of the three a parent is
+ * costs thirty-six reads and no generation at all.
  */
 export interface GlyphSummary {
   samples: number;
@@ -452,11 +463,30 @@ export interface GlyphSummary {
   maxElevationM: number;
 }
 
-function emptyTerrainCounts(): Record<Terrain, number> {
-  return { water: 0, fell: 0, rock: 0, bog: 0, spruce: 0, pine: 0, birch: 0, meadow: 0 };
+function addKnownPatch(state: GameState, world: World, out: GlyphSummary, x: number, y: number): void {
+  const patch = cellIdx(world, x, y);
+  if (!isKnown(state, patch)) return;
+  out.samples++;
+  out.terrainCounts[terrainPeek(world, x, y)]++;
+  const elevationM = fieldsAtPatch(world.seed, patch).elevationM;
+  out.minElevationM = Math.min(out.minElevationM, elevationM);
+  out.maxElevationM = Math.max(out.maxElevationM, elevationM);
 }
 
-export function glyphSummary(world: World, x0: number, y0: number, size: number): GlyphSummary {
+/** Whether every one of a parent's thirty-six patches is known. Bit reads only. */
+function parentFullyKnown(state: GameState, world: World, px: number, py: number): boolean {
+  const x0 = px * FINE_PER_PARENT;
+  const y0 = py * FINE_PER_PARENT;
+  if (x0 + FINE_PER_PARENT > world.w || y0 + FINE_PER_PARENT > world.h) return false;
+  for (let y = y0; y < y0 + FINE_PER_PARENT; y++) {
+    for (let x = x0; x < x0 + FINE_PER_PARENT; x++) {
+      if (!isKnown(state, cellIdx(world, x, y))) return false;
+    }
+  }
+  return true;
+}
+
+export function glyphSummary(state: GameState, world: World, x0: number, y0: number, size: number): GlyphSummary {
   const bx0 = Math.max(0, x0);
   const by0 = Math.max(0, y0);
   const bx1 = Math.min(world.w, x0 + size);
@@ -479,22 +509,24 @@ export function glyphSummary(world: World, x0: number, y0: number, size: number)
   const wholeY1 = py1 > py0 ? py1 * FINE_PER_PARENT : by0;
   for (let py = py0; py < py1; py++) {
     for (let px = px0; px < px1; px++) {
-      const parent = parentSummary(world, px, py);
-      out.samples += parent.samples;
-      for (const terrain of TIE_ORDER) out.terrainCounts[terrain] += parent.terrainCounts[terrain];
-      out.minElevationM = Math.min(out.minElevationM, parent.minElevationM);
-      out.maxElevationM = Math.max(out.maxElevationM, parent.maxElevationM);
+      if (parentFullyKnown(state, world, px, py)) {
+        const parent = parentSummary(world, px, py);
+        out.samples += parent.samples;
+        for (const terrain of TIE_ORDER) out.terrainCounts[terrain] += parent.terrainCounts[terrain];
+        out.minElevationM = Math.min(out.minElevationM, parent.minElevationM);
+        out.maxElevationM = Math.max(out.maxElevationM, parent.maxElevationM);
+        continue;
+      }
+      for (let y = py * FINE_PER_PARENT; y < (py + 1) * FINE_PER_PARENT; y++) {
+        for (let x = px * FINE_PER_PARENT; x < (px + 1) * FINE_PER_PARENT; x++) addKnownPatch(state, world, out, x, y);
+      }
     }
   }
   for (let y = by0; y < by1; y++) {
     const insideY = y >= wholeY0 && y < wholeY1;
     for (let x = bx0; x < bx1; x++) {
       if (insideY && x >= wholeX0 && x < wholeX1) continue;
-      out.samples++;
-      out.terrainCounts[terrainPeek(world, x, y)]++;
-      const elevationM = fieldsAtPatch(world.seed, cellIdx(world, x, y)).elevationM;
-      out.minElevationM = Math.min(out.minElevationM, elevationM);
-      out.maxElevationM = Math.max(out.maxElevationM, elevationM);
+      addKnownPatch(state, world, out, x, y);
     }
   }
   return out;
@@ -672,7 +704,7 @@ function glyphGround(state: GameState, world: World, visible: Set<number> | null
     : knownBright / knownAny > BLOCK_MAJORITY ? 2 : 1;
   if (seen === 0) return { terrain: "water", region, seen, knowledge, summary: null };
   if (z === 1) return { terrain: terrainPeek(world, x0, y0), region, seen, knowledge, summary: null };
-  const summary = glyphSummary(world, x0, y0, z);
+  const summary = glyphSummary(state, world, x0, y0, z);
   return { terrain: dominantByPriority(summary.terrainCounts), region, seen, knowledge, summary };
 }
 

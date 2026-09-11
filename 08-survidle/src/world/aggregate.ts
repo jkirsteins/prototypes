@@ -110,7 +110,7 @@ function regionAt(source: World | AggregateSource, patch: PatchId): number {
   return isWorld(source) ? regionAtPatch(source.seed, patch) : source.regionAt?.(patch) ?? -1;
 }
 
-function emptyTerrainCounts(): Record<Terrain, number> {
+export function emptyTerrainCounts(): Record<Terrain, number> {
   return { water: 0, fell: 0, rock: 0, bog: 0, spruce: 0, pine: 0, birch: 0, meadow: 0 };
 }
 

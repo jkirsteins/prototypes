@@ -160,10 +160,10 @@ export function mapInventoryHtml(state: GameState, world: World, calOrHighlighte
  * herd at once, and picking one of them silently is how a player comes to
  * believe the map is lying to them.
  */
-function aggregateLines(world: World, cell: number, target: MapTarget | null): string[] {
+function aggregateLines(state: GameState, world: World, cell: number, target: MapTarget | null): string[] {
   if (!target || target.aggregate.size <= 1) return [];
   const { x0, y0, size } = target.aggregate;
-  const lines = [`<div class="dim">${esc(`${glyphScale(size)} glyph: ${terrainComposition(glyphSummary(world, x0, y0, size))}`)}</div>`];
+  const lines = [`<div class="dim">${esc(`${glyphScale(size)} glyph: ${terrainComposition(glyphSummary(state, world, x0, y0, size))}`)}</div>`];
   const others = target.features.filter((feature) => feature.patch !== cell);
   if (others.length) lines.push(`<div class="dim">${esc(`also in this glyph: ${others.map((feature) => feature.label).join(", ")}`)}</div>`);
   return lines;
@@ -243,7 +243,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
     if (read) lines.push(`<div class="dim">${esc(plain(read))}</div>`);
   }
 
-  lines.push(...aggregateLines(world, cell, target));
+  lines.push(...aggregateLines(state, world, cell, target));
 
   const possibilities = cellPossibilities(world, cell);
   if (possibilities.length) lines.push(`<div class="dim">${esc(possibilities.join(", "))}</div>`);

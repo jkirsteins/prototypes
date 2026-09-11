@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { isKnown, mapRegion } from "../src/sim/mapped";
+import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
 import { DEFAULT_ZOOM, glyphSummary, LEVELS, levelAt, mapHtml, mapTargetAtPoint, terrainComposition, viewOrigin, ZOOMS, zoomLabel } from "../src/ui/map";
@@ -157,7 +157,7 @@ describe("a click on a block", () => {
     const target = mapTargetAtPoint(world, state, ui, p.x, p.y)!;
     const tip = tipHtml(state, world, CAL, target.patch!, "both", target);
     expect(tip).toContain("300 m glyph:");
-    const summary = glyphSummary(world, target.aggregate.x0, target.aggregate.y0, target.aggregate.size);
+    const summary = glyphSummary(state, world, target.aggregate.x0, target.aggregate.y0, target.aggregate.size);
     expect(summary.samples).toBe(36);
     expect(tip).toContain(terrainComposition(summary));
   });
@@ -168,7 +168,7 @@ describe("a click on a block", () => {
     const ui = open(1);
     const here = cellOf(state, world);
     const target = mapTargetAtPoint(world, state, ui, pointOf(world, state, ui, here).x, pointOf(world, state, ui, here).y)!;
-    const summary = glyphSummary(world, target.aggregate.x0, target.aggregate.y0, 2);
+    const summary = glyphSummary(state, world, target.aggregate.x0, target.aggregate.y0, 2);
     expect(summary.samples).toBe(4);
     const total = Object.values(summary.terrainCounts).reduce((a, b) => a + b, 0);
     expect(total).toBe(4);
@@ -274,6 +274,72 @@ describe("clicking fog", () => {
 });
 
 describe("drawing known aggregates", () => {
+  it("summarises a block nobody has been to without generating a patch of it", () => {
+    const { state, world } = newGame(21);
+    // Virgin ground, far from the landing. A wide glyph here holds 2,916
+    // patches; asking the world for any of them to draw fog is the whole
+    // cost the lazy lattice exists to avoid.
+    const before = worldCacheStats(world);
+    const summary = glyphSummary(state, world, 3000, 1000, 54);
+    const after = worldCacheStats(world);
+    expect(summary.samples).toBe(0);
+    expect(after.fineChunkBuilds).toBe(before.fineChunkBuilds);
+    expect(after.generatedPatches).toBe(before.generatedPatches);
+  });
+
+  it("summarises a half-known parent from its known patches alone", () => {
+    const { state, world } = newGame(21);
+    // Scattered knowledge, so no parent inside the block is whole. The
+    // summary must come out of these patches and no others.
+    let known = 0;
+    for (let y = 1000; y < 1054; y++) {
+      for (let x = 3000; x < 3054; x++) {
+        if ((x + y) % 6 === 0) continue;
+        markKnown(state, x * 1 + y * world.w);
+        known++;
+      }
+    }
+    const before = worldCacheStats(world);
+    const summary = glyphSummary(state, world, 3000, 1000, 54);
+    const after = worldCacheStats(world);
+    expect(summary.samples).toBe(known);
+    expect(after.fineChunkBuilds).toBe(before.fineChunkBuilds);
+    expect(after.generatedPatches).toBe(before.generatedPatches);
+  });
+
+  it("draws a frontier board at the wide rungs without generating the ground behind the fog", () => {
+    const { state, world } = newGame(21);
+    // Stand on virgin ground and let the first render pay for whatever the
+    // viewshed and the local weather need. Everything after that is the
+    // aggregate path's own bill.
+    state.player.xM = (3000 + 0.5) * PATCH_M;
+    state.player.yM = (1000 + 0.5) * PATCH_M;
+    draw(world, state, open(3));
+    draw(world, state, open(4));
+    // Enough known ground for whole glyphs to pass the majority test, and
+    // never a whole parent: one patch in six of every parent stays fog.
+    // Fifteen kilometres east of where the survivor stands, so the ground
+    // is well outside anything their own sight already generated and the
+    // only thing that could build it is the map drawing it.
+    for (let y = 1000 - 108; y < 1000 + 108; y++) {
+      for (let x = 3300; x < 3516; x++) {
+        if ((x + y) % 6 === 0) continue;
+        markKnown(state, x + y * world.w);
+      }
+    }
+    const before = worldCacheStats(world);
+    draw(world, state, open(3));
+    expect(document.querySelectorAll("#map .c:not(.fog):not(.void)").length).toBeGreaterThan(0);
+    draw(world, state, open(4));
+    const after = worldCacheStats(world);
+    // Sixteen glyphs of known ground drawn, and not one patch of the world
+    // behind them built to draw it. Before the parents were gated on
+    // knowledge this cost nine chunks and 82,944 generated patches.
+    expect(document.querySelectorAll("#map .c:not(.fog):not(.void)").length).toBe(16);
+    expect(after.fineChunkBuilds).toBe(before.fineChunkBuilds);
+    expect(after.generatedPatches).toBe(before.generatedPatches);
+  });
+
   it("composes a wide glyph from cached parent summaries instead of generating its fringe twice", () => {
     const { state, world } = newGame(21);
     mapRegion(state, world, state.player.region);
