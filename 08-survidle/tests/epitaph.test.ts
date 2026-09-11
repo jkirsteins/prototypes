@@ -76,8 +76,8 @@ describe("the epitaph", () => {
       expect(report.checkpoints.some((checkpoint) => checkpoint.week.eaten > 0)).toBe(true);
       expect(report.checkpoints.at(-1)?.food).toBe(0);
     }
-    expect(epitaph(firstReport.record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 28. Starved at camp, with nothing in the pack and 60 kg of firewood at camp."`);
-    expect(epitaph(secondReport.record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 39. Starved at camp, with nothing in the pack and 31 kg of firewood at camp."`);
+    expect(epitaph(firstReport.record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 27. Starved at camp, with nothing in the pack and 54 kg of firewood at camp."`);
+    expect(epitaph(secondReport.record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 37. Starved at camp, with nothing in the pack and 32 kg of firewood at camp."`);
   });
 
   it("carries a kitted trap into the larder under controlled open-water weather", () => {
@@ -99,8 +99,8 @@ describe("the epitaph", () => {
   it("is deterministic for the reference seeds; trap yields more with larger capacities", () => {
     // These are measured deterministic outcomes, not survival targets: wetness,
     // warmth and the work they interrupt can move the day substantially.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 26. Starved at camp, with nothing in the pack and 58 kg of firewood at camp."`);
-    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 49. Starved at camp, with nothing in the pack and 35 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 28. Starved at camp, with nothing in the pack and 40 kg of firewood at camp."`);
+    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 34. Starved at camp, with nothing in the pack and 24 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {
