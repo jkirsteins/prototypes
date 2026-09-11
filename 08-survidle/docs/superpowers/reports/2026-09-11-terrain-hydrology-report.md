@@ -516,3 +516,101 @@ the coordinator's instruction. Committed as a single commit on top of
 the first submission's commit (`2b986692`), with a message naming the
 uniform soil noise fix.
 
+
+## Browser pass (task 12)
+
+Both browser MCPs were unavailable - chrome-devtools-mcp's profile was held
+by another session and the claude-in-chrome extension reported "not
+connected" - so this pass ran against an own headless Chrome on a private
+debug port, driven over CDP. Dev server: `npm run dev` in `08-survidle`,
+which took port 5174 because a sibling session held 5173. Page:
+`http://127.0.0.1:5174/prototypes/08/?seed=42`, viewport 1440 by 900 unless
+stated.
+
+| check | what the page showed |
+| --- | --- |
+| loading bar stages | all five in order: raising the land, wearing the valleys, filling the lakes, cutting the fjords, naming the ground |
+| bar appears, reaches the end, hides | visible from 149 ms, last stage at 4.7 s, hidden with the run up at 7.5 s (budget 25 s) |
+| reload returns the same world | bar shown again, five stages again, ready at 7.4 s, `world.startCell` 3,677,622 both times |
+| the run starts on a shore | start cell (222, 2043), land at 3 m, three of its four neighbours sea |
+| the far side of the fjord is in the viewshed | the landing look maps 267 cells out to 5.1 km, including land across 9 cells (2.7 km) of sea |
+| zoom out | rungs read 300 m, 900 m, 2.7 km and 18.6 km per glyph; at 2.7 km the sea, the forest belt and the fell spine read as bands from coast to crest |
+| zoom in at a river | at 100 m per detail the river draws `=` and fords draw `#`, and the reach carries April ice ("safe ice over water") |
+| a route that must cross water | the places panel offered "across the ice (8 cm, thin)" for four neighbouring regions, so the thin-ice route offer is live in the page |
+| phone width | at 400 by 860 the page is one column, `document.documentElement.scrollWidth` 400 against `innerWidth` 400: no horizontal scroll |
+| console | no exceptions; only vite's connect lines and Chrome's AudioContext autoplay warning, which headless always raises |
+| memory | `usedJSHeapSize` oscillates between 88 MB and 254 MB with `totalJSHeapSize` 293 MB, so it crosses the 200 MB line at peaks and settles at about 90 MB. A solved world is 44 MB of arrays; the run returns to its floor after each collection, so this reads as churn rather than a leak |
+
+Screenshots, all at seed 42:
+
+- `docs/terrain-shots/landing-seed42.png` - the run at the landing, minute 5:
+  the shore, the birch stand behind it, the sea north, fog beyond the look.
+- `docs/terrain-shots/zoomed-out-revealed.png` - 2.7 km per glyph. The map is
+  revealed by hand (every cell in a 228 by 120 km box marked known from the
+  console) so the shot shows the ground rather than the fog: sea, a forest
+  belt, and the fell spine east of it.
+- `docs/terrain-shots/river-ford.png` - 100 m per detail on the nearest river
+  to the landing, at (715, 2160): `=` for the channel, `#` for its fords.
+- `docs/terrain-shots/phone-400.png` - 400 px wide.
+
+Two checks in the brief could not be run as written. Walking a route that
+refuses a river without a ford and takes one at a ford needs a river within
+reach of a landing, and there is none on seed 42 (below); the rule itself is
+covered by `tests/hydro.test.ts` and `tests/route.test.ts`. Rivers as lines
+from the crest to the sea do not appear at any rung near this landing for the
+same reason.
+
+## Open findings (task 12)
+
+**Rivers are scarce, and none is near a southern landing.** Seed 42 holds 986
+river cells in 4,003,200 - about 296 km of channel in a world 540 by 667 km -
+and the nearest to the landing is 152 km away at (715, 2160). The ford
+machinery works where a river is (that reach has 12 river cells in a 12 by 12
+km box, 8 of them fords, and the map draws both), but a run that starts on
+the southern shore will not meet one. The river cell count was already
+reported in the first submission; what is new is that the play area has none.
+
+**A river is not a connected line of cells.** Along the reach above, the
+channel steps (729, 2147), (728, 2148), (727, 2149), then jumps to
+(725, 2150) with the same discharge either side. Whether the gap is a lake
+cell in the channel or a cell that missed the 40 m3/s threshold is worth one
+look before rivers are drawn as continuous lines anywhere.
+
+**Lee ground from a depression is nearly unreachable.** `isLee` calls a cell
+lee when it is lower than all four cardinal neighbours. A drainage solve
+fills interior pits, so on seed 17 only 4,669 of 2,405,522 land cells - two in
+a thousand - are strict local minima, and none lies within the several hundred
+regions around the landing. Spruce still gives lee, so the rule is not dead,
+but the depression half of it is now a rarity the player will not meet.
+`tests/storms.test.ts` finds its depression by searching the whole world.
+
+**The heir gate's time is the route search, called from the hunting chooser.**
+`scripts/reference.ts --heir` runs 24 lives of a year. Measured on seed 42, a
+twenty-day reference life: 13.6 s of simulation (0.68 s a game day) and
+334,694 A* searches, of which 5.67 of the profile's 5.70 s under `astar` came
+from one caller chain - `speciesValue` -> `kmBetween` -> `survivorRoute` ->
+`knownRoute`. The chooser measures a route from here to every mapped cell of
+the region and its neighbours and a second route from that cell to camp, and
+a search that cannot reach its target expands its whole box (mean 4,329 cells,
+five typed arrays allocated and filled per call) before returning null. A
+fjord landing puts a large share of those candidate cells across water, so
+they are the expensive failing kind.
+
+Widening the knowledge-limited route cache from 512 entries to 4,096 - one
+sweep's worth - cuts the searches to 114,605 and the simulation to 8.6 s, a
+third off, with the same outcome to the day (committed). 16,384 buys nothing
+more, so the working set fits in 4,096. That does not close the gap to the
+old world's roughly 15 minutes for the whole gate: what remains is the volume
+of searches the chooser asks for, which is a design question about the
+chooser rather than a cache size. The obvious next step, if someone wants the
+gate fast, is to stop the chooser routing to every mapped cell - straight-line
+distance to rank candidates and a route only for the shortlist.
+
+**A sibling session's dev server was stopped by accident.** Cleaning up used
+`pkill -f "vite --host 127.0.0.1"`, which matched the dev server another
+session was running on port 5173 as well as this one's on 5174. No file was
+touched; that session needs to restart `npm run dev`.
+
+**The world cache holds stale versions.** `node_modules/.cache/survidle-worlds`
+carries v1, v2 and v3 bins side by side, 44 MB each, about 5.4 GB in total.
+Nothing reads v1 or v2 now.
