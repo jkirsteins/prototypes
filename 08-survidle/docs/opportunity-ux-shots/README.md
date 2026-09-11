@@ -8,12 +8,19 @@ an assertion breaks.
 
 - Seed: `?seed=30`, 1 April, day 1, landed from the boat chooser.
 - Viewports: 1440x900 desktop, 390x844 mobile (`mobile: true`).
-- Build commit: c2f08483 plus this change (page stamp read `c2f08483-dirty`).
+- Build commit: 33bec9d7 plus this change (page stamp read `33bec9d7-dirty`).
 - Scenario: land, dismiss the welcome, take the authored first opportunity,
-  browse the catalog while the clock runs, then run one wildlife chain from a
-  sighting through sign, kill, dressing and recovery using the development
-  event hook `window.survidle.opportunityEvent`, which calls the same
+  measure and dismiss every opening presentation, browse the catalog while the
+  clock runs, then run one wildlife chain from a sighting through sign, kill,
+  dressing and recovery using the development event hook
+  `window.survidle.opportunityEvent`, which calls the same
   `recordOpportunityEvent` seam the simulation calls.
+- Opening presentations on this seed: `site` alone, then two forage batches of
+  two leaves each ("Gather eggs" and "Gather roots", then "Gather berries" and
+  "Gather inner bark"), which the landing ground identified. Every day-one tool
+  recipe and shelter is now seeded silently at world creation, so the old
+  fifteen-leaf capability modal no longer appears; the verifier fails if any
+  `make:` or `build:` leaf reaches an opening presentation.
 
 ## Shots and what each one showed
 
@@ -54,8 +61,13 @@ an assertion breaks.
 9. After the last leaf of the chain completes there is no current
    opportunity, and the panel still reads "No current opportunity" above a
    working way into the catalog.
+10. `site` is the first presentation, no day-one capability is announced, and
+    the widest opening batch (2 leaves) passed the layout check on its way out.
+    The check was proved to bite: restoring the unconditional capability keys to
+    `discoverAvailableOpportunities` failed the run with "the opening announced
+    day-one capabilities: make:knife, ... build:snowShelter".
 
 Watch for: an unidentified animal leaking through an unknown row, switching
 current changing credit, a group reading done while an unknown child remains,
-a repeated sighting repeating the modal, clipped modal content, or horizontal
-page overflow.
+a repeated sighting repeating the modal, an unearned leaf arriving in an
+opening modal, clipped modal content, or horizontal page overflow.

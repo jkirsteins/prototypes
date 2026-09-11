@@ -88,11 +88,21 @@ async function main() {
     // The one development seam: a perception or deed handed to the same
     // production recorder the simulation uses.
     const fire = (event) => evaluate(`window.survidle.opportunityEvent(${JSON.stringify(event)})`);
+    const noticeBatches = async () => JSON.parse(await evaluate("JSON.stringify(window.survidle.state.opportunities.notices.map((notice) => notice.discovered))"));
+    // Measure every batch on its way out rather than dismissing it blind: the
+    // widest presentation the flow actually produces is the one whose layout
+    // has to hold, and it is not always the single-leaf one.
     const finishPresentations = async () => {
+      let widest = 0;
       for (let attempt = 0; attempt < 60; attempt++) {
+        if (await evaluate("Boolean(document.querySelector('#overlay:not([hidden]) .opportunity-modal'))")) {
+          const leaves = await evaluate("document.querySelectorAll('#overlay .opportunity-discovery').length");
+          if (leaves > widest) widest = leaves;
+          assert(await layoutOk(), `presentation of ${leaves} discoveries overflows`);
+        }
         await click('#overlay [data-act="opportunity-modal-ok"]');
         await sleep(100);
-        if (await evaluate("window.survidle.state.opportunities.notices.length === 0 && !document.querySelector('#overlay:not([hidden]) .opportunity-modal')")) return;
+        if (await evaluate("window.survidle.state.opportunities.notices.length === 0 && !document.querySelector('#overlay:not([hidden]) .opportunity-modal')")) return widest;
       }
       throw new Error("opportunity presentations did not finish");
     };
@@ -114,7 +124,19 @@ async function main() {
     await waitFor(`document.querySelector('#overlay .opportunity-modal')?.textContent.includes('New opportunity: Choose where to live')`, "first opportunity did not open");
     assert(await evaluate(`document.querySelector('#overlay .opportunity-modal h1')?.textContent === 'Opportunities'`), "opportunity modal has no global heading");
     assert(await layoutOk(), "desktop first-opportunity layout overflows");
-    await finishPresentations();
+
+    // The opening is the site leaf plus whatever the landing ground makes
+    // possible. Every day-one tool recipe and shelter is seeded silently at
+    // world creation, so the fifteen-leaf capability wall never reaches a
+    // modal; the widest real batch is the forage the ground identified.
+    const opening = await noticeBatches();
+    assert(opening.length > 0 && opening[0].join(",") === "site", `site is not the first presentation (${JSON.stringify(opening)})`);
+    const walled = opening.flat().filter((key) => key.startsWith("make:") || key.startsWith("build:"));
+    assert(walled.length === 0, `the opening announced day-one capabilities: ${walled.join(", ")}`);
+    const widestOpening = Math.max(...opening.map((batch) => batch.length));
+    assert(widestOpening >= 2, `the opening produced no multi-leaf batch to measure (${JSON.stringify(opening)})`);
+    const measuredOpening = await finishPresentations();
+    assert(measuredOpening >= widestOpening, `the widest opening batch (${widestOpening}) was never measured (saw ${measuredOpening})`);
     await waitFor(`document.querySelector('#opportunities h2')?.textContent === 'Opportunities'`, "current opportunities heading missing");
     assert(await stateValue(`s.opportunities.current === 'site'`), "the authored first opportunity is not current");
     assert(await evaluate(`document.querySelectorAll('#opportunities [data-act="opportunity-detail"]').length === 1`), "panel does not show exactly one leaf");
