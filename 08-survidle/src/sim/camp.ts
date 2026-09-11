@@ -16,7 +16,7 @@ import { campSite, regionState, touchedRegions } from "./regionstate";
 import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { fishItem, SPECIES_DEFS } from "./species";
-import { growRoots, nestsFor, rootStockFor } from "./stocks";
+import { growRoots, growWood, nestsFor, rootStockFor } from "./stocks";
 import { type DecayingId, type GameState, type Site, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { localWeather } from "./weather";
@@ -363,9 +363,8 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     if (cal.dayOfYear === EGG_FROM_DOY) st.nests = nestsFor(world, st, id);
     if (cal.dayOfYear === EGG_TO_DOY + 1) st.nests = 0;
     growRoots(st, world, cal.dayOfYear);
-    // What the region's forest puts back in a year is its patches' own growth
-    // added up, not a figure per cell: what a stand grows follows its ground.
-    st.wood = Math.min(r.wood0, st.wood + r.treeGrowthPerYear / 365);
+    // What grows back grows on the patch that was cut, at its own ground's rate.
+    growWood(st, world);
   }
 }
 

@@ -16,6 +16,7 @@ import { log } from "./log";
 import { activityOf } from "./player";
 import { cellOf } from "./position";
 import { record } from "./record";
+import { burnWoodAround } from "./stocks";
 import { campSite, touchedRegions } from "./regionstate";
 import { fallChance, fallThrough } from "./tasks";
 import type { GameState } from "./types";
@@ -53,7 +54,7 @@ function spread(state: GameState, world: World, cal: Calendar, rng: Rng, who: Pr
     if (st.campCell === null || !groundDry(localWeather(state, world, st.campCell), cal)) continue;
     if (!st.fire.lit || fuelTotal(st.fire) <= SPREAD_FUEL_KG || st.fire.unattended <= SPREAD_UNATTENDED_MINUTES) continue;
     if (!rng.chance(SPREAD_PER_HOUR)) continue;
-    st.wood = Math.max(0, st.wood - (10 + rng.int(21)));
+    burnWoodAround(st, world, st.campCell, 10 + rng.int(21));
     // A fire only ever burns where a fire site was cleared, so a site stands here already.
     const site = campSite(st);
     if (site) {

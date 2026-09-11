@@ -34,10 +34,12 @@ export interface RegionDef {
   forest: number;
   /** rock + fell */
   rock: number;
-  /** Trees worth felling when the run begins: every patch's own stand added up. */
+  /**
+   * Trees worth felling on uncut ground: every patch's own stand added up.
+   * What a region still holds is this less what its worked patches have given
+   * up (stocks.ts woodLeft); no task ever reads either, only its own patch.
+   */
   wood0: number;
-  /** Trees the region's forest patches put back in a year, added up the same way. */
-  treeGrowthPerYear: number;
   /** Shares of the region's cells that are lake water and sea water; together they are frac.water. */
   lake: number;
   sea: number;
@@ -175,7 +177,6 @@ function buildRegion(world: World, id: number): RegionDef {
     forest,
     rock,
     wood0: Math.round(potential.trees),
-    treeGrowthPerYear: potential.treesPerYear,
     capacity,
     neighbours: [...nb]
       .sort((a, b) => a - b)

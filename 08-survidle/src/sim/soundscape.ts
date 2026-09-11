@@ -43,7 +43,7 @@ export interface Surroundings {
  */
 const HEARING_REACH_M = 600;
 const HEARING_SAMPLE_M = 100;
-const SAMPLE_STEP = Math.round(HEARING_SAMPLE_M / PATCH_M);
+const SAMPLE_STEP = Math.max(1, Math.round(HEARING_SAMPLE_M / PATCH_M));
 const SAMPLES_EITHER_SIDE = Math.round(HEARING_REACH_M / HEARING_SAMPLE_M);
 /** Snow this deep is what you hear under foot. */
 const SNOW_FOOTING_CM = 5;
@@ -57,8 +57,17 @@ function footingOf(t: Terrain, snowCm: number): Footing {
   return "leaves";
 }
 
-export function surroundings(state: GameState, world: World, ambient: number): Surroundings {
-  const here = cellOf(state, world);
+type GroundShares = Pick<Surroundings, "forest" | "birch" | "open" | "bog" | "lake" | "sea">;
+
+/**
+ * The ground within earshot does not change while the survivor stands still,
+ * and the audio layer asks every frame. So the shares are read once per patch
+ * and kept until the feet move; everything else in Surroundings is live.
+ */
+let groundOfPatch: { world: World; patch: number; shares: GroundShares } | null = null;
+
+function groundShares(world: World, here: number): GroundShares {
+  if (groundOfPatch && groundOfPatch.world === world && groundOfPatch.patch === here) return groundOfPatch.shares;
   const hx = here % world.w;
   const hy = Math.floor(here / world.w);
   let n = 0;
@@ -86,13 +95,26 @@ export function surroundings(state: GameState, world: World, ambient: number): S
       }
     }
   }
+  const shares: GroundShares = { forest: forest / n, birch: birch / n, open: open / n, bog: bog / n, lake: lake / n, sea: sea / n };
+  groundOfPatch = { world, patch: here, shares };
+  return shares;
+}
+
+/** Forgets the kept ground, for a test that repaints terrain under a standing survivor. */
+export function forgetHeardGround(): void {
+  groundOfPatch = null;
+}
+
+export function surroundings(state: GameState, world: World, ambient: number): Surroundings {
+  const here = cellOf(state, world);
+  const shares = groundShares(world, here);
   const st = regionState(state, world, state.player.region);
   const site = campSite(st);
   const camp = atCamp(state, world);
   const fire: Surroundings["fire"] = camp && st.fire.lit ? (fuelTotal(st.fire) > FIRE_LOW_KG ? "fed" : "low") : state.player.torch.lit ? "torch" : "none";
   const w = localWeather(state, world, here);
   return {
-    forest: forest / n, birch: birch / n, open: open / n, bog: bog / n, lake: lake / n, sea: sea / n,
+    ...shares,
     footing: footingOf(cellAt(world, here).terrain, w.snowCm),
     frozen: w.iceCm >= ICE_THIN_CM,
     fire,

@@ -11,6 +11,7 @@ import { newGame } from "../src/sim/newgame";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
+import { setWoodPatchLeft } from "../src/sim/stocks";
 import { deserialize, serialize } from "../src/sim/save";
 import { check, stepTask, stopTask , isShortAtCamp } from "../src/sim/tasks";
 import { setSkillLevel } from "../src/sim/horizon";
@@ -252,7 +253,9 @@ describe("the work tier", () => {
     expect(startIntent(state, world, cal, rng(), req("chop"))).toBe(false);
     expect(state.intent).toBeNull();
     state.player.tools = [{ id: "axe", durability: 100 }];
-    regionState(state, world, state.player.region).wood = 1;
+    // The forest spot is where the order resolves, and one tree is all that patch has left.
+    const felling = spotOf(regionAt(world, state.player.region), "forest")!.cell;
+    setWoodPatchLeft(regionState(state, world, state.player.region), world, felling, 1);
     startIntent(state, world, cal, rng(), req("chop", { until: { kind: "forever" } }));
     expect(until(g, () => state.intent === null)).toBe(true);
     expect(state.stats.trees).toBe(1);

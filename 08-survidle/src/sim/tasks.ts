@@ -45,7 +45,7 @@ import { isKnown, knownShare } from "./mapped";
 import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { seeFrom, sightReachCells } from "./sight";
-import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
+import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg, takeWood, woodPatchLeft } from "./stocks";
 import { fatSeason, fishItem, fishSpecies, inSpawn, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import {
@@ -507,13 +507,13 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!o.ok) return o;
       if (stormNow(localWeather(state, world, at), state.minute)) return { ...o, ok: false, why: "too rough" };
       if (!axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs an axe" };
-      if (st.wood < 1) return { ...o, ok: false, why: "nothing left worth felling" };
+      if (woodPatchLeft(st, world, at) < 1) return { ...o, ok: false, why: "nothing left worth felling" };
       return o;
     }
     case "deadwood": {
       const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Gather dead wood", detail: `${DEADWOOD_KG} kg of firewood off the forest floor; no axe`, duration: 60, repeatable: true }));
       if (!o.ok) return o;
-      if (st.wood < DEADWOOD_TREE_SHARE) return { ...o, ok: false, why: "the forest is picked clean" };
+      if (woodPatchLeft(st, world, at) < DEADWOOD_TREE_SHARE) return { ...o, ok: false, why: "the forest is picked clean" };
       return o;
     }
     case "sticks":
@@ -540,7 +540,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = opt({ group: "gather", label: "Strip inner bark", detail: `${BARK_FRESH_KG_PER_HOUR} kg an hour on pine, half outside spring; dries three to one, grinds to flour`, duration: 60, repeatable: true });
       if (terrain !== "pine") return { ...o, ok: false, why: "stand in pine forest" };
       if (!kitInReach(state, world, "knife", toolInvs) && !hasTool(p, "knife")) return { ...o, ok: false, why: "needs a knife" };
-      if (st.wood < 1) return { ...o, ok: false, why: "the pines are stripped" };
+      if (woodPatchLeft(st, world, at) < 1) return { ...o, ok: false, why: "the pines are stripped" };
       if (disabled("bark")) return { ...o, ok: false, why: "disabled for the probe" };
       return o;
     }
@@ -2302,7 +2302,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
   switch (id) {
     case "chop": {
       cue("treeFalls");
-      st.wood -= 1;
+      takeWood(st, world, cellOf(state, world), 1);
       produce(state, world, "log", 4);
       produce(state, world, "stick", chopSticks(state, world));
       state.stats.trees++;
@@ -2316,7 +2316,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       return;
     }
     case "deadwood": {
-      st.wood -= DEADWOOD_TREE_SHARE;
+      takeWood(st, world, cellOf(state, world), DEADWOOD_TREE_SHARE);
       const item = splitIsWet(state, world) ? "wetFirewood" : "firewood";
       produce(state, world, item, DEADWOOD_KG);
       goalDeed(state, { kind: "gathered", item, kg: DEADWOOD_KG });
@@ -2342,7 +2342,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "innerBark": {
       const kg = BARK_FRESH_KG_PER_HOUR * yieldFactor(state, "foraging") * (barkSeason(cal) ? 1 : 0.5);
-      st.wood -= kg * BARK_TREE_SHARE;
+      takeWood(st, world, cellOf(state, world), kg * BARK_TREE_SHARE);
       produce(state, world, "freshBark", kg);
       creditYield(state, "bark", (kg / BARK_DRY_RATIO) * FOODS.barkFlour.kcalPerKg);
       if (kg > 1e-9) goalDeed(state, { kind: "foodAcquired", method: "forage" });

@@ -8,16 +8,18 @@ import { forestGame, passableNeighbor, siteCamp } from "./siting-helpers";
 import { calendar } from "../src/sim/calendar";
 import { advance } from "../src/sim/advance";
 import { warmthAtFire } from "../src/sim/fire";
-import { addItem, pile, pileAt, qty, reach } from "../src/sim/inventory";
+import { addItem, freshTool, pile, pileAt, qty, reach } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAtPatch } from "../src/sim/position";
 import { regionState, siteAt, siteFor } from "../src/sim/regionstate";
-import { rootCellFullKg } from "../src/sim/stocks";
-import { pausedList, startTask, stopTask } from "../src/sim/tasks";
+import { growWood, rootCellFullKg, setWoodPatchLeft, woodLeft, woodPatchFull, woodPatchLeft } from "../src/sim/stocks";
+import { check, pausedList, startTask, stopTask } from "../src/sim/tasks";
 import { iceHoleOpen } from "../src/sim/water";
+import { forgetHeardGround, surroundings } from "../src/sim/soundscape";
 import { parentSummary, resourcePotentialAt, TREES_PER_FOREST_KM2 } from "../src/world/aggregate";
-import { terrainPeek, type World } from "../src/world/gen";
-import { FINE_PER_PARENT, PATCH_KM, patchId, patchXY } from "../src/world/spatial";
+import { regionAt, terrainPeek, type World } from "../src/world/gen";
+import { FINE_PER_PARENT, fineNeighbours, PATCH_KM, patchId, patchXY } from "../src/world/spatial";
+import { paintPatch } from "./siting-helpers";
 import type { Terrain } from "../src/sim/types";
 
 /**
@@ -169,5 +171,87 @@ describe("resources a fine patch grows", () => {
     const bog = findTerrainPatch(world, cellOf(state, world), "bog");
     // The stand's share of 2500 m2 at its density, times what a digging stick lifts.
     expect(rootCellFullKg(world, bog)).toBeCloseTo(37.5, 3);
+  });
+});
+
+/** A neighbouring patch that grows trees, so a felled-out patch has an uncut one beside it. */
+function forestNeighbour(world: World, patch: number): number {
+  const n = fineNeighbours(world, patch).find((f) => woodPatchFull(world, f.patch) > 0);
+  if (!n) throw new Error(`patch ${patch} stands alone in the forest`);
+  return n.patch;
+}
+
+describe("standing timber belongs to its patch", () => {
+  it("lets a felled-out patch refuse while the next one still gives", () => {
+    const { state, world } = forestGame(21);
+    state.player.tools = [freshTool("axe")];
+    const cal = calendar(state.minute, state.startDoy);
+    const felled = cellOf(state, world);
+    const next = forestNeighbour(world, felled);
+    const st = regionState(state, world, state.player.region);
+    expect(check(state, world, cal, "chop").ok).toBe(true);
+    setWoodPatchLeft(st, world, felled, 0);
+    expect(check(state, world, cal, "chop")).toMatchObject({ ok: false, why: "nothing left worth felling" });
+    // Fifty metres on is ground nobody has cut, and it answers for itself.
+    placeAtPatch(state, world, next);
+    expect(woodPatchLeft(st, world, next)).toBe(woodPatchFull(world, next));
+    expect(check(state, world, calendar(state.minute, state.startDoy), "chop").ok).toBe(true);
+  });
+
+  it("draws dead wood and bark off the patch underfoot", () => {
+    const { state, world } = forestGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const here = cellOf(state, world);
+    const next = forestNeighbour(world, here);
+    const st = regionState(state, world, state.player.region);
+    setWoodPatchLeft(st, world, here, 0.05);
+    expect(check(state, world, cal, "deadwood")).toMatchObject({ ok: false, why: "the forest is picked clean" });
+    placeAtPatch(state, world, next);
+    expect(check(state, world, calendar(state.minute, state.startDoy), "deadwood").ok).toBe(true);
+  });
+
+  it("grows a cut patch back at its own ground's rate and leaves its neighbours alone", () => {
+    const { state, world } = forestGame(21);
+    const cut = cellOf(state, world);
+    const next = forestNeighbour(world, cut);
+    const st = regionState(state, world, state.player.region);
+    setWoodPatchLeft(st, world, cut, 0);
+    const daily = resourcePotentialAt(world, cut).treesPerYear / 365;
+    growWood(st, world);
+    expect(woodPatchLeft(st, world, cut)).toBeCloseTo(daily, 9);
+    // The uncut patch beside it was never an entry and never needed growing.
+    expect(st.woodCells[next]).toBeUndefined();
+    expect(woodPatchLeft(st, world, next)).toBe(woodPatchFull(world, next));
+  });
+
+  it("reads the region's timber as the uncut total less what its worked patches gave up", () => {
+    const { state, world } = forestGame(21);
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    const cut = cellOf(state, world);
+    expect(woodLeft(st, world, region)).toBe(regionAt(world, region).wood0);
+    setWoodPatchLeft(st, world, cut, 0);
+    expect(woodLeft(st, world, region)).toBeCloseTo(regionAt(world, region).wood0 - woodPatchFull(world, cut), 6);
+  });
+});
+
+describe("the ear reads a reach in metres", () => {
+  it("hears ground five hundred metres off, and keeps it until the feet move", () => {
+    const { state, world } = forestGame(21);
+    const here = cellOf(state, world);
+    const { x, y } = patchXY(here);
+    // A sample point sits every hundred metres, so ten patches out is one of them.
+    const far = patchId(x + 10, y);
+    const wasForest = woodPatchFull(world, far) > 0;
+    forgetHeardGround();
+    const before = surroundings(state, world, 10).forest;
+    paintPatch(world, far, wasForest ? "meadow" : "spruce");
+    // The ground within earshot cannot change while the survivor stands still,
+    // so the kept reading is what the next frame gets.
+    expect(surroundings(state, world, 10).forest).toBe(before);
+    forgetHeardGround();
+    const after = surroundings(state, world, 10).forest;
+    expect(after).not.toBe(before);
+    expect(Math.abs(after - before)).toBeCloseTo(1 / 169, 9);
   });
 });

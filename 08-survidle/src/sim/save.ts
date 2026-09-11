@@ -172,6 +172,11 @@ export function migrate(state: GameState, version = 9): void {
     // took out of nine hectares a cell is inside a season's regrowth anyway.
     delete (st as unknown as Record<string, unknown>).roots;
     st.rootCells ??= {};
+    // A save from before the wood stock was the ground's carries one number for
+    // the whole region. There is no patch it belongs to, so the region opens
+    // uncut and grows from there rather than stranding a figure nothing reads.
+    st.woodCells ??= {};
+    delete (st as unknown as { wood?: number }).wood;
     st.sapTaps ??= { day: 0, n: 0 };
   }
   for (const d of state.ledger) {

@@ -23,9 +23,8 @@ export function startingPop(world: World, id: number): Partial<Record<Species, n
 }
 
 export function newRegionState(world: World, id: number): RegionState {
-  const r = regionAt(world, id);
   const st: RegionState = {
-    wood: r.wood0,
+    woodCells: {},
     pop: startingPop(world, id),
     campCell: null,
     sites: {},

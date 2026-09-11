@@ -514,8 +514,13 @@ export interface Site {
 }
 
 export interface RegionState {
-  /** Standing trees worth felling. */
-  wood: number;
+  /**
+   * Standing trees worth felling, by the patch they stand on, and only for
+   * patches something has been taken from: an absent patch is uncut ground
+   * holding what its own area grows. Felling on one patch leaves the next
+   * one untouched, and each grows back on its own.
+   */
+  woodCells: Record<number, number>;
   /** Animals by species, only for species with capacity here. */
   pop: Partial<Record<Species, number>>;
   /** The cell that is home: where the fire burns, the rack dries and the runner walks back to. Null until somebody makes camp here. */

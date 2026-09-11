@@ -28,6 +28,7 @@
  * re-exported from camp.ts, the way dailyCamp's own callers reach it.
  */
 import { resourcePotentialAt } from "../world/aggregate";
+import { PATCH_M, patchId, patchXY } from "../world/spatial";
 import { cellAt, neighbours, regionAt, type World } from "../world/gen";
 import { passable } from "../world/route";
 import { calendar } from "./calendar";
@@ -153,4 +154,90 @@ export function growRoots(st: RegionState, world: World, doy: number): void {
 export function seedSeasonalStocks(state: GameState, world: World, st: RegionState, id: number): void {
   const doy = calendar(state.minute, state.startDoy).dayOfYear;
   st.nests = doy >= EGG_FROM_DOY && doy <= EGG_TO_DOY ? nestsFor(world, st, id) : 0;
+}
+
+/**
+ * Trees worth felling on a patch nobody has cut: what its own 0.0025 km2
+ * of ground grows, and nothing of its neighbours'. Open ground grows none.
+ */
+export function woodPatchFull(world: World, idx: number): number {
+  return resourcePotentialAt(world, idx).trees;
+}
+
+/** Trees standing on this patch now: what has been taken from it, or its full figure when nothing has. */
+export function woodPatchLeft(st: RegionState, world: World, idx: number): number {
+  return st.woodCells[idx] ?? woodPatchFull(world, idx);
+}
+
+/** Writes a patch's standing trees, dropping the entry when the patch is back at full: an absent patch is an uncut one. */
+export function setWoodPatchLeft(st: RegionState, world: World, idx: number, trees: number): void {
+  const full = woodPatchFull(world, idx);
+  if (trees >= full - TRACE_KG) delete st.woodCells[idx];
+  else st.woodCells[idx] = Math.max(0, trees);
+}
+
+/** Takes trees off one patch and no other: felling, dead wood and bark all draw on the ground they stand on. */
+export function takeWood(st: RegionState, world: World, idx: number, trees: number): void {
+  setWoodPatchLeft(st, world, idx, woodPatchLeft(st, world, idx) - trees);
+}
+
+/**
+ * Trees left across a whole region: its uncut total less what has been taken
+ * off the patches somebody has worked, so the sum costs the worked patches
+ * rather than the region. A reference figure, never a gate on one patch's work.
+ */
+export function woodLeft(st: RegionState, world: World, region: number): number {
+  let taken = 0;
+  for (const key of Object.keys(st.woodCells)) {
+    const idx = Number(key);
+    taken += woodPatchFull(world, idx) - st.woodCells[idx]!;
+  }
+  return Math.max(0, regionAt(world, region).wood0 - taken);
+}
+
+/**
+ * The day's growth on every patch that has been cut. A patch puts back its
+ * own ground's share of a year over a year, so what regrows follows the
+ * stand rather than the region, and a patch left alone climbs back to full.
+ */
+export function growWood(st: RegionState, world: World): void {
+  for (const key of Object.keys(st.woodCells)) {
+    const idx = Number(key);
+    setWoodPatchLeft(st, world, idx, st.woodCells[idx]! + resourcePotentialAt(world, idx).treesPerYear / 365);
+  }
+}
+
+/**
+ * How far a fire that walks off camp reaches before it runs out of ground
+ * it can cross: the near forest, not the region's.
+ */
+export const FIRE_SPREAD_REACH_M = 300;
+
+/**
+ * Burns up to `trees` worth of standing timber off the ground around a
+ * patch, nearest first, taking each patch down to bare before moving out.
+ * Nothing beyond the reach burns, however much of the budget is left.
+ */
+export function burnWoodAround(st: RegionState, world: World, centre: number, trees: number): void {
+  const reach = Math.floor(FIRE_SPREAD_REACH_M / PATCH_M);
+  const origin = patchXY(centre);
+  const near: { idx: number; distance: number }[] = [];
+  for (let dy = -reach; dy <= reach; dy++) {
+    for (let dx = -reach; dx <= reach; dx++) {
+      const x = origin.x + dx;
+      const y = origin.y + dy;
+      if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
+      near.push({ idx: patchId(x, y), distance: dx * dx + dy * dy });
+    }
+  }
+  near.sort((a, b) => a.distance - b.distance || a.idx - b.idx);
+  let budget = trees;
+  for (const { idx } of near) {
+    if (budget <= TRACE_KG) return;
+    const standing = woodPatchLeft(st, world, idx);
+    if (standing <= TRACE_KG) continue;
+    const burnt = Math.min(standing, budget);
+    setWoodPatchLeft(st, world, idx, standing - burnt);
+    budget -= burnt;
+  }
 }

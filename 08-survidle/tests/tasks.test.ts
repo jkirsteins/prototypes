@@ -13,6 +13,7 @@ import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "..
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
 import { campSite, regionState } from "../src/sim/regionstate";
+import { woodPatchLeft } from "../src/sim/stocks";
 import { cellAt, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 import { isWorkOrder } from "../src/sim/types";
@@ -44,12 +45,12 @@ describe("tasks", () => {
     expect(check(state, world, cal, "chop").why).toContain("forest");
     placeAtSpot(state, world, state.player.region, "forest");
     expect(check(state, world, cal, "chop").ok).toBe(true);
-    const wood0 = regionState(state, world, state.player.region).wood;
+    const wood0 = woodPatchLeft(regionState(state, world, state.player.region), world, cellOf(state, world));
     expect(startTask(state, world, cal, "chop")).toBe(true);
     done(g);
     expect(qty(herePile(state, world), "log")).toBe(4);
     expect(qty(state.player.pack, "stick")).toBe(4);
-    expect(regionState(state, world, state.player.region).wood).toBe(wood0 - 1);
+    expect(woodPatchLeft(regionState(state, world, state.player.region), world, cellOf(state, world))).toBe(wood0 - 1);
     expect(tool(state.player, "axe")!.durability).toBe(99);
     expect(state.stats.trees).toBe(1);
   });
@@ -59,11 +60,12 @@ describe("tasks", () => {
     siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
-    regionState(state, world, state.player.region).wood = 2;
     startTask(state, world, cal, "chop", undefined, true);
     run(g, 200);
     expect(state.task).toBeNull();
-    expect(qty(herePile(state, world), "log")).toBe(8);
+    // One patch of forest holds one tree worth felling, so the repeat stops
+    // when this ground is felled out rather than when the region is.
+    expect(qty(herePile(state, world), "log")).toBe(4);
     expect(state.log.some((e) => e.text.includes("{You} {stop}"))).toBe(true);
   });
 
