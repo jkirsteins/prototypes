@@ -75,11 +75,35 @@ function horizonCells(heightM: number): number {
 /** Open ground and water: the plain standing-eye horizon. */
 const OPEN_RANGE_CELLS = horizonCells(EYE_HEIGHT_M);
 
+/** A vantage is as high as it stands above the lowest ground within this many km, sampled every five cells. */
+const PROMINENCE_KM = 20;
+const PROMINENCE_STEP = 5;
+
+/**
+ * Height above the lowest ground within 20 km: what the horizon formula
+ * wants. Altitude alone would give a flat plateau a horizon it does not
+ * have; a fell above a fjord earns its view from the fjord's surface.
+ */
+export function prominenceM(world: World, x: number, y: number): number {
+  const reach = Math.round(PROMINENCE_KM / CELL_KM);
+  let lowest = heightAt(world, x, y);
+  for (let dy = -reach; dy <= reach; dy += PROMINENCE_STEP) {
+    for (let dx = -reach; dx <= reach; dx += PROMINENCE_STEP) {
+      const xx = x + dx;
+      const yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= world.w || yy >= world.h) continue;
+      const v = Math.max(0, heightAt(world, xx, yy));
+      if (v < lowest) lowest = v;
+    }
+  }
+  return Math.max(0, heightAt(world, x, y) - lowest);
+}
+
 /** The vantage's own canopy or height, before light and eyes ever touch it. */
 function vantageBaseCells(world: World, t: Terrain, x: number, y: number): number {
   if (t === "spruce") return SPRUCE_RANGE_CELLS;
   if (t === "pine" || t === "birch") return FOREST_RANGE_CELLS;
-  if (t === "fell" || t === "rock") return horizonCells(Math.max(0, heightAt(world, x, y)) + EYE_HEIGHT_M);
+  if (t === "fell" || t === "rock" || t === "river") return Math.max(OPEN_RANGE_CELLS, horizonCells(prominenceM(world, x, y) + EYE_HEIGHT_M));
   return OPEN_RANGE_CELLS;
 }
 
