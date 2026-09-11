@@ -1,8 +1,11 @@
+import { newGame } from "../src/sim/newgame";
+import { cellOf, placeAtPatch } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import type { GameState, Terrain } from "../src/sim/types";
 import { FINE_CHUNK } from "../src/world/cells";
 import { cellAt, neighbours, regionAt, type RegionDef, type World } from "../src/world/gen";
-import { passable } from "../src/world/route";
+import { findRoute, passable } from "../src/world/route";
+import { fineNeighbours } from "../src/world/spatial";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 
 /**
@@ -51,4 +54,36 @@ export function siteCamp(state: GameState, world: World, region = state.player.r
 export function requireCamp(region: RegionDef): number {
   if (region.campCell === null) throw new Error(`region ${region.id} has no passable camp`);
   return region.campCell;
+}
+
+/**
+ * A run whose survivor stands in spruce: the nearest spruce patch of the
+ * starting region that a route actually reaches, walked to rather than
+ * painted, so the ground under the test is ground the world generated.
+ */
+export function forestGame(seed: number): { state: GameState; world: World } {
+  const { state, world } = newGame(seed);
+  const from = cellOf(state, world);
+  const origin = cellAt(world, from);
+  const spruce = regionAt(world, state.player.region).cells
+    .filter((cell) => cellAt(world, cell).terrain === "spruce")
+    .map((cell) => {
+      const c = cellAt(world, cell);
+      return { cell, distance: (c.x - origin.x) ** 2 + (c.y - origin.y) ** 2 };
+    })
+    .sort((a, b) => a.distance - b.distance || a.cell - b.cell);
+  for (const { cell } of spruce.slice(0, 24)) {
+    if (cell === from || findRoute(world, from, cell)) {
+      placeAtPatch(state, world, cell);
+      return { state, world };
+    }
+  }
+  throw new Error(`seed ${seed} starts nowhere near reachable spruce`);
+}
+
+/** The first passable neighbour of a patch: the ground one step off, 50 m away. */
+export function passableNeighbor(world: World, patch: number): number {
+  const n = fineNeighbours(world, patch).find((f) => passable(cellAt(world, f.patch).terrain));
+  if (!n) throw new Error(`patch ${patch} has no passable neighbour`);
+  return n.patch;
 }

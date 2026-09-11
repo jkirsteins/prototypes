@@ -34,7 +34,7 @@ function findCell(world: World, from: number, want: (terrain: string, waterside:
 }
 
 describe("roots and rhizomes", () => {
-  it("a cell holds its stand's rhizome: a shore fringe, a wet cell's margins, a meadow's sparse taproots", () => {
+  it("a patch holds its stand's rhizome: a shore fringe, a wet cell's margins, a meadow's sparse taproots", () => {
     expect(FOODS.cookedRoots).toEqual({ kcalPerKg: 850, portionKg: 0.3, sickChance: 0, leanShare: 0 });
     expect(RECOMMENDED.roots).toEqual({ skill: "foraging", level: 3 });
     const { state, world } = newGame(17, 130);
@@ -43,13 +43,13 @@ describe("roots and rhizomes", () => {
     const shore = findCell(world, here, (t, water) => water && t !== "water" && t !== "bog" && t !== "meadow");
     const bog = findCell(world, here, (t, water) => t === "bog" && !water);
     const meadow = findCell(world, here, (t, water) => t === "meadow" && !water);
-    // Nine hectares of cell: a 10 m reed fringe, the wet hollows of a wet cell, a meadow's scattered taproots.
-    expect(rootCellFullKg(world, shore)).toBeCloseTo(810, 0);
-    expect(rootCellFullKg(world, bog)).toBeCloseTo(1350, 0);
-    expect(rootCellFullKg(world, meadow)).toBeCloseTo(90, 0);
+    // A quarter of a hectare of patch: a 10 m reed fringe, the wet hollows of a wet patch, a meadow's scattered taproots.
+    expect(rootCellFullKg(world, shore)).toBeCloseTo(22.5, 3);
+    expect(rootCellFullKg(world, bog)).toBeCloseTo(37.5, 3);
+    expect(rootCellFullKg(world, meadow)).toBeCloseTo(2.5, 3);
     // Waterside bog is bog ground with a fringe on it, not the lesser of the two; open water is no ground at all.
     const bogShore = findCell(world, here, (t, water) => t === "bog" && water);
-    expect(rootCellFullKg(world, bogShore)).toBeCloseTo(1350, 0);
+    expect(rootCellFullKg(world, bogShore)).toBeCloseTo(37.5, 3);
     const water = findCell(world, here, (t) => t === "water");
     expect(rootCellFullKg(world, water)).toBe(0);
     const forest = findCell(world, here, (t, w) => t === "spruce" && !w);

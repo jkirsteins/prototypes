@@ -363,8 +363,9 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     if (cal.dayOfYear === EGG_FROM_DOY) st.nests = nestsFor(world, st, id);
     if (cal.dayOfYear === EGG_TO_DOY + 1) st.nests = 0;
     growRoots(st, world, cal.dayOfYear);
-    const forestCells = r.forest * r.cells.length;
-    st.wood = Math.min(r.wood0, st.wood + (0.5 * forestCells) / 365);
+    // What the region's forest puts back in a year is its patches' own growth
+    // added up, not a figure per cell: what a stand grows follows its ground.
+    st.wood = Math.min(r.wood0, st.wood + r.treeGrowthPerYear / 365);
   }
 }
 

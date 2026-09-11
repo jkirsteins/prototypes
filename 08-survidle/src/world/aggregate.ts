@@ -2,7 +2,7 @@ import type { Terrain } from "../sim/types";
 import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, patchAt, type World } from "./cells";
 import { fieldsAtPatch, regionAtPatch } from "./fine-terrain";
 import type { FineGrid } from "./fine-route";
-import { FINE_PER_PARENT, type PatchId, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
+import { FINE_PER_PARENT, PATCH_KM, type PatchId, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
 import { TERRAINS } from "./terrain";
 
 const CANOPY_HEIGHT_M: Partial<Record<Terrain, number>> = { spruce: 22, pine: 17, birch: 14 };
@@ -13,6 +13,51 @@ export interface AggregateSource extends FineGrid {
   regionAt?(patch: PatchId): number;
 }
 
+/**
+ * What a square kilometre of closed forest carries: sixty trees worth
+ * felling, and half a tree a year put back on the same ground. Both figures
+ * are the stand's, not a cell's, so the ground a patch owns decides its
+ * share of them and no patch is handed a fraction of a parent's total.
+ */
+export const TREES_PER_FOREST_KM2 = 60 / 0.09;
+export const TREE_GROWTH_PER_FOREST_KM2_YEAR = 0.5 / 0.09;
+
+/** What a piece of ground grows, for the area it actually covers. */
+export interface ResourcePotential {
+  /** The ground these figures are for, km2. */
+  areaKm2: number;
+  /** Trees on it worth felling. */
+  trees: number;
+  /** Trees it puts back in a year. */
+  treesPerYear: number;
+}
+
+const FOREST: Partial<Record<Terrain, true>> = { spruce: true, pine: true, birch: true };
+
+function potentialOf(terrain: Terrain, areaKm2: number): ResourcePotential {
+  const forest = FOREST[terrain] ? areaKm2 : 0;
+  return { areaKm2, trees: forest * TREES_PER_FOREST_KM2, treesPerYear: forest * TREE_GROWTH_PER_FOREST_KM2_YEAR };
+}
+
+/**
+ * What one 50 m patch grows: its own terrain over its own 0.0025 km2. The
+ * only area any resource rule may read, so a stock is never nine hectares
+ * of ground standing in for a patch of it.
+ */
+export function resourcePotentialAt(source: World | AggregateSource, patch: PatchId): ResourcePotential {
+  return potentialOf(terrainAt(source, patch), PATCH_KM * PATCH_KM);
+}
+
+function addPotential(target: ResourcePotential, source: ResourcePotential): void {
+  target.areaKm2 += source.areaKm2;
+  target.trees += source.trees;
+  target.treesPerYear += source.treesPerYear;
+}
+
+function emptyPotential(): ResourcePotential {
+  return { areaKm2: 0, trees: 0, treesPerYear: 0 };
+}
+
 export interface ParentSummary {
   samples: 36;
   terrainCounts: Record<Terrain, number>;
@@ -21,6 +66,8 @@ export interface ParentSummary {
   maxElevationM: number;
   maxObstructionM: number;
   regionCounts: Map<number, number>;
+  /** What the summarised patches grow, added up from each patch's own ground. */
+  resourcePotential: ResourcePotential;
   generation: number;
 }
 
@@ -123,6 +170,7 @@ export function parentSummary(source: World | AggregateSource, px: number, py: n
   let minElevationM = Number.POSITIVE_INFINITY;
   let maxElevationM = Number.NEGATIVE_INFINITY;
   let maxObstructionM = Number.NEGATIVE_INFINITY;
+  const resourcePotential = emptyPotential();
   for (let y = y0; y < y0 + FINE_PER_PARENT; y++) {
     for (let x = x0; x < x0 + FINE_PER_PARENT; x++) {
       const patch = patchId(x, y);
@@ -130,6 +178,7 @@ export function parentSummary(source: World | AggregateSource, px: number, py: n
       const elevationM = elevationAt(source, patch);
       const region = regionAt(source, patch);
       terrainCounts[terrain]++;
+      addPotential(resourcePotential, potentialOf(terrain, PATCH_KM * PATCH_KM));
       minElevationM = Math.min(minElevationM, elevationM);
       maxElevationM = Math.max(maxElevationM, elevationM);
       maxObstructionM = Math.max(maxObstructionM, obstructionM(terrain, elevationM));
@@ -144,6 +193,7 @@ export function parentSummary(source: World | AggregateSource, px: number, py: n
     maxElevationM,
     maxObstructionM,
     regionCounts,
+    resourcePotential,
     generation: nextGeneration(source),
   };
   cache.set(key, summary);
@@ -157,6 +207,7 @@ interface SummaryBuilder {
   maxElevationM: number;
   maxObstructionM: number;
   regionCounts: Map<number, number>;
+  resourcePotential: ResourcePotential;
 }
 
 function emptySummary(): SummaryBuilder {
@@ -167,6 +218,7 @@ function emptySummary(): SummaryBuilder {
     maxElevationM: Number.NEGATIVE_INFINITY,
     maxObstructionM: Number.NEGATIVE_INFINITY,
     regionCounts: new Map(),
+    resourcePotential: emptyPotential(),
   };
 }
 
@@ -179,6 +231,7 @@ function addSummary(target: SummaryBuilder, source: Omit<AggregateSummary, "gene
   for (const [region, count] of source.regionCounts) {
     target.regionCounts.set(region, (target.regionCounts.get(region) ?? 0) + count);
   }
+  addPotential(target.resourcePotential, source.resourcePotential);
 }
 
 export function aggregateSummary(source: World | AggregateSource, x0: number, y0: number, size: number): AggregateSummary {
@@ -207,6 +260,7 @@ export function aggregateSummary(source: World | AggregateSource, x0: number, y0
         const region = regionAt(source, patch);
         summary.samples++;
         summary.terrainCounts[terrain]++;
+        addPotential(summary.resourcePotential, potentialOf(terrain, PATCH_KM * PATCH_KM));
         summary.minElevationM = Math.min(summary.minElevationM, elevationM);
         summary.maxElevationM = Math.max(summary.maxElevationM, elevationM);
         summary.maxObstructionM = Math.max(summary.maxObstructionM, obstructionM(terrain, elevationM));

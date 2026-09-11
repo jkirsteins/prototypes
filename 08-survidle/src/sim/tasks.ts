@@ -94,7 +94,7 @@ export interface TaskOption {
   never?: boolean;
   /** Share already done and waiting to be resumed, when there is one. */
   resume?: number;
-  /** The cell the work resolved to, when an intent chose one; absent means wherever the player stands. */
+  /** The patch the work resolved to, when an intent chose one; absent means wherever the player stands. */
   cell?: number;
   /** The first route this action will take before doing work. */
   initialWalk?: InitialWalk;
@@ -104,7 +104,7 @@ export interface TaskOption {
   recommended?: { text: string; under: boolean; short: number };
 }
 
-/** Work that stays where it was left: the half-felled tree is in that cell of forest. */
+/** Work that stays where it was left: the half-felled tree is on that 50 m patch of forest, and its key names the patch. */
 const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs", "innerBark", "roots", "tapSap", "seaweed", "findShelter", "improveCover"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "hone", "light", "lightIndoors", "lightTorch"]);

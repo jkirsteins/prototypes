@@ -106,7 +106,7 @@ export function listItems(inv: Inventory): { item: ItemId; qty: number }[] {
   return out;
 }
 
-/** The pile on a cell, created on first use. Empty piles are swept by tidyPiles. */
+/** The pile on one 50 m patch, created on first use. Empty piles are swept by tidyPiles. */
 export function pile(state: GameState, cell: number): Inventory {
   let inv = state.piles[cell];
   if (!inv) {
@@ -117,8 +117,8 @@ export function pile(state: GameState, cell: number): Inventory {
 }
 
 /**
- * What lies on a cell, read without raising a pile there - and nothing at all
- * for a cell that is null, which is how a region with no camp reads its camp
+ * What lies on a patch, read without raising a pile there - and nothing at all
+ * for a patch that is null, which is how a region with no camp reads its camp
  * pile. The inventory handed back is a fresh empty one when there is no pile,
  * so nothing may be added through this call; use pile() to put something down.
  */
@@ -126,12 +126,12 @@ export function pileAt(state: GameState, cell: number | null): Inventory {
   return (cell === null ? undefined : state.piles[cell]) ?? emptyInventory();
 }
 
-/** The pile under the player's feet. */
+/** The pile on the patch under the player's feet, and no other. */
 export function herePile(state: GameState, world: World): Inventory {
   return pile(state, cellOf(state, world));
 }
 
-/** Pack plus the pile the player stands on: what a task may consume. */
+/** Pack plus the pile on the patch the player stands on: what a task may consume. A pile 50 m off is out of reach. */
 export function reach(state: GameState, world: World): Inventory[] {
   return [state.player.pack, herePile(state, world)];
 }
@@ -144,7 +144,7 @@ export function tidyPiles(state: GameState): void {
   }
 }
 
-/** Cells in a region that have something lying on them. */
+/** Patches in a region that have something lying on them. */
 export function pilesIn(state: GameState, world: World, region: number): { cell: number; inv: Inventory }[] {
   const out: { cell: number; inv: Inventory }[] = [];
   for (const k of Object.keys(state.piles)) {

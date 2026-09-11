@@ -217,8 +217,10 @@ export interface Task {
 }
 
 /**
- * Work set aside with its share done. A felled-halfway tree stays halfway
- * at its forest; a half-made knife travels in your hands. The key says which.
+ * Work set aside with its share done. A felled-halfway tree stays halfway on
+ * the 50 m patch it stands on; a half-made knife travels in your hands. The
+ * key says which, and for located work it names the exact patch, so work set
+ * aside is picked up where it was left and nowhere else.
  */
 export interface PausedTask {
   id: TaskId;
@@ -227,7 +229,7 @@ export interface PausedTask {
   any?: boolean;
   /** Share of the work done, 0..1. */
   fraction: number;
-  /** The cell it was set aside in; -1 for carried work. */
+  /** The exact patch it was set aside on; -1 for carried work. */
   cell: number;
   duration?: number;
   huntPhase?: "pursuit" | "field";
@@ -872,14 +874,14 @@ export interface GameState {
   /** The last game hour and day index that had their periodic roll. */
   lastHour: number;
   lastDay: number;
-  /** Tasks set aside, by pauseKey. */
+  /** Tasks set aside, by pauseKey: located work under its own patch. */
   paused: Record<string, PausedTask>;
-  /** What lies on the ground, by cell index. */
+  /** What lies on the ground, by the patch it lies on. */
   piles: Record<number, Inventory>;
-  /** Kills awaiting field processing, still fixed to the cell where they fell. */
+  /** Kills awaiting field processing, still fixed to the patch where they fell. */
   carcasses: Carcass[];
   nextCarcassId: number;
-  /** Recent disturbance by cell, 0 calm to 1 strongly avoided. */
+  /** Recent disturbance by patch, 0 calm to 1 strongly avoided. */
   huntPressure: Record<number, number>;
   /** Seeps by the cell they are dug on. */
   seeps: Record<number, Seep>;

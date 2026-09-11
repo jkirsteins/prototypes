@@ -4,6 +4,7 @@
  * layer turns these into loops and one-shots on its own clock.
  */
 import { cellAt, regionAt, speciesHere, waterKindOf, type World } from "../world/gen";
+import { PATCH_M } from "../world/spatial";
 import { regionDensity } from "./animals";
 import type { Calendar } from "./calendar";
 import { fuelTotal } from "./fire";
@@ -18,7 +19,7 @@ import { ICE_THIN_CM, localWeather, stormNow } from "./weather";
 export type Footing = "leaves" | "grass" | "bog" | "rock" | "snow" | "ice";
 
 export interface Surroundings {
-  /** Shares of the 5x5 cells around the player. forest is spruce, pine and birch; open is fell, rock, meadow and bog; bog is also given alone. */
+  /** Shares of the ground within earshot. forest is spruce, pine and birch; open is fell, rock, meadow and bog; bog is also given alone. */
   forest: number;
   birch: number;
   open: number;
@@ -34,8 +35,16 @@ export interface Surroundings {
   storm: boolean;
 }
 
-/** Cells either side of the player counted for the surroundings. */
-const REACH = 2;
+/**
+ * How far the ear reads the ground it is standing in, and how finely. A
+ * person hears the wood about half a kilometre off, and one hundred metres
+ * of it sounds like the next hundred, so the ground is sampled at that
+ * spacing rather than patch by patch.
+ */
+const HEARING_REACH_M = 600;
+const HEARING_SAMPLE_M = 100;
+const SAMPLE_STEP = Math.round(HEARING_SAMPLE_M / PATCH_M);
+const SAMPLES_EITHER_SIDE = Math.round(HEARING_REACH_M / HEARING_SAMPLE_M);
 /** Snow this deep is what you hear under foot. */
 const SNOW_FOOTING_CM = 5;
 
@@ -59,10 +68,10 @@ export function surroundings(state: GameState, world: World, ambient: number): S
   let bog = 0;
   let lake = 0;
   let sea = 0;
-  for (let dy = -REACH; dy <= REACH; dy++) {
-    for (let dx = -REACH; dx <= REACH; dx++) {
-      const x = hx + dx;
-      const y = hy + dy;
+  for (let sy = -SAMPLES_EITHER_SIDE; sy <= SAMPLES_EITHER_SIDE; sy++) {
+    for (let sx = -SAMPLES_EITHER_SIDE; sx <= SAMPLES_EITHER_SIDE; sx++) {
+      const x = hx + sx * SAMPLE_STEP;
+      const y = hy + sy * SAMPLE_STEP;
       if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
       const idx = y * world.w + x;
       const t = cellAt(world, idx).terrain;

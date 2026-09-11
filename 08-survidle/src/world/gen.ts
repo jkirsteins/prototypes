@@ -6,7 +6,7 @@
 import { Rng, derive } from "../rng";
 import { SPECIES_IDS } from "../sim/species";
 import type { Habitat, Species, SpotId, Terrain } from "../sim/types";
-import { parentSummary } from "./aggregate";
+import { parentSummary, type ResourcePotential, resourcePotentialAt } from "./aggregate";
 import { type Cell, cellAt, cellIdx, neighbours, newWorld, regionPeek, terrainOf, type World } from "./cells";
 import { FINE_PER_PARENT, PATCH_KM, type PatchId } from "./spatial";
 import { regionName } from "./names";
@@ -34,8 +34,10 @@ export interface RegionDef {
   forest: number;
   /** rock + fell */
   rock: number;
-  /** Trees worth felling when the run begins. */
+  /** Trees worth felling when the run begins: every patch's own stand added up. */
   wood0: number;
+  /** Trees the region's forest patches put back in a year, added up the same way. */
+  treeGrowthPerYear: number;
   /** Shares of the region's cells that are lake water and sea water; together they are frac.water. */
   lake: number;
   sea: number;
@@ -85,6 +87,13 @@ function buildRegion(world: World, id: number): RegionDef {
   let sy = 0;
   let seaCells = 0;
   let lakeCells = 0;
+  // Stocks are the patches' own, summed; nothing here divides a parent's total.
+  const potential: ResourcePotential = { areaKm2: 0, trees: 0, treesPerYear: 0 };
+  const addPotential = (p: ResourcePotential) => {
+    potential.areaKm2 += p.areaKm2;
+    potential.trees += p.trees;
+    potential.treesPerYear += p.treesPerYear;
+  };
   const nb = new Set<number>();
   for (let py = y0; py < y1; py += FINE_PER_PARENT) {
     for (let px = x0; px < x1; px += FINE_PER_PARENT) {
@@ -101,13 +110,19 @@ function buildRegion(world: World, id: number): RegionDef {
       const members = summary.regionCounts.get(id) ?? 0;
       if (!members) continue;
       const whole = members === summary.samples;
-      if (whole) for (const terrain of TERRAINS) count[terrain] += summary.terrainCounts[terrain];
+      if (whole) {
+        for (const terrain of TERRAINS) count[terrain] += summary.terrainCounts[terrain];
+        addPotential(summary.resourcePotential);
+      }
       for (let y = py; y < py + FINE_PER_PARENT; y++) for (let x = px; x < px + FINE_PER_PARENT; x++) {
         if (!whole && regionPeek(world, x, y) !== id) continue;
         const idx = cellIdx(world, x, y);
         cells.push(idx);
         const terrain = terrainOf(world, x, y);
-        if (!whole) count[terrain]++;
+        if (!whole) {
+          count[terrain]++;
+          addPotential(resourcePotentialAt(world, idx));
+        }
         if (terrain === "water") {
           if (fieldsAt(world.seed, x, y).sea) seaCells++;
           else lakeCells++;
@@ -159,7 +174,8 @@ function buildRegion(world: World, id: number): RegionDef {
     sea,
     forest,
     rock,
-    wood0: Math.round(forest * area * (60 / 0.09)),
+    wood0: Math.round(potential.trees),
+    treeGrowthPerYear: potential.treesPerYear,
     capacity,
     neighbours: [...nb]
       .sort((a, b) => a - b)

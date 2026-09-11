@@ -27,9 +27,9 @@
  * module back would close a cycle. rootStockFor is exported here and
  * re-exported from camp.ts, the way dailyCamp's own callers reach it.
  */
+import { resourcePotentialAt } from "../world/aggregate";
 import { cellAt, neighbours, regionAt, type World } from "../world/gen";
 import { passable } from "../world/route";
-import { CELL_KM } from "../units";
 import { calendar } from "./calendar";
 import {
   EGG_FROM_DOY, EGG_TO_DOY, MEADOW_ROOT_KG_PER_M2, RHIZOME_KG_PER_M2, ROOT_GROWTH_FROM_DOY, ROOT_GROWTH_TO_DOY,
@@ -68,15 +68,15 @@ function watersideHere(world: World, idx: number): boolean {
 }
 
 /**
- * Kilos of rhizome a cell holds when nothing has been dug from it: the
- * stand's area over nine hectares of ground, at its density, times the
- * share a digging stick lifts. Ground that is both waterside and wet is the
- * wet cell it is, fringe and all, so it takes the larger figure rather than
+ * Kilos of rhizome a patch holds when nothing has been dug from it: the
+ * stand's share of the patch's own ground, at its density, times the share
+ * a digging stick lifts. Ground that is both waterside and wet is the wet
+ * patch it is, fringe and all, so it takes the larger figure rather than
  * the sum. Zero on ground no root stand grows on.
  */
 export function rootCellFullKg(world: World, idx: number): number {
   const t = cellAt(world, idx).terrain;
-  const area = (CELL_KM * 1000) ** 2;
+  const area = resourcePotentialAt(world, idx).areaKm2 * 1e6;
   let kg = 0;
   if (watersideHere(world, idx)) kg = Math.max(kg, area * STAND_SHARE_SHORE * RHIZOME_KG_PER_M2);
   if (t === "bog") kg = Math.max(kg, area * STAND_SHARE_BOG * RHIZOME_KG_PER_M2);
