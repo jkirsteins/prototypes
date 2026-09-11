@@ -13,6 +13,7 @@
  */
 import { cellAt, fordAt, hasSpot, heightAt, neighbours, regionAt, regionOf, streamAt, terrainOf, waterKindOf, type World } from "../src/world/gen";
 import { CANOPY_HEIGHT_M } from "../src/sim/sight";
+import { UPWIND_STEP } from "../src/sim/shelter";
 import { passable } from "../src/world/route";
 import type { Terrain } from "../src/sim/types";
 
@@ -234,7 +235,8 @@ export function regionsOutward(world: World, home: number, limit = 120): number[
  * so a rock or a fell standing behind a ridge can be found and asked about.
  */
 export function leeCellNear(world: World, home: number, terrain: Terrain, windBearingDeg: number, blocked = true): number {
-  // Five samples of 300 m upwind, the reach the shelter rule uses.
+  // Five steps upwind, the reach the shelter rule uses, each measured at the
+  // true distance it stands at rather than at a flat 300 m.
   const eighth = ((Math.round(windBearingDeg / 45) % 8) + 8) % 8;
   const [dx, dy] = UPWIND_STEP[eighth];
   for (const id of regionsOutward(world, home, 400)) {
@@ -251,7 +253,7 @@ export function leeCellNear(world: World, home: number, terrain: Terrain, windBe
         if (sx < 0 || sy < 0 || sx >= world.w || sy >= world.h) break;
         samples++;
         const top = heightAt(world, sx, sy) + (CANOPY_HEIGHT_M[terrainOf(world, sx, sy)] ?? 0) - h;
-        over = Math.max(over, top / (d * 300));
+        over = Math.max(over, top / (d * 300 * Math.hypot(dx, dy)));
       }
       if (samples < 5) continue;
       // Half shelter is a ratio of 0.05; clear of it either way, never on the line.
@@ -273,19 +275,13 @@ function leeCellAnywhere(world: World, terrain: Terrain, dx: number, dy: number,
       let over = 0;
       for (let d = 1; d <= 5; d++) {
         const top = heightAt(world, x + dx * d, y + dy * d) + (CANOPY_HEIGHT_M[terrainOf(world, x + dx * d, y + dy * d)] ?? 0) - h;
-        over = Math.max(over, top / (d * 300));
+        over = Math.max(over, top / (d * 300 * Math.hypot(dx, dy)));
       }
       if (blocked ? over > 0.06 : over < 0.04) return y * world.w + x;
     }
   }
   throw new Error(`this world holds no ${terrain} that is ${blocked ? "" : "un"}blocked upwind`);
 }
-
-/** One cell toward where the wind comes from, indexed by eighth of the compass from north. */
-const UPWIND_STEP: readonly (readonly [number, number])[] = [
-  [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1],
-];
-
 
 /**
  * Cells in a straight cardinal line whose terrains read as `pattern`, all inside

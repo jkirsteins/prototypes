@@ -90,8 +90,9 @@ export function profileOf(site: Site | null): "low" | "high" {
 }
 
 /**
- * How far upwind ground can still matter: five cells is 1.5 km, by which
- * distance a barrier would have to stand 150 m above the cell to shelter it.
+ * How far upwind ground can still matter: five steps is 1.5 km along a cardinal
+ * wind and 2.1 km along a diagonal one, by which distance a barrier would have
+ * to stand 150 m or 212 m above the cell to shelter it.
  */
 const LEE_REACH_CELLS = 5;
 /**
@@ -101,8 +102,8 @@ const LEE_REACH_CELLS = 5;
  * half score the gale rule asks for falls at a twentieth, a ratio of 0.05.
  */
 const LEE_FULL_RATIO = 0.1;
-/** The wind comes from its bearing: 0 is north, they run clockwise, and the map's north is negative y. */
-const UPWIND_STEP: readonly (readonly [number, number])[] = [
+/** One cell toward where the wind comes from: 0 is north, they run clockwise, and the map's north is negative y. */
+export const UPWIND_STEP: readonly (readonly [number, number])[] = [
   [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1],
 ];
 const EIGHT_WINDS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
@@ -130,9 +131,10 @@ export interface Lee {
  * reaches this cell: the tallest thing standing upwind, measured above this
  * cell and against how far off it is. Valleys, gullies, the downwind side of a
  * ridge, banks and terraces all shelter this way while draining normally, and
- * a wood upwind works as any other barrier does. Rock and fell are exposed by
- * nature, and water, a river included, is never a refuge. Spruce is the
- * world's closed canopy: under it the wind is already gone.
+ * a wood upwind works as any other barrier does. A sample is measured at the
+ * distance it really stands at, so a diagonal step counts as 424 m. Rock and
+ * fell are exposed by nature, and water, a river included, is never a refuge.
+ * Spruce is the world's closed canopy: under it the wind is already gone.
  */
 export function leeScore(world: World, cell: number, windBearingDeg: number): Lee {
   const { x, y, terrain } = cellAt(world, cell);
@@ -148,7 +150,8 @@ export function leeScore(world: World, cell: number, windBearingDeg: number): Le
     const sx = x + dx * d;
     const sy = y + dy * d;
     if (sx < 0 || sy < 0 || sx >= world.w || sy >= world.h) break;
-    const distanceM = d * CELL_KM * 1000;
+    // True distance, so a diagonal step is the 424 m it really is, not 300.
+    const distanceM = d * CELL_KM * 1000 * Math.hypot(dx, dy);
     const ground = heightAt(world, sx, sy) - here;
     const ratio = (ground + (CANOPY_HEIGHT_M[terrainOf(world, sx, sy)] ?? 0)) / distanceM;
     if (ratio > blocking) {

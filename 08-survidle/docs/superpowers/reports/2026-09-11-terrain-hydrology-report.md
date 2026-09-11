@@ -630,9 +630,12 @@ lee only when it was lower than all four cardinal neighbours, and a drainage
 solve fills interior pits, so on seed 17 only two land cells in a thousand
 qualified and none lay within the several hundred regions around the landing.
 Lee is now relative blocking: the highest ratio of upwind ground plus canopy
-above the cell over its distance, sampled 300 m to 1.5 km upwind, with 0.05
-lee and 0.1 full shelter. `npm run terrain -- 42` reports the share of land
-cells that are lee: **31.2% under a west wind and 32.4% under a north wind**.
+above the cell over its true distance, sampled five steps upwind along the
+eight winds - 300 m to 1.5 km on a cardinal wind, 424 m to 2.1 km on a
+diagonal one - with 0.05 lee and 0.1 full shelter. `npm run terrain -- 42`
+reports the share of land cells that are lee: **31.2% under a west wind and
+32.4% under a north wind**, and 22.3% north-west and 22.4% south-west, the
+diagonals reading lower because a diagonal step is the 424 m it really is.
 Valleys, gullies, the downwind side of a ridge, banks and terraces all shelter
 while draining normally, and a wood upwind shelters as a barrier does.
 

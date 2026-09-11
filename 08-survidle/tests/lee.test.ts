@@ -92,6 +92,24 @@ describe("lee is what the upwind ground and wood block", () => {
     expect(isLee(world, HERE, WEST)).toBe(false);
   });
 
+  it("measures a diagonal step at the 424 m it really stands at", () => {
+    const world = meadow();
+    // One step north-west of here is 424 m away, not 300: 30 m over it is
+    // 0.071, lee but short of full shelter.
+    paintWorld(world, [HERE - W - 1], "meadow", 130);
+    const diagonal = leeScore(world, HERE, 315);
+    expect(diagonal.blocking).toBeCloseTo(30 / (300 * Math.SQRT2), 6);
+    expect(diagonal.score).toBeCloseTo(0.707, 3);
+    expect(diagonal.by).toBe("slope");
+    expect(isLee(world, HERE, 315)).toBe(true);
+    // The same rise at the same true distance along a cardinal wind, to within
+    // the rounding of 424 m onto a 300 m grid, reads as the same number.
+    const cardinal = meadow();
+    paintWorld(cardinal, [west(1)], "meadow", 130);
+    expect(leeScore(cardinal, HERE, WEST).blocking * (300 / (300 * Math.SQRT2)))
+      .toBeCloseTo(diagonal.blocking, 6);
+  });
+
   it("walks upwind on the eight winds, not on the raw bearing", () => {
     const world = meadow();
     paintWorld(world, [HERE - W], "meadow", 130);

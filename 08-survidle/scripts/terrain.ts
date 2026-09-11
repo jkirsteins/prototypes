@@ -100,7 +100,8 @@ for (const seed of seeds) {
     }
     return 100 * lee / Math.max(1, cells);
   };
-  console.log(`lee share of land: west wind ${leeShare(270).toFixed(1)}% north wind ${leeShare(0).toFixed(1)}%   (no target; tens of percent is a sheltered landscape)`);
+  const leeWinds: [string, number][] = [["west", 270], ["north", 0], ["north-west", 315], ["south-west", 225]];
+  console.log(`lee share of land: ${leeWinds.map(([name, deg]) => `${name} ${leeShare(deg).toFixed(1)}%`).join(" ")}   (no target; tens of percent is a sheltered landscape)`);
   const heights = [...s.height].filter((_, i) => s.kind[i] === KIND.land);
   console.log(`land height m: p50 ${pct(heights, 0.5)} p90 ${pct(heights, 0.9)} max ${pct(heights, 1)}`);
   console.log(`start ${world.startCell} at row ${Math.floor(world.startCell / W)} (${latitudeAt(Math.floor(world.startCell / W), H).toFixed(2)} N), height ${heightAt(world, world.startCell % W, Math.floor(world.startCell / W))} m, terrain ${terrainOf(world, world.startCell % W, Math.floor(world.startCell / W))}, shore ${waterKindOf(world, world.startCell + 1) ?? waterKindOf(world, world.startCell - 1) ?? "?"}`);
