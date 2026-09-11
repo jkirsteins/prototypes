@@ -65,6 +65,8 @@ export function migrate(state: GameState, version = 10): void {
   state.startDoy ??= START_DOY;
   migrateWeather(state);
   state.awayHours ??= AWAY_HOURS_DEFAULT;
+  // Nothing under version 10 reaches here any more, so this reads as a plain
+  // default; it is kept as the shape the next version bump copies.
   state.advanceCarry = version < 9 ? 0 : (state.advanceCarry ?? 0);
   state.skills ??= newSkills();
   // A skill added since the save was written is the harder half of the same

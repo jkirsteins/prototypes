@@ -147,13 +147,20 @@ let awayDial: AwayDial | null = null;
 // during boot(), when there is no forecast waiting on a world.
 let tellForecaster: ((w: World) => void) | null = null;
 
+// A world is being made. The run underneath stands still while it is: the
+// frame does nothing, and a second click cannot start a second solve.
+let solving = false;
+
 /** A new run: the world is solved behind the bar first, so nothing starts on a world that is not there yet. */
 async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0): Promise<void> {
+  if (solving) return;
+  solving = true;
   const loaded = await loadWorld(seed, showLoading);
   hideLoading();
   const g = newWorld(seed, boat, startDoy, loaded);
   state = g.state;
   world = g.world;
+  solving = false;
   wasDead = false;
   ui.selected = null;
   ui.away = null;
@@ -180,8 +187,10 @@ async function boot() {
     // Set before the catch-up below runs, so a death the catch-up itself deals
     // is not already read as "seen": the first frame must still emit died for it.
     wasDead = Boolean(saved.state.dead);
+    solving = true;
     world = await loadWorld(state.seed, showLoading);
     hideLoading();
+    solving = false;
     fillPopulations(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
     if (elapsed > 30 && !state.dead && !state.landing) {
@@ -320,6 +329,13 @@ function render(nowMs = performance.now()) {
 let lastReal = performance.now();
 let lastSave = performance.now();
 function frame(now: number) {
+  if (solving) {
+    // The clock moves on while a world is solved; the run does not, so the
+    // wait cannot be read later as time the survivor lived through.
+    lastReal = now;
+    requestAnimationFrame(frame);
+    return;
+  }
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
   if (import.meta.env.DEV && startleRestore) {
