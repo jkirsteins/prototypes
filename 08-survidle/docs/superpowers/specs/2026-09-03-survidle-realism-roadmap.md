@@ -4323,7 +4323,7 @@ third edge, the heat border, already on the map. Extends 4.
 
 **Curve.** Survivor row 1: what the heir starts with changes from "the
 dim map, landing near the old camp" to a note and a shore one valley
-over, and the ladder's row reads so once this lands. No tier. Expected:
+over, and the ladder's row 1 reads so. No tier. Expected:
 no sim number moves; the heir gate holds at its current count with
 `runHeir` following the note instead of the dim map, which is the
 harness change the item owns. Slot: before P, after the terrain

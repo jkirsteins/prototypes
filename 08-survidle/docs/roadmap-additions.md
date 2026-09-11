@@ -1,8 +1,9 @@
 # Roadmap additions
 
-Items raised but not built, written here because the roadmap the specs cite
-(`the roadmap's gate table`, `roadmap item B`) is not in this repo. Move them
-into it when they meet.
+Items raised but not yet placed in the roadmap
+(`superpowers/specs/2026-09-03-survidle-realism-roadmap.md`). An item moves
+into it when it can carry a curve line, and this file then points at its
+letter.
 
 ## Walking skill
 
