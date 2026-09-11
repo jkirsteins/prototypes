@@ -4,8 +4,7 @@
  * so every reader asks one question: how much is over this survivor.
  */
 import { clamp } from "../units";
-import { cellAt, neighbours, type World } from "../world/gen";
-import { fieldsAt } from "../world/terrain";
+import { cellAt, heightAt, neighbours, type World } from "../world/gen";
 import type { Protection, Site, Terrain } from "./types";
 
 export const PROTECTION_WORDS: Record<Protection, string> = {
@@ -39,7 +38,7 @@ export function builtProtection(minutes: number): Protection {
  * on a meadow.
  */
 export const COVER_CEILING: Record<Terrain, Protection> = {
-  rock: 2, spruce: 2, pine: 1, birch: 1, meadow: 0, bog: 0, fell: 0, water: 0,
+  rock: 2, spruce: 2, pine: 1, birch: 1, meadow: 0, bog: 0, fell: 0, water: 0, river: 0,
 };
 
 export function coverCeiling(world: World, cell: number): Protection {
@@ -89,19 +88,19 @@ export function profileOf(site: Site | null): "low" | "high" {
 }
 
 /**
- * Spruce is the world's dense-canopy terrain. A depression is land lower
- * than every cardinal neighbour in its generated elevation field; no new
- * terrain or random stream is needed. Rock and fell remain exposed even
- * in a local dip, and water is never a refuge. An edge is not a depression.
+ * Spruce is the world's dense-canopy terrain. A depression is land lower in
+ * metres than every cardinal neighbour; no new terrain is needed. Rock and
+ * fell remain exposed even in a local dip, and water, a river included, is
+ * never a refuge. An edge is not a depression.
  */
 export function isLee(world: World, cell: number): boolean {
   const { x, y, terrain } = cellAt(world, cell);
   if (terrain === "spruce") return true;
-  if (terrain === "rock" || terrain === "fell" || terrain === "water") return false;
+  if (terrain === "rock" || terrain === "fell" || terrain === "water" || terrain === "river") return false;
   const around = neighbours(world, cell);
   if (around.length !== 4) return false;
-  const elevation = fieldsAt(world.seed, x, y).e;
-  return around.every((other) => fieldsAt(world.seed, other % world.w, Math.floor(other / world.w)).e > elevation);
+  const elevation = heightAt(world, x, y);
+  return around.every((other) => heightAt(world, other % world.w, Math.floor(other / world.w)) > elevation);
 }
 
 /** Design scale for gale wind, not extra roofing or a change to the site. */

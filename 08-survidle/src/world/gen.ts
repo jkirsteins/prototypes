@@ -10,10 +10,12 @@ import { CELL_KM } from "../units";
 import { type Cell, cellAt, cellIdx, neighbours, newWorld, regionOf, terrainOf, type World } from "./cells";
 import { regionName } from "./names";
 import { findRoute, passable, routeKm } from "./route";
-import { fieldsAt, LATTICE, LATTICE_H, LATTICE_W, TERRAINS, terrainAt, WORLD_H, WORLD_W } from "./terrain";
+import { KIND, type SolvedWorld } from "./solve";
+import { rememberSolved, solvedFor } from "./solvecache";
+import { LATTICE, LATTICE_H, LATTICE_W, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
 import { wildlifeCapacity } from "./wildlife";
 
-export { cellAt, cellIdx, neighbours, regionOf, regionPeek, terrainOf, terrainPeek, waterKindOf, type Cell, type World } from "./cells";
+export { cellAt, cellIdx, dischargeAt, fordAt, heightAt, latitudeOfRow, moistureAt, neighbours, regionOf, regionPeek, streamAt, terrainOf, terrainPeek, waterKindOf, type Cell, type World } from "./cells";
 export { TERRAINS, WORLD_H, WORLD_W } from "./terrain";
 
 /** A named place to walk to: its cell and the route length from camp. */
@@ -46,11 +48,13 @@ export interface RegionDef {
   campCell: number;
 }
 
-/** A world is cheap to make; regions and chunks come as they are touched. */
-export function generateWorld(seed: number): World {
-  const world = newWorld(seed);
+/** The solve is the dear part; regions and chunks come as they are touched. */
+export function generateWorld(seed: number, solved?: SolvedWorld): World {
+  const world = newWorld(seed, solved ?? solvedFor(seed, WORLD_W, WORLD_H));
+  if (solved) rememberSolved(solved, seed);
   const s = findStart(world);
   world.start = s.id;
+  world.startCell = s.cell;
   world.startRing = s.ring;
   return world;
 }
@@ -70,7 +74,10 @@ export function latticeOf(id: number): { lx: number; ly: number } {
 
 /** Fishing happens from land beside water. */
 const isShore = (world: World) => (c: Cell) =>
-  passable(c.terrain) && neighbours(world, c.y * world.w + c.x).some((n) => terrainOf(world, n % world.w, Math.floor(n / world.w)) === "water");
+  passable(c.terrain) && neighbours(world, c.y * world.w + c.x).some((n) => {
+    const t = terrainOf(world, n % world.w, Math.floor(n / world.w));
+    return t === "water" || t === "river";
+  });
 
 function buildRegion(world: World, id: number): RegionDef {
   const { lx, ly } = latticeOf(id);
@@ -79,7 +86,7 @@ function buildRegion(world: World, id: number): RegionDef {
   const x1 = Math.min(WORLD_W - 1, (lx + 2) * LATTICE);
   const y1 = Math.min(WORLD_H - 1, (ly + 2) * LATTICE);
   const cells: number[] = [];
-  const count: Record<Terrain, number> = { water: 0, fell: 0, rock: 0, bog: 0, spruce: 0, pine: 0, birch: 0, meadow: 0 };
+  const count: Record<Terrain, number> = { water: 0, fell: 0, rock: 0, bog: 0, spruce: 0, pine: 0, birch: 0, meadow: 0, river: 0 };
   let sx = 0;
   let sy = 0;
   let seaCells = 0;
@@ -91,7 +98,7 @@ function buildRegion(world: World, id: number): RegionDef {
       cells.push(cellIdx(world, x, y));
       count[terrainOf(world, x, y)]++;
       if (terrainOf(world, x, y) === "water") {
-        if (fieldsAt(world.seed, x, y).sea) seaCells++;
+        if (world.solved.kind[cellIdx(world, x, y)] === KIND.sea) seaCells++;
         else lakeCells++;
       }
       sx += x;
@@ -115,7 +122,7 @@ function buildRegion(world: World, id: number): RegionDef {
   const lake = lakeCells / n;
   const sea = seaCells / n;
   const shares: Record<Habitat, number> = {
-    fell: frac.fell, rock: frac.rock, bog: frac.bog, spruce: frac.spruce, pine: frac.pine, birch: frac.birch, meadow: frac.meadow, lake, sea,
+    fell: frac.fell, rock: frac.rock, bog: frac.bog, spruce: frac.spruce, pine: frac.pine, birch: frac.birch, meadow: frac.meadow, river: frac.river, lake, sea,
   };
   const cx = sx / n;
   const cy = sy / n;
@@ -129,7 +136,7 @@ function buildRegion(world: World, id: number): RegionDef {
   const rng = new Rng(derive(world.seed, 1000 + id));
   const r: RegionDef = {
     id,
-    name: regionName(rng, { water: frac.water, rock, bog: frac.bog, forest }, new Set()),
+    name: regionName(rng, { water: frac.water + frac.river, rock, bog: frac.bog, forest }, new Set()),
     cells,
     landCells,
     cx,
@@ -230,7 +237,7 @@ function nearestCell(world: World, cells: number[], cx: number, cy: number, ok: 
  * floor sits well under the exact filter's 0.45, and the grid samples at
  * 15x15, to avoid missing real starts to that dilution.
  */
-function looksLikeStart(seed: number, lx: number, ly: number): boolean {
+function looksLikeStart(world: World, lx: number, ly: number): boolean {
   const x0 = Math.max(0, (lx - 1) * LATTICE);
   const y0 = Math.max(0, (ly - 1) * LATTICE);
   const x1 = Math.min(WORLD_W - 1, (lx + 2) * LATTICE);
@@ -244,7 +251,7 @@ function looksLikeStart(seed: number, lx: number, ly: number): boolean {
     for (let i = 0; i < g; i++) {
       const x = Math.min(WORLD_W - 1, Math.max(0, Math.round(x0 + ((i + 0.5) / g) * (x1 - x0))));
       const y = Math.min(WORLD_H - 1, Math.max(0, Math.round(y0 + ((j + 0.5) / g) * (y1 - y0))));
-      const t = terrainAt(seed, x, y);
+      const t = terrainOf(world, x, y);
       if (t === "spruce" || t === "pine" || t === "birch") forest++;
       else if (t === "water") water++;
       else if (t === "rock" || t === "fell") rock++;
@@ -254,7 +261,7 @@ function looksLikeStart(seed: number, lx: number, ly: number): boolean {
 }
 
 // The search is the dear part of a world and a seed always gives the same answer.
-const STARTS = new Map<number, { id: number; ring: number }>();
+const STARTS = new Map<number, { id: number; cell: number; ring: number }>();
 
 /**
  * The search anchor sits a little east of map centre, in forest country:
@@ -263,7 +270,7 @@ const STARTS = new Map<number, { id: number; ring: number }>();
  * lattice cell whose region is mostly forest, with a shore for water and
  * an outcrop for stone within it.
  */
-function findStart(world: World): { id: number; ring: number } {
+function findStart(world: World): { id: number; cell: number; ring: number } {
   const cached = STARTS.get(world.seed);
   if (cached) return cached;
   const ax = Math.floor((0.55 * WORLD_W) / LATTICE);
@@ -275,12 +282,12 @@ function findStart(world: World): { id: number; ring: number } {
         const lx = ax + dx;
         const ly = ay + dy;
         if (lx < 0 || ly < 0 || lx >= LATTICE_W || ly >= LATTICE_H) continue;
-        if (!looksLikeStart(world.seed, lx, ly)) continue;
+        if (!looksLikeStart(world, lx, ly)) continue;
         const id = ly * LATTICE_W + lx;
         const r = regionAt(world, id);
         if (r.forest >= 0.45 && r.landCells >= 120 && r.frac.water < 0.15 && r.spots.length >= 3
           && hasSpot(r, "shore") && hasSpot(r, "outcrop")) {
-          const found = { id, ring };
+          const found = { id, cell: r.campCell, ring };
           STARTS.set(world.seed, found);
           return found;
         }
@@ -300,14 +307,15 @@ function findStart(world: World): { id: number; ring: number } {
         const id = ly * LATTICE_W + lx;
         const r = regionAt(world, id);
         if (r.landCells >= 120 && hasSpot(r, "shore")) {
-          const found = { id, ring: 39 };
+          const found = { id, cell: r.campCell, ring: 39 };
           STARTS.set(world.seed, found);
           return found;
         }
       }
     }
   }
-  const fallback = { id: ay * LATTICE_W + ax, ring: 40 };
+  const fallbackId = ay * LATTICE_W + ax;
+  const fallback = { id: fallbackId, cell: regionAt(world, fallbackId).campCell, ring: 40 };
   STARTS.set(world.seed, fallback);
   return fallback;
 }

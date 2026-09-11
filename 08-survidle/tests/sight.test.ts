@@ -11,10 +11,9 @@ import { placeAt } from "../src/sim/position";
 import { current } from "../src/sim/record";
 import type { GameState } from "../src/sim/types";
 import { visibleWildlife } from "../src/sim/wildlife-agents";
-import { cellAt, regionAt, type World } from "../src/world/gen";
-import * as terrainFields from "../src/world/terrain";
-import { fieldsAt } from "../src/world/terrain";
+import { cellAt, heightAt, regionAt, type World } from "../src/world/gen";
 import { testAtmosphere } from "./weather-helpers";
+import { flatWorld } from "./world-fixture";
 
 const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
@@ -37,10 +36,10 @@ function openRun(world: World, region: number, n: number): { vantage: number; en
         end = ny * world.w + nx;
       }
       if (ok) {
-        const observer = Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * 1200 + 1.7;
+        const observer = heightAt(world, x, y) + 1.7;
         let horizon = -Infinity;
         for (let i = 1; i <= n; i++) {
-          const elevation = Math.min(1, Math.max(0, fieldsAt(world.seed, x + dx * i, y + dy * i).e)) * 1200;
+          const elevation = heightAt(world, x + dx * i, y + dy * i);
           const slope = (elevation - observer) / i;
           if (i === n && slope < horizon) ok = false;
           horizon = Math.max(horizon, slope);
@@ -92,15 +91,7 @@ const NOON = calendar(300);
 /** A small all-meadow world isolates distance and weather from generated canopy. */
 function openWorld(): { state: GameState; world: World; vantage: number } {
   const state = newGame(1).state;
-  vi.spyOn(terrainFields, "fieldsAt").mockReturnValue({ e: 0.5, m: 0.3, sea: false, coast: 1 });
-  const terrain = new Uint8Array(64 * 64);
-  terrain.fill(7); // TERRAINS[7] is meadow.
-  const region = new Int32Array(64 * 64);
-  const world = {
-    seed: 1, w: 32, h: 32,
-    chunks: new Map([[0, { terrain, region }]]),
-    regions: new Map(), start: 0, startRing: 0,
-  } as unknown as World;
+  const world = flatWorld({ w: 32, h: 32, terrain: "meadow", heightM: 600, seed: 1 });
   const vantage = 16 * world.w + 16;
   state.player.x = 16.5;
   state.player.y = 16.5;
@@ -149,7 +140,7 @@ describe("sight", () => {
       for (let x = 180; x < world.w - 180; x += 12) {
         const cell = y * world.w + x;
         const terrain = cellAt(world, cell).terrain;
-        if ((terrain === "fell" || terrain === "rock") && fieldsAt(world.seed, x, y).e > 1) {
+        if ((terrain === "fell" || terrain === "rock") && heightAt(world, x, y) > 1200) {
           high = cell;
           break;
         }
@@ -342,7 +333,7 @@ describe("sight", () => {
       if (forest.has(cellAt(world, vantage).terrain)) continue;
       const vx = vantage % world.w;
       const vy = Math.floor(vantage / world.w);
-      const observer = Math.min(1, Math.max(0, fieldsAt(world.seed, vx, vy).e)) * 1200 + 1.7;
+      const observer = heightAt(world, vx, vy) + 1.7;
       const range = Math.min(12, sightRangeCells(state, world, NOON, vantage));
       for (const [dx, dy] of DIRS) {
         let highestSlope = -Infinity;
@@ -352,7 +343,7 @@ describe("sight", () => {
           const y = vy + dy * distance;
           const cell = y * world.w + x;
           if (x < 0 || y < 0 || x >= world.w || y >= world.h || forest.has(cellAt(world, cell).terrain)) break;
-          const elevation = Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * 1200;
+          const elevation = heightAt(world, x, y);
           const slope = (elevation - observer) / distance;
           if (slope > highestSlope + 8) {
             highestSlope = slope;

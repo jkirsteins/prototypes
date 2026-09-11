@@ -24,7 +24,7 @@ import { setWildlifeEventSink } from "../src/sim/wildlife-events";
 import type { WildlifeStartleEvent } from "../src/sim/wildlife-encounter";
 import { metricAreaForCell, resolveSpatialEstimate } from "../src/sim/wildlife-space";
 import { CHUNK } from "../src/world/cells";
-import { TERRAIN_INDEX } from "../src/world/terrain";
+import { paintWorld } from "./world-fixture";
 import type { World } from "../src/world/gen";
 import type { Terrain } from "../src/sim/types";
 import { CELL_KM } from "../src/units";
@@ -63,10 +63,10 @@ function disturbanceScene() {
 
 function setGround(world: World, cell: number, terrain: Terrain, region?: number): void {
   const { x, y } = cellAt(world, cell);
+  paintWorld(world, [cell], terrain);
+  if (region === undefined) return;
   const chunk = world.chunks.get(Math.floor(y / CHUNK) * 4096 + Math.floor(x / CHUNK))!;
-  const i = (y % CHUNK) * CHUNK + x % CHUNK;
-  chunk.terrain[i] = TERRAIN_INDEX[terrain];
-  if (region !== undefined) chunk.region[i] = region;
+  chunk.region[(y % CHUNK) * CHUNK + x % CHUNK] = region;
 }
 
 function hiddenDisturbanceScene() {

@@ -4,8 +4,7 @@
  * cuts short; the dark takes it away. Marks cells, never regions.
  */
 import { CELL_KM } from "../units";
-import { regionPeek, terrainOf, type World } from "../world/gen";
-import { fieldsAt } from "../world/terrain";
+import { heightAt, regionPeek, terrainOf, type World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { CLEAR_MOR_KM, MAX_OPTICAL_DEPTH, sampleAtmosphere } from "./climate";
 import { lightFactor, skyLux, SPOT_LUX, WALK_LUX } from "./light";
@@ -32,13 +31,6 @@ const SPRUCE_RANGE_CELLS = 0;
  */
 const FOREST_VISIBILITY_M = 150;
 const FOREST_RANGE_CELLS = 1;
-/**
- * The coastal spine this world is drawn from rises to about 1200 m; the
- * elevation field is 0..1 (fell opens at 0.84), so a vantage's height above
- * the lowland is its own elevation times this figure. The one number here
- * worth arguing with.
- */
-const FELL_SPINE_M = 1200;
 /** Mean Earth radius, metres; enough here to stop an elevated view claiming ground below its geometric horizon. */
 const EARTH_RADIUS_M = 6_371_000;
 /** Representative mature canopy tops above the generated ground surface. */
@@ -87,7 +79,7 @@ const OPEN_RANGE_CELLS = horizonCells(EYE_HEIGHT_M);
 function vantageBaseCells(world: World, t: Terrain, x: number, y: number): number {
   if (t === "spruce") return SPRUCE_RANGE_CELLS;
   if (t === "pine" || t === "birch") return FOREST_RANGE_CELLS;
-  if (t === "fell" || t === "rock") return horizonCells(Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * FELL_SPINE_M);
+  if (t === "fell" || t === "rock") return horizonCells(Math.max(0, heightAt(world, x, y)) + EYE_HEIGHT_M);
   return OPEN_RANGE_CELLS;
 }
 
@@ -176,7 +168,7 @@ function ringCells(lux: number): number {
 
 /** Height in metres of the surface that can hide ground behind this cell. */
 function obstacleHeightM(world: World, x: number, y: number, distM: number): number {
-  const ground = Math.min(1, Math.max(0, fieldsAt(world.seed, x, y).e)) * FELL_SPINE_M;
+  const ground = Math.max(0, heightAt(world, x, y));
   const terrain = terrainOf(world, x, y);
   const canopy = terrain === "spruce" || distM > FOREST_VISIBILITY_M ? CANOPY_HEIGHT_M[terrain] ?? 0 : 0;
   return ground + canopy;
@@ -198,8 +190,8 @@ export function hasLineOfSight(world: World, observerCell: number, targetCell: n
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
   const totalCells = Math.hypot(dx, dy);
   const totalM = totalCells * CELL_KM * 1000;
-  const observerM = Math.min(1, Math.max(0, fieldsAt(world.seed, cx, cy).e)) * FELL_SPINE_M + EYE_HEIGHT_M;
-  const targetM = Math.min(1, Math.max(0, fieldsAt(world.seed, tx, ty).e)) * FELL_SPINE_M + targetHeightM - (totalM * totalM) / (2 * EARTH_RADIUS_M);
+  const observerM = Math.max(0, heightAt(world, cx, cy)) + EYE_HEIGHT_M;
+  const targetM = Math.max(0, heightAt(world, tx, ty)) + targetHeightM - (totalM * totalM) / (2 * EARTH_RADIUS_M);
   let previous = observerCell;
   for (let i = 1; i < steps; i++) {
     const x = cx + Math.round((dx * i) / steps);
@@ -219,7 +211,7 @@ export function hasLineOfSight(world: World, observerCell: number, targetCell: n
 /** Marches one sightline, retaining the highest apparent surface angle met so ridges and canopies hide lower ground beyond them. */
 function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, range: number, seen: Set<number>): void {
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
-  const observerM = Math.min(1, Math.max(0, fieldsAt(world.seed, cx, cy).e)) * FELL_SPINE_M + EYE_HEIGHT_M;
+  const observerM = Math.max(0, heightAt(world, cx, cy)) + EYE_HEIGHT_M;
   let horizonSlope = -Infinity;
   let previous = -1;
   for (let i = 1; i <= steps; i++) {

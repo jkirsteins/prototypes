@@ -222,6 +222,7 @@ const DETAIL_FORMS: Record<Terrain, string[]> = {
   pine: ["T", "T", "T", "."],
   birch: ["Y", "Y", "Y", "'"],
   meadow: [".", ",", "'", "."],
+  river: ["=", "=", "~", "="],
 };
 
 /** A small integer hash for visual texture only. It never enters simulation state. */
@@ -753,12 +754,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         const t = terrains[i];
         if (t === "water") {
           // Lakes have no offshore; they keep the plain water colour.
-          const off = offshoreAt(world.seed, cx, cy);
+          const off = offshoreAt(world, cx, cy);
           if (off === null) continue;
           step[i] = off;
           sea.push(off);
         } else {
-          const e = elevationAt(world.seed, cx, cy);
+          const e = elevationAt(world, cx, cy);
           step[i] = e;
           (TREES.includes(t) ? trees : land).push(e);
         }
@@ -866,7 +867,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         }
         const detailBase = glyph;
         // Which ground has gone over. The season decides whether it shows.
-        if (turnedGround(world.seed, x0 + gx * z, y0 + gy * z, t)) cls.push("turned");
+        if (turnedGround(world, x0 + gx * z, y0 + gy * z, t)) cls.push("turned");
         if (step) {
           if (t === "water") {
             // Shallow water first: the shore is the lit end of the scale and the

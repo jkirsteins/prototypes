@@ -3,7 +3,7 @@ import { mapHtml } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { conditionsAt, iceMode } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture, weatherShotSimulation } from "../src/sim/weather-scenarios";
-import { fieldsAt, terrainAt } from "../src/world/terrain";
+import { heightAt, terrainOf } from "../src/world/gen";
 import { tipHtml } from "../src/ui/tip";
 import { describeWhere } from "../src/sim/position";
 
@@ -46,7 +46,7 @@ describe("simulation-backed weather screenshot fixtures", () => {
     const shot = weatherShotSimulation("frozen-water");
     const here = conditionsAt(shot.state, shot.world, shot.cal, shot.cell);
     expect(shot.definition).toMatchObject({ seed: 17, minute: 481200, x: 175, y: 50 });
-    expect(terrainAt(shot.world.seed, shot.definition.x, shot.definition.y)).toBe("water");
+    expect(terrainOf(shot.world, shot.definition.x, shot.definition.y)).toBe("water");
     expect(iceMode({ iceCm: here.ground.iceCm })).toBe("safe");
 
     const fixture = weatherShotFixture("frozen-water");
@@ -74,9 +74,9 @@ describe("simulation-backed weather screenshot fixtures", () => {
   it("places the named valley fog sample below all four 6 km surroundings", () => {
     const shot = weatherShotSimulation("valley-fog");
     const { x, y } = shot.definition;
-    const center = fieldsAt(shot.world.seed, x, y).e;
+    const center = heightAt(shot.world, x, y);
     for (const [dx, dy] of [[-20, 0], [20, 0], [0, -20], [0, 20]]) {
-      expect(fieldsAt(shot.world.seed, x + dx, y + dy).e).toBeGreaterThan(center);
+      expect(heightAt(shot.world, x + dx, y + dy)).toBeGreaterThan(center);
     }
   });
 

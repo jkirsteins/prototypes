@@ -1,5 +1,4 @@
-import { cellAt, type World } from "../world/gen";
-import { fieldsAt } from "../world/terrain";
+import { cellAt, waterKindOf, type World } from "../world/gen";
 import type { GameState, IceMode, LocalGroundWeather, Terrain } from "./types";
 import { DEEP_SNOW_CM, groundAt, iceMode } from "./weather";
 
@@ -9,7 +8,7 @@ export type SnowCover = "none" | "cover" | "deep";
 type LandTerrain = Exclude<Terrain, "water">;
 
 export type CellSurface =
-  | { kind: "water"; terrain: "water"; water: "lake" | "sea"; ice: IceMode }
+  | { kind: "water"; terrain: "water" | "river"; water: "lake" | "sea" | "river"; ice: IceMode }
   | { kind: "land"; terrain: LandTerrain; snow: SnowCover };
 
 const TERRAIN_HEADING: Record<Terrain, string> = {
@@ -21,6 +20,7 @@ const TERRAIN_HEADING: Record<Terrain, string> = {
   pine: "pine forest",
   birch: "birch wood",
   meadow: "meadow",
+  river: "river",
 };
 
 const TERRAIN_LOCATION: Record<Terrain, string> = {
@@ -32,6 +32,7 @@ const TERRAIN_LOCATION: Record<Terrain, string> = {
   pine: "among the pines",
   birch: "among the birches",
   meadow: "on open ground",
+  river: "at the river",
 };
 
 const SNOW_LOCATION: Record<LandTerrain, string> = {
@@ -42,6 +43,7 @@ const SNOW_LOCATION: Record<LandTerrain, string> = {
   pine: "among snow-covered pines",
   birch: "among snow-covered birches",
   meadow: "on snow-covered open ground",
+  river: "at the frozen river",
 };
 
 export function terrainHeading(terrain: Terrain): string {
@@ -50,17 +52,17 @@ export function terrainHeading(terrain: Terrain): string {
 
 export function surfaceOf(
   terrain: Terrain,
-  water: "lake" | "sea",
+  water: "lake" | "sea" | "river",
   ground: Pick<LocalGroundWeather, "snowCm" | "iceCm">,
 ): CellSurface {
-  if (terrain === "water") return { kind: "water", terrain, water, ice: iceMode(ground) };
+  if (terrain === "water" || terrain === "river") return { kind: "water", terrain, water, ice: iceMode(ground) };
   const snow: SnowCover = ground.snowCm > DEEP_SNOW_CM ? "deep" : ground.snowCm > SNOW_SHOWN_CM ? "cover" : "none";
   return { kind: "land", terrain, snow };
 }
 
 export function cellSurface(state: GameState, world: World, cell: number): CellSurface {
   const groundCell = cellAt(world, cell);
-  const water = fieldsAt(world.seed, groundCell.x, groundCell.y).sea ? "sea" : "lake";
+  const water = waterKindOf(world, cell) ?? "lake";
   return surfaceOf(groundCell.terrain, water, groundAt(state, world, groundCell.region));
 }
 
@@ -80,7 +82,7 @@ export function surfaceLocation(surface: CellSurface): string {
   if (surface.kind === "water") {
     if (surface.ice === "thin") return "on thin ice";
     if (surface.ice === "safe") return "on safe ice";
-    return TERRAIN_LOCATION.water;
+    return TERRAIN_LOCATION[surface.terrain];
   }
   if (surface.snow === "cover") return SNOW_LOCATION[surface.terrain];
   if (surface.snow === "deep") return `in deep snow ${TERRAIN_LOCATION[surface.terrain]}`;

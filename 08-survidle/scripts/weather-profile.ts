@@ -13,8 +13,8 @@ import { atmosphereAt, ensureGround } from "../src/sim/weather";
 import { current } from "../src/sim/record";
 import { mapHtml } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
-import { terrainPeek, WORLD_H, WORLD_W, type World } from "../src/world/gen";
-import { fieldsAt, LATTICE_H, LATTICE_W } from "../src/world/terrain";
+import { heightAt, terrainPeek, WORLD_H, WORLD_W, type World } from "../src/world/gen";
+import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 
 export const WEATHER_PROFILE_DEFAULTS = {
   atmosphereSamples: 10_000,
@@ -84,7 +84,7 @@ function highestFell(world: World): number {
     for (let x = 180; x < WORLD_W - 180; x += 12) {
       const terrain = terrainPeek(world, x, y);
       if (terrain !== "fell" && terrain !== "rock") continue;
-      const e = fieldsAt(world.seed, x, y).e;
+      const e = heightAt(world, x, y);
       let open = 0;
       for (let dy = -60; dy <= 60; dy += 6) for (let dx = -60; dx <= 60; dx += 6) {
         const nearby = terrainPeek(world, x + dx, y + dy);

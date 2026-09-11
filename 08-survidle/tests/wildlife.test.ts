@@ -51,7 +51,7 @@ describe("wildlife capacity", () => {
   });
 
   it("is area times habitat, absent below half an animal or outside the range", () => {
-    const shares: Record<Habitat, number> = { fell: 0, rock: 0, bog: 0, spruce: 1, pine: 0, birch: 0, meadow: 0, lake: 0, sea: 0 };
+    const shares: Record<Habitat, number> = { fell: 0, rock: 0, bog: 0, spruce: 1, pine: 0, birch: 0, meadow: 0, river: 0, lake: 0, sea: 0 };
     const cap = wildlifeCapacity(1, 16, shares, 100, 100);
     // Squirrels at 12 per km2 of spruce on 16 km2, times the heart factor 0.5..1.5. These coordinates are inside their range, so the band is not judged on an absent species.
     expect(cap.squirrel).toBeDefined();

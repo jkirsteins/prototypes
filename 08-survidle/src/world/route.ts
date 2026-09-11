@@ -11,7 +11,7 @@ import { terrainOf, type World } from "./cells";
 
 /** Walking speed on this ground relative to open forest. */
 export const TERRAIN_SPEED: Record<Terrain, number> = {
-  water: 0, fell: 0.5, rock: 0.75, bog: 0.7, spruce: 1, pine: 1, birch: 1, meadow: 1.1,
+  water: 0, river: 0, fell: 0.5, rock: 0.75, bog: 0.7, spruce: 1, pine: 1, birch: 1, meadow: 1.1,
 };
 
 /** Walking on ice relative to open forest. */

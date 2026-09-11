@@ -1,17 +1,17 @@
 /**
  * What the ground looks like under one glyph.
  *
- * terrainAt reduces four continuous fields to a single letter, so every cell in
- * a band draws identically however different the ground is. These rules read
- * the fields back: the letter still names the terrain, its form says where in
- * the band the cell sits. Nothing here invents detail - a variant is only ever
- * a field the world already computed.
+ * The classifier reduces the solved ground to a single letter, so every cell
+ * in a band draws identically however different the ground is. These rules
+ * read the arrays back: the letter still names the terrain, its form says
+ * where in the band the cell sits. Nothing here invents detail - a variant is
+ * only ever something the solve already computed.
  *
  * Only meaningful where a glyph is one cell; a coarser glyph is a block of
- * mixed ground and has no single field to report.
+ * mixed ground and has no single value to report.
  */
 import type { Terrain } from "../sim/types";
-import { fieldsAt } from "../world/terrain";
+import { heightAt, moistureAt, waterKindOf, type World } from "../world/cells";
 
 export const TREES: Terrain[] = ["spruce", "pine", "birch"];
 
@@ -20,7 +20,7 @@ export const TREES: Terrain[] = ["spruce", "pine", "birch"];
  * its median moisture, meadow at its terciles, so each form is about as common
  * as its siblings and no variant is a rarity the player never learns. The
  * quantiles hold across worlds - `ground.test.ts` re-measures them and fails if
- * a change to terrainAt moves a band out from under these.
+ * a change to the classifier moves a band out from under these.
  */
 export const BOG_WET = 0.68;
 export const MEADOW_DAMP = 0.338;
@@ -37,13 +37,13 @@ export const VARIANTS: Partial<Record<Terrain, { forms: string[]; reads: string 
   meadow: { forms: ["'", ".", ","], reads: "dry to damp" },
 };
 
-/** The glyph for one cell: its terrain's letter, in the form its fields ask for. */
-export function groundGlyph(seed: number, x: number, y: number, t: Terrain, base: string): string {
+/** The glyph for one cell: its terrain's letter, in the form the ground asks for. */
+export function groundGlyph(world: World, x: number, y: number, t: Terrain, base: string): string {
   if (t !== "water" && t !== "bog" && t !== "meadow") return base;
-  const f = fieldsAt(seed, x, y);
-  if (t === "water") return f.sea ? "~" : "-";
-  if (t === "bog") return f.m >= BOG_WET ? '"' : ":";
-  return f.m < MEADOW_DRY ? "'" : f.m < MEADOW_DAMP ? "." : ",";
+  if (t === "water") return waterKindOf(world, y * world.w + x) === "sea" ? "~" : "-";
+  const m = moistureAt(world, x, y);
+  if (t === "bog") return m >= BOG_WET ? '"' : ":";
+  return m < MEADOW_DRY ? "'" : m < MEADOW_DAMP ? "." : ",";
 }
 
 /**
@@ -59,9 +59,9 @@ export function groundGlyph(seed: number, x: number, y: number, t: Terrain, base
  * The birch is not here. A deciduous tree turns as a tree, not as a patch of
  * ground, and every birch on the map goes with the season.
  */
-export function turnedGround(seed: number, x: number, y: number, t: Terrain): boolean {
-  if (t === "meadow") return fieldsAt(seed, x, y).m < MEADOW_DRY;
-  if (t === "bog") return fieldsAt(seed, x, y).m < BOG_WET;
+export function turnedGround(world: World, x: number, y: number, t: Terrain): boolean {
+  if (t === "meadow") return moistureAt(world, x, y) < MEADOW_DRY;
+  if (t === "bog") return moistureAt(world, x, y) < BOG_WET;
   return false;
 }
 
@@ -93,20 +93,19 @@ export function toneOf(elevation: number, cuts: ToneCuts | null): 0 | 1 | 2 {
   return elevation < cuts.lo ? 0 : elevation < cuts.hi ? 1 : 2;
 }
 
-export function elevationAt(seed: number, x: number, y: number): number {
-  return fieldsAt(seed, x, y).e;
+/** Metres above sea level, for the tone bands. */
+export function elevationAt(world: World, x: number, y: number): number {
+  return heightAt(world, x, y);
 }
 
 /**
- * How far out to sea a cell lies, or null for anything that is not sea.
- *
- * `coast` is the field the coastline itself is cut from: it crosses zero at
- * the shore and runs more negative the further out the water goes, so its
- * magnitude is distance offshore without anything new being computed. Lakes
- * sit on the land side of it and have no offshore to speak of, which is why
- * they are excluded rather than shaded as very shallow sea.
+ * How deep the sea is under a cell in metres, or null for anything that is not
+ * sea. The sea floor falls away from the shore, so depth stands in for how far
+ * out the water lies without anything new being computed. A lake carries its
+ * surface rather than its floor and has no depth to read, which is why lakes
+ * are excluded rather than shaded as very shallow sea.
  */
-export function offshoreAt(seed: number, x: number, y: number): number | null {
-  const f = fieldsAt(seed, x, y);
-  return f.sea ? -f.coast : null;
+export function offshoreAt(world: World, x: number, y: number): number | null {
+  if (waterKindOf(world, y * world.w + x) !== "sea") return null;
+  return -heightAt(world, x, y);
 }
