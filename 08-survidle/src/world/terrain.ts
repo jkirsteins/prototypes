@@ -10,6 +10,15 @@ export const LATTICE = 84;
 export const LATTICE_W = Math.ceil(WORLD_W / LATTICE);
 export const LATTICE_H = Math.ceil(WORLD_H / LATTICE);
 
+/**
+ * Representative mature canopy tops above the generated ground surface, metres.
+ *
+ * One table: what a ray reads as an obstruction and what a parent summary
+ * bounds as its tallest obstruction have to be the same number, or a bound
+ * stops bounding the thing it summarises.
+ */
+export const CANOPY_HEIGHT_M: Partial<Record<Terrain, number>> = { spruce: 22, pine: 17, birch: 14 };
+
 export const TERRAINS: Terrain[] = ["water", "fell", "rock", "bog", "spruce", "pine", "birch", "meadow"];
 export const TERRAIN_INDEX: Record<Terrain, number> = { water: 0, fell: 1, rock: 2, bog: 3, spruce: 4, pine: 5, birch: 6, meadow: 7 };
 

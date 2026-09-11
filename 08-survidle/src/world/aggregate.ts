@@ -3,9 +3,8 @@ import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, patchAt, type World } fro
 import { fieldsAtPatch, regionAtPatch } from "./fine-terrain";
 import type { FineGrid } from "./fine-route";
 import { FINE_PER_PARENT, PATCH_KM, type PatchId, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
-import { TERRAINS } from "./terrain";
+import { CANOPY_HEIGHT_M, TERRAINS } from "./terrain";
 
-const CANOPY_HEIGHT_M: Partial<Record<Terrain, number>> = { spruce: 22, pine: 17, birch: 14 };
 const FINE_CHUNKS_W = Math.ceil(WORLD_FINE_W / FINE_CHUNK);
 
 export interface AggregateSource extends FineGrid {

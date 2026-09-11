@@ -8,6 +8,7 @@ import { FINE_CHUNK } from "../world/cells";
 import { regionPeek, terrainOf, type World } from "../world/gen";
 import { FINE_PER_PARENT, PATCH_KM, PATCH_M } from "../world/spatial";
 import { fieldsAtPatch } from "../world/fine-terrain";
+import { CANOPY_HEIGHT_M } from "../world/terrain";
 import type { Calendar } from "./calendar";
 import { CLEAR_MOR_KM, MAX_OPTICAL_DEPTH, sampleAtmosphere } from "./climate";
 import { lightFactor, skyLux, SPOT_LUX, WALK_LUX } from "./light";
@@ -27,22 +28,39 @@ const HORIZON_KM_PER_SQRT_M = 3.57;
  * on, whatever the horizon formula would say.
  */
 const SPRUCE_RANGE_CELLS = 0;
-/** Pine and birch keep about 150 m of visibility between the trunks: three 50 m patches. */
-const FOREST_VISIBILITY_M = 150;
+/**
+ * Pine and birch keep about 150 m of visibility between the trunks: three
+ * 50 m patches. Nearer than this their crowns hide nothing, which is why
+ * EXACT_SIGHT_M must not be shorter - see the note there.
+ */
+export const FOREST_VISIBILITY_M = 150;
 const FOREST_RANGE_CELLS = Math.round(FOREST_VISIBILITY_M / PATCH_M);
 /** Mean Earth radius, metres; enough here to stop an elevated view claiming ground below its geometric horizon. */
 const EARTH_RADIUS_M = 6_371_000;
-/** Representative mature canopy tops above the generated ground surface. */
-const CANOPY_HEIGHT_M: Partial<Record<Terrain, number>> = { spruce: 22, pine: 17, birch: 14 };
 /** A bright point source remains distinguishable at 2% transmitted contrast, below the 5% daylight terrain threshold. */
 export const CAMPFIRE_CONTRAST_LIMIT = 0.02;
 const CAMPFIRE_MAX_OPTICAL_DEPTH = -Math.log(CAMPFIRE_CONTRAST_LIMIT);
 
-/** Terrain is immutable, so the few daylight ranges repeatedly read from one place can share their expensive results. */
+/**
+ * Terrain is immutable, so the few daylight ranges repeatedly read from one
+ * place can share their expensive results. Entries belong to a world, not to
+ * its seed: two worlds can share a seed and differ in the chunks they hold.
+ */
 const VIEWSHED_CACHE_ENTRIES = 32;
 const VIEWSHED_CACHE_CELL_BUDGET = 200_000;
 const viewshedCache = new Map<string, ReadonlySet<number>>();
 let viewshedCacheCells = 0;
+const viewshedWorldIds = new WeakMap<World, number>();
+let nextViewshedWorldId = 1;
+
+function viewshedWorldId(world: World): number {
+  let id = viewshedWorldIds.get(world);
+  if (id === undefined) {
+    id = nextViewshedWorldId++;
+    viewshedWorldIds.set(world, id);
+  }
+  return id;
+}
 
 function cachedViewshed(key: string): ReadonlySet<number> | null {
   const cells = viewshedCache.get(key);
@@ -81,6 +99,13 @@ function horizonCells(heightM: number): number {
  * time and only descends into one whose own elevation and obstruction bounds
  * cannot settle it either way, which is what makes a long view affordable.
  *
+ * EXACT_SIGHT_M must be at least FOREST_VISIBILITY_M. A parent summary counts
+ * every crown in full, while a ray inside FOREST_VISIBILITY_M discounts pine
+ * and birch crowns it is standing among; where the two overlap the summary
+ * would stop being an upper bound on what the ray reads, and a bound that is
+ * not an upper bound skips visible ground. Keeping the close view the longer
+ * of the two keeps the discount inside the exactly-read ring.
+ *
  * The enumerated reach stops at one fine chunk, 4.8 km. That is not what an
  * eye can do - clear air carries terrain contrast to CLEAR_MOR_KM, and a fell
  * vantage looks far past that - it is how far this world holds ground at 50 m,
@@ -89,7 +114,7 @@ function horizonCells(heightM: number): number {
  * rather than patch by patch, and a vantage's own reach (sightReachCells)
  * keeps saying how far it sees.
  */
-const EXACT_SIGHT_M = FINE_PER_PARENT * PATCH_M;
+export const EXACT_SIGHT_M = FINE_PER_PARENT * PATCH_M;
 /** The grain the air is sampled and integrated at, in metres and in patches. */
 const OPTICAL_SAMPLE_M = FINE_PER_PARENT * PATCH_M;
 const OPTICAL_SAMPLE_PATCHES = OPTICAL_SAMPLE_M / PATCH_M;
@@ -268,19 +293,43 @@ function curvatureDropM(distM: number): number {
 }
 
 /**
+ * Every apparent angle a surface at `heightAboveEyeM` could stand at while it
+ * lies between `nearM` and `farM` out.
+ *
+ * The angle is `height / distance` less the earth's drop, `distance / 2R`, and
+ * that is not monotonic in distance. Above the eye it falls away the whole
+ * window, so its ends are its extremes. Below the eye it climbs back toward
+ * the level as the distance grows - a far low field stands higher in the view
+ * than a near one - until the earth's curve overtakes it at
+ * `sqrt(2R * drop below the eye)`, which is the one interior extreme there is.
+ * Taking one end of the window on faith is what turns a bound into a guess.
+ */
+function slopeWindow(heightAboveEyeM: number, nearM: number, farM: number): { min: number; max: number } {
+  const at = (distM: number) => heightAboveEyeM / distM - distM / (2 * EARTH_RADIUS_M);
+  const near = at(nearM);
+  const far = at(farM);
+  if (heightAboveEyeM >= 0) return { min: far, max: near };
+  const turn = Math.sqrt(-2 * EARTH_RADIUS_M * heightAboveEyeM);
+  const max = turn > nearM && turn < farM ? at(turn) : Math.max(near, far);
+  return { min: Math.min(near, far), max };
+}
+
+/**
  * The steepest and shallowest apparent angle anything inside one 300 m parent
  * could stand at, seen from `observerM` between `nearM` and `farM` out.
  *
- * The high bound puts the parent's tallest obstruction at its nearest possible
- * distance and the low bound puts its lowest bare ground at its farthest, so a
- * ray whose horizon is above the high bound has provably nothing to see in
- * there, and one below the low bound has provably nothing hidden.
+ * The high bound is the highest angle the parent's tallest obstruction could
+ * reach anywhere in that window, and the low bound the lowest angle its
+ * lowest bare ground could fall to, so a ray whose horizon is above the high
+ * bound has provably nothing to see in there, and one below the low bound has
+ * provably nothing hidden. Both are true over the whole window, at any height
+ * relative to the eye.
  */
 function parentSlopeBounds(world: World, px: number, py: number, observerM: number, nearM: number, farM: number) {
   const summary = parentSummary(world, px, py);
   return {
-    high: (summary.maxObstructionM - curvatureDropM(nearM) - observerM) / nearM,
-    low: (summary.minElevationM - curvatureDropM(farM) - observerM) / farM,
+    high: slopeWindow(summary.maxObstructionM - observerM, nearM, farM).max,
+    low: slopeWindow(summary.minElevationM - observerM, nearM, farM).min,
     /** Ground and crowns inside this parent stand within this many metres of each other. */
     reliefM: summary.maxObstructionM - summary.minElevationM,
   };
@@ -475,7 +524,7 @@ export function visibleCells(state: GameState, world: World, cal: Calendar, cell
   // Clear air itself reaches the contrast threshold at CLEAR_MOR_KM, so
   // terrain and eyesight cannot make a farther candidate optically visible.
   const r = opticalCandidateRangeCells(sightRangeCells(state, world, cal, cell));
-  const key = `${world.seed}:${world.w}:${world.h}:${cell}:${r}`;
+  const key = `${viewshedWorldId(world)}:${cell}:${r}`;
   let terrainVisible = cachedViewshed(key);
   if (!terrainVisible) {
     const terrain = new Set<number>([cell]);

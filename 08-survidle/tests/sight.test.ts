@@ -5,7 +5,7 @@ import { calendar } from "../src/sim/calendar";
 import { CLEAR_MOR_KM, extinctionComponents, MAX_OPTICAL_DEPTH } from "../src/sim/climate";
 import { isKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
-import { campfireVisible, clearObstacleReadCount, obstacleReadCount, opticalCandidateRangeCells, opticalSampler, seeFrom, sightRangeCells, visibleCells } from "../src/sim/sight";
+import { campfireVisible, clearObstacleReadCount, EXACT_SIGHT_M, FOREST_VISIBILITY_M, obstacleReadCount, opticalCandidateRangeCells, opticalSampler, seeFrom, sightRangeCells, visibleCells } from "../src/sim/sight";
 import { setSkillLevel } from "../src/sim/horizon";
 import { placeAt } from "../src/sim/position";
 import { PATCH_KM, PATCH_M } from "../src/world/spatial";
@@ -15,6 +15,8 @@ import type { GameState } from "../src/sim/types";
 import { visibleWildlife } from "../src/sim/wildlife-agents";
 import { cellAt, regionAt, type World } from "../src/world/gen";
 import { FINE_CHUNK, newWorld } from "../src/world/cells";
+import { parentSummary } from "../src/world/aggregate";
+import { CANOPY_HEIGHT_M } from "../src/world/terrain";
 import * as fineTerrain from "../src/world/fine-terrain";
 import { fieldsAtPatch } from "../src/world/fine-terrain";
 import { TERRAIN_INDEX } from "../src/world/terrain";
@@ -134,10 +136,12 @@ function forget(state: GameState): void {
  *
  * Elevation and canopy are explicit so a test can say exactly what should
  * hide what, and both the ray and the parent summaries that accelerate it
- * read the same numbers.
+ * read the same numbers. A scene may give any glyph its own height in metres,
+ * including the observer's.
  */
 const ROCK_BAND_M = 3;
 const SCENE_ORIGIN = 8;
+const SCENE_ELEVATION_M: Record<string, number> = { "^": ROCK_BAND_M };
 
 interface FineSightScene {
   state: GameState;
@@ -146,7 +150,8 @@ interface FineSightScene {
   id(x: number, y: number): number;
 }
 
-function fineSightFixture(rows: string[]): FineSightScene {
+function fineSightFixture(rows: string[], heights: Record<string, number> = {}): FineSightScene {
+  const elevationOf = { ...SCENE_ELEVATION_M, ...heights };
   const state = newGame(1).state;
   const elevations = new Map<number, number>();
   const world = newWorld(1);
@@ -160,10 +165,9 @@ function fineSightFixture(rows: string[]): FineSightScene {
     [...row].forEach((glyph, x) => {
       const px = SCENE_ORIGIN + x;
       const py = SCENE_ORIGIN + y;
-      if (glyph === "^") {
-        terrain[py * FINE_CHUNK + px] = TERRAIN_INDEX.rock;
-        elevations.set(id(x, y), ROCK_BAND_M);
-      }
+      if (glyph === "^") terrain[py * FINE_CHUNK + px] = TERRAIN_INDEX.rock;
+      const height = elevationOf[glyph];
+      if (height !== undefined) elevations.set(id(x, y), height);
       if (glyph === "T") terrain[py * FINE_CHUNK + px] = TERRAIN_INDEX.spruce;
       if (glyph === "@") vantage = id(x, y);
     });
@@ -466,6 +470,37 @@ describe("sight", () => {
     expect(visible.has(scene.id(25, 1))).toBe(true);
   });
 
+
+  it("keeps a below-eye parent that the horizon cuts through", () => {
+    // From a 100 m hill over a 99.4 m rise 50 m out, the ground beyond falls
+    // under the horizon and climbs back over it at 2.23 km, inside the parent
+    // that holds 2.00 to 2.25 km. That ground stands under the eye, so the
+    // steepest angle in the parent is at its far edge and the shallowest at
+    // its near one - read the other way round, the whole parent either looks
+    // hidden, and a stretch of visible ground is dropped, or looks open, and
+    // ground under the horizon is claimed seen.
+    const rows = [`@r${".".repeat(50)}`, ".".repeat(52)];
+    const scene = fineSightFixture(rows, { "@": 100, r: 99.4 });
+    const visible = visibleCells(scene.state, scene.world, NOON, scene.vantage);
+    expect(visible.has(scene.id(1, 0))).toBe(true);
+    expect(visible.has(scene.id(20, 0))).toBe(false);
+    expect(visible.has(scene.id(41, 0))).toBe(false);
+    expect(visible.has(scene.id(44, 0))).toBe(false);
+    expect(visible.has(scene.id(45, 0))).toBe(true);
+    expect(visible.has(scene.id(50, 0))).toBe(true);
+  });
+
+  it("bounds a ray's obstructions with the same canopy heights the summaries count", () => {
+    // The summary's tallest obstruction has to be an upper bound on what a ray
+    // reads at any distance. That holds because both read one canopy table,
+    // and because the close view outreaches the range in which a ray discounts
+    // the crowns it is standing among.
+    const scene = fineSightFixture(["@TTTTTTTTTTTT"]);
+    const parent = parentSummary(scene.world, Math.floor((SCENE_ORIGIN + 6) / 6), Math.floor(SCENE_ORIGIN / 6));
+    expect(parent.maxObstructionM).toBe(CANOPY_HEIGHT_M.spruce);
+    expect(EXACT_SIGHT_M).toBeGreaterThanOrEqual(FOREST_VISIBILITY_M);
+  });
+
   it("reads far fewer exact patches than a ray that descends everywhere", () => {
     const { state, world, vantage } = openWorld();
     testAtmosphere({ extinctionPerKm: 0.06 });
@@ -547,8 +582,6 @@ describe("sight", () => {
 
   it("stops at the first blocking canopy", () => {
     const { state, world, vantage } = openWorld();
-    // Immutable-terrain viewsheds are seed-keyed; this is a different fixture.
-    world.seed = 2;
     const water = at(world, vantage, 1, 0);
     const spruce = at(world, vantage, 2, 0);
     const behind = at(world, vantage, 3, 0);
