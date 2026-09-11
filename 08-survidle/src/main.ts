@@ -202,6 +202,22 @@ let lastWeatherKey = "";
 function setHidden(el: HTMLElement | null, hidden: boolean) {
   if (el && el.hidden !== hidden) el.hidden = hidden;
 }
+/**
+ * The map's tooltip, on its own so a pointer event can draw it at once
+ * instead of waiting up to a render interval. Its text is guarded by its
+ * own key so a pointer crossing one cell redraws it once.
+ */
+function renderTip(cal = calendar(state.minute, state.startDoy)) {
+  const tip = document.getElementById("maptip")!;
+  setHidden(tip, ui.hover === null);
+  if (ui.hover !== null) {
+    const tk = tipKey(state, world, cal, ui.hover);
+    if (tk !== lastTipKey) {
+      lastTipKey = tk;
+      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay));
+    }
+  }
+}
 function render(nowMs = performance.now()) {
   if (ui.wildlifeStartles.length) document.getElementById("mapdyn")!.style.setProperty("--wildlife-now", `${nowMs}ms`);
   // Arriving where you were looking ends the looking.
@@ -252,15 +268,7 @@ function render(nowMs = performance.now()) {
   // rebuilt under the pointer flickers, and one detached under it never
   // gets the leave that would have closed it. Its text is guarded by its
   // own key so a pointer crossing one cell redraws it once.
-  const tip = document.getElementById("maptip")!;
-  setHidden(tip, ui.hover === null);
-  if (ui.hover !== null) {
-    const tk = tipKey(state, world, cal, ui.hover);
-    if (tk !== lastTipKey) {
-      lastTipKey = tk;
-      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay));
-    }
-  }
+  renderTip(cal);
   setPanel("dopurposes", doPurposesHtml(state, world, ui));
   setPanel("doitems", doHtml(state, world, cal, ui));
   setPanel("inventory", inventoryHtml(state, world, cal, ui.travelDisplay));
@@ -900,7 +908,10 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     return grid ? cellFromClient(world, state, ui, ev.clientX, ev.clientY, grid.getBoundingClientRect()) : null;
   };
   board.addEventListener("pointermove", (ev) => {
-    ui.hover = cellUnder(ev);
+    const cell = cellUnder(ev);
+    if (cell === ui.hover) return;
+    ui.hover = cell;
+    renderTip();
   });
   board.addEventListener("pointerdown", (ev) => {
     pointerType = ev.pointerType;
@@ -931,7 +942,9 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     render();
   });
   board.addEventListener("pointerleave", (ev) => {
-    if (ev.pointerType !== "touch") ui.hover = null;
+    if (ev.pointerType === "touch") return;
+    ui.hover = null;
+    renderTip();
   });
   board.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
@@ -972,6 +985,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     if (Number.isFinite(cell)) {
       ui.hover = cell;
       showTarget(cell);
+      renderTip();
     }
   });
   map.addEventListener("pointerout", (ev) => {
@@ -980,6 +994,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     if (from && !to && ev.pointerType !== "touch") {
       ui.hover = null;
       clearTarget();
+      renderTip();
     }
   });
 }
