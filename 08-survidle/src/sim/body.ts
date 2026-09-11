@@ -17,7 +17,7 @@ import { calendar, type Calendar } from "./calendar";
 import { feedFire } from "./camp";
 import { fireAt, fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
 import { AXES, axeInHand, hasTool, pile, pileAt, qty, takeUp, toolNear, transfer, weight } from "./inventory";
-import type { StormPlanInputs, StormPlanOption, StormPlanSnapshot } from "./goals";
+import type { StormPlanInputs, StormPlanOption, StormPlanSnapshot } from "./opportunities";
 import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { log } from "./log";

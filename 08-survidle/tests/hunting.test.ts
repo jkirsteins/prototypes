@@ -276,6 +276,7 @@ describe("carcass recovery", () => {
 
     const recovered = processCarcass(state, world, carcass.id);
     expect(recovered).not.toBeNull();
+    expect(recovered).toMatchObject({ species: "deer", carcassId: carcass.id });
     expect(recovered!.meatKg).toBeGreaterThan(0);
     expect(recovered!.meatKg).toBeLessThan(12);
     expect(qty(state.player.pack, "rawMeat") + qty(herePile(state, world), "rawMeat")).toBeCloseTo(recovered!.meatKg);

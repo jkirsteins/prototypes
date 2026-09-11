@@ -256,6 +256,13 @@ export function marrowFactor(season: number): number {
   return 0.4;
 }
 
+/** "a hare", "an elk": an animal named with the article its name takes; capitalised when it opens a sentence. */
+export function anAnimal(s: Species, opening = false): string {
+  const { name } = SPECIES_DEFS[s];
+  const a = "aeiou".includes(name[0]) ? "an" : "a";
+  return `${opening ? a[0].toUpperCase() + a.slice(1) : a} ${name}`;
+}
+
 export function speciesDef(s: Species): SpeciesDef {
   return SPECIES_DEFS[s];
 }

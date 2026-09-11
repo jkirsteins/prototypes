@@ -4,10 +4,9 @@
  * game is how fast the clock runs, and that lives in units.ts.
  */
 import type { FoodId } from "./items";
-import type { StormPlanSnapshot } from "./goals";
 import type { DayLedger } from "./ledger";
 import type { Species } from "./species";
-import type { StormKind } from "./weather";
+import type { ForecastKnowledge, StormKind } from "./weather";
 
 export type Season = "spring" | "summer" | "autumn" | "winter";
 
@@ -421,6 +420,9 @@ interface WorkIntentBase extends IntentBase {
   recoveredFatAtSourceKg?: number;
   /** This hunt's dressed fat currently carried in the pack. */
   recoveredFatPackedKg?: number;
+  /** Temporary identity of the carcass whose dressed food this hunt is delivering. */
+  recoveredSpecies?: Species;
+  recoveredCarcassId?: number;
 }
 
 /**
@@ -544,8 +546,8 @@ export interface RegionState {
   nextOrderId: number;
   /** An ice hole cut at the shore: where, and when. Cleared at the dawn tick, when it has skinned over. */
   iceHole: { cell: number; minute: number } | null;
-  /** The basket trap set in this region's water: where, the live fish in it (oilyKg is the oily-species share of kg), the species that shore holds, and minutes since it was last emptied. */
-  trap: { cell: number; kg: number; oilyKg: number; fish: Species[]; age: number } | null;
+  /** The basket trap set in this region's water: where, live kilos, the identities actually caught, the species that shore holds, and minutes since it was last emptied. */
+  trap: { cell: number; kg: number; oilyKg: number; fish: Species[]; age: number; caught?: Species[] } | null;
   /** Clutches this region's nesting birds hold, set on 1 May and gathered down to nothing by the "Gather eggs" task; cleared on 1 July. */
   nests: number;
   /** Kilos of rhizome left in each cell that has been dug, by cell index. A cell with no entry is at the full figure its ground holds. */
@@ -790,18 +792,172 @@ export interface SkillState {
   carried?: number;
 }
 
-export type GoalId =
-  | "site" | "drink" | "firewood" | "fire" | "bed" | "roof" | "forageMeal" | "cook" | "keptNight"
-  | "snareMeal" | "huntMeal" | "fishMeal" | "trapMeal" | "firstOrder"
+export type StaticOpportunityId =
+  | "site" | "drink" | "firewood" | "fire" | "bed" | "roof"
+  | "forageMeal" | "cook" | "keptNight" | "snareMeal" | "huntMeal"
+  | "fishMeal" | "trapMeal" | "preserveHunt" | "firstOrder"
   | "findUsefulCover" | "makeUsefulShelter" | "testShelter"
   | "readWeather" | "prepareWeather" | "surviveForecast"
-  | "water" | "keptDays" | "foodSource" | "store" | "fat" | "longOrder" | "toolCare"
-  | "remoteRefuge" | "fieldFire" | "fieldMeal" | "remoteStorm"
-  | "explore" | "secondCamp" | "seasonalFood" | "durableRoof" | "winterStores"
-  | "spring" | "summer" | "autumn" | "winter";
+  | "water" | "keptDays" | "foodSource" | "store" | "fat"
+  | "longOrder" | "toolCare" | "remoteRefuge" | "fieldFire"
+  | "fieldMeal" | "remoteStorm" | "explore" | "secondCamp"
+  | "seasonalFood" | "durableRoof" | "winterStores";
 
-export interface GoalOpportunity {
-  goal: GoalId;
+export type OpportunityKey =
+  | StaticOpportunityId
+  | `track:${Species}` | `hunt:${Species}` | `dress:${Species}`
+  | `recover:${Species}` | `catch:${Species}` | `trap:${Species}`
+  | `forage:${FoodId}` | `build:${StructureId}` | `make:${ToolId}`
+  | `season:${Season}`;
+
+export type OpportunityCategory =
+  | "survival" | "camp" | "food" | "wildlife"
+  | "weather" | "exploration" | "mastery";
+
+export type OpportunityGroupId =
+  | "track-animals" | "hunt-animals" | "dress-carcasses" | "recover-kills"
+  | "catch-fish" | "trap-fish" | "forage-foods" | "build-shelters"
+  | "make-tools" | "seasons";
+
+export type StormOptionKind = "returnCamp" | "localShelter" | "remoteRefuge";
+
+export interface StormPlanInputs {
+  forecast: ForecastKnowledge;
+  route: number[] | null;
+  travelMinutes: number | null;
+  protection: Protection;
+  effectiveProtection: Protection;
+  fireLit: boolean;
+  fuelKg: number;
+  activeGear: ToolId[];
+  packedGear: Partial<Record<ToolId, number>>;
+  supplies: { firewoodKg: number; foodKg: number; waterLitres: number };
+}
+
+export interface StormPlanOption {
+  kind: StormOptionKind;
+  target: { region: number; cell: number };
+  inputs: StormPlanInputs;
+  arrivalMargin: number | null;
+  viable: boolean;
+  survivalScore: number;
+}
+
+export interface StormPlanSnapshot {
+  stormId: number;
+  minute: number;
+  knowledge: ForecastKnowledge;
+  recommended: StormOptionKind;
+  options: StormPlanOption[];
+}
+
+export type FoodMethod = "forage" | "hunt" | "fish" | "snare" | "trap";
+
+export type OpportunityEvent =
+  | { kind: "task"; id: TaskId; arg?: string }
+  | { kind: "taskCompleted"; minute: number; id: TaskId; arg?: string; region: number; cell: number; atCamp: boolean }
+  | { kind: "crafted"; recipe: RecipeId }
+  /** Firewood as it leaves the ground or the block: the one moment that cannot be replayed by moving a pile's contents around. */
+  | { kind: "gathered"; item: ItemId; kg: number }
+  | { kind: "built"; structure: StructureId }
+  | { kind: "sheltered"; protection: Protection }
+  | { kind: "protectionChanged"; minute: number; region: number; cell: number; from: Protection; to: Protection; source: "found" | "improved" | "emergency" | "structure" }
+  | { kind: "forecastChanged"; minute: number; stormId: number; before: ForecastKnowledge; after: ForecastKnowledge; source: "passive" | "readSky" }
+  | { kind: "stormStarted"; minute: number; stormId: number; plan: StormPlanSnapshot }
+  | { kind: "stormEnded"; minute: number; stormId: number; stormKind: StormKind; survivorAlive: boolean; minutesByProtection: [number, number, number, number]; atCampMinutes: number; awayFromCampMinutes: number; maxWetness: number }
+  /** The tinder caught. A light that failed is not a fire lit. */
+  | { kind: "lit" }
+  | { kind: "fireLit"; minute: number; region: number; cell: number; atCamp: boolean }
+  /** A fire alive at dusk, lit or embers, is still alive at the dawn roll. */
+  | { kind: "keptNight" }
+  /** How long, in minutes, the current run of keeping has lasted: the span since the fire was last lit from cold. */
+  | { kind: "keptFor"; minutes: number }
+  /** Minutes of rain the fire has been alive through, added up over its whole run and reset only when it dies: separate showers on the same fire all count. */
+  | { kind: "keptRain"; minutes: number }
+  /** Meat actually went on the rack. A hang that racked nothing put nothing by. */
+  | { kind: "stored" }
+  /** A real animal left evidence this survivor noticed. */
+  | { kind: "signFound"; species: Species }
+  /** Meat recovered from a carcass reached this survivor's camp. */
+  | { kind: "recoveredAtCamp" }
+  | { kind: "cooked"; kg: number; item?: ItemId }
+  | { kind: "drank" }
+  | { kind: "foodAcquired"; method: FoodMethod }
+  | { kind: "waterRead"; species: Species[] }
+  | { kind: "fishCaught"; species: Species; method: "direct" | "trap" }
+  | { kind: "foraged"; item: FoodId }
+  | { kind: "toolMade"; tool: ToolId }
+  | { kind: "ate"; item: FoodId | "sap" }
+  | { kind: "preserved" }
+  | { kind: "fuelled" }
+  | { kind: "ordered"; task: TaskId; long: boolean }
+  | { kind: "ateFat" }
+  | { kind: "toolCared" }
+  | { kind: "explored"; anotherRegion: boolean }
+  | { kind: "campedAgain"; region: number }
+  | { kind: "seasonalFood" }
+  | { kind: "winterStocked" }
+  | { kind: "season"; season: Season }
+  | { kind: "speciesSeen"; species: Species }
+  | { kind: "animalKilled"; species: Species }
+  | { kind: "carcassDressed"; species: Species; carcassId: number }
+  | { kind: "carcassRecovered"; species: Species; carcassId: number };
+
+export interface OpportunityStepDef {
+  id: string;
+  label: string;
+  target: number;
+  unit?: string;
+  final?: boolean;
+  credit: (event: OpportunityEvent) => number;
+}
+
+export interface OpportunityDef {
+  key: OpportunityKey;
+  title: string;
+  category: OpportunityCategory;
+  group?: OpportunityGroupId;
+  steps: OpportunityStepDef[];
+  prerequisites?: OpportunityKey[];
+  notBeforeDay?: number;
+  note?: string;
+}
+
+export interface OpportunityGroupDef {
+  id: OpportunityGroupId;
+  title: string;
+  category: OpportunityCategory;
+  keys: OpportunityKey[];
+}
+
+export interface OpportunityNotice {
+  id: string;
+  minute: number;
+  completed: OpportunityKey[];
+  completedGroups: OpportunityGroupId[];
+  discovered: OpportunityKey[];
+  messages: string[];
+}
+
+export interface OpportunityContextState {
+  weather: WeatherOpportunityContext | null;
+  chapter3HomeRegion: number | null;
+}
+
+export interface OpportunityState {
+  discoveredAt: Partial<Record<OpportunityKey, number>>;
+  completedAt: Partial<Record<OpportunityKey, number>>;
+  stepProgress: Partial<Record<OpportunityKey, Record<string, number>>>;
+  current: OpportunityKey | null;
+  notices: OpportunityNotice[];
+  nextNoticeId: number;
+  context: OpportunityContextState;
+  lastCategory: OpportunityCategory;
+  lastSeason: Season;
+}
+
+export interface WeatherOpportunityContext {
+  opportunity: OpportunityKey;
   status: "reserved" | "announced" | "running" | "resolved";
   createdAt: number;
   attempts: number;
@@ -821,25 +977,6 @@ export interface GoalOpportunity {
   readerIndex?: number | null;
   /** The immutable shared option reading taken at this storm's onset. */
   plan?: StormPlanSnapshot | null;
-}
-
-export interface GoalState {
-  done: Partial<Record<GoalId, true>>;
-  progress: Partial<Record<GoalId, number>>;
-  /** Credit earned after a goal was announced, keyed by the goal's stable step ids. */
-  stepProgress: Partial<Record<GoalId, Record<string, number>>>;
-  /** Active goals whose introduction the player has dismissed. */
-  introduced: Partial<Record<GoalId, true>>;
-  /** Completions not yet shown, drained by the overlay one batch at a time. */
-  queue: GoalId[];
-  /** Factual opportunity outcomes waiting for the same teaching surface. */
-  noticeQueue: string[];
-  /** The one weather teaching attempt owned by this world. */
-  opportunity: GoalOpportunity | null;
-  /** Camp region Chapter 3 called home when its first lesson was introduced. */
-  chapter3HomeRegion: number | null;
-  /** The season the last daily roll stood in: a turnover is this differing from now. */
-  lastSeason: Season;
 }
 
 /** One player-chosen outcome whose direct materials stay visible while they travel. */
@@ -899,14 +1036,8 @@ export interface GameState {
   spine: { fired: Partial<Record<ThresholdId, number>>; announced: Partial<Record<ThresholdId, number>> };
   /** The manual has been opened unasked once in this world. */
   manualSeen: boolean;
-  /**
-   * The world's goals: what has been reached here, how far the counted ones
-   * have got, and which completions are waiting to be congratulated. The
-   * world's rather than a survivor's - an heir inherits the ladder's
-   * position the way they inherit the camp - so newPerson and resetTeaching
-   * leave it alone.
-   */
-  goals: GoalState;
+  /** World-owned discoveries and deeds, preserved through every survivor. */
+  opportunities: OpportunityState;
   /** The one Make or Build outcome whose direct materials the player is tracking. */
   shopping: ShoppingTarget | null;
   /**

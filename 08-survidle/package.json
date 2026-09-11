@@ -22,7 +22,7 @@
     "startle-shots": "node scripts/startle-shots.mjs",
     "shots": "node scripts/map-shots.mjs",
     "sky": "node scripts/sky-shots.mjs",
-    "goal-ux": "node scripts/goal-ux.mjs"
+    "opportunity-ux": "node scripts/opportunity-ux.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

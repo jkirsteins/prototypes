@@ -27,10 +27,11 @@ import { abandon, feltTemperature } from "./sim/player";
 import { campCellOf, cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
-import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
+import { awaySeconds, catchUp, clearSave, knowLoadedGround, loadGame, saveGame } from "./sim/save";
+import { recordOpportunityEvent } from "./sim/opportunities";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
-import type { GameState, ItemId, TaskId } from "./sim/types";
+import type { GameState, ItemId, OpportunityEvent, OpportunityKey, TaskId } from "./sim/types";
 import { insertWalkAtTop } from "./sim/walkorders";
 import { ambientTemperature, localWeather } from "./sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture, type WeatherShotName } from "./sim/weather-scenarios";
@@ -40,8 +41,9 @@ import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
-import { introduceGoals, unintroducedGoals } from "./sim/goals";
-import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalNoticeToOpen, goalsHtml } from "./ui/goalpanel";
+import { catalogPage, opportunityCatalogAction, opportunityCatalogHtml, opportunityCatalogKeyboard } from "./ui/opportunity-catalog";
+import { opportunityPanelHtml } from "./ui/opportunity-panel";
+import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
 import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, mapViewportBounds, viewOrigin } from "./ui/map";
@@ -52,7 +54,7 @@ import {
   manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
-import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
+import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, simulationPaused, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
 import { advanceHurry, hurryClick, hurryKind, newHurry } from "./ui/hurry";
 import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
@@ -172,6 +174,7 @@ function boot() {
     wasDead = Boolean(saved.state.dead);
     world = generateWorld(state.seed);
     fillPopulations(state, world);
+    knowLoadedGround(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
     if (elapsed > 30 && !state.dead && !state.landing) {
       setCueSink(null);
@@ -216,6 +219,10 @@ function renderTip(cal = calendar(state.minute, state.startDoy)) {
     }
   }
 }
+// Match the existing layout breakpoint; content height never changes page size.
+function opportunityPageSize(): number { return window.matchMedia("(max-width: 700px)").matches ? 6 : 8; }
+let opportunityOpener: HTMLElement | null = null;
+
 function render(nowMs = performance.now()) {
   if (ui.wildlifeStartles.length) document.getElementById("mapdyn")!.style.setProperty("--wildlife-now", `${nowMs}ms`);
   // Arriving where you were looking ends the looking.
@@ -233,7 +240,7 @@ function render(nowMs = performance.now()) {
   setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
   setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
-  setPanel("goals", goalsHtml(state, world, cal));
+  setPanel("opportunities", opportunityPanelHtml(state));
   setPanel("shopping", shoppingHtml(state, world, cal));
   const wxKey = weatherKey(state, world, cal, ui.hurry.rate);
   if (wxKey !== lastWeatherKey) {
@@ -285,6 +292,7 @@ function render(nowMs = performance.now()) {
   if (cloudShadows && cloudShadows.checked !== ui.cloudShadows) cloudShadows.checked = ui.cloudShadows;
 
   const overlay = document.getElementById("overlay")!;
+  if (!ui.opportunityPresentation) ui.opportunityPresentation = nextOpportunityPresentation(state, ui);
   if (ui.manual) {
     setPanel("overlay", manualHtml());
     setHidden(overlay, false);
@@ -306,12 +314,23 @@ function render(nowMs = performance.now()) {
   } else if (ui.teach) {
     setPanel("overlay", conceptHtml(state, world, cal, ui.teach));
     setHidden(overlay, false);
-  } else if (ui.goalGuide) {
-    setPanel("overlay", goalGuideHtml(state, world, cal, ui.goalGuide.ids, ui.goalGuide.done, ui.goalGuide.automatic, ui.goalGuide.notices));
-    setHidden(overlay, false);
   } else if (ui.recognition !== null) {
     setPanel("overlay", recognitionHtml(state, ui.recognition));
     setHidden(overlay, false);
+  } else if (ui.opportunityPresentation) {
+    const newBatch = overlay.querySelector<HTMLElement>(".opportunity-modal")?.dataset.notice !== ui.opportunityPresentation.id;
+    setPanel("overlay", opportunityModalHtml(state, ui.opportunityPresentation));
+    setHidden(overlay, false);
+    if (newBatch || !overlay.contains(document.activeElement)) {
+      // Start long batches at their heading, not at an OK below the fold.
+      overlay.scrollTop = 0;
+      overlay.querySelector<HTMLElement>("#opportunity-modal-heading")?.focus({ preventScroll: true });
+    }
+  } else if (ui.opportunityCatalog.open) {
+    ui.opportunityCatalog.page = catalogPage(state, ui.opportunityCatalog.category, ui.opportunityCatalog.page, opportunityPageSize()).page;
+    setPanel("overlay", opportunityCatalogHtml(state, ui.opportunityCatalog, opportunityPageSize()));
+    setHidden(overlay, false);
+    if (!overlay.contains(document.activeElement)) overlay.querySelector<HTMLButtonElement>('[data-act="opportunity-close"]')?.focus();
   } else {
     setHidden(overlay, true);
   }
@@ -330,7 +349,7 @@ function frame(now: number) {
     requestAnimationFrame(frame);
     return;
   }
-  if (!weatherShotName && !state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalGuide && ui.recognition === null) {
+  if (!weatherShotName && !simulationPaused(state, ui)) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
@@ -348,7 +367,7 @@ function frame(now: number) {
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra, { wildlife: "detailed", live: document.visibilityState === "visible" });
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
-  } else if (ui.away || ui.teach || ui.welcome || ui.goalGuide || ui.recognition !== null) {
+  } else if (ui.away || ui.teach || ui.welcome || ui.opportunityPresentation || ui.recognition !== null) {
     // An open moment holds the game still. Without the bump, a modal left open
     // past thirty seconds trips the catch-up branch above, and the player
     // dismisses it into an away report they never earned.
@@ -359,17 +378,8 @@ function frame(now: number) {
     // crossed inside an offline catch-up waits behind that catch-up's own away
     // report; momentToOpen owns the whole rule.
     if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
-    // The queue itself stays put until the overlay is dismissed: it is what
-    // makes the congratulation survive a reload. goalMomentToOpen already
-    // refuses to reopen while goal guidance is set, so leaving it be here does
-    // not requeue the overlay every frame.
-    const reached = goalMomentToOpen(state, ui);
-    if (reached) ui.goalGuide = { ids: unintroducedGoals(state, calendar(state.minute, state.startDoy)), done: reached, automatic: true };
-    const introduced = goalIntroductionToOpen(state, calendar(state.minute, state.startDoy), ui);
-    if (introduced) ui.goalGuide = { ids: introduced, done: [], automatic: true };
-    const notices = goalNoticeToOpen(state, ui);
-    if (notices) ui.goalGuide = { ids: [], done: [], notices, automatic: true };
-    if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.goalGuide && ui.recognition === null) {
+    // Wildlife recognition waits behind an already open opportunity presentation.
+    if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.opportunityPresentation && ui.recognition === null) {
       ui.recognition = state.wildlife.recognitionQueue[0] ?? null;
     }
   }
@@ -429,6 +439,11 @@ function onClick(ev: Event) {
   const target = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]");
   if (!target) return;
   const act = target.dataset.act;
+  const previousDetail = ui.opportunityCatalog.detail;
+  // Only a control outside the overlay can be returned to: the overlay keeps
+  // its markup while hidden, so a modal's own OK button stays connected and
+  // would swallow the focus the dismissal is meant to hand back.
+  if (act?.startsWith("opportunity-") && !ui.opportunityCatalog.open && !target.closest("#overlay")) opportunityOpener = target;
   const restoreScroll = anchorScroll(target);
   const cal = calendar(state.minute, state.startDoy);
   const rng = new Rng(state.rng);
@@ -533,7 +548,7 @@ function onClick(ev: Event) {
       // land() no-ops without a landing or a name; only a real heir's landing is a begin-again.
       if (wasLanding && heir && state.landing === null) beacon.beganAgain(state, Date.now());
       // Every landing gets its welcome, fresh survivor or heir. The first
-      // goal follows it; the manual remains available on demand.
+      // opportunity follows it; the manual remains available on demand.
       if (wasLanding && state.landing === null) ui.welcome = true;
       ui.confirmAbandon = false;
       resetForecastAt();
@@ -582,14 +597,20 @@ function onClick(ev: Event) {
       // was open were paused, not spent away.
       lastReal = performance.now();
       break;
-    case "goal-close":
-      if (ui.goalGuide?.automatic) introduceGoals(state, ui.goalGuide.ids);
-      if (ui.goalGuide) state.goals.queue = state.goals.queue.filter((id) => !ui.goalGuide!.done.includes(id));
-      if (ui.goalGuide?.notices) state.goals.noticeQueue = state.goals.noticeQueue.filter((notice) => !ui.goalGuide!.notices!.includes(notice));
-      ui.goalGuide = null;
-      // The same bump the rung moment's dismiss does: the minutes the
-      // screen was open were paused, not spent away.
-      lastReal = performance.now();
+    case "opportunity-open":
+    case "opportunity-close":
+    case "opportunity-category":
+    case "opportunity-page":
+    case "opportunity-detail":
+    case "opportunity-back":
+    case "opportunity-current":
+      opportunityCatalogAction(state, ui, act, target.dataset.opportunity ?? target.dataset.category ?? target.dataset.page ?? "", opportunityPageSize());
+      break;
+    case "opportunity-set-current":
+    case "opportunity-modal-ok":
+      if (opportunityModalAction(state, ui, act, target.dataset.notice ?? "", target.dataset.opportunity as OpportunityKey | undefined ?? null)) {
+        lastReal = performance.now();
+      }
       break;
     case "shopping-track": {
       const id = target.dataset.id;
@@ -606,11 +627,6 @@ function onClick(ev: Event) {
       savePanes(localStorage, ui.panes);
       const box = document.querySelector<HTMLInputElement>("[data-do=filter]");
       if (box) box.value = ui.filter;
-      break;
-    }
-    case "goal-open": {
-      const id = target.dataset.goal;
-      if (id) ui.goalGuide = { ids: [id as import("./sim/types").GoalId], done: [], automatic: false };
       break;
     }
     case "recognition-close":
@@ -719,6 +735,14 @@ function onClick(ev: Event) {
   if (FORECAST_ACTS.includes(target.dataset.act!)) requestForecast();
   persistGame();
   render();
+  if ((act === "opportunity-close" || act === "opportunity-modal-ok" || act === "opportunity-set-current") && !ui.opportunityPresentation) {
+    const opener = opportunityOpener?.isConnected ? opportunityOpener : document.querySelector<HTMLElement>('#opportunities [data-act="opportunity-open"]');
+    opener?.focus();
+  } else if (act === "opportunity-detail" || act === "opportunity-current") {
+    document.querySelector<HTMLButtonElement>('#overlay [data-act="opportunity-back"]')?.focus();
+  } else if (act === "opportunity-back") {
+    [...document.querySelectorAll<HTMLButtonElement>('#overlay [data-act="opportunity-detail"]')].find((button) => button.dataset.opportunity === previousDetail)?.focus();
+  }
   restoreScroll();
 }
 
@@ -734,7 +758,7 @@ if (weatherShot) {
   ui.zoom = weatherShot.definition.zoom;
   ui.welcome = false;
   ui.teach = null;
-  ui.goalGuide = null;
+  ui.opportunityPresentation = null;
 }
 beacon.opened(state);
 // Built once world is real; the worker keeps its own copy keyed by seed, so a
@@ -781,6 +805,16 @@ document.addEventListener("visibilitychange", () => {
 });
 document.addEventListener("click", onClick);
 document.addEventListener("keydown", (ev) => {
+  const presentation = document.querySelector<HTMLElement>('#overlay:not([hidden]) .opportunity-modal');
+  if (presentation) {
+    opportunityModalKeyboard(presentation, ev);
+    return;
+  }
+  const catalog = document.querySelector<HTMLElement>('#overlay:not([hidden]) .opportunity-catalog');
+  if (catalog) {
+    opportunityCatalogKeyboard(catalog, ev);
+    return;
+  }
   if (ev.key === "+" || ev.key === "=") zoomBy(-1);
   else if (ev.key === "-" || ev.key === "_") zoomBy(1);
   else return;
@@ -997,6 +1031,7 @@ declare global {
     startleStep?(): void;
     startleAdvance?(minutes: number): void;
     startleEnd?(): void;
+    opportunityEvent?(event: OpportunityEvent): void;
   } }
 }
 window.survidle = {
@@ -1037,4 +1072,11 @@ if (import.meta.env.DEV) {
     render();
   };
   window.survidle.startleEnd = () => startleRestore?.();
+  // Browser checks need a real perception or deed without waiting for the
+  // world to hand one over. It goes through the same seam the simulation
+  // uses, so discovery, credit and the notice queue behave as they do in play.
+  window.survidle.opportunityEvent = (event) => {
+    recordOpportunityEvent(state, event, world);
+    render();
+  };
 }

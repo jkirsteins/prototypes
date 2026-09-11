@@ -7,7 +7,7 @@ import { clamp } from "../units";
 import type { World } from "../world/gen";
 import { feedFire, rackCapacity } from "./camp";
 import { creditGut, creditLean, gutEatenToday, gutRefused, leanEatenToday, leanRefused } from "./gut";
-import { goalDeed } from "./goals";
+import { recordOpportunityEvent } from "./opportunities";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, FIRE_MAX_KG, FOODS, type FoodId, GUT, ITEM_KG, ITEM_NAMES, itemLabel, KCAL_FULL } from "./items";
 import { creditEaten } from "./ledger";
@@ -73,8 +73,8 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): num
   p.fat += gain;
   creditEaten(state, gain, leanPart);
   noteHuntFoodEaten(state, food, kg, gain);
-  goalDeed(state, { kind: "ate", item: food });
-  if (def.leanShare < 1) goalDeed(state, { kind: "ateFat" });
+  recordOpportunityEvent(state, { kind: "ate", item: food });
+  if (def.leanShare < 1) recordOpportunityEvent(state, { kind: "ateFat" });
   if (def.sickChance && p.sick === 0 && rng.chance(def.sickChance)) {
     p.sick = 48 * 60;
     log(state, "The raw meat turns {your} stomach. A fever follows.", "bad");
@@ -241,7 +241,7 @@ export function addFirewood(state: GameState, world: World, kg: number): number 
   const st = regionState(state, world, p.region);
   if (!st.fire.lit) return 0;
   const added = feedFire(state, world, p.region, kg);
-  if (added > 1e-9) goalDeed(state, { kind: "fuelled" });
+  if (added > 1e-9) recordOpportunityEvent(state, { kind: "fuelled" });
   return added;
 }
 

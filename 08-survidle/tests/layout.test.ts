@@ -4,6 +4,8 @@ import { buildHtml } from "../src/ui/build";
 import { GLYPH, legendHtml, MARKS, mapHtml, mapKey } from "../src/ui/map";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
+import { allOpportunityDefs, discoverOpportunity } from "../src/sim/opportunities";
+import { opportunityCatalogHtml } from "../src/ui/opportunity-catalog";
 import { newUiState } from "../src/ui/render";
 import { css, rule } from "./css";
 
@@ -38,6 +40,45 @@ describe("the map's own surface", () => {
 describe("the layout", () => {
   const page = () => readFileSync("index.html", "utf8");
 
+  it("anchors the catalog shell and reserves fixed row space at both breakpoints", () => {
+    const shell = rule("#overlay .box.opportunity-catalog");
+    expect(shell).toContain("margin: 0 auto");
+    expect(shell).toContain("--opportunity-page-size: 8");
+    expect(shell).toContain("--opportunity-row-height: 64px");
+    expect(rule("#overlay:has(.opportunity-catalog)")).toContain("align-items: flex-start");
+    const narrow = css.slice(css.indexOf("@media (max-width: 700px)"));
+    expect(narrow).toMatch(/#overlay \.box\.opportunity-catalog\s*\{[^}]*--opportunity-page-size: 6;[^}]*--opportunity-row-height: 96px;/);
+    expect(rule(".opportunity-body")).toContain("height: calc(var(--opportunity-page-size) * var(--opportunity-row-height) + 16px)");
+    expect(rule(".opportunity-rows")).toContain("grid-template-rows: repeat(var(--opportunity-page-size), var(--opportunity-row-height))");
+    expect(rule(".opportunity-rows")).not.toContain("minmax");
+  });
+
+  it.each([6, 8])("reserves the same body before navigation for lists and details with %i slots", (size) => {
+    const { state } = newGame(3);
+    for (const def of allOpportunityDefs()) discoverOpportunity(state.opportunities, def.key, 0, false);
+    for (const detail of [null, "huntMeal", "drink"] as const) {
+      document.body.innerHTML = opportunityCatalogHtml(state, { category: "food", page: 0, detail }, size);
+      const dialog = document.querySelector('[role="dialog"]')!;
+      const body = [...dialog.children].find((child) => child.classList.contains("opportunity-body"));
+      expect(body).toBeDefined();
+      expect(body!.previousElementSibling?.className).toBe("opportunity-categories");
+      expect(body!.nextElementSibling?.className).toBe(detail ? "opportunity-detail-actions" : "opportunity-pages");
+      if (detail === null) expect(body!.children).toHaveLength(size);
+      else expect(body!.querySelector(".opportunity-steps")).not.toBeNull();
+    }
+  });
+
+  it("keeps catalog pages and their controls outside nested vertical scrollers", () => {
+    expect(rule("#overlay .box.opportunity-catalog")).toContain("overflow: visible");
+    expect(rule("#overlay .box.opportunity-catalog")).toContain("max-height: none");
+    expect(rule("#overlay:has(.opportunity-catalog)")).toContain("overflow-y: auto");
+    expect(rule(".opportunity-pages")).toContain("grid-template-columns: 1fr auto 1fr");
+    const rules = css.split("}").filter((block) => /\.[a-z-]*opportunity/.test(block.split("{")[0]));
+    for (const block of rules.filter((block) => !block.includes("#overlay:has"))) {
+      expect(block).not.toMatch(/overflow(?:-y)?:\s*(?:auto|scroll)/);
+    }
+  });
+
   it("gives the speed history the whole weather footer without a dead strip below it", () => {
     expect(rule(".wx")).toContain("display: flex");
     expect(rule(".wx")).toContain("flex-direction: column");
@@ -65,8 +106,8 @@ describe("the layout", () => {
     const mid = html.slice(html.indexOf('id="center"'), html.indexOf('id="right"'));
     const right = html.slice(html.indexOf('id="right"'), html.indexOf('id="build"'));
 
-    for (const id of ["goals", "shopping", "stats", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
-    expect(left.indexOf('id="goals"')).toBeLessThan(left.indexOf('id="shopping"'));
+    for (const id of ["opportunities", "shopping", "stats", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
+    expect(left.indexOf('id="opportunities"')).toBeLessThan(left.indexOf('id="shopping"'));
     expect(left.indexOf('id="shopping"')).toBeLessThan(left.indexOf('id="stats"'));
     // The clock is gone: the day and the hour are three lines in the weather
     // widget, and the row it took is map now.

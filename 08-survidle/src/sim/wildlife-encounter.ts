@@ -1,5 +1,5 @@
 import { Rng, derive } from "../rng";
-import { DISTURBANCE_PROFILES, SPECIES_DEFS, type DisturbanceProfile } from "./species";
+import { DISTURBANCE_PROFILES, SPECIES_DEFS, type DisturbanceProfile, type Species } from "./species";
 import type { AgentSpecies, Terrain, Weather } from "./types";
 import type { EncounterGeometry, MetricPoint } from "./wildlife-space";
 
@@ -23,6 +23,13 @@ export type StartlePerception =
   | { kind: "seen"; identification: "subject" | "species" | "ungulate" | "unknown" }
   | { kind: "heard"; identification: "species" | "ungulate" | "unknown"; uncertaintyM: number }
   | { kind: "none" };
+
+/** Only a visual identification can disclose a species in the catalog. */
+export function speciesRevealedByPerception(perception: StartlePerception, species: Species): Species | null {
+  return perception.kind === "seen"
+    && (perception.identification === "species" || perception.identification === "subject")
+    ? species : null;
+}
 
 export interface WildlifeStartleEvent {
   id: string;

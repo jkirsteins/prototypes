@@ -6,6 +6,7 @@ import { resolveCell, yieldItem } from "../src/sim/intent";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { TRAP_HOLD_KG } from "../src/sim/items";
 import { readShore } from "../src/sim/knowledge";
+import { discoverOpportunity } from "../src/sim/opportunities";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
@@ -110,6 +111,7 @@ describe("the basket trap", () => {
 
   it("a trap whose shore holds char draws oily kilos, and the take produces oily fish", () => {
     const g = readyToSet(200);
+    discoverOpportunity(g.state.opportunities, "trap:char", g.state.minute, false);
     setTrap(g);
     // Force the draw onto a single oily species regardless of what this shore actually read.
     g.st.trap!.fish = ["char"];
@@ -126,6 +128,7 @@ describe("the basket trap", () => {
     expect(g.st.trap!.oilyKg).toBe(0);
     expect(qty(g.state.player.pack, "oilyFish")).toBeGreaterThan(0);
     expect(qty(g.state.player.pack, "fish")).toBe(0);
+    expect(g.state.opportunities.completedAt["trap:char"]).toBeDefined();
   });
 
   it("keeps drawing with nobody home, at the base rate", () => {

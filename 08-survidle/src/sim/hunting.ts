@@ -1,11 +1,10 @@
 import type { Calendar } from "./calendar";
-import { absence } from "./animals";
+import { absence, regionDensity } from "./animals";
 import { body } from "./person";
 import { hasTool, produce } from "./inventory";
-import { goalDeed } from "./goals";
 import { campCellOf, cellOf, forestCell, heathCell, kmBetween, rockCell, watersideCell } from "./position";
 import { skillLevel, oddsFactor } from "./skills";
-import { huntedLand, SPECIES_DEFS, type Species } from "./species";
+import { anAnimal, huntedLand, SPECIES_DEFS, type Species } from "./species";
 import type { Carcass, CarcassYields, GameState } from "./types";
 import { cellAt, regionAt, type World } from "../world/gen";
 import { iceAt, localWeather } from "./weather";
@@ -13,6 +12,10 @@ import { noteHuntSpoiledKcal } from "./hunt-audit";
 import { FOODS } from "./items";
 import { ageHuntPressure, huntPressureFactor } from "./hunt-pressure";
 import { visibleCells } from "./sight";
+import { illuminance, lightFactor, SPOT_LUX } from "./light";
+import { log } from "./log";
+import { recordOpportunityEvent } from "./opportunities";
+import type { Rng } from "../rng";
 
 export { disturbHuntingGround, huntPressureFactor } from "./hunt-pressure";
 
@@ -88,7 +91,7 @@ export function carcassMinutes(carcass: Carcass): number {
 }
 
 /** Finishes the field work and turns only the recoverable share into goods. */
-export function processCarcass(state: GameState, world: World, id: number): (CarcassYields & { meatDestination: "pack" | "pile" }) | null {
+export function processCarcass(state: GameState, world: World, id: number): (CarcassYields & { species: Species; carcassId: number; meatDestination: "pack" | "pile"; fatDestination?: "pack" | "pile" }) | null {
   const index = state.carcasses.findIndex((x) => x.id === id && x.cell === cellOf(state, world));
   if (index < 0) return null;
   const carcass = state.carcasses[index];
@@ -105,11 +108,11 @@ export function processCarcass(state: GameState, world: World, id: number): (Car
   const meatDestination = produce(state, world, "rawMeat", recovered.meatKg);
   if (recovered.hideKg) produce(state, world, "hide", recovered.hideKg);
   if (recovered.furKg) produce(state, world, "fur", recovered.furKg);
-  if (recovered.fatKg) produce(state, world, "rawFat", recovered.fatKg);
+  const fatDestination = recovered.fatKg ? produce(state, world, "rawFat", recovered.fatKg) : undefined;
   if (recovered.bone) produce(state, world, "bone", recovered.bone);
   if (recovered.sinew) produce(state, world, "sinew", recovered.sinew);
   state.carcasses.splice(index, 1);
-  return { ...recovered, meatDestination };
+  return { ...recovered, species: carcass.species, carcassId: carcass.id, meatDestination, fatDestination };
 }
 
 function suits(world: World, cell: number, species: Species): boolean {
@@ -121,7 +124,7 @@ function suits(world: World, cell: number, species: Species): boolean {
   return false;
 }
 
-/** Personal evidence found by seeing or pursuing an animal at this cell. */
+/** Personal knowledge from seeing or pursuing an animal. Fresh-sign deeds belong to the pursuit seam. */
 export function noteHuntSign(state: GameState, cell: number, species: Species): boolean {
   const existing = state.player.huntSigns[cell];
   const previous = existing?.species ?? {};
@@ -133,7 +136,6 @@ export function noteHuntSign(state: GameState, cell: number, species: Species): 
     species: { ...previous, [species]: state.minute },
     ...(Object.keys(failures).length ? { failures } : {}),
   };
-  if (discovered) goalDeed(state, { kind: "foundSign" });
   return discovered;
 }
 
@@ -245,6 +247,36 @@ export function knownHuntSpecies(state: GameState, world: World, region = state.
 export function huntSignOdds(state: GameState, density: number): number {
   if (density <= 0) return 0;
   return Math.min(0.95, 0.15 + skillLevel(state, "hunting") * 0.03 + Math.min(0.4, density * 0.4));
+}
+
+/**
+ * The share of a hunt attempt's chance of reading sign that one crossing of a
+ * cell carries. Walking is not searching: the eye is on the way ahead, and
+ * only what the boots happen to pass gets read. Set so that one crossing of a
+ * region holding a common species at a healthy density reads its sign about
+ * one time in three, and a survey sweep of two or three crossings about once.
+ */
+const WALK_SIGN_FACTOR = 0.07;
+
+/**
+ * Sign read off the ground in passing. Every huntable land species the region
+ * actually holds is rolled for on its own, so the country a route crosses is
+ * what decides what the survivor comes to know. Open water holds no tracks and
+ * the dark hides the ones on land.
+ */
+export function noticeSignOnFoot(state: GameState, world: World, cal: Calendar, rng: Rng, cell: number): void {
+  const { terrain, region } = cellAt(world, cell);
+  if (terrain === "water") return;
+  const light = lightFactor(illuminance(state, world, cal, cell), SPOT_LUX, 0);
+  if (light <= 0) return;
+  for (const species of huntedLand()) {
+    const d = regionDensity(state, world, region, species, cal);
+    if (d <= 0) continue;
+    if (!rng.chance(huntSignOdds(state, d) * WALK_SIGN_FACTOR * light)) continue;
+    if (!noteHuntSign(state, cell, species)) continue;
+    log(state, `Fresh sign: ${anAnimal(species)}.`);
+    recordOpportunityEvent(state, { kind: "signFound", species });
+  }
 }
 
 /** General field knowledge, not knowledge of whether this region actually holds the species. */

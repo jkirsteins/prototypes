@@ -88,6 +88,7 @@ describe("tools as items", () => {
     expect(beginTask(state, world, cal, "craft", "knife")).toBe(true);
     advance(state, world, 60);
     expect(hasTool(p, "knife")).toBe(true);
+    expect(state.opportunities.completedAt["make:knife"]).toBeDefined();
     expect(qty(p.pack, "knife")).toBe(0);
     addItem(p.pack, "stone", 2);
     addItem(p.pack, "stick", 1);
@@ -105,10 +106,10 @@ describe("tools as items", () => {
     expect(itemLabel("fishingSpear", 2)).toBe("2 fishing spears");
   });
 
-  it("saves are version 9 and a version 3 file still loads", () => {
+  it("saves are version 10 and a version 3 file still loads", () => {
     const { state } = newGame(17);
     const raw = JSON.parse(serialize(state));
-    expect(raw.version).toBe(9);
+    expect(raw.version).toBe(10);
     raw.version = 3;
     expect(deserialize(JSON.stringify(raw))).not.toBeNull();
   });

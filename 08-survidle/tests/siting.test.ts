@@ -281,7 +281,7 @@ describe("make camp here", () => {
     advance(state, world, 25);
     expect(st.campCell!).toBe(next);
     expect(state.log.some((e) => e.text === "{You} {make} camp here.")).toBe(true);
-    expect(state.goals.done.secondCamp).toBeUndefined();
+    expect(state.opportunities.completedAt.secondCamp).toBeUndefined();
   });
 
   it("names what stays at the old camp in the log line: the structure and the pile, not the fire's kilos twice", () => {

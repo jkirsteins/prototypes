@@ -12,7 +12,7 @@ import { absence, popOf } from "./animals";
 import { orderKit, provision, provisionKit, tooExhausted } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
-import { goalDeed } from "./goals";
+import { recordOpportunityEvent } from "./opportunities";
 import { canConsume, isEmpty, listItems, pile, pileAt, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
 import { body } from "./person";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_POOR_SHARE, ROOT_TO_DOY, STRUCTURES } from "./items";
@@ -486,11 +486,20 @@ function dropEverything(state: GameState, world: World): boolean {
   }
   // Unloading at the home camp empties the vessels too, as far as the vessels and trough at camp have room.
   if (atHome) moved = pourVessels(state.player, to, campSite(regionState(state, world, state.player.region))) > 1e-9 || moved;
-  if ((recoveredMeat > 0 || recoveredFat > 0) && isWorkIntent(state.intent)) {
+  if (atHome && (recoveredMeat > 0 || recoveredFat > 0) && isWorkIntent(state.intent)) {
     state.intent.recoveredMeatPackedKg = Math.max(0, (state.intent.recoveredMeatPackedKg ?? 0) - recoveredMeat);
     state.intent.recoveredFatPackedKg = Math.max(0, (state.intent.recoveredFatPackedKg ?? 0) - recoveredFat);
     noteHauledHuntFood(state, recoveredMeat, recoveredFat);
-    goalDeed(state, { kind: "recoveredAtCamp" });
+    recordOpportunityEvent(state, { kind: "recoveredAtCamp" });
+    const intent = state.intent;
+    if ((intent.recoveredMeatAtSourceKg ?? 0) + (intent.recoveredMeatPackedKg ?? 0)
+      + (intent.recoveredFatAtSourceKg ?? 0) + (intent.recoveredFatPackedKg ?? 0) <= 1e-9) {
+      if (intent.recoveredSpecies !== undefined && intent.recoveredCarcassId !== undefined) {
+        recordOpportunityEvent(state, { kind: "carcassRecovered", species: intent.recoveredSpecies, carcassId: intent.recoveredCarcassId });
+      }
+      delete intent.recoveredSpecies;
+      delete intent.recoveredCarcassId;
+    }
   }
   return moved;
 }
@@ -742,6 +751,11 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     else if (met) endIntent(state, `${label}: done.`, "good");
     else endIntent(state, `${label}: ${o!.why}. {You} {stop}.`, "bad");
     return undefined;
+  }
+  // One hunt intent carries one carcass identity. Finish that recovery before
+  // another pursuit can replace it, even when this kill did not fill the pack.
+  if (it.task === "hunt" && it.recoveredCarcassId !== undefined && deliveryPending(state, world, it)) {
+    return deliveryStep(state, world, cal, rng, it);
   }
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, rng, it);
   if (here !== it.cell) return walkTo(state, world, cal, rng, it, it.cell);
