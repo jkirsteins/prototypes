@@ -2179,6 +2179,40 @@ It waits for P because P's camp view and camp sheet are the check-in
 it would otherwise invent; built after them it is the camp view shaped
 for a phone. Not specced.
 
+**What the terrain work fixes for the sync.** The solved world is 44 MB
+of typed arrays per seed, held in IndexedDB as a cache and never in
+the save; localStorage's 5 MB cannot hold it and must not try. The
+save stays the seed plus sparse state, 8 to 14 KB today, and the
+store caps a save at 1 MB. Four constraints follow, and the sync spec
+must state each of them:
+
+- **The world is never synced.** The other device solves the same seed.
+  Losing the cache costs one solve, about 5 s on a desktop and an
+  expected 15 s on a phone, and nothing else. Safari drops a site's
+  script-written storage after seven days without a visit, so a
+  returning phone player solves again; a cache may be dropped, a save
+  may not.
+- **One seed, one world, on every engine.** The sync is only correct if
+  two devices produce bit-identical worlds from one seed. The solve
+  already holds to integer noise and correctly rounded arithmetic, with
+  a test that greps for the banned functions; the 50 m refinement that
+  the close zoom adds on top inherits the same rule. A generator that
+  breaks it makes the phone's rivers run somewhere else.
+- **The generator version travels with the save.** A device on an
+  older build refuses the save rather than solving a different world
+  under it. The save version check exists; the generator version joins
+  the handshake beside it.
+- **The fine save stays under the cap.** Close zoom's knowledge
+  bitfields cost about 1.2 KB per touched chunk per state, so a broad
+  exploration of fifty chunks is about 120 KB. The cap holds with room;
+  a save that approaches it is a bug, not a reason to raise the cap.
+
+Serving solved worlds from the store, an R2 object per seed and
+generator version at perhaps 10 MB compressed, is the named escape
+hatch if the phone solve turns out painful. It is not built until the
+phone solve is measured, because it adds a moving part the sync
+deliberately avoids and couples client and store versions harder.
+
 ### The south
 
 Not an item. No slot, no curve line. A contingency the round can pull
