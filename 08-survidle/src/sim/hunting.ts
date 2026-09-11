@@ -252,9 +252,9 @@ export function huntSignOdds(state: GameState, density: number): number {
 /**
  * The share of a hunt attempt's chance of reading sign that one crossing of a
  * cell carries. Walking is not searching: the eye is on the way ahead, and
- * only what the boots happen to pass gets read. Set so that surveying a whole
- * region that holds a common species at a healthy density finds its sign about
- * once, which makes a single crossing of that region about a coin flip.
+ * only what the boots happen to pass gets read. Set so that one crossing of a
+ * region holding a common species at a healthy density reads its sign about
+ * one time in three, and a survey sweep of two or three crossings about once.
  */
 const WALK_SIGN_FACTOR = 0.07;
 
