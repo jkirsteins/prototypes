@@ -12,7 +12,7 @@ describe("min heap", () => {
   it("pops in key order and never exceeds capacity", () => {
     const heap = new MinHeap(8);
     const keys = [5, 1, 4, 2, 8, 0, 3, 7];
-    keys.forEach((k, i) => heap.push(i, k));
+    keys.forEach((k, i) => { heap.push(i, k); });
     const out: number[] = [];
     while (heap.size > 0) out.push(keys[heap.pop()]);
     expect(out).toEqual([0, 1, 2, 3, 4, 5, 7, 8]);

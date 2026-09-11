@@ -14,7 +14,10 @@ import { current } from "../src/sim/record";
 import { mapHtml } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { heightAt, terrainPeek, WORLD_H, WORLD_W, type World } from "../src/world/gen";
+import { installNodeWorldCache } from "../src/world/solvecache.node";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
+
+installNodeWorldCache();
 
 export const WEATHER_PROFILE_DEFAULTS = {
   atmosphereSamples: 10_000,
@@ -90,7 +93,8 @@ function highestFell(world: World): number {
         const nearby = terrainPeek(world, x + dx, y + dy);
         if (nearby !== "spruce" && nearby !== "pine" && nearby !== "birch") open++;
       }
-      const score = open + e;
+      // Openness decides the vantage; height only breaks ties, so it is scaled to the 2000 m crest the template tops out at.
+      const score = open + e / 2000;
       if (score > bestScore) {
         best = y * world.w + x;
         bestScore = score;
