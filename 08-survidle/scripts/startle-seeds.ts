@@ -1,4 +1,5 @@
 /** Bounded, seeded encounter fixtures on unmodified generated terrain. */
+import { knowledgeAt, markSeen, newKnowledge } from "../src/sim/fineknowledge";
 import { Rng, derive } from "../src/rng";
 import { PATCH_M } from "../src/world/spatial";
 import { calendar } from "../src/sim/calendar";
@@ -56,9 +57,9 @@ function configureScene(scene: StartleScene, scenario: StartleScenario): void {
   state.intent = null;
   state.log = [];
   // Set only actual visible ground. Heard-only fixtures must start unmapped.
-  state.mapped = {};
+  state.knowledge = newKnowledge();
   const seen = visibleCells(state, world, calendar(state.minute, state.startDoy), cellOf(state, world));
-  for (const cell of seen) state.mapped[cell] = 1;
+  for (const cell of seen) markSeen(state.knowledge, cell);
   state.wildlife.visible = seen.has(scenario.startCell) ? [subject.id] : [];
 }
 
@@ -93,7 +94,7 @@ function outcome(scene: StartleScene, scenario: StartleScenario) {
     if (active.alarm === 0 && active.cell === cellOf(state, world) && !text) kind = scenario.kind;
   } else if (active.escapeEpisode === 1 && (seen || heard)) {
     if (scenario.kind === "visible" && seen && startVisible) kind = scenario.kind;
-    if (scenario.kind === "heard-only" && heard && !startVisible && state.mapped[scenario.startCell] === undefined) kind = scenario.kind;
+    if (scenario.kind === "heard-only" && heard && !startVisible && knowledgeAt(state.knowledge, scenario.startCell) === "unknown") kind = scenario.kind;
     if (scenario.kind === "bog" && cellAt(world, scenario.startCell).terrain === "bog") kind = scenario.kind;
     if (scenario.kind === "snow" && state.weather.snowCm >= 5) kind = scenario.kind;
     if (scenario.kind === "blocked-edge" && neighbours(world, scenario.startCell).some(cell =>

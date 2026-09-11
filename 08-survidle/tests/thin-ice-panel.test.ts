@@ -1,3 +1,4 @@
+import { newKnowledge } from "../src/sim/fineknowledge";
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { markKnown } from "../src/sim/mapped";
@@ -27,7 +28,7 @@ function crossing() {
     chunk.terrain[i] = TERRAIN_INDEX[cell === water ? "water" : "pine"];
     chunk.region[i] = remote;
   }
-  g.state.mapped = {};
+  g.state.knowledge = newKnowledge();
   for (const cell of [from, water, target]) markKnown(g.state, cell);
   ensureGround(g.state, g.world, g.state.player.region).iceCm = 20;
   ensureGround(g.state, g.world, remote).iceCm = 8;
@@ -53,7 +54,7 @@ describe("thin-ice route offers", () => {
 
     const route = survivorRoute(state, world, from, target, "thin")!;
     expect(route).toEqual([from + 1, target]);
-    state.mapped = {};
+    state.knowledge = newKnowledge();
     markKnown(state, from);
     for (const cell of route) markKnown(state, cell);
     state.discovered[remote] = 2;

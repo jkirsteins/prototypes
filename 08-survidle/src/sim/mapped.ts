@@ -1,9 +1,13 @@
 /**
  * What ground the survivor can walk. Region fog says which places have a
- * name; this says which cells have been walked, seen close enough to
+ * name; this says which patches have been walked, seen close enough to
  * read, or mapped. A route may only cross what is in here.
+ *
+ * The storage is fineknowledge.ts; this is the state-shaped face of it,
+ * and the one place the route cache's generation stamp moves.
  */
 import { regionAt, type World } from "../world/gen";
+import { inheritKnowledge, knowledgeAt, markSeen, markVisited } from "./fineknowledge";
 import type { GameState } from "./types";
 
 // A cache stamp for knownRoute, not game state: it never goes into the save.
@@ -14,13 +18,16 @@ export function knowledgeGen(): number {
 }
 
 export function isKnown(state: GameState, cell: number): boolean {
-  return state.mapped[cell] !== undefined;
+  return knowledgeAt(state.knowledge, cell) !== "unknown";
 }
 
 export function markKnown(state: GameState, cell: number): void {
-  if (state.mapped[cell] === 1) return;
-  state.mapped[cell] = 1;
-  generation++;
+  if (markSeen(state.knowledge, cell)) generation++;
+}
+
+/** The patch under foot: standing on ground is a stronger claim than seeing it. */
+export function markWalked(state: GameState, cell: number): void {
+  if (markVisited(state.knowledge, cell)) generation++;
 }
 
 export function mapRegion(state: GameState, world: World, region: number): void {
@@ -37,6 +44,6 @@ export function knownShare(state: GameState, world: World, region: number): numb
 
 /** The journal: what a dead survivor knew, the heir has read rather than walked. */
 export function dimAll(state: GameState): void {
-  for (const k of Object.keys(state.mapped)) state.mapped[Number(k)] = 3;
+  inheritKnowledge(state.knowledge);
   generation++;
 }

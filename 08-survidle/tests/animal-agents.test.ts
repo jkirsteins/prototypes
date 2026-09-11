@@ -1,3 +1,4 @@
+import { encodeKnowledge, setKnowledge } from "../src/sim/fineknowledge";
 import { afterEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { activateWildlife, claimHuntableAnimal, dailyWildlife, emptyWildlife, evaluateWildlifeDisturbance, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
@@ -193,8 +194,8 @@ describe("immediate wildlife disturbance", () => {
     const { state, world, deer, startCell, cal } = hiddenDisturbanceScene();
     deer.name = "River Herd";
     state.wildlife.recognized[deer.id] = true;
-    delete state.mapped[startCell];
-    const before = JSON.stringify({ mapped: state.mapped, discovered: state.discovered, wildlife: {
+    setKnowledge(state.knowledge, startCell, "unknown");
+    const before = JSON.stringify({ mapped: encodeKnowledge(state.knowledge), discovered: state.discovered, wildlife: {
       visible: state.wildlife.visible, familiarity: state.wildlife.familiarity, lastKnownDay: deer.lastKnownDay,
     } });
     const events: WildlifeStartleEvent[] = [];
@@ -203,7 +204,7 @@ describe("immediate wildlife disturbance", () => {
     expect(events).toHaveLength(1);
     expect(events[0].perception.kind).toBe("heard");
     expect(events[0].logText).not.toContain("River");
-    expect(JSON.stringify({ mapped: state.mapped, discovered: state.discovered, wildlife: {
+    expect(JSON.stringify({ mapped: encodeKnowledge(state.knowledge), discovered: state.discovered, wildlife: {
       visible: state.wildlife.visible, familiarity: state.wildlife.familiarity, lastKnownDay: deer.lastKnownDay,
     } })).toBe(before);
   });

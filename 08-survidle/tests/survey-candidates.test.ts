@@ -1,3 +1,4 @@
+import { newKnowledge } from "../src/sim/fineknowledge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
@@ -37,7 +38,7 @@ function fixture(blocked: boolean) {
   const state = game.state;
   state.player.xM = 14.5 * PATCH_M;
   state.player.yM = 14.5 * PATCH_M;
-  state.mapped = {};
+  state.knowledge = newKnowledge();
   const fields = fineTerrain.fieldsAtPatch(world.seed, region.campCell);
   vi.spyOn(fineTerrain, "fieldsAtPatch").mockReturnValue({ ...fields, elevationM: 0 });
   vi.spyOn(sight, "sightReachCells").mockImplementation((_state, _world, _cal, cell) => blocked && cell % world.w === 16 ? 5 : 2);

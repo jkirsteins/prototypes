@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { encodeKnowledge, newKnowledge } from "../src/sim/fineknowledge";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
@@ -37,8 +38,8 @@ beforeEach(() => {
 describe("transient wildlife map cues", () => {
   it("adds one non-identifying cue over hidden ground, preserves map knowledge, and expires after 1200 ms", () => {
     const { state, world, ui, cal, event } = scene();
-    state.mapped = {};
-    const before = JSON.stringify(state);
+    state.knowledge = newKnowledge();
+    const before = JSON.stringify(state) + encodeKnowledge(state.knowledge);
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
     const cue = document.querySelector(".wildlife-startle")!;
@@ -51,7 +52,7 @@ describe("transient wildlife map cues", () => {
     expect(document.querySelector(".mk-animal")).toBeNull();
     expect(document.body.innerHTML).not.toContain(String(event.subjectId));
     expect(document.body.innerHTML).not.toContain(event.id);
-    expect(JSON.stringify(state)).toBe(before);
+    expect(JSON.stringify(state) + encodeKnowledge(state.knowledge)).toBe(before);
     expect(mapHtml(world, state, ui, cal, 2200)).not.toContain('class="wildlife-startle');
     expect(ui.wildlifeStartles).toHaveLength(0);
   });

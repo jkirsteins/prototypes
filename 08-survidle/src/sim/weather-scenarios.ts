@@ -1,4 +1,5 @@
 import { calendar, type Calendar } from "./calendar";
+import { newKnowledge } from "./fineknowledge";
 import { markKnown } from "./mapped";
 import { newGame } from "./newgame";
 import { setRegion } from "./position";
@@ -52,7 +53,7 @@ export function weatherShotFixture(name: WeatherShotName): WeatherShotFixture {
   const simulation = weatherShotSimulation(name);
   const { state, world, cal, cell } = simulation;
   const visible = visibleCells(state, world, cal, cell);
-  state.mapped = {};
+  state.knowledge = newKnowledge();
   for (const seen of visible) markKnown(state, seen);
   return { ...simulation, visible };
 }

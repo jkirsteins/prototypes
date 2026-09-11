@@ -22,6 +22,7 @@ import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed, workSpeed } from "./player";
+import { isKnown } from "./mapped";
 import { cellOf, straightKm, watersideCell } from "./position";
 import { campSite, newSite, regionState, siteAt } from "./regionstate";
 import { survivorRoute, survivorRouteMinutes } from "./routing";
@@ -748,7 +749,7 @@ export function stormOptions(
     const regionId = Number(regionKey);
     for (const [cellKey, site] of Object.entries(region.sites)) {
       const cell = Number(cellKey);
-      if (cell === here || cell === camp || state.mapped[cell] === undefined || protectionOf(site) < 2) continue;
+      if (cell === here || cell === camp || !isKnown(state, cell) || protectionOf(site) < 2) continue;
       const reading = routeReading(state, world, cal, cell);
       if (!reading.route || reading.minutes === null) continue;
       const inputs = planInputs(state, world, storm, regionId, cell, reading.route, reading.minutes);

@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { newKnowledge } from "../src/sim/fineknowledge";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
@@ -87,7 +88,7 @@ describe("wildlife cue anchors", () => {
   it.each(["heard", "seen"] as const)("projects an unrendered %s source within its detailed cell without disclosing identity", (kind) => {
     const { state, animal, ui, event, draw } = scene(0);
     animal.active = null;
-    state.mapped = {};
+    state.knowledge = newKnowledge();
     event.subjectId = 987654321;
     event.source = { xM: (Math.floor(state.player.xM / PATCH_M) + 0.2) * PATCH_M, yM: (Math.floor(state.player.yM / PATCH_M) + 0.75) * PATCH_M };
     event.perception = kind === "seen" ? { kind, identification: "unknown" } : { kind, identification: "unknown", uncertaintyM: 0 };

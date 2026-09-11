@@ -1,3 +1,4 @@
+import { knownPatches } from "../src/sim/fineknowledge";
 import { requireCamp } from "./siting-helpers";
 /**
  * The survivor routes on the ground they have mapped, never the true
@@ -77,7 +78,7 @@ describe("the survivor routes on knowledge", () => {
     const { state, world } = newGame(3);
     const from = cellOf(state, world);
     let target: number | undefined;
-    for (const known of Object.keys(state.mapped).map(Number)) {
+    for (const known of knownPatches(state.knowledge)) {
       target = neighbours(world, known).find((cell) => !isKnown(state, cell) && passable(cellAt(world, cell).terrain) && survivorRoute(state, world, from, known) !== null);
       if (target !== undefined) break;
     }

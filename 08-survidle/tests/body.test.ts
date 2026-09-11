@@ -1,3 +1,4 @@
+import { setKnowledge } from "../src/sim/fineknowledge";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
@@ -883,7 +884,7 @@ describe("the shared storm plan", () => {
     expect(plan.recommended).toBe("remoteRefuge");
     expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)).toMatchObject({ id: "walk", arg: `cell:${refuge}` });
 
-    delete state.mapped[refuge];
+    setKnowledge(state.knowledge, refuge, "unknown");
     expect(stormOptions(state, world, state.weather.storm).options.some((option) => option.kind === "remoteRefuge")).toBe(false);
   });
 

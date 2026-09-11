@@ -1,3 +1,4 @@
+import { newKnowledge } from "../src/sim/fineknowledge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as climate from "../src/sim/climate";
 import { calendar } from "../src/sim/calendar";
@@ -100,8 +101,8 @@ afterEach(() => vi.restoreAllMocks());
  * and a test asking what one look from one cell reveals would be reading the
  * landing's work instead of its own.
  */
-function forget(state: { mapped: Record<number, number> }): void {
-  state.mapped = {};
+function forget(state: GameState): void {
+  state.knowledge = newKnowledge();
 }
 
 describe("sight", () => {

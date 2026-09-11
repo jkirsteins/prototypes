@@ -8,6 +8,7 @@ import { type MetricPoint, PATCH_M, type PatchId, patchCenter, patchId } from ".
 import { type Cell, cellAt, neighbours, regionAt, regionOf, waterKindOf, type World } from "../world/gen";
 import { remainingKm, routeKm } from "../world/route";
 import { calendar } from "./calendar";
+import { markWalked } from "./mapped";
 import { enterRegion, VISITED } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { seeFrom } from "./sight";
@@ -48,6 +49,7 @@ export function placeAtPatch(state: GameState, world: World, patch: PatchId): vo
   state.player.xM = c.xM;
   state.player.yM = c.yM;
   setRegion(state, world, regionOf(world, patch % world.w, Math.floor(patch / world.w)));
+  markWalked(state, patch);
   seeFrom(state, world, calendar(state.minute, state.startDoy), patch);
 }
 
@@ -65,6 +67,7 @@ export function placeAtMetric(state: GameState, world: World, point: MetricPoint
   state.player.xM = point.xM;
   state.player.yM = point.yM;
   setRegion(state, world, regionOf(world, patch % world.w, Math.floor(patch / world.w)));
+  markWalked(state, patch);
   seeFrom(state, world, calendar(state.minute, state.startDoy), patch);
 }
 

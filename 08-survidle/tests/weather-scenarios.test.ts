@@ -1,3 +1,4 @@
+import { knowledgeCounts } from "../src/sim/fineknowledge";
 import { describe, expect, it } from "vitest";
 import { mapHtml } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
@@ -98,8 +99,8 @@ describe("simulation-backed weather screenshot fixtures", () => {
     const dense = weatherShotFixture("obscured");
     expect(clear.cell).toBe(dense.cell);
     expect(clear.visible.size).toBeGreaterThan(dense.visible.size * 10);
-    expect(Object.keys(clear.state.mapped)).toHaveLength(clear.visible.size);
-    expect(Object.keys(dense.state.mapped)).toHaveLength(dense.visible.size);
+    expect(knowledgeCounts(clear.state.knowledge).known).toBe(clear.visible.size);
+    expect(knowledgeCounts(dense.state.knowledge).known).toBe(dense.visible.size);
   });
 
   it("keeps the documented scenario catalog complete", () => {

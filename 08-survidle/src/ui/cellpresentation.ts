@@ -1,3 +1,4 @@
+import { knowledgeAt } from "../sim/fineknowledge";
 import { surfaceHeading, surfaceLocation, surfaceOf, terrainHeading, type CellSurface } from "../sim/cellstatus";
 import type { GameState, LocalGroundWeather, Terrain } from "../sim/types";
 import { groundAt } from "../sim/weather";
@@ -48,9 +49,9 @@ export type GroundResolver = () => Pick<LocalGroundWeather, "snowCm" | "iceCm">;
 
 export function cellKnowledge(state: GameState, cell: number, visible: boolean): CellKnowledge {
   if (visible) return "current";
-  const mapped = state.mapped[cell];
-  if (mapped === undefined) return "unknown";
-  return mapped === 1 ? "remembered" : "inherited";
+  const level = knowledgeAt(state.knowledge, cell);
+  if (level === "unknown") return "unknown";
+  return level === "inherited" ? "inherited" : "remembered";
 }
 
 export function cellPresentation(

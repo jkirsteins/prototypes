@@ -1,3 +1,4 @@
+import { setKnowledge } from "../src/sim/fineknowledge";
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
@@ -35,7 +36,7 @@ function landHeir(seed: number): G {
   // ground in view; these tests are about the search a survivor standing on
   // ground it has not otherwise walked would still have to make, so that
   // mapping is undone here rather than in the sim itself.
-  for (const c of regionAt(world, state.player.region).cells) delete state.mapped[c];
+  for (const c of regionAt(world, state.player.region).cells) setKnowledge(state.knowledge, c, "unknown");
   return { state, world };
 }
 

@@ -8,6 +8,7 @@ import { addItem, emptyInventory } from "./inventory";
 import { FOODS, KCAL_FULL } from "./items";
 import { creditYield } from "./ledger";
 import { log } from "./log";
+import { newKnowledge } from "./fineknowledge";
 import { mapRegion } from "./mapped";
 import { newRecord } from "./record";
 import { rollName } from "./names";
@@ -131,7 +132,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     player: freshPlayer(first.person, start.campCell, world.start),
     regions: {},
     discovered: {},
-    mapped: {},
+    knowledge: newKnowledge(),
     weather: newWeather(startDoy),
     task: null,
     log: [],

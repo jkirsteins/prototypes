@@ -1,3 +1,4 @@
+import { setKnowledge } from "../src/sim/fineknowledge";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
@@ -290,7 +291,7 @@ describe("panels", () => {
     expect(remembered).toBeDefined();
     const inherited = neighbours(world, remembered!).find((cell) => !visible.has(cell));
     expect(inherited).toBeDefined();
-    state.mapped[inherited!] = 3;
+    setKnowledge(state.knowledge, inherited!, "inherited");
     setPanel("map", mapHtml(world, state, ui, cal));
     const cell = (index: number) => document.querySelector<HTMLElement>(`#map .c[data-map-cell="${index}"]`);
     expect(cell(cellOf(state, world))?.classList.contains("memory")).toBe(false);
@@ -628,7 +629,7 @@ describe("panels", () => {
     // The landing maps the home region whole; unmap it here so there is fog
     // to draw a corridor across, the same shape ground the sight alone never
     // reached would leave.
-    for (const c of cells) delete state.mapped[c];
+    for (const c of cells) setKnowledge(state.knowledge, c, "unknown");
     // A run of cells in the home region, in view, that is not known.
     let run: number[] = [];
     outer: for (let y = y0; y < y0 + l.h; y++) {

@@ -1,3 +1,4 @@
+import { markSeen, newKnowledge } from "../src/sim/fineknowledge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as climate from "../src/sim/climate";
 import { calendar } from "../src/sim/calendar";
@@ -61,7 +62,8 @@ describe("hunting knowledge", () => {
     const { state, world } = armedGame();
     const heath = spotOf(regionAt(world, state.player.region), "heath")!.cell;
     placeAt(state, world, heath);
-    state.mapped = { [heath]: 1 };
+    state.knowledge = newKnowledge();
+    markSeen(state.knowledge, heath);
     setSkillLevel(state, "hunting", 20);
     expect(bestHuntCell(state, world, cal)).toBe(heath);
   });

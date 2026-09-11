@@ -1,3 +1,4 @@
+import { isKnown } from "../src/sim/mapped";
 import { describe, expect, it, vi } from "vitest";
 import { huntCandidates, bestHuntCell } from "../src/sim/hunting";
 import { newGame } from "../src/sim/newgame";
@@ -26,7 +27,7 @@ describe("bounded fine hunting candidates", () => {
     const distance = (cell: number) => (cell % world.w - here % world.w) ** 2 + (Math.floor(cell / world.w) - Math.floor(here / world.w)) ** 2;
     for (const cell of region.cells) {
       const terrain = cellAt(world, cell).terrain;
-      if (state.mapped[cell] === undefined || terrain === "water") continue;
+      if (!isKnown(state, cell) || terrain === "water") continue;
       const parent = parentXY(cell);
       const key = `${parentKey(parent.x, parent.y)}:${terrain}`;
       const best = nearest.get(key);

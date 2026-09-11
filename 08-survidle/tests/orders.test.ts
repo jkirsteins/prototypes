@@ -1,3 +1,4 @@
+import { knownPatches, newKnowledge, setKnowledge } from "../src/sim/fineknowledge";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
@@ -1396,14 +1397,13 @@ describe("pre-emption", () => {
     // A survivor lands with the home region already mapped, so the ground can
     // be read before a camp is chosen. These rows want ground nobody has walked
     // to, so the map is wound back to what an eye at camp actually takes in.
-    for (const k of Object.keys(state.mapped)) delete state.mapped[Number(k)];
+    state.knowledge = newKnowledge();
     seeFrom(state, world, calendar(state.minute, state.startDoy), cellOf(state, world));
     // The topographic viewshed can now include a distant outcrop for this
     // seed. Keep the fixture's stone rows deliberately unknown so the test
     // remains about an in-flight task bypassing order judgement.
-    for (const k of Object.keys(state.mapped)) {
-      const cell = Number(k);
-      if (rockCell(world, cell)) delete state.mapped[cell];
+    for (const cell of knownPatches(state.knowledge)) {
+      if (rockCell(world, cell)) setKnowledge(state.knowledge, cell, "unknown");
     }
     // Ranked above the live row, so the prefix rule alone would still ask
     // each of them the question every minute regardless of what the live

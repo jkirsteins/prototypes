@@ -3,6 +3,7 @@
  * kilocalories, degrees Celsius, kilometres. The only unreal thing in the
  * game is how fast the clock runs, and that lives in units.ts.
  */
+import type { KnowledgeChunks } from "./fineknowledge";
 import type { FoodId } from "./items";
 import type { StormPlanSnapshot } from "./goals";
 import type { DayLedger } from "./ledger";
@@ -868,8 +869,8 @@ export interface GameState {
   regions: Record<number, RegionState>;
   /** Fog of war: 1 seen from next door, 2 visited, 3 dim (visited once, since forgotten). Absent means unknown. */
   discovered: Record<number, 1 | 2 | 3>;
-  /** Ground whose walking is known: 1 this life's, 3 the journal's. Absent means unknown. */
-  mapped: Record<number, 1 | 3>;
+  /** Ground whose walking is known, two bits a patch: unknown, the journal's, seen, walked. */
+  knowledge: KnowledgeChunks;
   weather: WeatherWorld;
   task: Task | null;
   log: LogEntry[];

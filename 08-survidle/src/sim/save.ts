@@ -15,6 +15,7 @@ import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
 import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type Species, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
 import { emptyWildlife } from "./wildlife-agents";
+import { decodeKnowledge, encodeKnowledge, type KnowledgeChunks, newKnowledge, setKnowledge } from "./fineknowledge";
 import { migrateWeather } from "./weather";
 import { DISTURBANCE_PROFILES } from "./species";
 import { precipitationStormKind } from "./weather";
@@ -30,8 +31,30 @@ export function awaySeconds(state: GameState): number {
 export interface SaveFile { version: 9; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  const file: SaveFile = { version: 9, savedAt: now, state };
-  return JSON.stringify(file);
+  // Knowledge is chunked typed arrays, which JSON cannot carry: it goes out
+  // as its own compact string and comes back through migrate.
+  const carried = { ...state, knowledge: encodeKnowledge(state.knowledge) };
+  return JSON.stringify({ version: 9, savedAt: now, state: carried });
+}
+
+/** A save's knowledge field as it may arrive: encoded, a cell-keyed record from before the lattice, or absent. */
+interface LegacyKnowledge {
+  knowledge?: KnowledgeChunks | string;
+  mapped?: Record<number, 1 | 3>;
+}
+
+function loadKnowledge(state: LegacyKnowledge): KnowledgeChunks {
+  const carried = state.knowledge;
+  if (typeof carried === "string") return decodeKnowledge(carried);
+  if (carried && carried.chunks instanceof Map) return carried;
+  const knowledge = newKnowledge();
+  // A save written while knowledge was a property per cell: the same ground,
+  // dim where the journal held it. Ground nobody had is simply absent.
+  for (const [cell, level] of Object.entries(state.mapped ?? {})) {
+    setKnowledge(knowledge, Number(cell), level === 3 ? "inherited" : "seen");
+  }
+  delete state.mapped;
+  return knowledge;
 }
 
 export function deserialize(text: string): SaveFile | null {
@@ -52,6 +75,7 @@ export function deserialize(text: string): SaveFile | null {
  */
 export function migrate(state: GameState, version = 9): void {
   state.startDoy ??= START_DOY;
+  state.knowledge = loadKnowledge(state as unknown as LegacyKnowledge);
   migrateWeather(state);
   state.awayHours ??= AWAY_HOURS_DEFAULT;
   state.advanceCarry = version < 9 ? 0 : (state.advanceCarry ?? 0);

@@ -2,6 +2,7 @@ import type { Calendar } from "./calendar";
 import { absence } from "./animals";
 import { body } from "./person";
 import { hasTool, produce } from "./inventory";
+import { isKnown } from "./mapped";
 import { goalDeed } from "./goals";
 import { campCellOf, cellOf, forestCell, heathCell, kmBetween, rockCell, watersideCell } from "./position";
 import { skillLevel, oddsFactor } from "./skills";
@@ -334,7 +335,7 @@ export function huntCandidates(state: GameState, world: World, regions: readonly
       if (sign && (Object.values(sign.species).some(at => at !== undefined && state.minute - at < HUNT_SIGN_DAYS * 1440)
         || Object.keys(sign.failures ?? {}).length > 0)) chosen.add(cell);
       if (state.huntPressure[cell] !== undefined) chosen.add(cell);
-      if (state.mapped[cell] === undefined) continue;
+      if (!isKnown(state, cell)) continue;
       const ground = cellAt(world, cell);
       if (ground.terrain === "water") continue;
       const parent = parentXY(cell);
@@ -374,7 +375,7 @@ export function bestHuntCell(state: GameState, world: World, cal: Calendar): num
     return km;
   };
   const choices = huntCandidates(state, world, regions)
-    .filter((cell) => state.mapped[cell] !== undefined)
+    .filter((cell) => isKnown(state, cell))
     .map((cell) => {
       const estimate = huntEstimate(state, world, cal, cell, observable, distance);
       if (!estimate.species.length) return null;

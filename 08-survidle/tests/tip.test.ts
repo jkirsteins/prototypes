@@ -11,6 +11,7 @@
  * hovered cell is derived from where the pointer is rather than from a
  * glyph's enter and leave, and no coordinate ever enters the markup.
  */
+import { newKnowledge } from "../src/sim/fineknowledge";
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { addItem, emptyInventory, pile } from "../src/sim/inventory";
@@ -117,7 +118,7 @@ describe("what the tooltip says", () => {
     // starts known: the map is wound back to what an eye at the landing
     // takes in, which is what leaves any of it unwalked to point at.
     const home = regionAt(world, state.player.region);
-    for (const k of Object.keys(state.mapped)) delete state.mapped[Number(k)];
+    state.knowledge = newKnowledge();
     seeFrom(state, world, cal, cellOf(state, world));
     // In this region: ground over a border is somewhere to go rather than
     // somewhere unseen, and says so instead.

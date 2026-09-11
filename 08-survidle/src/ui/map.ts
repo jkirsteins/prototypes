@@ -12,6 +12,7 @@
 import type { Calendar } from "../sim/calendar";
 import { fuelTotal, hasEmbers, roofed } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
+import { knowledgeAt } from "../sim/fineknowledge";
 import { knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
@@ -314,8 +315,8 @@ interface Block { terrain: Terrain; region: number; seen: 0 | 1 | 2 }
 
 /** A cell's own knowledge: 0 unknown, 1 dim (only the journal has it), 2 known this life. */
 function cellKnowledge(state: GameState, world: World, x: number, y: number): 0 | 1 | 2 {
-  const m = state.mapped[cellIdx(world, x, y)];
-  return m === undefined ? 0 : m === 1 ? 2 : 1;
+  const level = knowledgeAt(state.knowledge, cellIdx(world, x, y));
+  return level === "unknown" ? 0 : level === "inherited" ? 1 : 2;
 }
 
 /**

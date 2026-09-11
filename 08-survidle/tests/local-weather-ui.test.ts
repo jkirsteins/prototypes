@@ -1,3 +1,4 @@
+import { markSeen, setKnowledge } from "../src/sim/fineknowledge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as climate from "../src/sim/climate";
 import { calendar } from "../src/sim/calendar";
@@ -40,7 +41,7 @@ describe("local weather presentation", () => {
         const y = y0 + gy * level.cells;
         if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
         const cell = cellIdx(world, x, y);
-        state.mapped[cell] = 1;
+        markSeen(state.knowledge, cell);
         regions.add(regionPeek(world, x, y));
       }
     }
@@ -113,8 +114,8 @@ describe("local weather presentation", () => {
     const [hiddenKnown, unknown] = hiddenCandidates;
     expect(hiddenKnown).toBeTypeOf("number");
     expect(unknown).toBeTypeOf("number");
-    state.mapped[hiddenKnown] = 1;
-    delete state.mapped[unknown];
+    markSeen(state.knowledge, hiddenKnown);
+    setKnowledge(state.knowledge, unknown, "unknown");
     ensureGround(state, world, regionPeek(world, x, y)).snowCm = 18;
     vi.spyOn(climate, "sampleAtmosphere").mockImplementation((_weather, _world, _minute, sx, sy) => (
       sx === x && sy === y
@@ -154,7 +155,7 @@ describe("local weather presentation", () => {
     ui.zoom = 3;
     const cal = calendar(state.minute, state.startDoy);
     const visible = visibleCells(state, world, cal, cellOf(state, world));
-    for (const cell of visible) state.mapped[cell] = 1;
+    for (const cell of visible) markSeen(state.knowledge, cell);
     vi.spyOn(climate, "sampleAtmosphere").mockReturnValue(air({ cloud: 0.95, fog: 0.8 }));
 
     const root = document.createElement("div");
