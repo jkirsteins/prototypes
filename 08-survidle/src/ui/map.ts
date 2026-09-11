@@ -217,7 +217,7 @@ export function mapViewportBounds(
 /** Cells per glyph at each zoom level. */
 export const ZOOMS = LEVELS.map((l) => l.cells);
 /** Priority when a block's ground is tied: what the eye should see first. */
-const TIE_ORDER: Terrain[] = ["water", "fell", "rock", "spruce", "pine", "birch", "bog", "meadow"];
+const TIE_ORDER: Terrain[] = ["water", "river", "fell", "rock", "spruce", "pine", "birch", "bog", "meadow"];
 
 export function zoomLabel(zoom: number): string {
   const l = levelAt(zoom);
@@ -345,7 +345,7 @@ const BLOCK_MAJORITY = 0.5;
  * block's own knowledge - unknown unless most sampled cells are known,
  * dim rather than bright unless most of what is known is this life's.
  */
-function blockInfo(state: GameState, world: World, x0: number, y0: number, z: number): Block {
+export function blockInfo(state: GameState, world: World, x0: number, y0: number, z: number): Block {
   if (z === 1) {
     const region = regionPeek(world, x0, y0);
     return { terrain: terrainPeek(world, x0, y0), region, seen: cellKnowledge(state, world, x0, y0) };
@@ -376,6 +376,12 @@ function blockInfo(state: GameState, world: World, x0: number, y0: number, z: nu
       best = t;
     }
   }
+  // Cartographic exaggeration, not hydrology: a river one cell wide would
+  // lose to its wider neighbours in the sample and vanish from the coarse
+  // rungs. Any known river cell in the block promotes the glyph to river,
+  // unless the block is already majority water (a lake or the sea), which
+  // reads as water regardless of a river cell inside it.
+  if (best !== "water" && (counts.get("river") ?? 0) > 0) best = "river";
   const seen: 0 | 1 | 2 = knownAny / n <= BLOCK_MAJORITY ? 0 : knownBright / knownAny > BLOCK_MAJORITY ? 2 : 1;
   return { terrain: best, region: regionPeek(world, x0 + (z >> 1), y0 + (z >> 1)), seen };
 }

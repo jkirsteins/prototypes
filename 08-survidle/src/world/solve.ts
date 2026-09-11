@@ -13,7 +13,7 @@ export { KIND, FLAG_FORD, FLAG_STREAM, RIVER_M3S, STREAM_M3S, FORD_GRADIENT };
 export type SolveProgress = (stage: string, fraction: number) => void;
 export const STAGES = ["raising the land", "wearing the valleys", "filling the lakes", "cutting the fjords", "naming the ground"] as const;
 /** Bumped whenever the solve changes what a seed produces; the node cache is keyed by it. */
-export const GENERATOR_VERSION = 3;
+export const GENERATOR_VERSION = 4;
 /** A depression must be this deep somewhere to be a lake rather than damp ground. */
 export const LAKE_MIN_DEPTH_M = 2;
 

@@ -97,8 +97,14 @@ export function carveGlacial(height: Float32Array, w: number, h: number, dir: Ui
 export const KIND = { land: 0, sea: 1, lake: 2, river: 3 } as const;
 export const FLAG_STREAM = 1;
 export const FLAG_FORD = 2;
-/** Mean discharge above this is a river about 50 m wide at bankfull: its own terrain, crossed on ice or at a ford. */
-export const RIVER_M3S = 40;
+/**
+ * Mean discharge above this is a river about 10 to 15 m wide at bankfull
+ * (Leopold's width relation gives about 11 m for 5 cubic metres a second):
+ * its own terrain, a barrier in spring and wadeable at riffles in summer,
+ * which is what the ford rule models. At inland runoff that is a catchment
+ * of about 400 km2, on the Atlantic side about 100 km2.
+ */
+export const RIVER_M3S = 5;
 /** A brook that runs all year. */
 export const STREAM_M3S = 0.02;
 /** A river cell dropping faster than this to its receiver is a riffle a walker can ford. */

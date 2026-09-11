@@ -904,3 +904,18 @@ Norwegian letters, and `probe.test.ts`'s undefined in the trap's oily side.
 ## Heir lineage gate, measured
 
 Run once from the controller session after the known-route cache widening: about 80 minutes wall time for the 24 lives (about 15 on main). Readings: trend gate 1 of 5 seeds (the gate is 3 of 4); lineage gate 3 of 5 seeds reached a year within six lives. Findings, not targets: the drop against the old world is the fjord coast the heirs land on, and the time is the hunting chooser routing to every mapped candidate cell.
+
+## Rivers at 5 cubic metres a second
+
+The threshold that made a cell `river` terrain was the classification defect: 40 cubic metres a second is a Namsen-class river needing 800 to 3,300 km2 of catchment, so the world held 300 km of it and a southern landing saw none, while a river a person calls a river starts around 5 cubic metres a second. Separately, the map's block sampling was a representation defect of its own: a one-cell-wide river vanished at any rung coarser than one cell per glyph regardless of the threshold, because a 3 by 3 sample takes the block's commonest class and a single river cell never wins that vote.
+
+`RIVER_M3S` is now 5 (about 10 to 15 m wide at bankfull by Leopold's width relation, a catchment of about 400 km2 inland or 100 km2 on the Atlantic side), and `blockInfo` in `src/ui/map.ts` now promotes a block to `river` whenever any sampled known cell in it is a river cell and the block is not already majority water, so the thread stays visible at every zoom rung instead of only at one cell per glyph.
+
+Seed 42, `npm run terrain -- 42`:
+
+| | before (`RIVER_M3S = 40`) | after (`RIVER_M3S = 5`) |
+|---|---|---|
+| river cells | 986 | 11,289 |
+| largest river mouths (m3/s) | 130 101 53 52 | 130 101 53 52 40 |
+
+River cells rose by about a factor of 11, and the world's fifth-largest mouth (40 m3/s) now clears the new threshold and shows on the list.

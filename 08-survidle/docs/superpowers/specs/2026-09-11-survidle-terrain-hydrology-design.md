@@ -199,7 +199,7 @@ Water first, in this order, then land.
 |---|---|
 | sea | height at or below 0 and 8-connected to the ocean edge |
 | lake | a filled depression with a fill depth of 2 m or more somewhere in it; the surface is the fill height |
-| river | land with discharge above 40 cubic metres a second, about 50 m wide at bankfull; its own terrain, impassable except on ice or at a ford |
+| river | land with discharge above 5 cubic metres a second, about 10 to 15 m wide at bankfull; its own terrain, impassable except on ice or at a ford |
 | ford | a river cell whose gradient to its receiver is above 0.5 percent, a riffle; passable at bog's walking cost |
 | stream | a land cell with discharge above 0.02 cubic metres a second, a year-round brook; a flag on the cell, not a terrain, and it counts as water beside for drinking, seeps and camp siting |
 
@@ -207,10 +207,9 @@ Twenty litres a second is the perennial first-order brook of humid
 Fennoscandia, which carries 10 to 30 l/s; a higher threshold would call
 those channels dry ground and put the nearest water a kilometre away
 from country that really has a brook in every fold. At inland runoff a
-stream needs about 1.7 km2 of catchment and a river about 3300 km2; on
-the Atlantic side about 0.4 km2 and 800 km2. Rivers are the main valley
-rivers only, the Namsen and the Ume of the world, and a river cell
-continues downstream to a lake or the sea without a gap.
+stream needs about 1.7 km2 of catchment and a river about 400 km2; on
+the Atlantic side about 0.4 km2 and 100 km2. A river cell continues
+downstream to a lake or the sea without a gap.
 
 Land classes keep today's names, so the tables, species habitats, orders
 and spots stay valid. The rules change. Inputs per cell: height, slope
