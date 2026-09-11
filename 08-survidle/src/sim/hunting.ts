@@ -7,7 +7,8 @@ import { campCellOf, cellOf, forestCell, heathCell, kmBetween, rockCell, watersi
 import { skillLevel, oddsFactor } from "./skills";
 import { huntedLand, SPECIES_DEFS, type Species } from "./species";
 import type { Carcass, CarcassYields, GameState } from "./types";
-import { cellAt, regionAt, type World } from "../world/gen";
+import { cellAt, regionAt, type RegionDef, type World } from "../world/gen";
+import { parentKey, parentXY } from "../world/spatial";
 import { iceAt, localWeather } from "./weather";
 import { noteHuntSpoiledKcal } from "./hunt-audit";
 import { FOODS } from "./items";
@@ -257,14 +258,17 @@ function habitatPrior(world: World, cell: number, species: Species): number {
   return prior;
 }
 
-function speciesValue(state: GameState, world: World, cell: number, species: Species, signed: boolean, evidence: number): number {
+type HuntDistance = (from: number, to: number) => number | null;
+
+function speciesValue(state: GameState, world: World, cell: number, species: Species, signed: boolean, evidence: number, distance?: HuntDistance): number {
   const def = SPECIES_DEFS[species];
   const kg = (def.yields?.meatKg ?? 0) * recoveryShare(state);
   const odds = Math.min(0.95,
     def.hunt!.odds * oddsFactor(state, species) * (signed ? 1.5 : 1) * evidence * huntPressureFactor(state, world, cell));
-  const initialKm = kmBetween(state, world, cellOf(state, world), cell, "none") ?? 0;
+  const between = distance ?? ((from, to) => kmBetween(state, world, from, to, "none"));
+  const initialKm = between(cellOf(state, world), cell) ?? 0;
   const camp = campCellOf(state, world);
-  const campKm = camp === null ? 0 : (kmBetween(state, world, cell, camp, "none") ?? 0);
+  const campKm = camp === null ? 0 : (between(cell, camp) ?? 0);
   const loads = Math.max(1, Math.ceil(kg / body(state).packHardKg));
   const travelMinutes = ((initialKm + campKm * Math.max(1, loads * 2 - 1)) / 4) * 60;
   const fieldMinutes = carcassMinutes({ id: 0, species, cell, killedAt: 0, warmAge: 0, yields: { meatKg: kg } });
@@ -275,7 +279,7 @@ function speciesValue(state: GameState, world: World, cell: number, species: Spe
  * Publicly inferable prey at a cell. Novices follow common sign while skill
  * shifts the draw toward the best expected usable recovery per total hour.
  */
-export function huntSpeciesWeights(state: GameState, world: World, cal: Calendar, cell: number, observable?: ReadonlySet<number>): HuntSpeciesWeight[] {
+export function huntSpeciesWeights(state: GameState, world: World, cal: Calendar, cell: number, observable?: ReadonlySet<number>, distance?: HuntDistance): HuntSpeciesWeight[] {
   const signs = recentSign(state, cell);
   const iceCm = cell === cellOf(state, world) || observable?.has(cell) ? iceAt(state, world, cell) : state.weather.iceCm;
   const rows = huntedLand()
@@ -285,7 +289,7 @@ export function huntSpeciesWeights(state: GameState, world: World, cal: Calendar
       return {
         species,
         encounter: habitatPrior(world, cell, species) * SPECIES_DEFS[species].hunt!.odds * (signs.includes(species) ? 1.5 : 1) * evidence,
-        value: speciesValue(state, world, cell, species, signs.includes(species), evidence),
+        value: speciesValue(state, world, cell, species, signs.includes(species), evidence, distance),
       };
     })
     .filter((row) => row.encounter > 0);
@@ -304,14 +308,46 @@ export function huntSpeciesWeights(state: GameState, world: World, cal: Calendar
  * evidence; exact density remains world truth used only when an attempt is
  * resolved.
  */
-export function huntEstimate(state: GameState, world: World, cal: Calendar, cell: number, observable?: ReadonlySet<number>): HuntEstimate {
+export function huntEstimate(state: GameState, world: World, cal: Calendar, cell: number, observable?: ReadonlySet<number>, distance?: HuntDistance): HuntEstimate {
   const signs = recentSign(state, cell);
-  const weights = huntSpeciesWeights(state, world, cal, cell, observable);
+  const weights = huntSpeciesWeights(state, world, cal, cell, observable, distance);
   const species = weights.map((row) => row.species);
   const totalWeight = weights.reduce((sum, row) => sum + row.weight, 0);
   const kgPerHour = totalWeight <= 0 ? 0 : weights.reduce((sum, row) => sum + row.weight * row.value, 0) / totalWeight;
   const confidence = Math.min(1, 0.2 + (skillLevel(state, "hunting") - 1) / 30 + (signs.length ? 0.35 : 0));
   return { kgPerHour, confidence, species };
+}
+
+/** Deterministic scouting set: exact local evidence and named places plus
+ * the nearest known passable patch of each terrain in each 6x6 parent.
+ * This preserves local facts without exhaustively routing every fine patch. */
+export function huntCandidates(state: GameState, world: World, regions: readonly RegionDef[]): number[] {
+  const here = cellOf(state, world);
+  const chosen = new Set<number>([here]);
+  const nearest = new Map<string, { cell: number; distance: number }>();
+  const hx = here % world.w;
+  const hy = Math.floor(here / world.w);
+  for (const region of regions) {
+    for (const spot of region.spots) chosen.add(spot.cell);
+    for (const cell of region.cells) {
+      const sign = state.player.huntSigns[cell];
+      if (sign && (Object.values(sign.species).some(at => at !== undefined && state.minute - at < HUNT_SIGN_DAYS * 1440)
+        || Object.keys(sign.failures ?? {}).length > 0)) chosen.add(cell);
+      if (state.huntPressure[cell] !== undefined) chosen.add(cell);
+      if (state.mapped[cell] === undefined) continue;
+      const ground = cellAt(world, cell);
+      if (ground.terrain === "water") continue;
+      const parent = parentXY(cell);
+      const key = `${parentKey(parent.x, parent.y)}:${ground.terrain}`;
+      const distance = (ground.x - hx) ** 2 + (ground.y - hy) ** 2;
+      const previous = nearest.get(key);
+      if (!previous || distance < previous.distance || (distance === previous.distance && cell < previous.cell)) {
+        nearest.set(key, { cell, distance });
+      }
+    }
+  }
+  for (const { cell } of nearest.values()) chosen.add(cell);
+  return [...chosen].sort((a, b) => a - b);
 }
 
 /**
@@ -328,12 +364,21 @@ export function bestHuntCell(state: GameState, world: World, cal: Calendar): num
   const regions = skillLevel(state, "hunting") >= 8 && (hasLocalFailures || hasLocalPressure)
     ? [r, ...r.neighbours.map((neighbour) => regionAt(world, neighbour.id))]
     : [r];
-  const choices = regions.flatMap((region) => region.cells)
+  const distances = new Map<string, number | null>();
+  const distance: HuntDistance = (from, to) => {
+    const key = `${from}:${to}`;
+    const cached = distances.get(key);
+    if (cached !== undefined) return cached;
+    const km = kmBetween(state, world, from, to, "none");
+    distances.set(key, km);
+    return km;
+  };
+  const choices = huntCandidates(state, world, regions)
     .filter((cell) => state.mapped[cell] !== undefined)
     .map((cell) => {
-      const estimate = huntEstimate(state, world, cal, cell, observable);
+      const estimate = huntEstimate(state, world, cal, cell, observable, distance);
       if (!estimate.species.length) return null;
-      const km = kmBetween(state, world, here, cell, "none");
+      const km = distance(here, cell);
       if (km === null) return null;
       return { cell, km, estimate };
     })

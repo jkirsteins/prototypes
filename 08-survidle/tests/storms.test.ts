@@ -9,7 +9,8 @@ import { deserialize, serialize } from "../src/sim/save";
 import type { Protection, Weather } from "../src/sim/types";
 import { ambientTemperature, stepWeather } from "../src/sim/weather";
 import { galeProtection, isLee, profileOf, protectionOf } from "../src/sim/shelter";
-import { cellAt } from "../src/world/gen";
+import { cellAt, neighbours, regionAt, type World } from "../src/world/gen";
+import { fieldsAt } from "../src/world/terrain";
 import { testRain } from "./weather-helpers";
 
 afterEach(() => vi.restoreAllMocks());
@@ -127,11 +128,60 @@ describe("rain and snow storms", () => {
   });
 });
 
-// Seed 17's generated terrain: spruce canopy, an open slope, a meadow
-// depression, and high ground whose local dip must not turn it into lee.
-const SPRUCE = 523074;
-const OPEN = 523076;
-const DEPRESSION = 523121;
+/** Elevation of a patch, read straight from the fields rather than through the
+ * shelter rule these fixtures exist to check. */
+function elevationOf(world: World, cell: number): number {
+  const { x, y } = cellAt(world, cell);
+  return fieldsAt(world.seed, x, y).e;
+}
+
+/**
+ * The first patch around seed 17's start answering each description: spruce
+ * canopy, an open meadow slope, a meadow sitting lower than all four of its
+ * neighbours, and the rock, fell, pine and water the wind gets at. Neither a
+ * meadow that low nor open fell is in every region, so the search walks
+ * outward from the start until it has all seven.
+ */
+const WANTED = ["spruce", "open", "depression", "pine", "rock", "fell", "water"];
+
+function galeGround(): Record<"spruce" | "open" | "depression" | "pine" | "rock" | "fell" | "water", number> {
+  const { world } = newGame(17);
+  const found: Partial<Record<string, number>> = {};
+  // Each patch is read as its own and as four neighbours' ground.
+  const heights = new Map<number, number>();
+  const elevation = (cell: number) => {
+    const known = heights.get(cell);
+    if (known !== undefined) return known;
+    const height = elevationOf(world, cell);
+    heights.set(cell, height);
+    return height;
+  };
+  const queue = [world.start];
+  const seen = new Set(queue);
+  for (let i = 0; i < queue.length && i < 60 && WANTED.some((name) => found[name] === undefined); i++) {
+    const region = regionAt(world, queue[i]);
+    for (const neighbour of region.neighbours) {
+      if (!seen.has(neighbour.id)) { seen.add(neighbour.id); queue.push(neighbour.id); }
+    }
+    for (const cell of region.cells) {
+      const { terrain } = cellAt(world, cell);
+      if (terrain !== "meadow") { found[terrain] ??= cell; continue; }
+      if (found.open !== undefined && found.depression !== undefined) continue;
+      const around = neighbours(world, cell);
+      const dip = around.length === 4 && around.every((other) => elevation(other) > elevation(cell));
+      found[dip ? "depression" : "open"] ??= cell;
+    }
+  }
+  for (const name of WANTED) {
+    if (found[name] === undefined) throw new Error(`seed 17 has no ${name} patch around the start`);
+  }
+  return found as ReturnType<typeof galeGround>;
+}
+
+const GROUND = galeGround();
+const SPRUCE = GROUND.spruce;
+const OPEN = GROUND.open;
+const DEPRESSION = GROUND.depression;
 
 function galeSite(cell = OPEN) {
   const g = exposure(0, "rain");
@@ -161,8 +211,8 @@ describe("gale protection", () => {
     expect(isLee).toBeTypeOf("function");
     for (const [cell, terrain, lee] of [
       [SPRUCE, "spruce", true], [DEPRESSION, "meadow", true],
-      [OPEN, "meadow", false], [523075, "pine", false],
-      [524998, "rock", false], [528591, "fell", false], [535986, "water", false],
+      [OPEN, "meadow", false], [GROUND.pine, "pine", false],
+      [GROUND.rock, "rock", false], [GROUND.fell, "fell", false], [GROUND.water, "water", false],
     ] as const) {
       expect(cellAt(world, cell).terrain).toBe(terrain);
       expect(isLee(world, cell)).toBe(lee);

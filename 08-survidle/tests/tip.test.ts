@@ -216,20 +216,24 @@ describe("what the tooltip says", () => {
 
   it("names terrain lee and usable profile, refreshing when a low alternative appears at the same protection", () => {
     const { state, world } = newGame(17);
-    placeAt(state, world, 523074);
-    markKnown(state, 523074);
+    // Spruce canopy is lee whatever the ground does; rock never is.
+    const cells = regionAt(world, world.start).cells;
+    const lee = cells.find((cell) => cellAt(world, cell).terrain === "spruce")!;
+    const exposed = cells.find((cell) => cellAt(world, cell).terrain === "rock")!;
+    placeAt(state, world, lee);
+    markKnown(state, lee);
     const cal = calendar(0);
-    const site = siteFor(regionState(state, world, state.player.region), 523074);
+    const site = siteFor(regionState(state, world, state.player.region), lee);
     site.emergencyMinutes = 90;
-    const key = tipKey(state, world, 523074);
-    expect(tipHtml(state, world, cal, 523074)).toContain("high profile");
-    expect(tipHtml(state, world, cal, 523074)).toContain("lee ground");
+    const key = tipKey(state, world, lee);
+    expect(tipHtml(state, world, cal, lee)).toContain("high profile");
+    expect(tipHtml(state, world, cal, lee)).toContain("lee ground");
     site.cover = 2;
-    expect(tipKey(state, world, 523074)).not.toBe(key);
-    expect(tipHtml(state, world, cal, 523074)).toContain("low profile");
-    placeAt(state, world, 523076);
-    markKnown(state, 523076);
-    expect(tipHtml(state, world, cal, 523076)).toContain("exposed to wind");
+    expect(tipKey(state, world, lee)).not.toBe(key);
+    expect(tipHtml(state, world, cal, lee)).toContain("low profile");
+    placeAt(state, world, exposed);
+    markKnown(state, exposed);
+    expect(tipHtml(state, world, cal, exposed)).toContain("exposed to wind");
   });
 
   it("does not reveal an unearned gale through tooltip text or its cache key", () => {

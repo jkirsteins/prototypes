@@ -1,3 +1,4 @@
+import { requireCamp } from "./siting-helpers";
 import { describe, expect, it } from "vitest";
 import type { AudioEngine } from "../src/audio/engine";
 import { createScheduler } from "../src/audio/scheduler";
@@ -48,7 +49,7 @@ describe("scheduler", () => {
     const { state, world } = newGame(5);
     let id = -1;
     for (let i = 0; i < LATTICE_W * LATTICE_H && id < 0; i++) if (regionAt(world, i).capacity.raven) id = i;
-    placeAt(state, world, regionAt(world, id).campCell);
+    placeAt(state, world, requireCamp(regionAt(world, id)));
     regionState(state, world, id).pop.raven = regionAt(world, id).capacity.raven;
     const noon = calendar(at(62, 12));
     for (let ms = 0; ms <= 20000; ms += 50) s.frame(state, world, noon, 10, ms, true);
@@ -76,7 +77,7 @@ describe("scheduler", () => {
     const { state, world } = newGame(5);
     let id = -1;
     for (let i = 0; i < LATTICE_W * LATTICE_H && id < 0; i++) if (regionAt(world, i).capacity.raven) id = i;
-    placeAt(state, world, regionAt(world, id).campCell);
+    placeAt(state, world, requireCamp(regionAt(world, id)));
     regionState(state, world, id).pop.raven = regionAt(world, id).capacity.raven;
     const noon = calendar(at(62, 12));
     const durationMs = 600000;

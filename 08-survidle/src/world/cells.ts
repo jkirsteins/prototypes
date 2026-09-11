@@ -5,16 +5,14 @@
  */
 import type { Terrain } from "../sim/types";
 import type { ParentSummary } from "./aggregate";
-import { regionAtPatch, terrainAtPatch } from "./fine-terrain";
-import { type PatchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
-import { fieldsAt, regionOfCell, TERRAIN_INDEX, TERRAINS, terrainAt, WORLD_H, WORLD_W } from "./terrain";
+import type { FineGrid } from "./fine-route";
+import { fieldsAtPatch, regionAtPatch, terrainAtPatch } from "./fine-terrain";
+import { type PatchId, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
+import { TERRAIN_INDEX, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
 import type { RegionDef } from "./gen";
 
-export const CHUNK = 64;
 export const FINE_CHUNK = 96;
 export const FINE_CHUNK_LIMIT = 64;
-
-interface Chunk { terrain: Uint8Array; region: Int32Array }
 
 export interface FineChunk {
   cx: number;
@@ -25,12 +23,11 @@ export interface FineChunk {
   parentSummaries: Map<number, ParentSummary>;
 }
 
-export interface World {
+export interface World extends FineGrid {
   seed: number;
   /** Size in cells. */
   w: number;
   h: number;
-  chunks: Map<number, Chunk>;
   /** Generated 50 m terrain, retained in least-recently-used order. */
   fineChunks: Map<number, FineChunk>;
   fineChunkBuilds: number;
@@ -47,11 +44,11 @@ export interface Cell { x: number; y: number; terrain: Terrain; region: number }
 export interface FinePatch { id: PatchId; x: number; y: number; terrain: Terrain; region: number }
 
 export function newWorld(seed: number): World {
-  return {
+  const world: World = {
     seed,
     w: WORLD_W,
     h: WORLD_H,
-    chunks: new Map(),
+    terrainAt: id => terrainOfPatch(world, id),
     fineChunks: new Map(),
     fineChunkBuilds: 0,
     fineSummaryGeneration: 0,
@@ -59,6 +56,9 @@ export function newWorld(seed: number): World {
     start: -1,
     startRing: -1,
   };
+  // The routing adapter is behavior, not serializable world data.
+  Object.defineProperty(world, "terrainAt", { enumerable: false });
+  return world;
 }
 
 const FINE_CHUNKS_W = Math.ceil(WORLD_FINE_W / FINE_CHUNK);
@@ -121,44 +121,19 @@ export function terrainOfPatch(world: World, id: PatchId): Terrain {
   return patchAt(world, id).terrain;
 }
 
-function chunkFor(world: World, x: number, y: number): { chunk: Chunk; i: number } {
-  const cx = Math.floor(x / CHUNK);
-  const cy = Math.floor(y / CHUNK);
-  const key = cy * 4096 + cx;
-  let chunk = world.chunks.get(key);
-  if (!chunk) {
-    const terrain = new Uint8Array(CHUNK * CHUNK);
-    const region = new Int32Array(CHUNK * CHUNK);
-    const x0 = cx * CHUNK;
-    const y0 = cy * CHUNK;
-    for (let j = 0; j < CHUNK; j++) {
-      for (let i = 0; i < CHUNK; i++) {
-        const wx = x0 + i;
-        const wy = y0 + j;
-        const inside = wx < world.w && wy < world.h;
-        terrain[j * CHUNK + i] = inside ? TERRAIN_INDEX[terrainAt(world.seed, wx, wy)] : 0;
-        region[j * CHUNK + i] = inside ? regionOfCell(world.seed, wx, wy) : -1;
-      }
-    }
-    chunk = { terrain, region };
-    world.chunks.set(key, chunk);
-  }
-  return { chunk, i: (y - cy * CHUNK) * CHUNK + (x - cx * CHUNK) };
-}
-
 export function inWorld(world: World, x: number, y: number): boolean {
   return x >= 0 && y >= 0 && x < world.w && y < world.h;
 }
 
 export function terrainOf(world: World, x: number, y: number): Terrain {
   if (!inWorld(world, x, y)) return "water";
-  const { chunk, i } = chunkFor(world, x, y);
+  const { chunk, i } = fineChunkFor(world, patchId(x, y));
   return TERRAINS[chunk.terrain[i]];
 }
 
 export function regionOf(world: World, x: number, y: number): number {
   if (!inWorld(world, x, y)) return -1;
-  const { chunk, i } = chunkFor(world, x, y);
+  const { chunk, i } = fineChunkFor(world, patchId(x, y));
   return chunk.region[i];
 }
 
@@ -170,26 +145,26 @@ export function regionOf(world: World, x: number, y: number): number {
 export function terrainPeek(world: World, patch: PatchId): Terrain;
 export function terrainPeek(world: World, x: number, y: number): Terrain;
 export function terrainPeek(world: World, x: number, y?: number): Terrain {
-  if (y === undefined) return terrainAtPatch(world.seed, x);
+  if (y === undefined) { const xy = patchXY(x); return terrainPeek(world, xy.x, xy.y); }
   if (!inWorld(world, x, y)) return "water";
-  const key = Math.floor(y / CHUNK) * 4096 + Math.floor(x / CHUNK);
-  const chunk = world.chunks.get(key);
-  if (chunk) return TERRAINS[chunk.terrain[(y % CHUNK) * CHUNK + (x % CHUNK)]];
-  return terrainAt(world.seed, x, y);
+  const chunk = world.fineChunks.get(fineChunkKey(Math.floor(x / FINE_CHUNK), Math.floor(y / FINE_CHUNK)));
+  if (chunk) return TERRAINS[chunk.terrain[(y % FINE_CHUNK) * FINE_CHUNK + x % FINE_CHUNK]];
+  return terrainAtPatch(world.seed, patchId(x, y));
 }
 
 export function regionPeek(world: World, x: number, y: number): number {
   if (!inWorld(world, x, y)) return -1;
-  const key = Math.floor(y / CHUNK) * 4096 + Math.floor(x / CHUNK);
-  const chunk = world.chunks.get(key);
-  if (chunk) return chunk.region[(y % CHUNK) * CHUNK + (x % CHUNK)];
-  return regionOfCell(world.seed, x, y);
+  const chunk = world.fineChunks.get(fineChunkKey(Math.floor(x / FINE_CHUNK), Math.floor(y / FINE_CHUNK)));
+  if (chunk) return chunk.region[(y % FINE_CHUNK) * FINE_CHUNK + x % FINE_CHUNK];
+  return regionAtPatch(world.seed, patchId(x, y));
 }
 
 export function cellAt(world: World, idx: number): Cell {
   const x = idx % world.w;
   const y = Math.floor(idx / world.w);
-  return { x, y, terrain: terrainOf(world, x, y), region: regionOf(world, x, y) };
+  if (!inWorld(world, x, y)) return { x, y, terrain: "water", region: -1 };
+  const { terrain, region } = patchAt(world, idx);
+  return { x, y, terrain, region };
 }
 
 export function cellIdx(world: World, x: number, y: number): number {
@@ -201,7 +176,7 @@ export function waterKindOf(world: World, idx: number): "lake" | "sea" | null {
   const x = idx % world.w;
   const y = Math.floor(idx / world.w);
   if (terrainOf(world, x, y) !== "water") return null;
-  return fieldsAt(world.seed, x, y).sea ? "sea" : "lake";
+  return fieldsAtPatch(world.seed, idx).sea ? "sea" : "lake";
 }
 
 export function neighbours(world: World, idx: number): number[] {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { generateWorld, hasSpot, regionAt } from "../src/world/gen";
+import { cellAt, generateWorld, hasSpot, regionAt } from "../src/world/gen";
+import { passable } from "../src/world/route";
 
 describe("the start", () => {
   // These five are the seeds the baseline actually starts a run from: the
@@ -13,10 +14,22 @@ describe("the start", () => {
     for (const seed of [17, 19, 42, 79, 3]) {
       const world = generateWorld(seed);
       const r = regionAt(world, world.start);
+      expect(world.w).toBe(10800);
+      expect(world.h).toBe(7800);
+      expect(r.area).toBeCloseTo(r.cells.length * 0.05 * 0.05, 8);
+      expect(r.spots.every(spot => passable(cellAt(world, spot.cell).terrain))).toBe(true);
       expect(hasSpot(r, "shore"), `seed ${seed} shore`).toBe(true);
       expect(hasSpot(r, "outcrop"), `seed ${seed} outcrop`).toBe(true);
       if (world.startRing >= 40) fallen.push(seed);
     }
     expect(fallen).toEqual([]);
+  });
+
+  it("finds a fresh fine-world start in under two seconds", () => {
+    const before = performance.now();
+    const world = generateWorld(21);
+    expect(world.w).toBe(10800);
+    expect(performance.now() - before).toBeLessThan(2000);
+    expect(hasSpot(regionAt(world, world.start), "shore")).toBe(true);
   });
 });

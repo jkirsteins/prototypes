@@ -1,3 +1,4 @@
+import { requireCamp } from "./siting-helpers";
 /**
  * The survivor routes on the ground they have mapped, never the true
  * grid: a fresh game cannot plan a walk to unmapped ground, mapping a
@@ -26,7 +27,9 @@ describe("the survivor routes on knowledge", () => {
     // A region on the far side of the world: seen at a distance (so the
     // travel option's own "know nothing of that country" gate does not
     // fire first) but nothing between here and there has ever been walked.
-    const far = home === 0 ? 1 : 0;
+    const far = cellAt(world, (world.h - 100) * world.w + world.w - 100).region;
+    expect(far).not.toBe(home);
+    requireCamp(regionAt(world, far));
     state.discovered[far] = SEEN;
     expect(discovery(state, far)).not.toBe(0);
     const o = check(state, world, cal, "travel", `region:${far}`);
@@ -54,20 +57,20 @@ describe("the survivor routes on knowledge", () => {
     const r = regionAt(world, nb);
     expect(r.spots.some((s) => !isKnown(state, s.cell))).toBe(true);
     // Cell capabilities read the true ground, not the survivor's map.
-    expect(cellPossibilities(world, r.campCell)).toEqual(seepGround(world, r.campCell) ? ["seep possible"] : []);
+    expect(cellPossibilities(world, requireCamp(r))).toEqual(seepGround(world, requireCamp(r)) ? ["seep possible"] : []);
   });
 
   it("survivorRoute refuses ground the state has not mapped, even when the true grid would allow it", () => {
     const { state, world } = newGame(3);
     const home = state.player.region;
-    const camp = regionAt(world, home).campCell;
+    const camp = requireCamp(regionAt(world, home));
     const nb = regionAt(world, home).neighbours[0];
     // The neighbour's camp cell exists and is truly reachable, but nothing
     // has been mapped, so the survivor cannot plan a route to it.
-    expect(survivorRoute(state, world, camp, regionAt(world, nb.id).campCell)).toBeNull();
+    expect(survivorRoute(state, world, camp, requireCamp(regionAt(world, nb.id)))).toBeNull();
     mapRegion(state, world, home);
     mapRegion(state, world, nb.id);
-    expect(survivorRoute(state, world, camp, regionAt(world, nb.id).campCell)).not.toBeNull();
+    expect(survivorRoute(state, world, camp, requireCamp(regionAt(world, nb.id)))).not.toBeNull();
   });
 
   it("frontierRoute permits one unknown final step and no route through unknown ground", () => {

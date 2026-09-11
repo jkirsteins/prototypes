@@ -20,7 +20,7 @@ import { PACK_COMFORTABLE_KG } from "../src/units";
 import { isWorkOrder } from "../src/sim/types";
 import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
-import { siteCamp } from "./siting-helpers";
+import { siteCamp, requireCamp } from "./siting-helpers";
 import { ensureGround, iceMode } from "../src/sim/weather";
 import { testAtmosphere, testRain } from "./weather-helpers";
 import { levelMinutes } from "../src/sim/skills";
@@ -655,7 +655,7 @@ describe("the runner in the elements", () => {
     ensureGround(state, world, state.player.region).iceCm = 20;
     const cal2 = calendar(state.minute);
     const route = findRoute(world, here, campCell, "safe")!;
-    const expected = routeMinutes(world, route, baseWalkSpeed(state, cal2, state.weather), "safe");
+    const expected = routeMinutes(world, route, here, baseWalkSpeed(state, cal2, state.weather), "safe");
     expect(minutesToCamp(state, world, cal2)).toBeCloseTo(expected, 6);
   });
 
@@ -869,7 +869,7 @@ describe("the shared storm plan", () => {
     const remoteRegion = regionAt(world, hereRegion.neighbours[0].id);
     mapRegion(state, world, hereRegion.id);
     mapRegion(state, world, remoteRegion.id);
-    const refuge = remoteRegion.campCell;
+    const refuge = requireCamp(remoteRegion);
     siteFor(regionState(state, world, remoteRegion.id), refuge).structures.leanTo = true;
     state.weather.storm = { id: 33, source: "natural", kind: "rain", from: 1000, until: 1360, warned: false };
     const plan = stormOptions(state, world, state.weather.storm);
@@ -895,7 +895,7 @@ describe("the shared storm plan", () => {
     const remoteRegion = regionAt(world, homeRegion.neighbours[0].id);
     mapRegion(state, world, homeRegion.id);
     mapRegion(state, world, remoteRegion.id);
-    siteFor(regionState(state, world, remoteRegion.id), remoteRegion.campCell).structures.turfHut = true;
+    siteFor(regionState(state, world, remoteRegion.id), requireCamp(remoteRegion)).structures.turfHut = true;
     state.weather.storm = { id: 35, source: "natural", kind: "rain", from: 1000, until: 1360, warned: false };
     expect(stormOptions(state, world, state.weather.storm).recommended).toBe("localShelter");
     expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("rest");

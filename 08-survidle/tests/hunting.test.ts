@@ -102,13 +102,16 @@ describe("hunting knowledge", () => {
   it("learns negative evidence without learning the hidden population", () => {
     const { state, world } = armedGame();
     const cell = bestHuntCell(state, world, cal);
+    // The failure has to name prey this ground actually offers; which species
+    // that is follows from the patch the hunter picks.
+    const species = huntSpeciesWeights(state, world, cal, cell)[0].species;
     const before = huntEstimate(state, world, cal, cell).kgPerHour;
-    noteFailedHunt(state, cell, "deer");
-    noteFailedHunt(state, cell, "deer");
+    noteFailedHunt(state, cell, species);
+    noteFailedHunt(state, cell, species);
     expect(huntEstimate(state, world, cal, cell).kgPerHour).toBeLessThan(before);
 
     const st = regionState(state, world, state.player.region);
-    st.pop.deer = 0;
+    st.pop[species] = 0;
     expect(huntEstimate(state, world, cal, cell).kgPerHour).toBeLessThan(before);
   });
 
@@ -154,13 +157,12 @@ describe("hunting knowledge", () => {
     const { state, world } = armedGame();
     setSkillLevel(state, "hunting", 20);
     const local = regionAt(world, state.player.region);
-    for (const neighbour of local.neighbours) mapRegion(state, world, neighbour.id);
-    for (const cell of local.cells) {
-      for (const species of huntedLand()) {
-        noteFailedHunt(state, cell, species);
-        noteFailedHunt(state, cell, species);
-        noteFailedHunt(state, cell, species);
-      }
+    // One mapped neighbour is all the expert needs somewhere else to go.
+    mapRegion(state, world, local.neighbours[0].id);
+    // Three failures establish regional absence for an expert; repeating them
+    // on thousands of fine patches changes neither the knowledge nor this test.
+    for (const species of huntedLand()) {
+      for (let i = 0; i < 3; i++) noteFailedHunt(state, cellOf(state, world), species);
     }
     expect(cellAt(world, bestHuntCell(state, world, cal)).region).not.toBe(state.player.region);
   });
@@ -169,8 +171,14 @@ describe("hunting knowledge", () => {
     const { state, world } = armedGame();
     setSkillLevel(state, "hunting", 20);
     const local = regionAt(world, state.player.region);
-    for (const neighbour of local.neighbours) mapRegion(state, world, neighbour.id);
-    for (const cell of local.cells) state.huntPressure[cell] = 1;
+    // One mapped neighbour is all the expert needs somewhere else to go.
+    mapRegion(state, world, local.neighbours[0].id);
+    // Existing 2 km influence covers the whole region from sparse sites.
+    for (const cell of local.cells) {
+      if (huntPressureFactor(state, world, cell) > 0.25) state.huntPressure[cell] = 1;
+    }
+    expect(Object.keys(state.huntPressure).length).toBeLessThan(100);
+    expect(local.cells.every(cell => huntPressureFactor(state, world, cell) === 0.25)).toBe(true);
 
     expect(cellAt(world, bestHuntCell(state, world, cal)).region).not.toBe(state.player.region);
   });

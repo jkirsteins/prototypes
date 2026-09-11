@@ -104,7 +104,7 @@ function remoteLead(state: GameState, world: World, cal: Calendar, opportunity: 
   const ice = walkableIce(state.weather);
   const route = survivorRoute(state, world, from, to, ice, fearsFell(state));
   if (!route) return null;
-  return routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather), ice) + REMOTE_MARGIN_MINUTES;
+  return routeMinutes(world, route, from, baseWalkSpeed(state, cal, state.weather), ice) + REMOTE_MARGIN_MINUTES;
 }
 
 function eligible(state: GameState, world: World, cal: Calendar, opportunity: GoalOpportunity): boolean {
@@ -124,7 +124,9 @@ function eligible(state: GameState, world: World, cal: Calendar, opportunity: Go
   }
   if (opportunity.goal === "remoteStorm") {
     const lead = remoteLead(state, world, cal, opportunity);
-    return lead !== null && storm.from - state.minute >= lead;
+    // Compare absolute times: subtracting a large world minute can round a
+    // fractional diagonal-route estimate below its exact arrival threshold.
+    return lead !== null && storm.from >= state.minute + lead;
   }
   return false;
 }

@@ -14,7 +14,7 @@
  * once jobs until a skill reaches 3, no keeps for weeks and no conditions
  * for longer, and stands in by hand for the rest.
  */
-import { CELL_KM } from "../units";
+import { PATCH_KM } from "../world/spatial";
 import { cellAt } from "../world/cells";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
@@ -701,6 +701,7 @@ export function kitOut(state: GameState, world: World, producers = true): void {
   // from-scratch run would most likely have sited one on. Every structure below is put
   // up there, so the camp has to exist before any of it does.
   const campCell = st.campCell ?? regionAt(world, p.region).campCell;
+  if (campCell === null) throw new Error("cannot build a kit camp in an all-water region");
   st.campCell = campCell;
   for (const id of ["knife", "fireDrill", "fishingSpear", "bow"] as const) p.tools.push(freshTool(id));
   // One bucket in hand, empty: the fill task needs a vessel in hand, judged
@@ -1213,7 +1214,7 @@ function foundAtOldCamp(state: GameState, world: World, oldRegion: number, landC
     campFirewoodKg: Math.round(qty(camp, "firewood")),
     logs: Math.round(qty(camp, "log")),
     snares: oldSt.snares,
-    kmToOldCamp: Math.round(Math.hypot(lc.x - cc.x, lc.y - cc.y) * CELL_KM * 10) / 10,
+    kmToOldCamp: Math.round(Math.hypot(lc.x - cc.x, lc.y - cc.y) * PATCH_KM * 10) / 10,
     trapKg,
   };
 }

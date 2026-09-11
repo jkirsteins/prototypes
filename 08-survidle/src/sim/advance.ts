@@ -43,7 +43,9 @@ function nobodySpineCell(state: GameState, world: World): number {
     const camp = state.regions[id].campCell;
     if (camp !== null) return camp;
   }
-  return regions.length ? regionAt(world, regions[0]).campCell : 0;
+  if (!regions.length) return 0;
+  const region = regionAt(world, regions[0]);
+  return region.campCell ?? region.cells[0];
 }
 
 /**

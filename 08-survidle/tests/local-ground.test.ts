@@ -12,7 +12,7 @@ import { regionAt } from "../src/world/gen";
 import { advance } from "../src/sim/advance";
 import { stepSeeps } from "../src/sim/seep";
 import { check } from "../src/sim/tasks";
-import { siteCamp } from "./siting-helpers";
+import { siteCamp, requireCamp } from "./siting-helpers";
 import { stepCamp } from "../src/sim/camp";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { addItem, pile, qty } from "../src/sim/inventory";
@@ -180,8 +180,10 @@ describe("persistent regional weather", () => {
 
   it("checks water and split wood at the requested remote cell", () => {
     const { state, world } = newGame(42, 196);
-    const remoteId = regionAt(world, state.player.region).neighbours[0].id;
-    const remoteRegion = regionAt(world, remoteId);
+    const remoteRegion = regionAt(world, state.player.region).neighbours
+      .map(({ id }) => regionAt(world, id))
+      .find(region => region.cells.some(cell => watersideCell(world, cell)))!;
+    const remoteId = remoteRegion.id;
     const remote = remoteRegion.cells.find((cell) => watersideCell(world, cell))!;
     expect(remote).toBeDefined();
     vi.spyOn(climate, "sampleAtmosphere").mockImplementation((_w, _world, _minute, x, y) =>
@@ -204,7 +206,7 @@ describe("persistent regional weather", () => {
     const here = cellOf(state, world);
     const remoteId = regionAt(world, state.player.region).neighbours[0].id;
     const st = regionState(state, world, remoteId);
-    st.campCell = regionAt(world, remoteId).campCell;
+    st.campCell = requireCamp(regionAt(world, remoteId));
     const remote = st.campCell;
     vi.spyOn(climate, "sampleAtmosphere").mockImplementation((_w, _world, _minute, x, y) =>
       air({ temperatureC: y * world.w + x === remote ? -12 : 20 }));
@@ -268,7 +270,7 @@ describe("persistent regional weather", () => {
     const { state, world } = newGame(42, 15);
     const id = regionAt(world, state.player.region).neighbours[0].id;
     const st = regionState(state, world, id);
-    st.campCell = regionAt(world, id).campCell;
+    st.campCell = requireCamp(regionAt(world, id));
     siteFor(st, st.campCell).structures.firePit = true;
     const air = conditionsAt(state, world, calendar(0, 15), st.campCell);
     expect(air.temperatureC).toBeLessThan(-1);
@@ -324,7 +326,7 @@ describe("persistent regional weather", () => {
     const { state, world } = newGame(42, 334);
     const here = cellOf(state, world);
     const other = regionAt(world, state.player.region).neighbours[0].id;
-    const cell = regionAt(world, other).campCell;
+    const cell = requireCamp(regionAt(world, other));
     ensureGround(state, world, state.player.region).snowCm = 43;
     ensureGround(state, world, other).snowCm = 3;
     const before = serialize(state, 0);

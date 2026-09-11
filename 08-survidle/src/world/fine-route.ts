@@ -144,6 +144,63 @@ function topologyFor(grid: FineGrid, px: number, py: number, profile: TraversalP
   return topology;
 }
 
+/** Rejection only: connectivity in the union of the candidates' exact search
+ * boxes is a superset of each individual route. A retained target must still
+ * be routed normally. Work-cap overflow retains all candidates conservatively. */
+export function filterReachableFineCandidates(
+  grid: FineGrid, from: PatchId, candidates: readonly PatchId[], profile: TraversalProfile, parentCap = 4096,
+): { candidates: PatchId[]; parents: number; complete: boolean } {
+  const uncertain = (parents: number) => ({ candidates: [...candidates], parents, complete: false });
+  if (!Number.isInteger(parentCap) || parentCap < 1) return uncertain(0);
+  if (!inGrid(grid, from) || !passable(profile, from)) return { candidates: [], parents: 0, complete: true };
+  const start = parentXY(from);
+  const goals = new Map<string, ReturnType<typeof parentXY>>();
+  for (const candidate of candidates) {
+    if (!inGrid(grid, candidate)) continue;
+    const goal = parentXY(candidate);
+    goals.set(`${goal.x},${goal.y}`, goal);
+  }
+  const boxes = [...goals.values()].map(goal => ({
+    x0: Math.max(0, Math.min(start.x, goal.x) - PARENT_MARGIN),
+    y0: Math.max(0, Math.min(start.y, goal.y) - PARENT_MARGIN),
+    x1: Math.min(Math.ceil(grid.w / FINE_PER_PARENT) - 1, Math.max(start.x, goal.x) + PARENT_MARGIN),
+    y1: Math.min(Math.ceil(grid.h / FINE_PER_PARENT) - 1, Math.max(start.y, goal.y) + PARENT_MARGIN),
+  }));
+  const inside = (x: number, y: number) => boxes.some(box => x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1);
+  const topologies = new Map<string, Topology>();
+  const reached = new Set<PatchId>();
+  const pending = [from];
+  for (let i = 0; i < pending.length; i++) {
+    const entry = pending[i];
+    if (reached.has(entry)) continue;
+    const parent = parentXY(entry);
+    if (!inside(parent.x, parent.y)) continue;
+    const key = `${parent.x},${parent.y}`;
+    let topology = topologies.get(key);
+    if (!topology) {
+      if (topologies.size >= parentCap) return uncertain(topologies.size);
+      topology = topologyFor(grid, parent.x, parent.y, profile);
+      topologies.set(key, topology);
+    }
+    const component = [...topology.components.values()].find(members => members.includes(entry));
+    if (!component) continue;
+    for (const patch of component) reached.add(patch);
+    if (candidates.every(candidate => reached.has(candidate))) break;
+    for (const portal of topology.portals) {
+      if (!topology.connected(entry, portal)) continue;
+      for (const edge of fineNeighbours(grid, portal)) {
+        const next = parentXY(edge.patch);
+        if (next.x === parent.x && next.y === parent.y) continue;
+        if (!inside(next.x, next.y) || reached.has(edge.patch)) continue;
+        // Identical cross-parent passability and diagonal-corner checks to A*.
+        if (!passable(profile, edge.patch) || edge.corners.some(corner => !passable(profile, corner))) continue;
+        pending.push(edge.patch);
+      }
+    }
+  }
+  return { candidates: candidates.filter(candidate => reached.has(candidate)), parents: topologies.size, complete: true };
+}
+
 /** Flat-normalized Tobler factor; bounded grades prevent unbounded exponents. */
 function edgeCost(profile: TraversalProfile, from: PatchId, to: PatchId, distanceM: number): number {
   const grade = Math.max(-1, Math.min(1, (profile.elevationAt(to) - profile.elevationAt(from)) / distanceM));

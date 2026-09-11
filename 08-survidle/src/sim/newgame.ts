@@ -107,6 +107,7 @@ export function newWorld(seed: number, boat = 0, startDoy = START_DOY): { state:
   const doy = startDoy + 7 * boat;
   const g = newGame(seed, doy);
   const start = regionAt(g.world, g.world.start);
+  if (start.campCell === null) throw new Error("starting region has no passable camp");
   const candidates = rollCandidates(seed, 1, boat, []);
   g.state.log = [];
   g.state.landing = { cell: start.campCell, region: g.world.start, date: { year: 1, doy }, gapDays: 0, candidates, boat, chosen: 0, name: candidates[0].name, oldCamp: null };
@@ -117,6 +118,7 @@ export function newWorld(seed: number, boat = 0, startDoy = START_DOY): { state:
 export function newGame(seed: number, startDoy = START_DOY, person?: Person): { state: GameState; world: World } {
   const world = generateWorld(seed);
   const start = regionAt(world, world.start);
+  if (start.campCell === null) throw new Error("starting region has no passable camp");
   const first = firstRecord(seed, startDoy, person);
   const state: GameState = {
     seed,

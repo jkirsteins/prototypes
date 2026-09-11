@@ -10,7 +10,7 @@ import { regionState, siteFor } from "../src/sim/regionstate";
 import { regionAt } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { placeAt } from "../src/sim/position";
-import { siteCamp } from "./siting-helpers";
+import { siteCamp, requireCamp } from "./siting-helpers";
 
 /** Midnight in June, unsheltered, no fire: the wolf roll's conditions. */
 const NIGHT = calendar(1440 * 70 + 16 * 60);   // 00:00 on day 71
@@ -38,7 +38,7 @@ describe("wolves", () => {
       if (regionAt(detailed.world, id).capacity.wolf) region = id;
     }
     for (const game of [detailed, aggregate]) {
-      placeAt(game.state, game.world, regionAt(game.world, region).campCell);
+      placeAt(game.state, game.world, requireCamp(regionAt(game.world, region)));
       regionState(game.state, game.world, region).pop.wolf = regionAt(game.world, region).capacity.wolf!;
       game.state.player.sick = 1;
     }
@@ -60,9 +60,9 @@ describe("wolves", () => {
       if (!r.capacity.wolf && safe < 0) safe = id;
       if (r.capacity.wolf && wolfy < 0) wolfy = id;
     }
-    placeAt(state, world, regionAt(world, safe).campCell);
+    placeAt(state, world, requireCamp(regionAt(world, safe)));
     expect(nights(state, world, 2000)).toBe(0);
-    placeAt(state, world, regionAt(world, wolfy).campCell);
+    placeAt(state, world, requireCamp(regionAt(world, wolfy)));
     regionState(state, world, wolfy).pop.wolf = regionAt(world, wolfy).capacity.wolf;
     const full = nights(state, world, 2000, 2);
     expect(full).toBeGreaterThan(20);

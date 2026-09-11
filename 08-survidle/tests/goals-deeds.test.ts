@@ -19,7 +19,7 @@ import { check, DEADWOOD_KG, startTask, stepTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 import { drink } from "../src/sim/water";
 import { ensureGround } from "../src/sim/weather";
-import { siteCamp } from "./siting-helpers";
+import { siteCamp, requireCamp } from "./siting-helpers";
 import { testAtmosphere, testRain } from "./weather-helpers";
 
 afterEach(() => vi.restoreAllMocks());
@@ -543,7 +543,7 @@ describe("Chapter 3 field deeds", () => {
     siteCamp(state, world);
     const home = state.player.region;
     const remote = regionAt(world, home).neighbours[0].id;
-    const refuge = regionAt(world, remote).campCell;
+    const refuge = requireCamp(regionAt(world, remote));
     openRemoteChapter(state);
 
     goalDeed(state, {
@@ -568,7 +568,7 @@ describe("Chapter 3 field deeds", () => {
     const home = state.player.region;
     const remote = regionAt(world, home).neighbours[0].id;
     state.regions[remote] = structuredClone(state.regions[home]);
-    state.regions[remote].campCell = regionAt(world, remote).campCell;
+    state.regions[remote].campCell = requireCamp(regionAt(world, remote));
     openRemoteChapter(state);
 
     goalDeed(state, {
@@ -588,7 +588,7 @@ describe("Chapter 3 field deeds", () => {
     openRemoteChapter(state);
     const home = state.player.region;
     const remote = regionAt(world, home).neighbours[0].id;
-    const refuge = regionAt(world, remote).campCell;
+    const refuge = requireCamp(regionAt(world, remote));
     goalDeed(state, { kind: "protectionChanged", minute: state.minute, region: remote, cell: refuge, from: 1, to: 2, source: "improved" }, world);
     const opportunity = state.goals.opportunity!;
     opportunity.stormId = 80;
@@ -640,7 +640,7 @@ describe("Chapter 3 field deeds", () => {
       const remote = regionAt(world, regionAt(world, state.player.region).neighbours[0].id);
       state.goals.opportunity = {
         goal: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
-        stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
+        stormId: 70, source: "natural", area: { region: remote.id, centre: requireCamp(remote), radiusKm: 1 },
         announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
         atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
       };
@@ -656,7 +656,7 @@ describe("Chapter 3 field deeds", () => {
     const remote = regionAt(world, regionAt(world, state.player.region).neighbours[0].id);
     state.goals.opportunity = {
       goal: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
-      stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
+      stormId: 70, source: "natural", area: { region: remote.id, centre: requireCamp(remote), radiusKm: 1 },
       announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };

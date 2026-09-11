@@ -1,3 +1,4 @@
+import { requireCamp } from "./siting-helpers";
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
@@ -38,7 +39,7 @@ describe("roots and rhizomes", () => {
     expect(RECOMMENDED.roots).toEqual({ skill: "foraging", level: 3 });
     const { state, world } = newGame(17, 130);
     const region = state.player.region;
-    const here = regionAt(world, region).campCell;
+    const here = requireCamp(regionAt(world, region));
     const shore = findCell(world, here, (t, water) => water && t !== "water" && t !== "bog" && t !== "meadow");
     const bog = findCell(world, here, (t, water) => t === "bog" && !water);
     const meadow = findCell(world, here, (t, water) => t === "meadow" && !water);

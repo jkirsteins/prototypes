@@ -6,10 +6,11 @@
  */
 import { derive } from "../rng";
 import { type Habitat, type Species, SPECIES_DEFS, SPECIES_IDS } from "../sim/species";
-import { fbm } from "./noise";
+import { fbmMetres } from "./noise";
+import { PATCH_M } from "./spatial";
 
-/** Cells per noise unit: about 25 km, so ranges are patches several regions wide. */
-const RANGE_CELLS = 84;
+/** About 25 km, so species ranges span several regions. */
+const RANGE_M = 25_200;
 /** fbm clusters around a half; this stretches it so a range of r covers about r of the map. Pinned by tests/wildlife.test.ts. */
 const RANGE_SPREAD = 2.0;
 /** Below this many animals a region has none of the species at all. */
@@ -23,7 +24,7 @@ const MIN_CAPACITY = 0.5;
 const MIN_GROUND = 0.02;
 
 export function rangeNoise(seed: number, index: number, cx: number, cy: number): number {
-  const u = fbm(cx / RANGE_CELLS, cy / RANGE_CELLS, derive(seed, 2000 + index), 2);
+  const u = fbmMetres(cx * PATCH_M, cy * PATCH_M, derive(seed, 2000 + index), RANGE_M, 2);
   return Math.min(1, Math.max(0, 0.5 + (u - 0.5) * RANGE_SPREAD));
 }
 

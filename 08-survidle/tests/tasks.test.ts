@@ -76,7 +76,7 @@ describe("tasks", () => {
     const walk = check(state, world, cal, "walk", "spot:forest");
     expect(walk.ok).toBe(true);
     const route = findRoute(world, cellOf(state, world), forest.cell)!;
-    expect(routeKm(route)).toBeCloseTo(forest.km, 1);
+    expect(routeKm(route, cellOf(state, world))).toBeCloseTo(forest.km, 1);
     startTask(state, world, cal, "walk", "spot:forest");
     expect(state.route?.path.length).toBe(route.length);
     done(g);

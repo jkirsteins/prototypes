@@ -13,7 +13,7 @@ import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
 import { regionAt } from "../src/world/gen";
 import { routeMinutes } from "../src/world/route";
-import { siteCamp } from "./siting-helpers";
+import { siteCamp, requireCamp } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
 
 type G = ReturnType<typeof newGame>;
@@ -48,7 +48,7 @@ function driveExplore(g: G, maxMinutes = 40000): { minutes: number; expected: nu
     if (state.route && state.route !== seen) {
       seen = state.route;
       legs++;
-      expected += routeMinutes(world, state.route.path, baseWalkSpeed(state, calendar(state.minute), state.weather), state.route.ice);
+      expected += routeMinutes(world, state.route.path, cellOf(state, world), baseWalkSpeed(state, calendar(state.minute), state.weather), state.route.ice);
     }
   };
   noteLeg();
@@ -95,12 +95,12 @@ describe("explore", () => {
     const r = regionAt(world, region);
     const home = cellOf(state, world);
     // The camp sits inland; nothing so far seen of this region reaches it.
-    expect(survivorRoute(state, world, home, r.campCell)).toBeNull();
+    expect(survivorRoute(state, world, home, requireCamp(r))).toBeNull();
 
     startTask(state, world, calendar(state.minute), "explore", `region:${region}`);
     const rng = new Rng(1);
     // Stop the moment the camp itself is seen, well short of the whole region.
-    for (let m = 0; m < 20000 && state.task && !isKnown(state, r.campCell); m++) {
+    for (let m = 0; m < 20000 && state.task && !isKnown(state, requireCamp(r)); m++) {
       stepTask(state, world, calendar(state.minute), rng, 1);
     }
     expect(knownShare(state, world, region)).toBeLessThan(1);
@@ -110,7 +110,7 @@ describe("explore", () => {
     expect(share).toBeLessThan(1);
     // The swept ground now reaches far enough to route to the camp, unmapped as
     // the rest of the region still is.
-    expect(survivorRoute(state, world, cellOf(state, world), r.campCell)).not.toBeNull();
+    expect(survivorRoute(state, world, cellOf(state, world), requireCamp(r))).not.toBeNull();
   });
 
   it("is never an order", () => {

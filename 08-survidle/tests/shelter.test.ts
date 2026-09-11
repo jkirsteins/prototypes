@@ -13,7 +13,7 @@ import { levelMinutes, skillLevel } from "../src/sim/skills";
 import { builtProtection, COVER_CEILING, EMERGENCY_MINUTES, findCover, protectionOf, PROTECTION_WORDS } from "../src/sim/shelter";
 import { check, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { TASK_IDS, type Terrain } from "../src/sim/types";
-import { cellAt } from "../src/world/gen";
+import { cellAt, regionAt } from "../src/world/gen";
 
 type Game = ReturnType<typeof newGame>;
 
@@ -30,8 +30,18 @@ function emergencyGame() {
 }
 
 function cellWith({ world }: Game, terrain: Terrain): number {
-  for (let cell = 0; cell < world.w * world.h; cell++) if (cellAt(world, cell).terrain === terrain) return cell;
-  throw new Error(`no ${terrain} cell in world`);
+  const pending = [world.start];
+  const visited = new Set<number>();
+  for (let i = 0; i < pending.length && visited.size < 12; i++) {
+    const id = pending[i];
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const region = regionAt(world, id);
+    const cell = region.cells.find(cell => cellAt(world, cell).terrain === terrain);
+    if (cell !== undefined) return cell;
+    for (const neighbor of region.neighbours) if (!visited.has(neighbor.id)) pending.push(neighbor.id);
+  }
+  throw new Error(`no ${terrain} cell in the twelve regions around the start`);
 }
 
 function finishTask(g: Game): void {

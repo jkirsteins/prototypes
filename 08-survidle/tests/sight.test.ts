@@ -12,8 +12,9 @@ import { current } from "../src/sim/record";
 import type { GameState } from "../src/sim/types";
 import { visibleWildlife } from "../src/sim/wildlife-agents";
 import { cellAt, regionAt, type World } from "../src/world/gen";
+import { FINE_CHUNK, newWorld } from "../src/world/cells";
 import * as terrainFields from "../src/world/terrain";
-import { fieldsAt } from "../src/world/terrain";
+import { fieldsAt, TERRAIN_INDEX } from "../src/world/terrain";
 import { testAtmosphere } from "./weather-helpers";
 
 const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -59,48 +60,19 @@ function spruceCell(world: World, region: number): number {
   return idx;
 }
 
-/** A vantage in `region` with water then spruce along a straight ray, and the cell one past the spruce. */
-function waterThenSpruce(world: World, region: number): { vantage: number; water: number; spruce: number; behind: number } {
-  for (const idx of regionAt(world, region).cells) {
-    const t = cellAt(world, idx).terrain;
-    if (t === "spruce" || t === "pine" || t === "birch") continue;
-    const x = idx % world.w;
-    const y = Math.floor(idx / world.w);
-    for (const [dx, dy] of DIRS) {
-      const seq: { terrain: string; idx: number }[] = [];
-      let ok = true;
-      for (let i = 1; i <= 6; i++) {
-        const nx = x + dx * i;
-        const ny = y + dy * i;
-        if (nx < 0 || ny < 0 || nx >= world.w || ny >= world.h) { ok = false; break; }
-        const nidx = ny * world.w + nx;
-        seq.push({ terrain: cellAt(world, nidx).terrain, idx: nidx });
-      }
-      if (!ok) continue;
-      const spruceAt = seq.findIndex((s) => s.terrain === "spruce");
-      if (spruceAt >= 1 && spruceAt < seq.length - 1 && seq.slice(0, spruceAt).every((s) => s.terrain === "water")) {
-        return { vantage: idx, water: seq[0].idx, spruce: seq[spruceAt].idx, behind: seq[spruceAt + 1].idx };
-      }
-    }
-  }
-  throw new Error(`region ${region} has no water-then-spruce ray`);
-}
-
 // Seed 1's start region, at solar noon on landing day (1 April): bright enough that light never gates the range.
 const NOON = calendar(300);
 
-/** A small all-meadow world isolates distance and weather from generated canopy. */
+/** One public fine chunk isolates local optics from generated canopy. */
 function openWorld(): { state: GameState; world: World; vantage: number } {
   const state = newGame(1).state;
   vi.spyOn(terrainFields, "fieldsAt").mockReturnValue({ e: 0.5, m: 0.3, sea: false, coast: 1 });
-  const terrain = new Uint8Array(64 * 64);
+  const terrain = new Uint8Array(FINE_CHUNK * FINE_CHUNK);
   terrain.fill(7); // TERRAINS[7] is meadow.
-  const region = new Int32Array(64 * 64);
-  const world = {
-    seed: 1, w: 32, h: 32,
-    chunks: new Map([[0, { terrain, region }]]),
-    regions: new Map(), start: 0, startRing: 0,
-  } as unknown as World;
+  const region = new Int32Array(FINE_CHUNK * FINE_CHUNK);
+  const world = newWorld(1);
+  world.fineChunks.set(0, { cx: 0, cy: 0, terrain, region,
+    samples: terrain.length, parentSummaries: new Map() });
   const vantage = 16 * world.w + 16;
   state.player.x = 16.5;
   state.player.y = 16.5;
@@ -139,24 +111,14 @@ describe("sight", () => {
     expect(candidates * CELL_KM).toBeGreaterThan(CLEAR_MOR_KM);
   });
 
-  it("caps generated elevation at the model's 1200 m fell spine", () => {
-    const { state, world } = newGame(17);
+  it("caps reported elevation at the model's 1200 m fell spine", () => {
+    const { state, world, vantage } = openWorld();
+    world.fineChunks.get(0)!.terrain.fill(TERRAIN_INDEX.fell);
+    vi.mocked(terrainFields.fieldsAt).mockReturnValue({ e: 1.2, m: 0.3, sea: false, coast: 1 });
     testAtmosphere({ cloud: 0, precipMmPerHour: 0, extinctionPerKm: 0.06 });
     current(state).person.axes.eyes = 2;
     setSkillLevel(state, "wayfinding", 20);
-    let high = -1;
-    for (let y = 180; y < world.h - 180 && high < 0; y += 12) {
-      for (let x = 180; x < world.w - 180; x += 12) {
-        const cell = y * world.w + x;
-        const terrain = cellAt(world, cell).terrain;
-        if ((terrain === "fell" || terrain === "rock") && fieldsAt(world.seed, x, y).e > 1) {
-          high = cell;
-          break;
-        }
-      }
-    }
-    expect(high).toBeGreaterThanOrEqual(0);
-    expect(sightRangeCells(state, world, NOON, high)).toBeLessThanOrEqual(927);
+    expect(sightRangeCells(state, world, NOON, vantage)).toBeLessThanOrEqual(927);
   });
 
   it("uses one physical radius in cardinal and diagonal directions", () => {
@@ -280,8 +242,8 @@ describe("sight", () => {
     visibleCells(state, world, NOON, vantage);
 
     // The ray fan crosses thousands of segments, but interpolated extinction
-    // needs no more than the world's 1,024 integer centres plus local light.
-    expect(vi.mocked(climate.sampleAtmosphere).mock.calls.length).toBeLessThanOrEqual(world.w * world.h + 1);
+    // needs no more than the bounded local 32x32 centres plus local light.
+    expect(vi.mocked(climate.sampleAtmosphere).mock.calls.length).toBeLessThanOrEqual(32 * 32 + 1);
   });
 
   it("interpolates continuously across cell boundaries independent of query order", () => {
@@ -440,9 +402,15 @@ describe("sight", () => {
   });
 
   it("stops at the first blocking canopy", () => {
-    const { state, world } = newGame(1);
-    const region = state.player.region;
-    const { vantage, water, spruce, behind } = waterThenSpruce(world, region);
+    const { state, world, vantage } = openWorld();
+    // Immutable-terrain viewsheds are seed-keyed; this is a different fixture.
+    world.seed = 2;
+    const water = at(world, vantage, 1, 0);
+    const spruce = at(world, vantage, 2, 0);
+    const behind = at(world, vantage, 3, 0);
+    const terrain = world.fineChunks.get(0)!.terrain;
+    terrain[16 * FINE_CHUNK + 17] = TERRAIN_INDEX.water;
+    terrain[16 * FINE_CHUNK + 18] = TERRAIN_INDEX.spruce;
     forget(state);
     seeFrom(state, world, NOON, vantage);
     expect(isKnown(state, water)).toBe(true);

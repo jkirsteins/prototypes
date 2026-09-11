@@ -1,15 +1,16 @@
 import { localWeather } from "./weather";
 import { Rng } from "../rng";
-import { CELL_KM, fmtDuration, shareWord } from "../units";
+import { fmtDuration, shareWord } from "../units";
+import { PATCH_KM } from "../world/spatial";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, neighbours, regionAt, spotOf, type World } from "../world/gen";
-import { passable, routeKm } from "../world/route";
+import { ICE_SPEED, passable, routeKm, TERRAIN_SPEED } from "../world/route";
 import { itemLabel, loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { dayNumber, type Calendar } from "./calendar";
 import { cellPossibilities, leaveCamp, needsMending, rackCapacity } from "./camp";
 import { cue } from "./cues";
-import { exploreRoute, frontierRoute, routeConditions, survivorRoute, survivorRouteMinutes } from "./routing";
+import { exploreRoute, exploreRouteCandidates, frontierRoute, routeConditions, survivorRoute, survivorRouteMinutes } from "./routing";
 import {
   addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, pileAt, produce, qty, reach,
   removeItem, shortOf, takeUp, toolNear, totalQty, TRACE_KG, transfer, wearTool, weight,
@@ -246,7 +247,8 @@ export function walkTarget(state: GameState, world: World, arg: string): { cell:
     const r = regionAt(world, id);
     // Travelling to a region aims at its own ground, and a region nobody has camped in
     // still has a landmark cell to walk to: the one generation put its "camp" spot on.
-    return r ? { cell: campCellOf(state, world, id) ?? r.campCell, label: r.name, thin } : null;
+    const cell = campCellOf(state, world, id) ?? r.campCell;
+    return cell === null ? null : { cell, label: r.name, thin };
   }
   if (kind === "cell") {
     const cell = Number(val);
@@ -902,7 +904,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!route) return { ...o, ok: false, why: "{you} {know} no way there" };
       const v = baseWalkSpeed(state, cal, localWeather(state, world, at));
       const minutes = survivorRouteMinutes(state, world, route, v, ice);
-      let detail = `${routeKm(route).toFixed(1)} km on foot`;
+      let detail = `${routeKm(route, from).toFixed(1)} km on foot`;
       if (ice === "thin") {
         const risk = route.reduce((max, cell) => cellAt(world, cell).terrain === "water"
           ? Math.max(max, fallChance(localWeather(state, world, cell).iceCm)) : max, 0);
@@ -920,7 +922,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (discovery(state, region) === 0) return { ...o, ok: false, why: "{you} {know} nothing of that country" };
       const water = localWeather(state, world, at).iceCm < ICE_SHORE_CM ? nextSurveyWater(state, world, region, []) : null;
       if (knownShare(state, world, region) >= 1 && !water) return { ...o, ok: false, why: "{you} {know} that country" };
-      if (!pickVantage(state, world, cal, region, [here]) && !water) return { ...o, ok: false, why: "no reachable frontier" };
+      if (!water && !hasReachableFrontier(state, world, region, [here])) return { ...o, ok: false, why: "no reachable frontier" };
       // No duration is promised: how long it takes is how long the ground takes.
       return { ...o, duration: 0, detail: "maps the region and reads its waters" };
     }
@@ -1664,7 +1666,7 @@ function walkAlong(state: GameState, world: World, cal: Calendar, rng: Rng, dt: 
     const next = cellCenter(world, cell);
     const dx = next.x - p.x;
     const dy = next.y - p.y;
-    const distKm = Math.hypot(dx, dy) * CELL_KM;
+    const distKm = Math.hypot(dx, dy) * PATCH_KM;
     if (km >= distKm) {
       p.x = next.x;
       p.y = next.y;
@@ -1762,24 +1764,33 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
  * is what exploring is), standing next to ground not yet mapped, and not
  * a cell this sweep has already stood at (`visited`: pickVantage never
  * repeats one, so a candidate whose only unseen neighbour turns out to
- * open nothing gets dropped rather than picked forever). Nearest route
- * first, so how far down this list the wayfinding level bothers to weigh
- * (task 6's `1 + level`) is a plain slice of it.
+ * open nothing gets dropped rather than picked forever). This builds only
+ * the candidates; legality and ranked selection ask their own exact routes.
  */
-function exploreFrontier(state: GameState, world: World, region: number, visited: readonly number[]): { cell: number; path: number[] }[] {
+function frontierCells(state: GameState, world: World, region: number, visited: readonly number[]): number[] {
   const from = cellOf(state, world);
-  const ice = walkIceMode(state, world, false);
-  const avoidFell = false;
-  const out: { cell: number; path: number[] }[] = [];
+  const out: number[] = [];
   for (const cell of regionAt(world, region).cells) {
     if (cell === from || visited.includes(cell)) continue;
     if (!passable(cellAt(world, cell).terrain)) continue;
     if (!neighbours(world, cell).some((nb) => cellAt(world, nb).region === region && !isKnown(state, nb))) continue;
-    const path = exploreRoute(state, world, from, cell, region, ice, avoidFell);
-    if (path) out.push({ cell, path });
+    out.push(cell);
   }
-  out.sort((a, b) => a.path.length - b.path.length);
   return out;
+}
+
+/** Legality asks only whether a frontier exists, not which one wins a survey. */
+function hasReachableFrontier(state: GameState, world: World, region: number, visited: readonly number[]): boolean {
+  const from = cellOf(state, world);
+  const ice = walkIceMode(state, world, false);
+  const cells = frontierCells(state, world, region, visited)
+    .sort((a, b) => straightKm(world, from, a) - straightKm(world, from, b) || a - b);
+  if (!cells.length) return false;
+  if (exploreRoute(state, world, from, cells[0], region, ice) !== null) return true;
+  // Most legal choices finish above. One failed query pays for connectivity
+  // once, instead of repeating the same unreachable search for every patch.
+  return exploreRouteCandidates(state, world, from, cells.slice(1), region, ice)
+    .some(cell => exploreRoute(state, world, from, cell, region, ice) !== null);
 }
 
 /**
@@ -1796,21 +1807,35 @@ function exploreFrontier(state: GameState, world: World, region: number, visited
  * ones a wider candidate pool happens to turn up. Null when the region
  * has nothing left reachable to see more from.
  */
-function pickVantage(state: GameState, world: World, cal: Calendar, region: number, visited: readonly number[]): { cell: number; path: number[] } | null {
-  const candidates = exploreFrontier(state, world, region, visited);
+export function pickVantage(state: GameState, world: World, cal: Calendar, region: number, visited: readonly number[]): { cell: number; path: number[] } | null {
+  const from = cellOf(state, world);
   const ice = walkIceMode(state, world, false);
   const speed = baseWalkSpeed(state, cal, localWeather(state, world));
+  // Every routed edge is at least straight physical distance / maximum speed.
+  // exp(-0.175) is the minimum normalized Tobler factor: including it makes
+  // this conservative for both current terrain minutes and slope-weighted cost.
+  const fastest = Math.max(0.05, speed * Math.max(ICE_SPEED, ...Object.values(TERRAIN_SPEED)));
+  const candidates = exploreRouteCandidates(state, world, from, frontierCells(state, world, region, visited), region, ice).map(cell => {
+    const opened = sightReachCells(state, world, cal, cell) ** 2;
+    const lowerMinutes = straightKm(world, from, cell) / fastest * 60 * Math.exp(-0.175);
+    return { cell, opened, upperScore: lowerMinutes <= 0 ? Infinity : opened / lowerMinutes };
+  }).sort((a, b) => b.upperScore - a.upperScore || a.cell - b.cell);
   let best: { cell: number; path: number[] } | null = null;
   let bestScore = -1;
   for (const c of candidates) {
+    // Equality still receives an exact route so the original path-length then
+    // region-cell tie order is preserved, including zero-view candidates.
+    if (c.upperScore < bestScore) continue;
+    const path = exploreRoute(state, world, from, c.cell, region, ice);
+    if (!path) continue;
     // What the vantage opens, not what standing there tells you: the ring every
     // cell gives is not a reason to walk anywhere.
-    const opened = sightReachCells(state, world, cal, c.cell) ** 2;
-    const minutes = survivorRouteMinutes(state, world, c.path, speed, ice);
-    const score = minutes <= 0 ? Number.POSITIVE_INFINITY : opened / minutes;
-    if (score > bestScore) {
+    const minutes = survivorRouteMinutes(state, world, path, speed, ice);
+    const score = minutes <= 0 ? Number.POSITIVE_INFINITY : c.opened / minutes;
+    if (score > bestScore || (score === bestScore && best !== null
+      && (path.length < best.path.length || (path.length === best.path.length && c.cell < best.cell)))) {
       bestScore = score;
-      best = c;
+      best = { cell: c.cell, path };
     }
   }
   return best;
@@ -1853,8 +1878,10 @@ interface SurveyWater {
 
 const surveyWaterCache = new WeakMap<World, Map<number, SurveyWater[]>>();
 
-/** Connected water systems touching a region, with land in that region from which each can be read. */
-function surveyWaters(world: World, region: number): SurveyWater[] {
+/** Exact region-local water components and local passable reading shores.
+ * Survey progress needs no global lake/sea identity, so traversal stops at
+ * ownership boundaries instead of flood-filling a potentially world-size sea. */
+export function surveyWaters(world: World, region: number): SurveyWater[] {
   let byRegion = surveyWaterCache.get(world);
   if (!byRegion) {
     byRegion = new Map();
@@ -1875,12 +1902,14 @@ function surveyWaters(world: World, region: number): SurveyWater[] {
       const cell = todo.pop()!;
       key = Math.min(key, cell);
       for (const n of neighbours(world, cell)) {
-        if (cellAt(world, n).terrain === "water") {
+        const neighbor = cellAt(world, n);
+        if (neighbor.region !== region) continue;
+        if (neighbor.terrain === "water") {
           if (!seen.has(n)) {
             seen.add(n);
             todo.push(n);
           }
-        } else if (cellAt(world, n).region === region && passable(cellAt(world, n).terrain)) {
+        } else if (passable(neighbor.terrain)) {
           shores.add(n);
         }
       }

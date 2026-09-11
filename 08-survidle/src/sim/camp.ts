@@ -37,7 +37,8 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
   const dawnThisTick = minutesUntilDawn(state.minute - dt, state.startDoy) <= dt + 1e-9;
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
-    const weather = localWeather(state, world, st.campCell ?? regionAt(world, id).campCell);
+    const region = regionAt(world, id);
+    const weather = localWeather(state, world, st.campCell ?? region.campCell ?? region.cells[0]);
     const ambient = weather.temperatureC;
     const mine = who !== null && id === who.region;
     const atCampHere = mine && who!.atCamp;
@@ -300,14 +301,14 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
       }
     }
     if (st.trap) {
-      if (localWeather(state, world, st.campCell ?? regionAt(world, id).campCell).iceCm >= ICE_SHORE_CM) {
+      if (localWeather(state, world, st.campCell ?? r.campCell ?? r.cells[0]).iceCm >= ICE_SHORE_CM) {
         log(state, `The ice has taken the trap at ${r.name}.`, "bad");
         st.trap = null;
       } else if (st.trap.kg < TRAP_HOLD_KG) {
         const draws = who ? trapDraws(skillLevel(state, "fishing")) : 4;
         const factor = who ? trapFactor(masteryOf(state, "fishing", "trap")) : 1;
         const kgFactor = who ? yieldFactor(state, "fishing") : 1;
-        const present = st.trap.fish.filter((s) => popOf(st, s) >= 1 && !absence(SPECIES_DEFS[s], cal, localWeather(state, world, st.campCell ?? regionAt(world, id).campCell).iceCm));
+        const present = st.trap.fish.filter((s) => popOf(st, s) >= 1 && !absence(SPECIES_DEFS[s], cal, localWeather(state, world, st.campCell ?? r.campCell ?? r.cells[0]).iceCm));
         for (let i = 0; i < draws && present.length && st.trap.kg < TRAP_HOLD_KG; i++) {
           const s = present[rng.int(present.length)];
           const d = regionDensity(state, world, id, s, cal);

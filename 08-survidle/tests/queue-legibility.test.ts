@@ -24,7 +24,7 @@ const once = (task: IntentRequest["task"], arg?: string): IntentRequest =>
 
 describe("a waiting row names its cause", () => {
   it("a row that could run but is not chosen relies on its visible rank", () => {
-    const { state, world } = newGame(1000010);
+    const { state, world } = newGame(17);
     siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     addOrder(state, world, { ...once("sticks"), until: { kind: "forever" } }, "grind");

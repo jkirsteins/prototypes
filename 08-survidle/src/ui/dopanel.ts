@@ -558,7 +558,8 @@ function specificChooser(kind: keyof UiState["specific"], open: boolean): string
 function paneRowsHtml(rows: TaskOption[], ui: UiState, state: GameState, world: World): string {
   const currentRegion = `region:${state.player.region}`;
   const cal = calendar(state.minute, state.startDoy);
-  const hasRegionChoices = regionAt(world, state.player.region).neighbours
+  const surveyPane = ui.panes.subtab === subtabOf("explore") && ui.panes.purpose === purposeOf("explore");
+  const hasRegionChoices = surveyPane && regionAt(world, state.player.region).neighbours
     .some((n) => check(state, world, cal, "explore", `region:${n.id}`).ok);
   const chooser = hasRegionChoices ? specificChooser("regions", ui.specific.regions) : "";
   const currentIndex = rows.findIndex((o) => o.id === "explore" && o.arg === currentRegion);

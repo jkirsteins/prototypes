@@ -696,7 +696,7 @@ function routeReading(state: GameState, world: World, cal: Calendar, target: num
   const route = survivorRoute(state, world, here, target, ice, fearsFell(state));
   return {
     route,
-    minutes: route ? routeMinutes(world, route, baseWalkSpeed(state, cal, weather), ice) : null,
+    minutes: route ? routeMinutes(world, route, here, baseWalkSpeed(state, cal, weather), ice) : null,
   };
 }
 

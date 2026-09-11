@@ -4,7 +4,7 @@ import { localWeather } from "./weather";
  * named spot if any, what ground is under foot, and how far camp is. The
  * UI never shows coordinates; it shows what these functions say.
  */
-import { CELL_KM } from "../units";
+import { PATCH_KM } from "../world/spatial";
 import { type Cell, cellAt, neighbours, regionAt, regionOf, waterKindOf, type World } from "../world/gen";
 import { routeKm } from "../world/route";
 import { calendar } from "./calendar";
@@ -125,25 +125,25 @@ export function byWater(state: GameState, world: World): boolean {
 /** Route length in km from the player to a cell, or null if unreachable. */
 export function kmTo(state: GameState, world: World, idx: number, ice: IceMode = "none"): number | null {
   const route = survivorRoute(state, world, cellOf(state, world), idx, ice);
-  return route ? routeKm(route) : null;
+  return route ? routeKm(route, cellOf(state, world)) : null;
 }
 
 export function kmBetween(state: GameState, world: World, a: number, b: number, ice: IceMode = "none"): number | null {
   const route = survivorRoute(state, world, a, b, ice);
-  return route ? routeKm(route) : null;
+  return route ? routeKm(route, a) : null;
 }
 
 /** Straight-line km, for descriptions where a route is not needed. */
 export function straightKm(world: World, a: number, b: number): number {
   const pa = cellCenter(world, a);
   const pb = cellCenter(world, b);
-  return Math.hypot(pa.x - pb.x, pa.y - pb.y) * CELL_KM;
+  return Math.hypot(pa.x - pb.x, pa.y - pb.y) * PATCH_KM;
 }
 
 /** "at camp", "in the spruce, 0.4 km from camp", "on the way to Stensund, 2.1 km to go". */
 export function describeWhere(state: GameState, world: World): string {
   if (state.route?.path.length) {
-    return `on the way to ${state.route.label}, ${routeKm(state.route.path).toFixed(1)} km to go`;
+    return `on the way to ${state.route.label}, ${routeKm(state.route.path, cellOf(state, world)).toFixed(1)} km to go`;
   }
   const spot = spotHere(state, world);
   if (spot === "camp") return "at camp";

@@ -1,3 +1,4 @@
+import { requireCamp } from "./siting-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as climate from "../src/sim/climate";
 import { calendar } from "../src/sim/calendar";
@@ -16,7 +17,7 @@ function localFixture() {
   const { state, world } = newGame(42, 15);
   const here = cellOf(state, world);
   const other = regionAt(world, state.player.region).neighbours[0].id;
-  const remote = regionAt(world, other).campCell;
+  const remote = requireCamp(regionAt(world, other));
   ensureGround(state, world, state.player.region).snowCm = 0;
   ensureGround(state, world, other).snowCm = 0;
   const base = testAtmosphere();

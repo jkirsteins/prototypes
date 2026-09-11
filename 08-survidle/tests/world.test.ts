@@ -1,9 +1,10 @@
+import { requireCamp } from "./siting-helpers";
 import { describe, expect, it } from "vitest";
 import { fishSpecies } from "../src/sim/species";
 import { newWorld, terrainOfPatch, terrainPeek } from "../src/world/cells";
 import { terrainAtPatch } from "../src/world/fine-terrain";
-import { cellAt, generateWorld, hasSpot, neighbours, regionAt, regionOf, speciesHere, terrainOf, WORLD_H, WORLD_W } from "../src/world/gen";
-import { patchId } from "../src/world/spatial";
+import { cellAt, generateWorld, hasSpot, neighbours, regionAt, regionPeek, speciesHere, WORLD_H, WORLD_W } from "../src/world/gen";
+import { PATCH_KM, patchId } from "../src/world/spatial";
 import { LATTICE_W } from "../src/world/terrain";
 import { findRoute, routeKm } from "../src/world/route";
 
@@ -32,26 +33,26 @@ describe("world generation", () => {
   });
 
   it("is the size of the far north", () => {
-    expect(world.w).toBe(WORLD_W);
-    expect(world.h).toBe(WORLD_H);
-    expect(WORLD_W * 0.3).toBeGreaterThan(500);
-    expect(WORLD_H * 0.3).toBeGreaterThan(350);
+    expect(world.w).toBe(10800);
+    expect(world.h).toBe(7800);
+    expect(WORLD_W * PATCH_KM).toBe(540);
+    expect(WORLD_H * PATCH_KM).toBe(390);
   });
 
   it("has sea to the north and land inland", () => {
     let seaTop = 0;
-    for (let x = 0; x < WORLD_W; x += 20) if (terrainOf(world, x, 2) === "water") seaTop++;
-    expect(seaTop).toBeGreaterThan(WORLD_W / 20 * 0.6);
+    for (let x = 0; x < WORLD_W; x += 120) if (terrainPeek(world, x, 12) === "water") seaTop++;
+    expect(seaTop).toBeGreaterThan(WORLD_W / 120 * 0.6);
     let landSouth = 0;
-    for (let x = 0; x < WORLD_W; x += 20) if (terrainOf(world, x, WORLD_H - 3) !== "water") landSouth++;
-    expect(landSouth).toBeGreaterThan(WORLD_W / 20 * 0.5);
+    for (let x = 0; x < WORLD_W; x += 120) if (terrainPeek(world, x, WORLD_H - 18) !== "water") landSouth++;
+    expect(landSouth).toBeGreaterThan(WORLD_W / 120 * 0.5);
   });
 
   it("every cell belongs to a region, and regions have neighbours", () => {
     for (let i = 0; i < 200; i++) {
       const x = (i * 97) % WORLD_W;
       const y = (i * 61) % WORLD_H;
-      expect(regionOf(world, x, y)).toBeGreaterThanOrEqual(0);
+      expect(regionPeek(world, x, y)).toBeGreaterThanOrEqual(0);
     }
     expect(start.neighbours.length).toBeGreaterThan(2);
     for (const nb of start.neighbours) {
@@ -65,10 +66,10 @@ describe("world generation", () => {
     expect(start.forest).toBeGreaterThanOrEqual(0.45);
     expect(hasSpot(start, "forest")).toBe(true);
     expect(hasSpot(start, "camp")).toBe(true);
-    expect(cellAt(world, start.campCell).terrain).not.toBe("water");
-    expect(cellAt(world, start.campCell).region).toBe(world.start);
-    expect(start.cells.length).toBeGreaterThan(100);
-    expect(start.cells.length).toBeLessThan(900);
+    expect(cellAt(world, requireCamp(start)).terrain).not.toBe("water");
+    expect(cellAt(world, requireCamp(start)).region).toBe(world.start);
+    expect(start.area).toBeGreaterThan(9);
+    expect(start.area).toBeLessThan(81);
   });
 
   it("sites the camp on a shore cell and the shore spot beside it, on every reference seed and the three that used to fall back", () => {
@@ -76,11 +77,11 @@ describe("world generation", () => {
       const w = generateWorld(seed);
       const r = regionAt(w, w.start);
       expect(w.startRing, `seed ${seed}`).toBeLessThan(40);
-      expect(cellAt(w, r.campCell).terrain, `seed ${seed}`).not.toBe("water");
-      expect(neighbours(w, r.campCell).some((n) => cellAt(w, n).terrain === "water"), `seed ${seed} camp beside water`).toBe(true);
+      expect(cellAt(w, requireCamp(r)).terrain, `seed ${seed}`).not.toBe("water");
+      expect(neighbours(w, requireCamp(r)).some((n) => cellAt(w, n).terrain === "water"), `seed ${seed} camp beside water`).toBe(true);
       const shore = r.spots.find((s) => s.id === "shore")!;
       expect(shore, `seed ${seed} shore spot`).toBeDefined();
-      expect(shore.cell).not.toBe(r.campCell);
+      expect(shore.cell).not.toBe(requireCamp(r));
       expect(shore.km).toBeLessThanOrEqual(0.6);
       expect(new Set(r.spots.map((s) => s.cell)).size).toBe(r.spots.length);
     }
@@ -96,18 +97,18 @@ describe("world generation", () => {
         expect(cellAt(world, s.cell).region).toBe(id);
         if (s.id === "camp") {
           expect(s.km).toBe(0);
-          expect(s.cell).toBe(r.campCell);
+          expect(s.cell).toBe(requireCamp(r));
         } else {
-          const route = findRoute(world, r.campCell, s.cell);
+          const route = findRoute(world, requireCamp(r), s.cell);
           expect(route).not.toBeNull();
-          expect(routeKm(route!)).toBeCloseTo(s.km, 1);
+          expect(routeKm(route!, requireCamp(r))).toBeCloseTo(s.km, 8);
           if (s.id === "forest") expect(["spruce", "pine", "birch"]).toContain(t);
           if (s.id === "outcrop") expect(["rock", "fell"]).toContain(t);
           if (s.id === "heath") expect(["bog", "meadow"]).toContain(t);
           if (s.id === "shore") expect(t).not.toBe("water");
         }
       }
-      expect(r.area).toBeCloseTo(r.cells.length * 0.09, 5);
+      expect(r.area).toBeCloseTo(r.cells.length * 0.0025, 8);
     }
   });
 
@@ -121,7 +122,7 @@ describe("world generation", () => {
 
   it("routes between neighbouring camps stay inside the search box", () => {
     const nb = start.neighbours[0];
-    const route = findRoute(world, start.campCell, regionAt(world, nb.id).campCell);
-    if (route) expect(routeKm(route)).toBeLessThan(40);
+    const route = findRoute(world, requireCamp(start), requireCamp(regionAt(world, nb.id)));
+    if (route) expect(routeKm(route, requireCamp(start))).toBeLessThan(40);
   });
 });

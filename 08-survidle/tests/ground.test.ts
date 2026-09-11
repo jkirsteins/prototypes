@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BOG_WET, MEADOW_DAMP, MEADOW_DRY, groundGlyph, toneCuts, toneOf, VARIANTS } from "../src/ui/ground";
 import { legendHtml } from "../src/ui/map";
 import type { Terrain } from "../src/sim/types";
-import { fieldsAt, terrainAt } from "../src/world/terrain";
+import { fieldsAt, terrainAt, WORLD_H, WORLD_W } from "../src/world/terrain";
 
 /** Moisture of every bog or meadow cell in a sample of several worlds. */
 function bandMoisture(): Record<string, number[]> {
@@ -14,8 +14,8 @@ function bandMoisture(): Record<string, number[]> {
       return s / 0x7fffffff;
     };
     for (let i = 0; i < 20000; i++) {
-      const x = Math.floor(rnd() * 1800);
-      const y = Math.floor(rnd() * 1300);
+      const x = Math.floor(rnd() * WORLD_W);
+      const y = Math.floor(rnd() * WORLD_H);
       const t = terrainAt(seed, x, y);
       if (t === "bog" || t === "meadow") out[t].push(fieldsAt(seed, x, y).m);
     }
@@ -41,8 +41,8 @@ describe("the ground's forms", () => {
     // Both kinds exist in a world; whichever a cell is, the two never share a glyph.
     const seen = new Set<string>();
     for (let i = 0; i < 40000 && seen.size < 2; i++) {
-      const x = (i * 37) % 1800;
-      const y = (i * 53) % 1300;
+      const x = (i * 3037) % WORLD_W;
+      const y = (i * 4253) % WORLD_H;
       if (terrainAt(1000010, x, y) !== "water") continue;
       seen.add(groundGlyph(1000010, x, y, "water", "~"));
     }
