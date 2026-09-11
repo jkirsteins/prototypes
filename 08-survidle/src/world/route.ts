@@ -65,6 +65,9 @@ export function findRoute(world: World, from: number, to: number, ice: RouteIce 
   return route ? route.slice() : null;
 }
 
+/** Routes kept per world for the knowledge-limited search; see the note where it is trimmed. */
+const KNOWN_ROUTE_CACHE = 4096;
+
 const knownCaches = new WeakMap<World, Map<string, number[] | null>>();
 
 /**
@@ -102,8 +105,14 @@ export function knownRoute(
   const hit = cache.get(key);
   if (hit !== undefined) return hit ? hit.slice() : null;
   const route = astar(world, from, to, ice, avoidFell, known);
-  // Local weather revisions can create a fresh key every minute while travelling.
-  if (cache.size >= 512) cache.delete(cache.keys().next().value!);
+  // Local weather revisions can create a fresh key every minute while
+  // travelling, so the cache is bounded. It has to be wide enough to hold one
+  // chooser's whole sweep, though: the hunting chooser measures a route to
+  // every mapped cell of the region and its neighbours, twice - once from here
+  // and once to camp - which is thousands of entries in one decision, and a
+  // narrower cache evicted the start of a sweep before the end of it and
+  // searched the same routes again on the next one.
+  if (cache.size >= KNOWN_ROUTE_CACHE) cache.delete(cache.keys().next().value!);
   cache.set(key, route);
   return route ? route.slice() : null;
 }
