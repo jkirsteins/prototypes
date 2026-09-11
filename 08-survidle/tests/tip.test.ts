@@ -356,10 +356,10 @@ describe("the map inventory", () => {
 
     const resting = read(mapInventoryHtml(state, world, null));
     expect(resting).toContain("Camp: 20 kg firewood");
-    expect(resting).toContain("Carried: 4 sticks");
+    expect(resting).toContain("Carried: iron axe, 4 sticks");
     const hovered = read(mapInventoryHtml(state, world, highlighted));
     expect(hovered).toContain("Camp: 20 kg firewood");
-    expect(hovered).toContain("Carried: 4 sticks");
+    expect(hovered).toContain("Carried: iron axe, 4 sticks");
     expect(hovered).toContain("Highlighted: 2 logs");
   });
 
@@ -383,6 +383,7 @@ describe("the map inventory", () => {
     const empty = regionAt(world, state.player.region).cells.find((cell) => cell !== camp)!;
     markKnown(state, empty);
     state.player.pack = emptyInventory();
+    state.player.tools = [];
 
     expect(mapInventoryHtml(state, world, camp)).toBe("");
     expect(mapInventoryHtml(state, world, empty)).toBe("");

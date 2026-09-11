@@ -14,9 +14,9 @@ describe("goal guidance", () => {
     }
   });
 
-  it("explains automatic drinking and the activity queue exactly once", () => {
+  it("explains self-care drinking and the activity queue exactly once", () => {
     const note = goalGuide("drink").note;
-    expect(note).toBe("Below 1 litre, the survivor drinks automatically from water at hand. If travel is needed, Self-care handles it through the activity queue.");
+    expect(note).toBe("Below 1 litre, Self-care drinks from water at hand, or walks to some, on the minutes the activity queue gives it.");
   });
 
   it("leaves an obvious camp goal without explanatory copy", () => {

@@ -216,6 +216,13 @@ small, .dim { color: var(--dim); }
      unreachable. It is read, never pointed at. */
   pointer-events: none;
 }
+.bar .lbl .val { display: inline-flex; align-items: center; gap: 4px; pointer-events: auto; }
+/* The trend mark: a small triangle drawn in CSS, pointing the way the reading
+   has gone over the last ten game minutes; a dash while it holds. */
+.bar .trend { display: inline-block; width: 0; height: 0; opacity: 0.85; }
+.bar .trend[data-dir="up"] { border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 6px solid #fff; }
+.bar .trend[data-dir="down"] { border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid #fff; }
+.bar .trend[data-dir="steady"] { width: 6px; height: 0; border-top: 2px solid rgba(255, 255, 255, 0.55); }
 /* Text belongs only in a full-height readout. Compact meters are graphical
    and put their caption beside the bar, outside its clipped box. The guard
    keeps a future compact meter from silently reintroducing cut-off text. */

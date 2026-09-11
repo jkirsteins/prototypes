@@ -17,7 +17,7 @@
 import { calendar, type Calendar } from "../sim/calendar";
 import { cellPossibilities } from "../sim/camp";
 import { listItems, weight } from "../sim/inventory";
-import { itemLabel } from "../sim/items";
+import { itemLabel, TOOLS } from "../sim/items";
 import { isRead, readLine } from "../sim/knowledge";
 import { isKnown } from "../sim/mapped";
 import { campCellOf, cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
@@ -118,8 +118,17 @@ function inventoryItems(inv: Inventory | undefined): string {
   return items.length ? items.map(({ item, qty }) => itemLabel(item, qty)).join(", ") : "nothing";
 }
 
-function inventoryRow(label: string, inv: Inventory | undefined): string {
-  return inv && weight(inv) > 0 ? `<div><b>${label}:</b> ${esc(inventoryItems(inv))}</div>` : "";
+/**
+ * Everything on the body, tools first: a line that named the pack and not
+ * the tools told a tester he carried meat and nothing else, with an axe on
+ * his belt the whole time. If the tools outgrow the line, they split off
+ * beside the Gear tab; for now one line is what "what do I have" needs.
+ */
+function carriedRow(state: GameState): string {
+  const tools = state.player.tools.map((t) => TOOLS[t.id].name);
+  const pack = weight(state.player.pack) > 0 ? [inventoryItems(state.player.pack)] : [];
+  const all = [...tools, ...pack];
+  return all.length ? `<div><b>Carried:</b> ${esc(all.join(", "))}</div>` : "";
 }
 
 function carcassLine(carcass: Carcass, ambient: number): string {
@@ -149,7 +158,7 @@ export function mapInventoryHtml(state: GameState, world: World, calOrHighlighte
   const here = cellOf(state, world);
   const rows = [
     cellInventoryRow(state, world, "Camp", camp),
-    inventoryRow("Carried", state.player.pack),
+    carriedRow(state),
     here !== camp ? cellInventoryRow(state, world, "Here", here) : "",
     highlighted !== null && highlighted !== camp && highlighted !== here && isKnown(state, highlighted)
       ? cellInventoryRow(state, world, "Highlighted", highlighted)

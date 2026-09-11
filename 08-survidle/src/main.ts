@@ -8,7 +8,7 @@ import { createBeacon, deathTransition, type Sink } from "./beacon/beacon";
 import { BEACON } from "./beacon/config";
 import { createDatadogSink } from "./beacon/datadog";
 import { applyTesterLink, loadRecord, saveRecord } from "./beacon/storage";
-import { addFirewood, drop, dropAll, eat, take } from "./sim/actions";
+import { drop, dropAll, take } from "./sim/actions";
 import { advance } from "./sim/advance";
 import { calendar, dayNumber } from "./sim/calendar";
 import { setCueSink } from "./sim/cues";
@@ -17,7 +17,6 @@ import type { WildlifeStartleEvent } from "./sim/wildlife-encounter";
 import { since } from "./sim/epitaph";
 import { createForecaster, noteMonthRow } from "./sim/forecaster";
 import { startIntent, type Where } from "./sim/intent";
-import type { FoodId } from "./sim/items";
 import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
 import { isKnown } from "./sim/mapped";
@@ -33,7 +32,6 @@ import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
 import { insertWalkAtTop } from "./sim/walkorders";
-import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature, localWeather } from "./sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture, type WeatherShotName } from "./sim/weather-scenarios";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
@@ -463,18 +461,6 @@ function onClick(ev: Event) {
       ui.selected = r === state.player.region ? null : r;
       break;
     }
-    case "eat":
-      eat(state, world, target.dataset.food as FoodId, rng);
-      break;
-    case "feed":
-      addFirewood(state, world, 36);
-      break;
-    case "drink":
-      drink(state, world);
-      break;
-    case "fill":
-      fillVessels(state, world);
-      break;
     case "take":
     case "drop": {
       const item = target.dataset.item as ItemId;
@@ -730,7 +716,7 @@ forecaster.onRow = (row) => { noteMonthRow(state, row); };
 /** The actions that change what the forecast reads: orders, needs, camp state. */
 const FORECAST_ACTS = [
   "task", "stop", "intent", "row-kind", "finish", "order-up", "order-down", "order-remove", "order-pin", "dismiss",
-  "eat", "feed", "drink", "fill", "take", "drop", "drop-all",
+  "take", "drop", "drop-all",
 ];
 /** A request when nothing overlays the game: the list, the day, the dial, the region and the hour each call this; the frame calls it on a cadence. */
 function requestForecast(): void {

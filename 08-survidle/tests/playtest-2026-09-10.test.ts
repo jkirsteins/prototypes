@@ -6,12 +6,14 @@ import { calendar } from "../src/sim/calendar";
 import { addItem } from "../src/sim/inventory";
 import { orderByHand } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
-import { ordersHere } from "../src/sim/orders";
+import { hungerLine } from "../src/sim/actions";
+import { ordersHere, removeOrder } from "../src/sim/orders";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { availableTasks } from "../src/sim/tasks";
-import { activity } from "../src/ui/panels";
-import { tipHtml } from "../src/ui/tip";
+import { updateBars } from "../src/ui/bars";
+import { activity, inventoryHtml } from "../src/ui/panels";
+import { mapInventoryHtml, tipHtml } from "../src/ui/tip";
 import { fmtDaysAbout } from "../src/units";
 import { rule } from "./css";
 import { neighbourLandCell, siteCamp } from "./siting-helpers";
@@ -99,5 +101,71 @@ describe("a long forecast is approximate", () => {
 describe("every pane scrolls", () => {
   it("a pane taller than its box scrolls inside it rather than being cut off", () => {
     expect(rule("#camp, #inventory, #gear, #log, #journal")).toContain("overflow-y: auto");
+  });
+});
+
+describe("the Carried line is everything on the body", () => {
+  it("names the tools before the pack, so an axe is not a Gear-tab secret", () => {
+    const { state, world } = newGame(30);
+    expect(state.player.tools.some((t) => t.id === "axe")).toBe(true);
+    const html = mapInventoryHtml(state, world, null);
+    expect(html).toContain("Carried:</b> iron axe, ");
+    expect(html).toContain("dried meat");
+  });
+});
+
+describe("eating and drinking are the self-care row's, and nobody else's", () => {
+  it("draws no eat, drink, fill or add-firewood button", () => {
+    const { state, world } = newGame(30);
+    siteCamp(state, world);
+    addItem(state.player.pack, "cookedMeat", 1);
+    addItem(state.player.pack, "firewood", 5);
+    regionState(state, world, state.player.region).fire.lit = true;
+    const cal = calendar(state.minute, state.startDoy);
+    const html = inventoryHtml(state, world, cal);
+    for (const act of ["eat", "drink", "feed", "fill"]) expect(html).not.toContain(`data-act="${act}"`);
+  });
+
+  it("a hungry body under a hand order does not eat until the row has the minute", () => {
+    const { state, world } = newGame(39);
+    siteCamp(state, world);
+    const cal = calendar(state.minute, state.startDoy);
+    addItem(state.player.pack, "driedMeat", 2);
+    state.player.kcal = hungerLine(state) - 200;
+    orderByHand(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    expect(state.intent?.mode).toBe("hand");
+    const before = state.player.kcal;
+    for (let m = 0; m < 20 && state.intent?.mode === "hand"; m++) advance(state, world, 1);
+    expect(state.player.kcal).toBeLessThanOrEqual(before);
+    // The row given its minute eats.
+    state.intent = null;
+    state.task = null;
+    removeOrder(state, world, 3);
+    for (let m = 0; m < 5; m++) advance(state, world, 1);
+    expect(state.player.kcal).toBeGreaterThan(before);
+  });
+});
+
+describe("a bar says which way it is going", () => {
+  it("reads the change over the last ten game minutes as up, down or steady", () => {
+    const { state, world } = newGame(30);
+    const root = document.createElement("div");
+    root.innerHTML = `<div class="bar"><div data-bar="kcal"></div><i data-trend="kcal"></i><b data-val="kcal"></b></div><div class="bar"><div data-bar="water"></div><i data-trend="water"></i><b data-val="water"></b></div>`;
+    state.player.kcal = 2000;
+    state.player.water = 2.0;
+    updateBars(state, world, root);
+    state.minute += 10;
+    state.player.kcal = 1900;
+    updateBars(state, world, root);
+    const kcal = root.querySelector<HTMLElement>("[data-trend=kcal]")!;
+    const water = root.querySelector<HTMLElement>("[data-trend=water]")!;
+    expect(kcal.dataset.dir).toBe("down");
+    expect(kcal.title).toContain("falling");
+    expect(water.dataset.dir).toBe("steady");
+    state.minute += 10;
+    state.player.kcal = 2400;
+    updateBars(state, world, root);
+    expect(kcal.dataset.dir).toBe("up");
+    expect(kcal.title).toContain("rising");
   });
 });

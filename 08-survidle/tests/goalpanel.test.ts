@@ -78,8 +78,8 @@ describe("goal guidance", () => {
   it("shows the concise water mechanics note", () => {
     const { state, world } = newGame(3);
     const html = goalGuideHtml(state, world, cal, ["drink"]);
-    expect(html).toContain("Below 1 litre, the survivor drinks automatically");
-    expect(html).toContain("Self-care handles it through the activity queue");
+    expect(html).toContain("Below 1 litre, Self-care drinks from water at hand");
+    expect(html).toContain("on the minutes the activity queue gives it");
   });
 
   it("reopens a weather lesson with the same copy without mutating world state", () => {

@@ -237,9 +237,10 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   tapped for three weeks in May and shore seaweed on a coastal camp fill
   the season's plant band; nests give eggs in May and June. Once the
   larder holds a winter's food, hunting and fishing stand down for the
-  woodpile until it dips back under that line. Auto-eat and auto-feed
-  keep you alive while the tab is closed, as long as the food and
-  firewood are there.
+  woodpile until it dips back under that line. The self-care and camp
+  rows on the activity queue eat, drink and feed the fire while the tab is
+  closed, as long as the food and firewood are there and the player has
+  not ranked work over them; nothing eats behind those rows' backs.
 - **Spares.** A tool recipe yields a spare that is taken up when the one in
   hand breaks; "keep camp at 1 axe" is how the axe is never the end of the
   run.
@@ -624,7 +625,7 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/sim/stocks.ts`: the spring egg stock, seeded on 1 May, and the root ground - what a cell's stand holds, what is left in each cell that has been dug, and the growing season's regrowth.
 - `src/sim/skills.ts`: the level curves, recommended levels, mastery extras and pool perks.
 - `src/sim/light.ts`: the illuminance at a cell in lux - the sun, the moon, cloud, snow and flame - the light each activity needs, and the odds a light buys; `src/ui/map.ts`: the rings a light source lights.
-- `src/sim/water.ts`: the water reserve, drinking, filling vessels and auto-drink.
+- `src/sim/water.ts`: the water reserve, drinking and filling vessels; the self-care row in `src/sim/body.ts` is what drinks.
 - `src/sim/clothing.ts`: per-garment wetness, drying and frostbite chance.
 - `src/sim/fire.ts`: wet wood, burn rate and lighting odds in weather, indoor smoke.
 - `src/sim/hazards.ts`: the hourly rolls: frostbite, fire spread, ice underfoot, freezing vessels.

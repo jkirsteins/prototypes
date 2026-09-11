@@ -39,6 +39,39 @@ function setBar(id: string, frac: number, text?: string, root: ParentNode = docu
   }
 }
 
+/** Game minutes a trend is read over: long enough that a minute's noise does not flip the mark. */
+const TREND_WINDOW = 10;
+/** Share of the bar a reading must move over the window before the mark says anything but steady. */
+const TREND_DEADBAND = 0.002;
+/** Each bar's readings inside the window, oldest first, as a share of the bar. */
+const trendHistory = new Map<string, { minute: number; frac: number }[]>();
+
+/**
+ * Which way a bar is going, read off its own last ten game minutes: a
+ * tester asked whether warmth was falling and could not tell from a number
+ * that only ever showed where it was. Direction and pace, not cause - what
+ * is draining it is a bigger question than the mark should pretend to answer.
+ */
+function setTrend(id: string, minute: number, frac: number, root: ParentNode): void {
+  let h = trendHistory.get(id);
+  // A clock that went backwards is another run: its history says nothing about this one.
+  if (!h || (h.length && h[h.length - 1].minute > minute)) {
+    h = [];
+    trendHistory.set(id, h);
+  }
+  if (!h.length || h[h.length - 1].minute !== minute) h.push({ minute, frac });
+  while (h.length > 1 && minute - h[0].minute > TREND_WINDOW) h.shift();
+  const span = minute - h[0].minute;
+  const delta = frac - h[0].frac;
+  const dir = span <= 0 || Math.abs(delta) < TREND_DEADBAND ? "steady" : delta > 0 ? "up" : "down";
+  const perHour = span > 0 ? Math.abs(delta) * 100 * (60 / span) : 0;
+  const title = dir === "steady" ? "steady" : `${dir === "up" ? "rising" : "falling"} ${perHour < 1 ? perHour.toFixed(1) : Math.round(perHour)}% an hour`;
+  for (const el of root.querySelectorAll<HTMLElement>(`[data-trend="${id}"]`)) {
+    if (el.dataset.dir !== dir) el.dataset.dir = dir;
+    if (el.title !== title) el.title = title;
+  }
+}
+
 /**
  * Last frame's reserve, for spotting a meal. The sim does not announce one
  * to the frame loop and does not need to: a reserve that rose since the last
@@ -93,6 +126,11 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   }
   setBar("wet", p.wetness / 100, `${Math.round(p.wetness)}`, root);
   setBar("water", p.water / WATER_FULL, `${p.water.toFixed(1)} l`, root);
+  const trends: [string, number][] = [
+    ["health", p.health / 100], ["kcal", p.kcal / KCAL_FULL], ["fat", p.fat / fatUpper], ["warmth", p.warmth / 100],
+    ["energy", p.energy / 100], ["sleepiness", sleepy / 100], ["wet", p.wetness / 100], ["water", p.water / WATER_FULL],
+  ];
+  for (const [id, frac] of trends) setTrend(id, state.minute, frac, root);
 
   const st = regionState(state, world, p.region);
   const total = fuelTotal(st.fire);
