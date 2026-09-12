@@ -2219,9 +2219,10 @@ hatch if the phone solve turns out painful. It is not built until the
 phone solve is measured, because it adds a moving part the sync
 deliberately avoids and couples client and store versions harder.
 
-Follow-up, not done: the sync spec's handshake and store sections do
-not yet state these four; they are added when the sync is built, and
-the generator version joins the save version in `PUT /save`'s check.
+The sync spec states these four (its principles, routes, store, boot
+and testing sections): the save version is the world's version because
+a generator change bumps it, `PUT /save` refuses a lower version, and a
+device never takes a lease on a save it cannot run.
 
 **The phone check-in page** is the second half, and waits for both the
 sync and P. The phone is a companion to a desktop run, not a smaller

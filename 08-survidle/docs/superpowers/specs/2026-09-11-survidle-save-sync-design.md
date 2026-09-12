@@ -54,6 +54,17 @@ Decisions taken in the brainstorm and not reopened here:
   run.
 - **The lease rules are one pure module.** The Worker and the client tests
   import the same function. There is no second copy of "who may run".
+- **The world is never synced.** The solved world is 44 MB of typed arrays
+  per seed, a cache in IndexedDB, never in the save. The save is the seed
+  plus sparse state, and the other device solves the same seed: about 5 s
+  on a desktop, an expected 15 s on a phone, once, and again if Safari
+  drops the cache after seven days without a visit. That is only correct
+  because the generator is bit-identical across engines (integer noise,
+  correctly rounded arithmetic, a test that greps for the banned
+  functions); the fine refinement the close zoom adds inherits the rule.
+  A generator change bumps the save version, which is the rule the code
+  already follows (version 10 arrived with generator 4), so the save
+  version is the world's version and the store checks nothing else.
 
 ## The store
 
@@ -106,17 +117,19 @@ on the Pages origin covers branch previews, which share the origin.
 
 | Route | Purpose |
 |---|---|
-| `GET /save` | Headers `X-Saved-At` and `X-Lease` (JSON: holder, since, lastSeen), body the save text, or 404 when the object has no save yet. |
-| `HEAD /save` | The same headers, no body. The cheap "is my save still the latest and is the lease still mine" check. |
-| `PUT /save` | Body the save text. Requires `X-Lease-Token` matching the current lease. 409 with the lease JSON when it does not. 413 above 1 MB (a save measures 8 to 14 KB). |
+| `GET /save` | Headers `X-Saved-At`, `X-Save-Version` and `X-Lease` (JSON: holder, since, lastSeen), body the save text, or 404 when the object has no save yet. |
+| `HEAD /save` | The same headers, no body. The cheap "is my save still the latest, is it a version I can run, and is the lease still mine" check. |
+| `PUT /save` | Body the save text; header `X-Save-Version` with the file's `version`. Requires `X-Lease-Token` matching the current lease. 409 with the lease JSON when it does not. 409 with `{ version }` when the header is lower than the stored version: a device on an older build never overwrites a newer world. 413 above 1 MB. A save measures 8 to 14 KB today and the close zoom's fine knowledge costs about 1.2 KB per touched chunk per state, so a broad exploration is about 120 KB; a save that approaches the cap is a bug to trace, never a reason to raise the cap. |
 | `POST /lease` | Body `{ force: boolean }`. Returns `{ token, lease }` when granted. 409 with the lease JSON when another device holds it live and `force` is false. |
 | `GET /ws` | WebSocket upgrade with `?token=`. Refused unless the token is the current lease's. |
 
 ### Durable Object storage
 
-Four keys: `save` (string), `savedAt` (number, the client's save time),
-`lease` (`{ holder, token, since, lastSeen }` or null), and `devices`
-(a map of device id to the label it last sent, for messages).
+Five keys: `save` (string), `savedAt` (number, the client's save time),
+`version` (number, the save file's version, so `HEAD` can answer without
+parsing the save), `lease` (`{ holder, token, since, lastSeen }` or
+null), and `devices` (a map of device id to the label it last sent, for
+messages).
 
 ### The lease rules
 
@@ -198,6 +211,14 @@ With a code set, `boot()` becomes:
 
 1. `fetchLatest`. Unreachable: state `unreachable`, render the local save
    read-only with the unreachable banner (below).
+   A store version above this build's: state `outdated`, no lease taken,
+   the banner "This world was saved by a newer game. Update to run it."
+   and the local save shown read-only. A store version below this
+   build's: the existing load refusal applies as it does to a local file
+   ("a world made by an older map"), no lease taken, and the settings
+   block offers to start a new world on this code, which is a put with
+   `force` on the lease. A device never takes a lease on a save it cannot
+   run.
 2. Take the lease with `force: false`. Held live by another device: state
    `readonly`, render the store's save read-only with the held banner.
 3. Granted: the store's save becomes the state. The existing catch-up runs
@@ -293,6 +314,14 @@ put. The code follows the player, not the survivor.
   period, take over on the phone, wake the desktop and confirm it does not
   catch up.
 
+- Version: a `PUT` with `X-Save-Version` below the stored version is 409
+  and stores nothing; a `GET` serves `X-Save-Version`; the client on a
+  build below the store's version renders read-only with the outdated
+  banner and takes no lease; on a build above it, no lease and the new
+  world offer.
+- Size: a save built from a broad exploration of fifty chunks measures
+  under 200 KB; the test prints the number.
+
 ## Out of scope
 
 - The phone entry page (sub-project 2).
@@ -302,3 +331,8 @@ put. The code follows the player, not the survivor.
 - Merging two diverged saves. There is no such state by construction.
 - The beacon counting one player on two devices as two. The device id
   makes that fixable later; it is not fixed here.
+- Serving solved worlds from the store: an R2 object per seed and
+  generator version, perhaps 10 MB compressed, that a phone downloads
+  instead of solving. It is the named escape hatch if the phone solve
+  measures painful, and not before, because it adds a moving part and
+  couples client and store versions harder than the save version does.
