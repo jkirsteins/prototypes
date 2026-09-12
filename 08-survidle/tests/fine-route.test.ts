@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildParentTopology, type FineGrid, fineRouteCacheStats, fineRouteDistanceM, findDirectFineRoute, findHierarchicalRoute, type TraversalProfile } from "../src/world/fine-route";
-import { patchId, patchXY } from "../src/world/spatial";
+import { patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "../src/world/spatial";
 
 function asciiFixture(rows: string[]): FineGrid & { id: typeof patchId } {
   return {
@@ -93,7 +93,7 @@ describe("exact fine routing", () => {
   });
 
   it("rejects a global direct search before sampling the grid", () => {
-    const grid: FineGrid = { w: 10800, h: 7800, terrainAt: () => { throw new Error("must not sample"); } };
+    const grid: FineGrid = { w: WORLD_FINE_W, h: WORLD_FINE_H, terrainAt: () => { throw new Error("must not sample"); } };
     expect(() => findDirectFineRoute(grid, patchId(0, 0), patchId(1, 0), traversalFor(grid))).toThrow(RangeError);
   });
 

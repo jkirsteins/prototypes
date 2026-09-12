@@ -16,8 +16,13 @@ export interface FineNeighbour {
 export const PATCH_M = 50;
 export const PATCH_KM = PATCH_M / 1000;
 export const FINE_PER_PARENT = 6;
+/**
+ * Six patches to a side of a solved 300 m cell, so the fine lattice is the
+ * solved world's 1800 by 2224 cells refined: 10800 by 13344 patches,
+ * 540 by 667 km. Every bound in this file derives from the pair.
+ */
 export const WORLD_FINE_W = 10800;
-export const WORLD_FINE_H = 7800;
+export const WORLD_FINE_H = 13344;
 
 const PARENT_W = WORLD_FINE_W / FINE_PER_PARENT;
 const PARENT_H = WORLD_FINE_H / FINE_PER_PARENT;

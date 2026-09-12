@@ -2,7 +2,8 @@
  * The performance envelope of the authoritative fine world, as work counts.
  *
  * Section 15 of the authoritative-close-zoom spec asks for gates a fast host
- * cannot hide: no whole-world array, no whole-world scan, no unchanged frame
+ * cannot hide: no whole-world FINE array, no whole-world fine scan, no
+ * unchanged frame
  * rebuilding terrain, no unknown ground generated to draw fog, and repeated
  * scheduler route checks reusing the topology they already paid for. Every
  * assertion below is therefore an exact count of retained or repeated work,
@@ -10,8 +11,14 @@
  * states a ceiling, and then broadly, because it is the one number that
  * differs between a laptop and CI.
  *
- * The fresh-world two second ceiling itself is asserted in start.test.ts and
- * is not repeated here.
+ * The solve's seven 300 m arrays are the named exception to "no whole-world
+ * array": they are the world's authoritative height and water, solved once
+ * behind a progress bar and cached by seed, and no gate here asks them to be
+ * smaller or faster. Everything counted below is fine work over them.
+ *
+ * The fresh-world two second ceiling itself is asserted in start.test.ts,
+ * measured from solved arrays in hand to a started run, and is not repeated
+ * here.
  */
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";

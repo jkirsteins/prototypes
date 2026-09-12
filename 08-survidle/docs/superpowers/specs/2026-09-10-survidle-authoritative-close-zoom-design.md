@@ -58,9 +58,10 @@ unnecessary complexity.
 
 ## 4. Canonical spatial model
 
-The physical world remains about 540 by 390 km. Its canonical lattice becomes
-10,800 by 7,800 patches, each 50 m square. There are about 84 million possible
-patches, but they are procedural and never allocated as one array.
+The physical world is the solved world's 540 by 667 km, 1,800 by 2,224 cells
+of 300 m. Its canonical lattice becomes 10,800 by 13,344 patches, each 50 m
+square. There are about 144 million possible patches, but they are procedural
+and never allocated as one fine array.
 
 The shared constants and conversions are:
 
@@ -324,7 +325,10 @@ starting conditions.
 
 The architecture must satisfy these invariants:
 
-- No whole-world fine array or whole-world fine scan.
+- No whole-world fine array or whole-world fine scan. The solve's seven
+  300 m arrays on `world.solved` are the one named exception: they are the
+  world's authoritative height and water, they are solved once behind a
+  progress bar and cached by seed, and nothing here asks them to be smaller.
 - No long route searches directly across an unbounded fine grid.
 - No unchanged frame rebuilds terrain, routes, or visibility.
 - Unknown map ground does not force fine terrain generation.
@@ -335,7 +339,7 @@ The architecture must satisfy these invariants:
 
 The implementation records baselines and gates for:
 
-- Fresh world creation.
+- Fresh world creation from solved arrays in hand.
 - First and cached region construction.
 - Cold and cached 50 m, 100 m, 300 m, and wide map renders.
 - Short local and representative long routes.
@@ -344,7 +348,10 @@ The implementation records baselines and gates for:
 - Save size after ordinary play and broad exploration.
 - Extended headless simulation.
 
-The existing fresh-world limit of two seconds remains a hard ceiling. The
+The fresh-world limit of two seconds remains a hard ceiling, measured from
+the solved arrays in hand to a started run. The solve itself is not inside
+that budget: hydrology chose its own bar and its progress bar, and this
+branch does not chase the solve down to two seconds. The
 closest map should not increase DOM scale: it replaces the current nested field
 of more than 2,300 nodes with 2,592 ordinary glyph cells. Host-sensitive timing
 tests report deterministic work counts alongside wall time so a fast machine

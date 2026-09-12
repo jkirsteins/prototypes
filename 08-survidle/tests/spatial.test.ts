@@ -8,7 +8,7 @@ describe("the 50 m spatial lattice", () => {
   it("preserves the physical world and round trips exact patches", () => {
     expect(PATCH_M).toBe(50);
     expect(WORLD_FINE_W).toBe(10800);
-    expect(WORLD_FINE_H).toBe(7800);
+    expect(WORLD_FINE_H).toBe(13344);
     const id = patchId(6411, 1875);
     expect(patchXY(id)).toEqual({ x: 6411, y: 1875 });
     expect(patchAtMetric(patchCenter(id))).toBe(id);

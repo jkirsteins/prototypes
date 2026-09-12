@@ -1,10 +1,11 @@
 import { derive } from "../rng";
 import type { Terrain } from "../sim/types";
 import { fbmMetres, valueNoiseMetres } from "./noise";
-import { PATCH_M, type MetricPoint, type PatchId, patchCenter } from "./spatial";
+import { PATCH_M, type MetricPoint, type PatchId, patchCenter, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
 
-const WORLD_W_M = 540_000;
-const WORLD_H_M = 390_000;
+/** The template is drawn across the whole fine lattice, so both extents follow its constants. */
+const WORLD_W_M = WORLD_FINE_W * PATCH_M;
+const WORLD_H_M = WORLD_FINE_H * PATCH_M;
 const REGION_LATTICE_M = 4_200;
 const REGION_LATTICE_W = Math.ceil(WORLD_W_M / REGION_LATTICE_M);
 const REGION_LATTICE_H = Math.ceil(WORLD_H_M / REGION_LATTICE_M);
