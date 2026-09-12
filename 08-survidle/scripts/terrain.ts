@@ -63,6 +63,31 @@ for (const seed of seeds) {
   const channelDensity = (streamCells * 0.3) / (land * 0.09);
   console.log(`land -> water km: p50 ${pct(dist, 0.5).toFixed(1)} p90 ${pct(dist, 0.9).toFixed(1)}   target p50 < 0.6, p90 < 2;  perennial channel density ${channelDensity.toFixed(2)} km/km2   target 0.5..1.5 (perennial only)`);
   console.log(`lake share of land+lake: ${(100 * lake / (land + lake)).toFixed(1)}%   target 5..10;  sea ${(100 * sea / n).toFixed(1)}% river cells ${river}`);
+  // The five largest lake components, km2, by flood fill over lake cells.
+  {
+    const seen = new Uint8Array(n);
+    const sizes: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (s.kind[i] !== KIND.lake || seen[i]) continue;
+      let cells = 0;
+      const stack = [i];
+      seen[i] = 1;
+      while (stack.length) {
+        const c = stack.pop() as number;
+        cells++;
+        const x = c % W;
+        for (const j of [c - 1, c + 1, c - W, c + W]) {
+          if (j < 0 || j >= n || seen[j] || s.kind[j] !== KIND.lake) continue;
+          if ((j === c - 1 && x === 0) || (j === c + 1 && x === W - 1)) continue;
+          seen[j] = 1;
+          stack.push(j);
+        }
+      }
+      sizes.push(cells * 0.09);
+    }
+    sizes.sort((a, b) => b - a);
+    console.log(`largest lakes km2: ${sizes.slice(0, 5).map((v) => v.toFixed(0)).join(" ")}   (most large Nordic lakes 50..500; Vanern 5650 is exceptional)`);
+  }
   // Largest catchments: discharge at sea-bound river mouths, converted back to km2 at inland runoff is not exact; report the top mouths in m3/s and the top catchments by cell count.
   const mouths: number[] = [];
   for (let i = 0; i < n; i++) if (s.kind[i] === KIND.river && s.flowDir[i] !== NO_FLOW && s.kind[receiverOf(i, s.flowDir[i], W)] === KIND.sea) mouths.push(s.discharge[i]);

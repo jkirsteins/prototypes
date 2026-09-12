@@ -132,7 +132,7 @@ start 3778487 at row 2099 (61.34 N), height 3 m, terrain bog, shore sea
 | Distance to water, p50 | < 0.6 km | 0.9 km | 0.6 km | Red, at the boundary. The 0.3 km grid quantises this to whole cells; 0.6 km is 2 cells, and getting under it needs a median of 1 cell, a further stream-threshold drop this run does not spend. |
 | Distance to water, p90 | < 2 km | 2.4 km | 1.5 km | Green |
 | Perennial channel density | 0.5 to 1.5 km/km2 | not printed originally | 0.78 to 0.79 km/km2 | Green. Added this round as the real-terms check on `STREAM_M3S`; see the Fix report. |
-| Lake share of land + lake | 5 to 10% | 2.0 to 2.7% | 2.0 to 2.7% | Red, unchanged. `LAKE_MIN_DEPTH_M` is back at its spec value of 2 after this round's review found the drop to 1 moved nothing; see the Fix report. |
+| Lake share of land + lake | 5 to 10% | 2.0 to 2.7% | 2.0 to 2.7% | Was red; green on seed 42 at 5.1% since the glacial basins were added to the solve (see Glacial basins below). `LAKE_MIN_DEPTH_M` is at its spec value of 2 throughout: the depression rule, not the depth floor, was the thing. |
 | West coast length / straight | > 5 | 10.3 to 11.8 | unchanged (not touched) | Green already |
 | Rock share, coast | 30 | 9 to 13% | 27 to 32% | Green - now landing on the target because the noise compared against the rate is genuinely uniform (see the Fix report), not because the rate was raised. |
 | Rock share, steep | 25 | 5 to 6% | 21 to 22% | Red, close. Uniformising the noise did not close this one: "steep" is a small, spatially confined population (mountain valley flanks), and a rank transform makes the *whole* land population's soil field uniform, not every geographic subset of it, so a locally correlated pocket can still land off the target rate. Not chased further this round. |
@@ -883,3 +883,42 @@ worker's five-stage solve never runs on the reload in either trial, and
 `indexedDB.databases()` from the console lists `survidle-worlds` throughout. A
 production build (no per-module dev-server round trips) would read faster
 still; that was not separately measured here.
+
+## Glacial basins (lake share)
+
+The depression rule the lake-share finding above pointed at is now a solve
+stage of its own: `carveBasins` in `src/world/classify.ts`, run right after
+`carveGlacial` and before the sea re-read, lowering valley floors in every
+direction where a slow noise runs high and sinking hollows across the low
+plateau. `GENERATOR_VERSION` is 5.
+
+Seed 42, `npm run terrain -- 42`, before and after:
+
+| | before | after |
+|---|---|---|
+| lake share of land + lake | 2.7% | 5.1% (target 5 to 10) |
+| five largest lakes, km2 | 759 477 475 248 247 | 861 712 528 239 211 |
+| land to water, p50 / p90 km | 0.6 / 1.5 | 0.6 / 1.5 |
+| perennial channel density, km/km2 | 0.77 | 0.74 |
+| largest river mouths, m3/s | 130 101 53 52 40 | 1639 613 130 101 52 |
+
+Final constants and their anchors: `BASIN_M` 50 m of scour at the deepest
+point of a 100 km2 valley, which after the fill is a lake within the 10 to
+30 m mean depth of a Nordic valley lake and carries the largest valleys
+toward Hornindalsvatnet (514 m) and Mjosa (449 m), capped at 300 m;
+`BASIN_WAVE_KM` 2, half deepened and half sill, so a lake about a kilometre
+long between rock steps, the spacing of a Norwegian valley floor's lake
+chain; `SCOUR_M` 30 m on the plateau, under 10 m of water once filled, the
+shallow lake plains of the interior; `SCOUR_WAVE_KM` 2, hollows about a
+kilometre across. Every lake still has an outlet at its surface (the
+miniature invariant in `tests/solve-hydrology.test.ts`, which also holds the
+new reading that the basins raise the lake count).
+
+Two readings worth naming. Distance to water and channel density did not
+move, so the lakes were added without thinning the brooks. The largest river
+mouth did move, from 130 to 1639 m3/s: before the basins the interior drained
+off the eastern map edge rather than into the Bothnian bay, and a lake chain
+now routes it to one mouth. 613 m3/s sits beside the real Lule at 500, but
+1639 is larger than any river this 200 km strip should carry, and the cause
+is basins spilling across low divides. That is the next thing to look at, not
+a reason to hold the lakes back.
