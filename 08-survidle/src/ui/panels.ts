@@ -1008,6 +1008,15 @@ export function landingHtml(state: GameState, world: World): string {
 </div>`;
 }
 
+/** Shown instead of a save from before the fine lattice: the only way off it is the new-world action. */
+export function oldWorldHtml(): string {
+  return `<div class="box">
+<h1>Old save</h1>
+<p>This saved world used the old 300 m terrain model. Start a new world to use the 50 m simulation.</p>
+<button class="act" data-act="reset-world">Start a new world</button>
+</div>`;
+}
+
 export function manualHtml(): string {
   const sections = MANUAL_SECTIONS.map((s) => `<h2>${esc(s.title)}</h2>${s.lines.map((l) => `<p>${esc(l)}</p>`).join("")}`).join("");
   const links = MANUAL_LINKS.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join("");

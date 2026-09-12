@@ -5,6 +5,7 @@ import { derived, grades, medianPerson, QUIRKS, quirkFear, quirkLine, rollCandid
 import { BASE_KCAL_PER_HOUR, COMFORT_C } from "../src/sim/player";
 import { deserialize, serialize } from "../src/sim/save";
 import type { Person } from "../src/sim/types";
+import { SAVE_VERSION } from "../src/sim/world-version";
 import { PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../src/units";
 import { siteCamp } from "./siting-helpers";
 
@@ -131,13 +132,12 @@ describe("the person", () => {
     expect(g.state.survivors[0].person).toEqual(custom);
     const back = deserialize(serialize(g.state))!;
     expect(back.state.survivors[0].person).toEqual(custom);
-    expect(JSON.parse(serialize(g.state)).version).toBe(9);
+    expect(JSON.parse(serialize(g.state)).version).toBe(SAVE_VERSION);
   });
 
-  it("gives a record from before the person the median with the sex its name says", () => {
+  it("gives a record missing its person field the median with the sex its name says", () => {
     const { state } = newGame(17);
-    const raw = JSON.parse(serialize(state)) as { version: number; state: { survivors: Record<string, unknown>[] } };
-    raw.version = 6;
+    const raw = JSON.parse(serialize(state)) as { state: { survivors: Record<string, unknown>[] } };
     delete raw.state.survivors[0].person;
     const back = deserialize(JSON.stringify(raw))!;
     const p = back.state.survivors[0].person;

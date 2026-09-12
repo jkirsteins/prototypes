@@ -20,6 +20,7 @@ import { migrateWeather } from "./weather";
 import { DISTURBANCE_PROFILES } from "./species";
 import { precipitationStormKind } from "./weather";
 import { metricPointForStoredCell } from "./wildlife-space";
+import { inspectSave, SAVE_VERSION, WORLD_VERSION } from "./world-version";
 
 export const SAVE_KEY = "survidle.save";
 
@@ -28,13 +29,13 @@ export function awaySeconds(state: GameState): number {
   return state.awayHours * 3600;
 }
 
-export interface SaveFile { version: 9; savedAt: number; state: GameState }
+export interface SaveFile { version: typeof SAVE_VERSION; worldVersion: typeof WORLD_VERSION; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
   // Knowledge is chunked typed arrays, which JSON cannot carry: it goes out
   // as its own compact string and comes back through migrate.
   const carried = { ...state, knowledge: encodeKnowledge(state.knowledge) };
-  return JSON.stringify({ version: 9, savedAt: now, state: carried });
+  return JSON.stringify({ version: SAVE_VERSION, worldVersion: WORLD_VERSION, savedAt: now, state: carried });
 }
 
 /** A save's knowledge field as it may arrive: encoded, a cell-keyed record from before the lattice, or absent. */
@@ -57,12 +58,17 @@ function loadKnowledge(state: LegacyKnowledge): KnowledgeChunks {
   return knowledge;
 }
 
+/**
+ * Rejects anything but the current save, since deserialize never migrates
+ * across a world-version boundary: a save from the old 300 m cell world has
+ * its state's cell ids interpreted as fine patch ids by nothing here.
+ */
 export function deserialize(text: string): SaveFile | null {
+  if (inspectSave(text) !== "current") return null;
   try {
-    const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
-    if (!(file?.version >= 3 && file?.version <= 9) || !file.state || typeof file.savedAt !== "number") return null;
-    migrate(file.state, file.version);
-    return file as unknown as SaveFile;
+    const file = JSON.parse(text) as SaveFile;
+    migrate(file.state);
+    return file;
   } catch {
     return null;
   }
@@ -73,12 +79,12 @@ export function deserialize(text: string): SaveFile | null {
  * run in progress survives a new structure the same way it survives a new
  * region: by not having it yet.
  */
-export function migrate(state: GameState, version = 9): void {
+export function migrate(state: GameState): void {
   state.startDoy ??= START_DOY;
   state.knowledge = loadKnowledge(state as unknown as LegacyKnowledge);
   migrateWeather(state);
   state.awayHours ??= AWAY_HOURS_DEFAULT;
-  state.advanceCarry = version < 9 ? 0 : (state.advanceCarry ?? 0);
+  state.advanceCarry ??= 0;
   state.skills ??= newSkills();
   // A skill added since the save was written is the harder half of the same
   // problem: the record is there, so the line above sees nothing missing, and

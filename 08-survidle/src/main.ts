@@ -28,7 +28,8 @@ import { abandon, feltTemperature } from "./sim/player";
 import { campCellOf, cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
-import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
+import { awaySeconds, catchUp, clearSave, loadGame, SAVE_KEY, saveGame } from "./sim/save";
+import { inspectSave } from "./sim/world-version";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
@@ -51,7 +52,7 @@ import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
-  manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
+  manualHtml, oldWorldHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
@@ -99,6 +100,8 @@ let sinkMade = beaconConfigured && beaconRec.on;
 let sink: Sink | null = sinkMade ? makeSink() : null;
 const beacon = createBeacon(localStorage, sink, beaconRec);
 let wasDead = false;
+/** Set when boot() finds a save from before the fine lattice; cleared the moment fresh() builds a real world. */
+let oldWorldSave = false;
 
 // Assigned by boot()/fresh() before anything reads it; the assertion is for TS,
 // which cannot see the assignment through the function call.
@@ -141,11 +144,18 @@ function resetForecastAt(): void {
 // boot(), when there is nothing yet to refresh.
 let awayDial: AwayDial | null = null;
 
-function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0) {
+/**
+ * `persist` is false only for the world boot() builds under an old-world
+ * message: that world exists so the page has something to render behind the
+ * overlay, and saving it here would silently overwrite the very save the
+ * message is about, before the player has chosen to discard it.
+ */
+function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0, persist = true) {
   const g = newWorld(seed, boat, startDoy);
   state = g.state;
   world = g.world;
   wasDead = false;
+  oldWorldSave = false;
   ui.selected = null;
   ui.away = null;
   ui.hurry = newHurry();
@@ -157,12 +167,18 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   ui.confirmCamp = false;
   resetPanels();
   resetForecastAt();
-  persistGame();
+  if (persist) persistGame();
   awayDial?.refresh();
 }
 
 function boot() {
   ui.panes = loadPanes(localStorage);
+  const savedText = forcedSeed || startDoy !== undefined ? null : localStorage.getItem(SAVE_KEY);
+  if (savedText && inspectSave(savedText) === "old-world") {
+    oldWorldSave = true;
+    fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy, 0, false);
+    return;
+  }
   const saved = forcedSeed || startDoy !== undefined ? null : loadGame();
   if (saved) {
     state = saved.state;
@@ -277,7 +293,10 @@ function render(nowMs = performance.now()) {
   if (cloudShadows && cloudShadows.checked !== ui.cloudShadows) cloudShadows.checked = ui.cloudShadows;
 
   const overlay = document.getElementById("overlay")!;
-  if (ui.manual) {
+  if (oldWorldSave) {
+    setPanel("overlay", oldWorldHtml());
+    overlay.hidden = false;
+  } else if (ui.manual) {
     setPanel("overlay", manualHtml());
     overlay.hidden = false;
   } else if (ui.cemetery) {
