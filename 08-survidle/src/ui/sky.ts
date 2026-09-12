@@ -383,8 +383,27 @@ ${showPhase ? `<text id="sky-label" x="${g.w - 4}" y="${g.h - 3}" text-anchor="e
 </svg>`;
 }
 
-function setAttr(root: ParentNode, id: string, name: string, value: string) {
-  const el = root.querySelector<SVGElement>(`#${id}`);
+/**
+ * The pieces of one sky, by id. Dressing a sky writes some forty attributes
+ * across a dozen elements, and asking the tree for each one by id walks it
+ * again every time - past every star, since the ridges and the label are at
+ * the end. One walk gathers them all instead. The map is built fresh for each
+ * dressing rather than kept, because the panel morph between two frames may
+ * have replaced any of these nodes, and a stale one takes writes nobody sees.
+ *
+ * By id within one sky, not within the page: the strip and the widget's wall
+ * are two skies carrying the same ids.
+ */
+type SkyParts = Map<string, SVGElement>;
+
+function skyParts(svg: SVGElement): SkyParts {
+  const parts: SkyParts = new Map();
+  for (const el of svg.querySelectorAll<SVGElement>("[id]")) if (!parts.has(el.id)) parts.set(el.id, el);
+  return parts;
+}
+
+function setAttr(parts: SkyParts, id: string, name: string, value: string) {
+  const el = parts.get(id);
   if (el && el.getAttribute(name) !== value) el.setAttribute(name, value);
 }
 
@@ -470,7 +489,7 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
     w: Number(d.skyW ?? SKY_W), h: Number(d.skyH ?? SKY_H),
     groundY: Number(d.skyGround ?? GROUND_Y), arcR: Number(d.skyArc ?? ARC_R), cx: Number(d.skyCx ?? CX),
   };
-  const root: ParentNode = svg;
+  const parts = skyParts(svg);
   const pos = bodyPosition(cal, g);
   const localAir = skyAtmosphere(svg);
   const visualWeather = localAir ?? state.weather;
@@ -483,32 +502,32 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   const displayedMinute = Math.floor(cal.hour * 60 + 1e-6);
   const projectionKey = `${absoluteDay}:${displayedMinute}`;
   const siderealAngle = localSiderealDegrees(absoluteDay, displayedMinute / 60);
-  setAttr(root, "sky-celestial", "data-sidereal-angle", siderealAngle.toFixed(3));
+  setAttr(parts, "sky-celestial", "data-sidereal-angle", siderealAngle.toFixed(3));
   if (d.skyProjectionKey !== projectionKey) {
     d.skyProjectionKey = projectionKey;
     const galacticCenter = equatorialToHorizontal(GALACTIC_CENTER, siderealAngle);
     const plane = projectGalacticPlane(siderealAngle, g.w, g.groundY);
     const path = galacticPath(plane);
-    setAttr(root, "sky-celestial", "data-galactic-center-alt", galacticCenter.altitudeDeg.toFixed(3));
-    setAttr(root, "sky-milky-haze", "d", path);
-    setAttr(root, "sky-milky-plane", "d", path);
-    setAttr(root, "sky-milky-dark-lane", "d", path);
-    setAttr(root, "sky-milky-filament", "d", path);
-    setAttr(root, "sky-milky-north", "d", galacticPath(plane, ({ galacticLongitudeDeg }) => (
+    setAttr(parts, "sky-celestial", "data-galactic-center-alt", galacticCenter.altitudeDeg.toFixed(3));
+    setAttr(parts, "sky-milky-haze", "d", path);
+    setAttr(parts, "sky-milky-plane", "d", path);
+    setAttr(parts, "sky-milky-dark-lane", "d", path);
+    setAttr(parts, "sky-milky-filament", "d", path);
+    setAttr(parts, "sky-milky-north", "d", galacticPath(plane, ({ galacticLongitudeDeg }) => (
       galacticLongitudeDeg >= 55 && galacticLongitudeDeg <= 155
     )));
-    projectCoordinateStars(root, siderealAngle, g);
+    projectCoordinateStars(svg, siderealAngle, g);
   }
-  setAttr(root, "sky-sun", "cx", f(pos.body === "sun" ? pos.x : g.cx - g.arcR));
-  setAttr(root, "sky-sun", "cy", f(pos.body === "sun" ? pos.y : g.groundY + 8));
+  setAttr(parts, "sky-sun", "cx", f(pos.body === "sun" ? pos.x : g.cx - g.arcR));
+  setAttr(parts, "sky-sun", "cy", f(pos.body === "sun" ? pos.y : g.groundY + 8));
   // A yellow disc sitting on the horizon at dusk was the one thing in the
   // picture disagreeing with the pink sky behind it, so the sun takes its
   // colour from how high it is.
   const high = Math.max(0, Math.min(1, (g.groundY - pos.y) / g.arcR));
-  setAttr(root, "sky-sun", "fill", css(mix(SUN_LOW, SUN_HIGH, high)));
-  setAttr(root, "sky-sun", "stroke", css(mix(mix(SUN_LOW, SUN_HIGH, high), WHITE, 0.45)));
-  setAttr(root, "sky-moon", "cx", f(pos.body === "moon" ? pos.x : g.cx - g.arcR));
-  setAttr(root, "sky-moon", "cy", f(pos.body === "moon" ? pos.y : g.groundY + 8));
+  setAttr(parts, "sky-sun", "fill", css(mix(SUN_LOW, SUN_HIGH, high)));
+  setAttr(parts, "sky-sun", "stroke", css(mix(mix(SUN_LOW, SUN_HIGH, high), WHITE, 0.45)));
+  setAttr(parts, "sky-moon", "cx", f(pos.body === "moon" ? pos.x : g.cx - g.arcR));
+  setAttr(parts, "sky-moon", "cy", f(pos.body === "moon" ? pos.y : g.groundY + 8));
   // The dark of the moon is cut out of it rather than painted over it. The
   // mask's black disc slides across by how much is lit - left while waxing,
   // right while waning - and what it covers is simply not drawn. Painting
@@ -516,26 +535,26 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   // never did, so a gibbous moon showed a second black moon beside it.
   const r = 5;
   const offset = 2 * r * cal.moonLight * (cal.moon < 0.5 ? -1 : 1);
-  setAttr(root, "sky-moon-lit", "cx", f(pos.x));
-  setAttr(root, "sky-moon-lit", "cy", f(pos.y));
-  setAttr(root, "sky-moon-dark", "cx", f(pos.x + offset));
-  setAttr(root, "sky-moon-dark", "cy", f(pos.y));
+  setAttr(parts, "sky-moon-lit", "cx", f(pos.x));
+  setAttr(parts, "sky-moon-lit", "cy", f(pos.y));
+  setAttr(parts, "sky-moon-dark", "cx", f(pos.x + offset));
+  setAttr(parts, "sky-moon-dark", "cy", f(pos.y));
   const clearNight = pos.body === "moon" && (localAir ? localAir.precipMmPerHour < 0.05 && localAir.cloud < 0.35 : state.weather.precip === "none" && state.weather.clear);
-  setAttr(root, "sky-stars", "opacity", clearNight ? "0.9" : "0");
+  setAttr(parts, "sky-stars", "opacity", clearNight ? "0.9" : "0");
   const deepSky = (localAir ? localAir.precipMmPerHour < 0.05 && localAir.cloud < 0.35 : state.weather.precip === "none" && state.weather.clear)
     ? clamp((0.80 - phaseFor(cal.hour, cal.sunrise, cal.sunset).brightness) / 0.25, 0, 1)
     : 0;
-  setAttr(root, "sky-milky-way", "opacity", (deepSky * 0.82).toFixed(2));
+  setAttr(parts, "sky-milky-way", "opacity", (deepSky * 0.82).toFixed(2));
   // The evening after midnight still belongs to the night that began at
   // sunset. This keeps the figure stable until dawn, then chooses another
   // from both the run seed and the next night's date.
   const nightIndex = cal.dayIndex - (cal.hour < cal.sunrise ? 1 : 0);
   const constellation = ((Math.imul(state.seed, 1103515245) + Math.imul(nightIndex, 12345)) >>> 0) % 4;
-  for (let i = 0; i < 4; i++) setAttr(root, `sky-constellation-${i}`, "opacity", clearNight && i === constellation ? "1" : "0");
+  for (let i = 0; i < 4; i++) setAttr(parts, `sky-constellation-${i}`, "opacity", clearNight && i === constellation ? "1" : "0");
   const perseids = clearNight && cal.dayOfYear >= 197 && cal.dayOfYear <= 235;
-  setAttr(root, "sky-perseids", "opacity", perseids ? "1" : "0");
-  setAttr(root, "sky-top", "stop-color", light.skyTop);
-  setAttr(root, "sky-bottom", "stop-color", light.skyBottom);
+  setAttr(parts, "sky-perseids", "opacity", perseids ? "1" : "0");
+  setAttr(parts, "sky-top", "stop-color", light.skyTop);
+  setAttr(parts, "sky-bottom", "stop-color", light.skyBottom);
   // The sun goes down behind the hills, so for the whole of the pink hour
   // there is no sun in the sky to be pink. What a dusk actually shows is
   // the glow it left where it went: a wash on the horizon, at the end of
@@ -548,14 +567,14 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   // By class rather than by id: the gradient's id carries this sky's own
   // suffix, and the class is what stays the same across all of them.
   const glowCx = f(g.cx + (dusking ? g.arcR : -g.arcR) * 0.85);
-  const glowgrad = root.querySelector(".glowgrad");
+  const glowgrad = svg.querySelector(".glowgrad");
   if (glowgrad && glowgrad.getAttribute("cx") !== glowCx) glowgrad.setAttribute("cx", glowCx);
-  setAttr(root, "sky-glow", "opacity", glow.toFixed(2));
+  setAttr(parts, "sky-glow", "opacity", glow.toFixed(2));
   for (const id of ["sky-glow-in", "sky-glow-mid", "sky-glow-out"]) {
-    setAttr(root, id, "stop-color", css(dusking ? GLOW_DUSK : GLOW_DAWN));
+    setAttr(parts, id, "stop-color", css(dusking ? GLOW_DUSK : GLOW_DAWN));
   }
 
-  const label = root.querySelector<SVGElement>("#sky-label");
+  const label = parts.get("sky-label");
   const text = phaseName(cal);
   if (label && label.textContent !== text) label.textContent = text;
 
@@ -567,14 +586,14 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   // through the cloud and the widget looked like a fair day with a smudge
   // over it, which is not what the word says.
   const cover = localAir ? clamp(Math.max(localAir.cloud, localAir.fog, falling ? 0.72 : 0), 0, 1) : falling ? 1 : state.weather.clear ? 0 : 0.95;
-  setAttr(root, "sky-clouds", "opacity", cover.toFixed(2));
+  setAttr(parts, "sky-clouds", "opacity", cover.toFixed(2));
   const fallOpacity = localAir ? clamp(Math.sqrt(localAir.precipMmPerHour / 7.5), 0, 1) : falling ? 1 : 0;
-  setAttr(root, "sky-fall", "opacity", fallOpacity.toFixed(2));
+  setAttr(parts, "sky-fall", "opacity", fallOpacity.toFixed(2));
   // Behind a cloud deck there is no disc to see. A flat grey sun pasted on
   // an overcast card was the one thing in the picture that never happens.
   const through = (1 - 0.92 * cover).toFixed(2);
-  setAttr(root, "sky-sun", "opacity", pos.body === "sun" ? through : "0");
-  setAttr(root, "sky-moon", "opacity", pos.body === "moon" ? through : "0");
+  setAttr(parts, "sky-sun", "opacity", pos.body === "sun" ? through : "0");
+  setAttr(parts, "sky-moon", "opacity", pos.body === "moon" ? through : "0");
   svg.classList.toggle("snow", light.precip === "snow");
   svg.classList.toggle("rain", light.precip === "rain");
   svg.classList.toggle("storm", localAir ? localStorm(localAir) : Boolean(state.weather.storm && stormNow(state.weather, state.minute)));
@@ -593,13 +612,13 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   svg.style.setProperty("--snow-duration", `${(fallDuration * 5).toFixed(2)}s`);
   // The cloud is coloured by the hour, so it darkens through the evening
   // rather than sitting white over a night sky.
-  setAttr(root, "sky-cloudflood", "flood-color", light.cloudLow);
-  setAttr(root, "sky-cloudflood-hi", "flood-color", light.cloudHigh);
-  setAttr(root, "sky-haze", "fill", light.cloudLow);
+  setAttr(parts, "sky-cloudflood", "flood-color", light.cloudLow);
+  setAttr(parts, "sky-cloudflood-hi", "flood-color", light.cloudHigh);
+  setAttr(parts, "sky-haze", "fill", light.cloudLow);
 
   // Terrain is a deliberately colourless, fully opaque silhouette. Weather
   // remains visible in the sky and precipitation instead of tinting the land.
-  for (const ridge of RIDGES) setAttr(root, ridge, "fill", "#050505");
+  for (const ridge of RIDGES) setAttr(parts, ridge, "fill", "#050505");
 }
 
 const RIDGES = ["sky-far", "sky-mid", "sky-near"] as const;

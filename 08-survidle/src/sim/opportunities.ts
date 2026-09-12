@@ -178,10 +178,14 @@ export function opportunityEligible(def: OpportunityDef, minute: number): boolea
   return def.notBeforeDay === undefined || dayNumber(minute) >= def.notBeforeDay;
 }
 
+/** The lessons a chapter carries once its first leaf has been introduced. */
+const AFTER_READ_WEATHER = new Set<OpportunityKey>(["prepareWeather", "surviveForecast"]);
+const AFTER_REMOTE_REFUGE = new Set<OpportunityKey>(["fieldFire", "fieldMeal", "remoteStorm"]);
+
 /** First entry is calendar-gated; the world keeps an opened chapter across heirs. */
 function chapterEligible(state: OpportunityState, def: OpportunityDef, minute: number): boolean {
-  if (["prepareWeather", "surviveForecast"].includes(def.key) && state.discoveredAt.readWeather !== undefined) return true;
-  if (["fieldFire", "fieldMeal", "remoteStorm"].includes(def.key) && state.discoveredAt.remoteRefuge !== undefined) return true;
+  if (AFTER_READ_WEATHER.has(def.key) && state.discoveredAt.readWeather !== undefined) return true;
+  if (AFTER_REMOTE_REFUGE.has(def.key) && state.discoveredAt.remoteRefuge !== undefined) return true;
   return opportunityEligible(def, minute);
 }
 
@@ -400,9 +404,14 @@ function captureChapterHome(state: GameState): void {
 /** Calendar gates can open on a quiet minute without a survivor deed. */
 export function refreshOpportunities(state: GameState, minute = state.minute): void {
   const discovered: OpportunityKey[] = [];
+  // Every sim minute asks this question of the whole catalogue, so the cheap
+  // and most telling reasons a leaf is not about to be introduced come first:
+  // it is already known, it is already done, or nothing leads to it.
   for (const def of allOpportunityDefs()) {
-    if (state.opportunities.completedAt[def.key] !== undefined) continue;
-    if (!def.prerequisites || !chapterEligible(state.opportunities, def, minute) || def.prerequisites.some((key) => state.opportunities.completedAt[key] === undefined)) continue;
+    if (!def.prerequisites) continue;
+    if (state.opportunities.discoveredAt[def.key] !== undefined || state.opportunities.completedAt[def.key] !== undefined) continue;
+    if (def.prerequisites.some((key) => state.opportunities.completedAt[key] === undefined)) continue;
+    if (!chapterEligible(state.opportunities, def, minute)) continue;
     if (discoverOpportunity(state.opportunities, def.key, state.minute, false)) discovered.push(def.key);
   }
   captureChapterHome(state);

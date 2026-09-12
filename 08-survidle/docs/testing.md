@@ -257,6 +257,22 @@ deletes any file in the directory whose name does not carry the current
 version, since a cached world is about 44 MB and a bump would otherwise
 leave a full set of them on disk for good. Browser code must never import the node cache module.
 
+A cold cache meets the test suite's workers all at once, and they want the
+same worlds. Rather than each solving its own copy, the first to want a
+world creates a `.solving` file beside it and the others wait for the real
+file to appear; a waiter still waiting after five minutes solves it itself,
+and a claim older than ten minutes belongs to a process that died and is
+taken over. The solve is written under a `.part` name and moved onto the
+real one, because a reader that catches a 44 MB file halfway through its
+write gets wrong ground rather than an error. The version sweep leaves
+`.solving` and `.part` files alone, since they belong to a sibling worker
+that is still going. `tests/solvecache.test.ts` holds these rules.
+
+What this costs a fresh checkout, measured on this machine: a cold run of
+the fast suite takes about 2 min 20 s against 17 s warm, and the claim took
+roughly a quarter of the solving work out of that (317 s of test CPU
+against 396 s without it).
+
 `tests/slow/terrain-budget.test.ts` is the solve's own budget: it solves
 one full-size world with no cache and asserts under 20 seconds, run as
 part of `npm run test:slow` (`tests/slow/**/*.test.ts` is picked up by
