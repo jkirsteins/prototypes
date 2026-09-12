@@ -3,8 +3,9 @@
  * worked on, a shelter half built and a cabin all answer in the same terms,
  * so every reader asks one question: how much is over this survivor.
  */
-import { CELL_KM, clamp } from "../units";
-import { cellAt, heightAt, terrainOf, type World } from "../world/gen";
+import { clamp } from "../units";
+import { cellAt, fineSurfaceAt, terrainOf, type World } from "../world/gen";
+import { PATCH_M } from "../world/spatial";
 import { CANOPY_HEIGHT_M } from "../world/terrain";
 import type { GameState, Protection, Site, Terrain } from "./types";
 import { atmosphereAt } from "./weather";
@@ -90,11 +91,13 @@ export function profileOf(site: Site | null): "low" | "high" {
 }
 
 /**
- * How far upwind ground can still matter: five steps is 1.5 km along a cardinal
- * wind and 2.1 km along a diagonal one, by which distance a barrier would have
- * to stand 150 m or 212 m above the cell to shelter it.
+ * How far upwind ground can still matter, in metres of true ground: by 1.5 km a
+ * barrier would have to stand 150 m above the patch to shelter it. The walk is
+ * in metres because the lattice under it is 50 m and the reach is not: a bank
+ * a hundred metres upwind is exactly the shelter this looks for, and counting
+ * steps instead of metres reached five patches and priced them as five cells.
  */
-const LEE_REACH_CELLS = 5;
+const LEE_REACH_M = 1_500;
 /**
  * A barrier shelters the ground within about ten of its own heights downwind;
  * shelterbelt measurements halve the wind out to ten to fifteen heights. So a
@@ -136,23 +139,41 @@ export interface Lee {
  * fell are exposed by nature, and water, a river included, is never a refuge.
  * Spruce is the world's closed canopy: under it the wind is already gone.
  */
+/** One reading per patch and wind eighth; the ground it reads is immutable. The cache belongs to the world object, never to save state. */
+const LEE_LIMIT = 16_384;
+const leeCache = new WeakMap<World, Map<number, Lee>>();
+
 export function leeScore(world: World, cell: number, windBearingDeg: number): Lee {
+  const eighth = eighthOf(windBearingDeg);
+  let cached = leeCache.get(world);
+  if (!cached) { cached = new Map(); leeCache.set(world, cached); }
+  const key = cell * 8 + eighth;
+  const hit = cached.get(key);
+  if (hit) return hit;
+  const lee = readLee(world, cell, eighth);
+  if (cached.size >= LEE_LIMIT) cached.clear();
+  cached.set(key, lee);
+  return lee;
+}
+
+function readLee(world: World, cell: number, eighth: number): Lee {
   const { x, y, terrain } = cellAt(world, cell);
   if (terrain === "rock" || terrain === "fell" || terrain === "water" || terrain === "river") {
     return { score: 0, by: "none", blocking: 0 };
   }
   if (terrain === "spruce") return { score: 1, by: "canopy", blocking: LEE_FULL_RATIO };
-  const [dx, dy] = UPWIND_STEP[eighthOf(windBearingDeg)];
-  const here = heightAt(world, x, y);
+  const [dx, dy] = UPWIND_STEP[eighth];
+  const here = fineSurfaceAt(world, cell);
+  const stepM = PATCH_M * Math.hypot(dx, dy);
   let blocking = 0;
   let bare = 0;
-  for (let d = 1; d <= LEE_REACH_CELLS; d++) {
+  for (let d = 1; d * stepM <= LEE_REACH_M; d++) {
     const sx = x + dx * d;
     const sy = y + dy * d;
     if (sx < 0 || sy < 0 || sx >= world.w || sy >= world.h) break;
-    // True distance, so a diagonal step is the 424 m it really is, not 300.
-    const distanceM = d * CELL_KM * 1000 * Math.hypot(dx, dy);
-    const ground = heightAt(world, sx, sy) - here;
+    // True distance, so a diagonal step is the 71 m it really is, not 50.
+    const distanceM = d * stepM;
+    const ground = fineSurfaceAt(world, sy * world.w + sx) - here;
     const ratio = (ground + (CANOPY_HEIGHT_M[terrainOf(world, sx, sy)] ?? 0)) / distanceM;
     if (ratio > blocking) {
       blocking = ratio;
