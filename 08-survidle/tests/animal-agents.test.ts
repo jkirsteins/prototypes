@@ -1,4 +1,5 @@
 import { encodeKnowledge, setKnowledge } from "../src/sim/fineknowledge";
+import { SAVE_VERSION } from "../src/sim/world-version";
 import { afterEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { activateWildlife, claimHuntableAnimal, dailyWildlife, emptyWildlife, evaluateWildlifeDisturbance, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
@@ -989,13 +990,12 @@ describe("animal recognition", () => {
     expect(mapHtml(world, state, close, cal)).not.toContain("mk-animal");
   });
 
-  it("round-trips version 9 and fills older saves with empty wildlife", () => {
+  it("round-trips the current save and fills a save written without wildlife", () => {
     const { state } = newGame(79);
     const current = JSON.parse(serialize(state));
-    expect(current.version).toBe(9);
+    expect(current.version).toBe(SAVE_VERSION);
     expect(deserialize(JSON.stringify(current))!.state.wildlife).toEqual(state.wildlife);
 
-    current.version = 7;
     delete current.state.wildlife;
     const old = deserialize(JSON.stringify(current));
     expect(old!.state.wildlife).toEqual(emptyWildlife());
