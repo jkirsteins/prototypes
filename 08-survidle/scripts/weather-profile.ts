@@ -18,7 +18,8 @@ import { fieldsAt, LATTICE_H, LATTICE_W } from "../src/world/terrain";
 
 export const WEATHER_PROFILE_DEFAULTS = {
   atmosphereSamples: 10_000,
-  mapGlyphs: 54 * 48,
+  // The map board, 72 by 36 glyphs at every rung.
+  mapGlyphs: 72 * 36,
   groundRegions: 100,
 } as const;
 

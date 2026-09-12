@@ -36,7 +36,7 @@ import { cellAt, neighbours, regionAt, speciesHere, spotOf } from "../src/world/
 import { findRoute } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
 import { hasLineOfSight, visibleCells } from "../src/sim/sight";
-import { CELL_KM } from "../src/units";
+import { PATCH_KM } from "../src/world/spatial";
 import { MAX_OPTICAL_DEPTH } from "../src/sim/climate";
 import { testAtmosphere } from "./weather-helpers";
 
@@ -295,7 +295,7 @@ describe("panels", () => {
     const camp = st.campCell!;
     const away = regionAt(world, state.player.region).cells.find((cell) => {
       if (cellAt(world, cell).terrain === "water") return false;
-      const distanceKm = Math.hypot(cell % world.w - camp % world.w, Math.floor(cell / world.w) - Math.floor(camp / world.w)) * CELL_KM;
+      const distanceKm = Math.hypot(cell % world.w - camp % world.w, Math.floor(cell / world.w) - Math.floor(camp / world.w)) * PATCH_KM;
       return distanceKm <= 5 && !hasLineOfSight(world, cell, camp, 1.5);
     });
     expect(away).toBeDefined();
@@ -335,7 +335,7 @@ describe("panels", () => {
     const camp = st.campCell!;
     const observer = regionAt(world, state.player.region).cells.find((cell) => {
       if (cellAt(world, cell).terrain === "water") return false;
-      const distanceKm = Math.hypot(cell % world.w - camp % world.w, Math.floor(cell / world.w) - Math.floor(camp / world.w)) * CELL_KM;
+      const distanceKm = Math.hypot(cell % world.w - camp % world.w, Math.floor(cell / world.w) - Math.floor(camp / world.w)) * PATCH_KM;
       return distanceKm >= 2 && distanceKm <= 5 && hasLineOfSight(world, cell, camp, 1.5);
     });
     expect(observer).toBeDefined();
@@ -378,7 +378,7 @@ describe("panels", () => {
       for (let oy = -3; oy <= 3; oy++) {
         for (let ox = -3; ox <= 3; ox++) {
           const observer = (cy + oy) * world.w + cx + ox;
-          const distanceKm = Math.hypot(ox, oy) * CELL_KM;
+          const distanceKm = Math.hypot(ox, oy) * PATCH_KM;
           if (distanceKm <= 0 || distanceKm > 1 || cellAt(world, observer).terrain === "water" || !hasLineOfSight(world, observer, camp, 1.5)) continue;
           const exposed = ring.find((cell) => cell !== camp && cell !== observer && hasLineOfSight(world, observer, cell, 0.5));
           const hidden = ring.find((cell) => cell !== camp && !hasLineOfSight(world, observer, cell, 0.5));

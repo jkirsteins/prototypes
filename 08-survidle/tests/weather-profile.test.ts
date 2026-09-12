@@ -6,7 +6,7 @@ describe("weather profiler", () => {
     expect(latticeCandidateCount(167)).toBe(87_604);
   });
   it("keeps the required production workload sizes in one named configuration", () => {
-    expect(WEATHER_PROFILE_DEFAULTS).toEqual({ atmosphereSamples: 10_000, mapGlyphs: 54 * 48, groundRegions: 100 });
+    expect(WEATHER_PROFILE_DEFAULTS).toEqual({ atmosphereSamples: 10_000, mapGlyphs: 72 * 36, groundRegions: 100 });
   });
 
   it("prints outside Vitest and stays quiet when imported by tests", () => {

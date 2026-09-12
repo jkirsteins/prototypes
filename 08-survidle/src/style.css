@@ -808,8 +808,9 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   .wildlife-recoil { animation: none; }
 }
 
-/* Close-map marks occupy one visual subcell instead of repainting all 300 m
-   of their parent. They repeat the established mark palette exactly. */
+/* A close-map mark is an overlay placed at its own metre position on the
+   board rather than a glyph recoloured whole. It repeats the established
+   mark palette exactly. */
 .grid .micro-mark.mk-animal { color: #111; background: #b7ad87; }
 .grid .micro-mark.mk-animal.wildlife-0 { background: #e5a84b; }
 .grid .micro-mark.mk-animal.wildlife-1 { background: #76c7b7; }

@@ -42,6 +42,8 @@ interface SearchTree {
 interface GridCache {
   topology: Map<string, Topology>;
   overlays: Map<string, Map<PatchId, SearchTree>>;
+  /** Components actually flood-filled, so a cache hit is distinguishable from work. */
+  topologyBuilds: number;
 }
 
 const caches = new WeakMap<FineGrid, GridCache>();
@@ -51,12 +53,12 @@ const DIRECT_PATCH_LIMIT = 65536;
 const PARENT_MARGIN = 40;
 
 /** Retained work only; observing diagnostics does not create a cache. */
-export function fineRouteCacheStats(grid: FineGrid): { topologies: number; topologyLimit: number; overlays: number; overlayLimit: number; localTrees: number } {
+export function fineRouteCacheStats(grid: FineGrid): { topologies: number; topologyLimit: number; topologyBuilds: number; overlays: number; overlayLimit: number; localTrees: number } {
   const cache = caches.get(grid);
   let localTrees = 0;
   for (const overlay of cache?.overlays.values() ?? []) localTrees += overlay.size;
   return {
-    topologies: cache?.topology.size ?? 0, topologyLimit: TOPOLOGY_LIMIT,
+    topologies: cache?.topology.size ?? 0, topologyLimit: TOPOLOGY_LIMIT, topologyBuilds: cache?.topologyBuilds ?? 0,
     overlays: cache?.overlays.size ?? 0, overlayLimit: OVERLAY_LIMIT, localTrees,
   };
 }
@@ -64,7 +66,7 @@ export function fineRouteCacheStats(grid: FineGrid): { topologies: number; topol
 function cacheFor(grid: FineGrid): GridCache {
   let cache = caches.get(grid);
   if (!cache) {
-    cache = { topology: new Map(), overlays: new Map() };
+    cache = { topology: new Map(), overlays: new Map(), topologyBuilds: 0 };
     caches.set(grid, cache);
   }
   return cache;
@@ -141,6 +143,7 @@ function topologyFor(grid: FineGrid, px: number, py: number, profile: TraversalP
     connected: (from, to) => componentOf.has(from) && componentOf.get(from) === componentOf.get(to),
   };
   retain(cache.topology, key, topology, TOPOLOGY_LIMIT);
+  cache.topologyBuilds++;
   return topology;
 }
 

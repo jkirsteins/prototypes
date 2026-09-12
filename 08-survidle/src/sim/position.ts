@@ -4,7 +4,8 @@ import { localWeather } from "./weather";
  * named spot if any, what ground is under foot, and how far camp is. The
  * UI never shows coordinates; it shows what these functions say.
  */
-import { type MetricPoint, PATCH_M, type PatchId, patchCenter, patchId } from "../world/spatial";
+import { type MetricPoint, PATCH_M, type PatchId, patchAtMetric, patchCenter } from "../world/spatial";
+import { clamp } from "../units";
 import { type Cell, cellAt, neighbours, regionAt, regionOf, waterKindOf, type World } from "../world/gen";
 import { remainingKm, routeKm } from "../world/route";
 import { calendar } from "./calendar";
@@ -16,11 +17,19 @@ import { walkableIce } from "./weather";
 import type { GameState, IceMode, SpotId, Terrain } from "./types";
 import { cellSurface, surfaceLocation } from "./cellstatus";
 
-/** The fine patch containing a metre point, clamped to the world's edge. */
+/**
+ * The fine patch containing a metre point. There is one conversion rule and
+ * `patchAtMetric` owns it, which means a point outside the world is an error
+ * rather than a silently nearby patch. A survivor's own position is the one
+ * place that cannot be an error: a walk lands on the world's edge and float
+ * arithmetic can put it a millimetre past it, so the point is clamped into
+ * the world before it is converted, never after.
+ */
 export function patchAt(world: World, point: MetricPoint): PatchId {
-  const x = Math.min(world.w - 1, Math.max(0, Math.floor(point.xM / PATCH_M)));
-  const y = Math.min(world.h - 1, Math.max(0, Math.floor(point.yM / PATCH_M)));
-  return patchId(x, y);
+  return patchAtMetric({
+    xM: clamp(point.xM, 0, world.w * PATCH_M - 1e-6),
+    yM: clamp(point.yM, 0, world.h * PATCH_M - 1e-6),
+  });
 }
 
 /** The fine patch under the player's feet. */

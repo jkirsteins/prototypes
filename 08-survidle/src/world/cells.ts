@@ -31,6 +31,8 @@ export interface World extends FineGrid {
   /** Generated 50 m terrain, retained in least-recently-used order. */
   fineChunks: Map<number, FineChunk>;
   fineChunkBuilds: number;
+  /** Parent summaries actually computed, so a cache hit is distinguishable from work. */
+  parentSummaryBuilds: number;
   fineSummaryGeneration: number;
   /** Region definitions computed so far, by id. */
   regions: Map<number, RegionDef>;
@@ -51,6 +53,7 @@ export function newWorld(seed: number): World {
     terrainAt: id => terrainOfPatch(world, id),
     fineChunks: new Map(),
     fineChunkBuilds: 0,
+    parentSummaryBuilds: 0,
     fineSummaryGeneration: 0,
     regions: new Map(),
     start: -1,

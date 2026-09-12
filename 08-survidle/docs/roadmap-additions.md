@@ -61,7 +61,12 @@ a different presentation contract.
 
 ## Wildlife scale transition
 
-**Raised** 2026-09-09, during the post-implementation scale audit.
+**Raised** 2026-09-09, during the post-implementation scale audit. **Partly
+settled** by the authoritative-close-zoom migration: the grid is the 50 m patch
+lattice now, saves from the 300 m world are refused rather than reinterpreted,
+and `CELL_KM` is gone in favour of `PATCH_KM`. The two bullets below about
+old-save migration and cell-size literals are closed by that; the rest still
+stand as what any further change of scale would need.
 
 Exact positions and travel speed are metric, but changing the simulation grid
 still has several prerequisites beyond predator reach:
@@ -93,9 +98,9 @@ still has several prerequisites beyond predator reach:
   tests now read `CELL_KM`; descriptive references to today's 300 m world are
   not conversion logic.
 
-The existing optional mechanical-subcells item covers the larger routing and
-resource consequences. This item is the compatibility gate that must be
-cleared even if the new grid remains visually similar.
+The implemented authoritative fine terrain item below covers the larger routing
+and resource consequences. This item is the compatibility gate that must be
+cleared even if a further grid change remains visually similar.
 
 ## Wildlife calibration and deferred senses
 
@@ -115,25 +120,32 @@ Human listening must also confirm that contact plus receding terrain movement
 reads as an animal startling, especially for a heard-only event; automated
 checks establish scheduling and disclosure, not recognisability.
 
-## Optional revisit: mechanical subcells
+## Implemented: authoritative fine terrain
 
-**Raised** 2026-09-09, while adding close-map visual detail.
+**Raised** 2026-09-09, while adding close-map visual detail. **Settled**
+2026-09-10 by the authoritative-close-zoom migration.
 
-The first close map rung divides each 300 m terrain cell into a 3 by 3 field of
-cosmetic 100 m details. The closest rung subdivides further into a 6 by 6 field
-of cosmetic 50 m details. These fields have no individual cell borders, so the
-terrain reads as one continuous surface. Large-animal and survivor markers are
-projections of their exact movement positions rather than cosmetic subcell
-motion. Resources and most interaction targets still resolve to the containing
-terrain cell; the visual detail cells themselves remain non-mechanical.
+The close rungs once divided a 300 m terrain cell into cosmetic 100 m and 50 m
+fields. Nothing under those letters was true: the ground did not change from
+one to the next, a click anywhere in the field meant the same cell, and the
+survivor's mark slid about inside a cell it never left.
 
-This separation is deliberate. Making the details mechanical would multiply
-the routing graph, retune travel and sight, redistribute cell-based resources,
-and change every rule that currently means "here". It should remain optional,
-and only be revisited if visual subcells prove insufficient in play: for
-example, if close animal approaches repeatedly feel misleading, or players need
-to choose a precise patch of ground inside a cell. At that point the work wants
-its own spec and balance pass rather than more visual exceptions.
+The 50 m patch is now the simulation's own unit. Terrain, region, weather,
+visibility, wildlife, ownership of structures, piles, work and resources, and
+routing all run on it; every map rung is a square block of those real patches,
+and a click names the exact patch an order would be given for. The lattice is
+generated a chunk at a time and summarised bottom-up, so no whole-world array
+or whole-world scan exists to pay for the resolution.
+
+The design is
+`docs/superpowers/specs/2026-09-10-survidle-authoritative-close-zoom-design.md`;
+the before-and-after captures are in `docs/close-zoom-simulation-shots/`.
+
+What this roadmap entry worried about was making the detail mechanical: a
+larger routing graph, retuned travel and sight, redistributed resources, and
+every rule that means "here" rewritten. All of it happened, under that spec and
+with its own performance gates in `tests/spatial-performance.test.ts`. Nothing
+is left to revisit here.
 
 ## Current viewshed refinements
 

@@ -28,9 +28,20 @@ export function passable(t: Terrain, ice: IceMode = "none"): boolean {
   return speedOf(t, ice) > 0;
 }
 
-/** Parent squares of slack, enforced by the hierarchical router. */
-export const ROUTE_MARGIN = 40;
-const caches = new WeakMap<World, Map<string, number[] | null>>();
+/** Retained finished routes per world, in least-recently-used order. */
+export const ROUTE_CACHE_LIMIT = 512;
+interface RouteCache {
+  routes: Map<string, number[] | null>;
+  /** Routes actually searched, so a cache hit is distinguishable from work. */
+  builds: number;
+}
+const caches = new WeakMap<World, RouteCache>();
+
+/** Retained work only; observing diagnostics does not create a cache. */
+export function routeCacheStats(world: World): { routes: number; routeLimit: number; routeBuilds: number } {
+  const cache = caches.get(world);
+  return { routes: cache?.routes.size ?? 0, routeLimit: ROUTE_CACHE_LIMIT, routeBuilds: cache?.builds ?? 0 };
+}
 
 function profileFor(
   world: World, from: PatchId, ice: RouteIce, avoidFell: boolean,
@@ -78,15 +89,16 @@ function route(
   if (from === to) return [];
   if (known && !known(to)) return null;
   let cache = caches.get(world);
-  if (!cache) { cache = new Map(); caches.set(world, cache); }
+  if (!cache) { cache = { routes: new Map(), builds: 0 }; caches.set(world, cache); }
   const profile = profileFor(world, from, ice, avoidFell, known, generation);
   const key = JSON.stringify([from, to, profile.key]);
-  const hit = cache.get(key);
+  const hit = cache.routes.get(key);
   if (hit !== undefined) return hit?.slice() ?? null;
   // World itself is the stable FineGrid cache identity.
   const result = findHierarchicalRoute(world, from, to, profile)?.patches.slice(1) ?? null;
-  if (cache.size >= 512) cache.delete(cache.keys().next().value!);
-  cache.set(key, result);
+  cache.builds++;
+  if (cache.routes.size >= ROUTE_CACHE_LIMIT) cache.routes.delete(cache.routes.keys().next().value!);
+  cache.routes.set(key, result);
   return result?.slice() ?? null;
 }
 

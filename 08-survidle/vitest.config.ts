@@ -78,6 +78,7 @@ const slowTestFiles = [
   "tests/skills.test.ts",
   "tests/sleep.test.ts",
   "tests/snowshelter.test.ts",
+  "tests/spatial-performance.test.ts",
   "tests/spine.test.ts",
   "tests/startday.test.ts",
   "tests/storm.test.ts",

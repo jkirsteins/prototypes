@@ -22,8 +22,9 @@ export const CANOPY_HEIGHT_M: Partial<Record<Terrain, number>> = { spruce: 22, p
 export const TERRAINS: Terrain[] = ["water", "fell", "rock", "bog", "spruce", "pine", "birch", "meadow"];
 export const TERRAIN_INDEX: Record<Terrain, number> = { water: 0, fell: 1, rock: 2, bog: 3, spruce: 4, pine: 5, birch: 6, meadow: 7 };
 
-/** Compatibility for field consumers awaiting metric conversion. Coordinates
- * are fine patches; normalized elevation retains their 1,200 m scale. */
+/** Fields by patch coordinate, for callers that hold patch x and y rather
+ * than a metre point. Elevation is normalized against the 1,200 m scale the
+ * ground palette and the shelter rules read. */
 export function fieldsAt(seed: number, x: number, y: number): { e: number; m: number; sea: boolean; coast: number } {
   const fields = fieldsAtMetric(seed, { xM: (x + 0.5) * PATCH_M, yM: (y + 0.5) * PATCH_M });
   return { e: fields.elevationM / 1200, m: fields.moisture, sea: fields.sea, coast: fields.coast };

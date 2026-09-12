@@ -1,7 +1,8 @@
 import type { Terrain } from "../sim/types";
 import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, patchAt, type World } from "./cells";
 import { fieldsAtPatch, regionAtPatch } from "./fine-terrain";
-import type { FineGrid } from "./fine-route";
+import { type FineGrid, fineRouteCacheStats } from "./fine-route";
+import { routeCacheStats } from "./route";
 import { FINE_PER_PARENT, PATCH_KM, type PatchId, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
 import { CANOPY_HEIGHT_M, TERRAINS } from "./terrain";
 
@@ -196,6 +197,7 @@ export function parentSummary(source: World | AggregateSource, px: number, py: n
     generation: nextGeneration(source),
   };
   cache.set(key, summary);
+  if (isWorld(source)) source.parentSummaryBuilds++;
   return summary;
 }
 
@@ -290,12 +292,28 @@ export function invalidatePatch(world: World, patch: PatchId): void {
   }
 }
 
+/**
+ * One reading of everything the world keeps, so a gate can name the work it
+ * expects rather than the milliseconds a host happens to take. Every count is
+ * either a retained size with its cap beside it or a monotonic build counter;
+ * reading them creates no cache.
+ */
 export interface WorldCacheStats {
   fineChunks: number;
   fineChunkLimit: number;
   fineChunkBuilds: number;
   generatedPatches: number;
   parentSummaries: number;
+  parentSummaryBuilds: number;
+  topologies: number;
+  topologyLimit: number;
+  topologyBuilds: number;
+  overlays: number;
+  overlayLimit: number;
+  localTrees: number;
+  routes: number;
+  routeLimit: number;
+  routeBuilds: number;
 }
 
 export function worldCacheStats(world: World): WorldCacheStats {
@@ -311,5 +329,8 @@ export function worldCacheStats(world: World): WorldCacheStats {
     fineChunkBuilds: world.fineChunkBuilds,
     generatedPatches,
     parentSummaries,
+    parentSummaryBuilds: world.parentSummaryBuilds,
+    ...fineRouteCacheStats(world),
+    ...routeCacheStats(world),
   };
 }
