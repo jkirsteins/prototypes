@@ -50,7 +50,7 @@ import { anAnimal, fatSeason, fishItem, fishSpecies, inSpawn, isFish, LARGE_GAME
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type PausedTask, type RecipeId,
-  type Protection, type Site, type SkillId, type SpotId, type StructureId, type TaskId, type ToolId, type WorkOrder,
+  type Protection, type Site, type SkillId, type SpotId, type StructureId, type Task, type TaskId, type ToolId, type WorkOrder,
 } from "./types";
 import { isWorkIntent } from "./types";
 import { owningOrder } from "./orderowner";
@@ -1884,16 +1884,19 @@ export function exploreInjuryChance(level: number): number {
 }
 
 /**
- * Rolled once per hour of the sweep, on whatever the survivor is standing
- * on the moment that hour turns - not per cell, since a vantage leg can
- * cross several kinds of ground in an hour and only the roughest three
- * matter here.
+ * Rolled once per hour of the sweep, over the share of that hour spent on the
+ * roughest three grounds. A 50 m patch is a minute of walking, so an hour's
+ * leg crosses dozens of them and the ground under foot at the moment the hour
+ * turns says nothing about the hour: the minutes on rough ground are counted
+ * as they are walked and the hourly chance is scaled by them.
  */
-function exploreInjury(state: GameState, world: World, rng: Rng, before: number, after: number): void {
-  if (Math.floor(after / 60) <= Math.floor(before / 60)) return;
+function exploreInjury(state: GameState, world: World, rng: Rng, task: Task, before: number, dt: number): void {
   const terrain = hereTerrain(state, world);
-  if (terrain !== "fell" && terrain !== "rock" && terrain !== "bog") return;
-  const chance = exploreInjuryChance(skillLevel(state, "wayfinding"));
+  if (terrain === "fell" || terrain === "rock" || terrain === "bog") task.roughMinutes = (task.roughMinutes ?? 0) + dt;
+  if (Math.floor(task.progress / 60) <= Math.floor(before / 60)) return;
+  const rough = Math.min(60, task.roughMinutes ?? 0);
+  task.roughMinutes = 0;
+  const chance = exploreInjuryChance(skillLevel(state, "wayfinding")) * (rough / 60);
   if (chance <= 0 || !rng.chance(chance)) return;
   state.player.injured = Math.max(state.player.injured, 24 * 60);
   log(state, "The ground gives underfoot. {You} {are} hurt.", "bad");
@@ -2059,7 +2062,7 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
   const finished = walkAlong(state, world, cal, rng, dt);
   if (!state.route) return; // fell through the ice: the sweep is already over
   t.progress += dt;
-  exploreInjury(state, world, rng, before, t.progress);
+  exploreInjury(state, world, rng, t, before, dt);
   if (!finished) {
     refreshRouteDuration(state, world, cal);
     return;
@@ -2148,7 +2151,7 @@ function stepSearchHome(state: GameState, world: World, cal: Calendar, rng: Rng,
   if (!state.route) return; // fell through the ice: the search is already over
   const route = state.route;
   t.progress += dt;
-  exploreInjury(state, world, rng, before, t.progress);
+  exploreInjury(state, world, rng, t, before, dt);
   if (!finished) {
     refreshRouteDuration(state, world, cal);
     return;

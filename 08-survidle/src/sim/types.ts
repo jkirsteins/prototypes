@@ -214,6 +214,8 @@ export interface Task {
   surveyWater?: number;
   surveyShore?: number;
   surveyProgress?: number;
+  /** Minutes of the current hour walked on the roughest three grounds, which is what the sweep's injury chance is scaled by. */
+  roughMinutes?: number;
 }
 
 /**
