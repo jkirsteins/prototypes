@@ -63,6 +63,7 @@ import { newSpeedHistory, updateSpeedHistory } from "./ui/speed-history";
 import { shoppingHtml, shoppingQuery } from "./ui/shopping";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
 import { recognitionHtml } from "./ui/wildlife-panel";
+import { type WorldCacheStats, worldCacheStats } from "./world/aggregate";
 import { generateWorld, regionAt, type World } from "./world/gen";
 
 const params = new URLSearchParams(location.search);
@@ -1050,6 +1051,7 @@ requestAnimationFrame(frame);
 declare global {
   interface Window { survidle: {
     get state(): GameState; get world(): World; advance(minutes: number): void; speed: number;
+    cacheStats(): WorldCacheStats;
     weatherShot: null | { name: WeatherShotName; visibleCells: number };
     startleSetup?(scenario: import("../scripts/startle-seeds").StartleScenario): Promise<void>;
     startleStep?(): void;
@@ -1062,6 +1064,9 @@ window.survidle = {
   get world() { return world; },
   advance(minutes: number) { advance(state, world, minutes); render(); },
   speed,
+  // A reading of how much fine ground the run has had to build. It counts
+  // caches; it never fills or clears one, so asking does not change the run.
+  cacheStats() { return worldCacheStats(world); },
   weatherShot: weatherShot ? { name: weatherShotName!, visibleCells: weatherShot.visible.size } : null,
 };
 if (import.meta.env.DEV) {

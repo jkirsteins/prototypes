@@ -1,0 +1,87 @@
+{
+  "capturedAt": "2026-09-12T02:33:50.515Z",
+  "sourceCommit": "d9ed2087",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "deviceScale": 2
+  },
+  "captures": {
+    "after100m": {
+      "seed": 21,
+      "minute": 10,
+      "startDoy": 90,
+      "player": {
+        "xM": 373075,
+        "yM": 140175,
+        "region": 4345
+      },
+      "zoom": "100 m per glyph, 7.2 by 3.6 km",
+      "renderedCells": 2592,
+      "cosmeticDetails": 0,
+      "playerMarks": 1,
+      "overlayHidden": true,
+      "cacheStats": {
+        "fineChunks": 15,
+        "fineChunkLimit": 64,
+        "fineChunkBuilds": 15,
+        "generatedPatches": 138240,
+        "parentSummaries": 2028,
+        "parentSummaryBuilds": 2028,
+        "topologies": 50,
+        "topologyLimit": 4096,
+        "topologyBuilds": 50,
+        "overlays": 102,
+        "overlayLimit": 1024,
+        "localTrees": 1294,
+        "routes": 32,
+        "routeLimit": 512,
+        "routeBuilds": 32
+      },
+      "box": {
+        "x": 320,
+        "y": 10,
+        "width": 840,
+        "height": 450
+      }
+    },
+    "after50m": {
+      "seed": 21,
+      "minute": 10,
+      "startDoy": 90,
+      "player": {
+        "xM": 373075,
+        "yM": 140175,
+        "region": 4345
+      },
+      "zoom": "50 m per glyph, 3.6 by 1.8 km",
+      "renderedCells": 2592,
+      "cosmeticDetails": 0,
+      "playerMarks": 1,
+      "overlayHidden": true,
+      "cacheStats": {
+        "fineChunks": 15,
+        "fineChunkLimit": 64,
+        "fineChunkBuilds": 15,
+        "generatedPatches": 138240,
+        "parentSummaries": 2028,
+        "parentSummaryBuilds": 2028,
+        "topologies": 50,
+        "topologyLimit": 4096,
+        "topologyBuilds": 50,
+        "overlays": 102,
+        "overlayLimit": 1024,
+        "localTrees": 1294,
+        "routes": 32,
+        "routeLimit": 512,
+        "routeBuilds": 32
+      },
+      "box": {
+        "x": 320,
+        "y": 10,
+        "width": 840,
+        "height": 450
+      }
+    }
+  }
+}

@@ -10,6 +10,7 @@
  * both: every glyph is a square block of real 50 m patches, and every click
  * names the exact patch an order would be given for.
  */
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
@@ -351,5 +352,32 @@ describe("drawing known aggregates", () => {
     draw(world, state, open(4));
     draw(world, state, open(4));
     expect(worldCacheStats(world).fineChunkBuilds).toBe(afterFirst);
+  });
+});
+
+/** Every .ts and .css file the shipped game is built from. */
+function applicationSources(): string[] {
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith(".ts") || entry.name.endsWith(".css")) out.push(readFileSync(path, "utf8"));
+    }
+  };
+  walk("src");
+  return out;
+}
+
+describe("the comparison scene", () => {
+  // The before and after images are only evidence if the game cannot tell it
+  // is being photographed. The seed, the file names and the capture directory
+  // belong to scripts/ and docs/, which this deliberately does not read.
+  it("contains no application special case for the comparison scene", () => {
+    const source = applicationSources().join("\n");
+    expect(source).not.toMatch(/seed\s*===?\s*21/);
+    expect(source).not.toContain("close-zoom-simulation-shots");
+    expect(source).not.toContain("after-50m");
+    expect(source).not.toContain("after-100m");
   });
 });
