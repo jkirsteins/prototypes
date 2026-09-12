@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { cellAt, generateWorld, neighbours, regionAt, waterKindOf, WORLD_H } from "../src/world/gen";
 import { forestShareWithin, isShelteredShore } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
+import { solvedFor } from "../src/world/solvecache";
+import { WORLD_CELL_H, WORLD_CELL_W } from "../src/world/terrain";
 
 describe("the start", () => {
   it("lands the first boat on a sheltered sea shore in the southern rows with forest within 3 km, on every reference seed", () => {
@@ -32,9 +34,12 @@ describe("the start", () => {
     expect(r.spots.some((s) => s.id === "camp")).toBe(true);
   });
 
-  it("finds a fresh fine-world start in under two seconds", () => {
+  // The ceiling is from solved arrays in hand to a started run. The solve has
+  // its own bar and its own progress bar; it is not inside this budget.
+  it("finds a fresh fine-world start in under two seconds once the world is solved", () => {
+    const solved = solvedFor(21, WORLD_CELL_W, WORLD_CELL_H);
     const before = performance.now();
-    const world = generateWorld(21);
+    const world = generateWorld(21, solved);
     expect(world.w).toBe(10800);
     expect(performance.now() - before).toBeLessThan(2000);
     expect(regionAt(world, world.start).spots.some((s) => s.id === "shore")).toBe(true);

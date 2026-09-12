@@ -271,7 +271,7 @@ export function leeCellNear(world: World, home: number, terrain: Terrain, windBe
 }
 
 function leeCellAnywhere(world: World, terrain: Terrain, dx: number, dy: number, blocked: boolean): number {
-  // A cell at a time over the whole world: the fine ground of 84 million
+  // A cell at a time over the whole world: the fine ground of 144 million
   // patches would be generated to answer this, and what the search wants is
   // the solved ground the heights come from.
   const reach = 5 * FINE_PER_PARENT;
