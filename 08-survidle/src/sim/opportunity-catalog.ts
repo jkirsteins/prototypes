@@ -89,15 +89,18 @@ const COLLECTION_OPPORTUNITIES: OpportunityDef[] = [
 
 let AUTHORED_OPPORTUNITIES: OpportunityDef[] = [];
 const DEFS = new Map(COLLECTION_OPPORTUNITIES.map((def) => [def.key, def]));
+/** The catalogue only changes when authored defs are registered, and every sim minute asks for it. */
+let ALL_OPPORTUNITIES: OpportunityDef[] = [...COLLECTION_OPPORTUNITIES];
 
 export function registerAuthoredOpportunityDefs(defs: readonly OpportunityDef[]): void {
   AUTHORED_OPPORTUNITIES = [...defs];
   for (const def of defs) DEFS.set(def.key, def);
+  const authored = new Set(AUTHORED_OPPORTUNITIES.map((def) => def.key));
+  ALL_OPPORTUNITIES = [...AUTHORED_OPPORTUNITIES, ...COLLECTION_OPPORTUNITIES.filter((def) => !authored.has(def.key))];
 }
 
 export function allOpportunityDefs(): OpportunityDef[] {
-  const authored = new Set(AUTHORED_OPPORTUNITIES.map((def) => def.key));
-  return [...AUTHORED_OPPORTUNITIES, ...COLLECTION_OPPORTUNITIES.filter((def) => !authored.has(def.key))];
+  return ALL_OPPORTUNITIES;
 }
 
 export function catalogOpportunityDef(key: OpportunityKey): OpportunityDef | undefined {

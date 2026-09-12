@@ -1,80 +1,33 @@
-import { activeOpportunityKeys, reveal } from "./opportunity-helpers";
+import { reveal } from "./opportunity-helpers";
+import {
+  activateRemoteRefuge, activateRemoteStorm, activateShelterTest, activateWeatherReading, finish,
+  remoteAttempt, testStormWindow, 
+} from "./opportunity-context-helpers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as climate from "../src/sim/climate";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { recordStormMinute, stepOpportunityContext, stormMetrics } from "../src/sim/opportunity-context";
-import { discoverOpportunity, recordOpportunityEvent, queueOpportunityMessage, setCurrentOpportunity, type StormPlanSnapshot } from "../src/sim/opportunities";
-import { beginAgain, land } from "../src/sim/landing";
+import { discoverOpportunity, recordOpportunityEvent, setCurrentOpportunity, type StormPlanSnapshot } from "../src/sim/opportunities";
 import { newGame } from "../src/sim/newgame";
-import { baseWalkSpeed, die } from "../src/sim/player";
+import { baseWalkSpeed } from "../src/sim/player";
 import { markKnown } from "../src/sim/mapped";
 import { fearsFell } from "../src/sim/fears";
 import { cellOf, placeAt, straightKm } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { survivorRoute } from "../src/sim/routing";
 import { current } from "../src/sim/record";
-import { readSave, serialize } from "../src/sim/save";
 import { startTask, stepTask } from "../src/sim/tasks";
-import type { GameState, OpportunityKey } from "../src/sim/types";
+import type { GameState } from "../src/sim/types";
 import { atmosphereAt, skyReadDay, stepWeather } from "../src/sim/weather";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, passable, routeMinutes } from "../src/world/route";
 import { requireCamp, siteCamp } from "./siting-helpers";
 import { testAtmosphere, testRain } from "./weather-helpers";
 import { isLee } from "../src/sim/shelter";
-import { landNeighbour, regionNear, terrainCellNear, walkableNeighbour } from "./world-facts";
+import { landNeighbour, terrainCellNear, walkableNeighbour } from "./world-facts";
 
 afterEach(() => vi.restoreAllMocks());
-
-const THROUGH_SHELTER: OpportunityKey[] = [
-  "site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook",
-  "findUsefulCover", "makeUsefulShelter",
-];
-const THROUGH_CAMP_SYSTEMS: OpportunityKey[] = [
-  ...THROUGH_SHELTER, "testShelter", "snareMeal", "huntMeal", "fishMeal", "trapMeal",
-  "foodSource", "store", "fat", "firstOrder", "water", "keptDays",
-];
-
-function finish(state: GameState, ids: OpportunityKey[]): void {
-  for (const id of ids) state.opportunities.completedAt[id] = 0;
-}
-
-function activateShelterTest(state: GameState): void {
-  finish(state, THROUGH_SHELTER);
-  reveal(state, ["testShelter"]);
-}
-
-function activateWeatherReading(state: GameState): void {
-  finish(state, THROUGH_CAMP_SYSTEMS);
-  state.minute = 7 * 1440;
-  reveal(state, ["readWeather"]);
-}
-
-function activateRemoteStorm(state: GameState): void {
-  finish(state, [
-    ...THROUGH_CAMP_SYSTEMS, "readWeather", "prepareWeather", "surviveForecast", "longOrder", "toolCare",
-    "explore", "remoteRefuge", "fieldFire", "fieldMeal",
-  ]);
-  state.minute = 30 * 1440;
-  reveal(state, ["remoteStorm"]);
-}
-
-function activateRemoteRefuge(state: GameState): void {
-  finish(state, [...THROUGH_CAMP_SYSTEMS, "readWeather", "prepareWeather", "surviveForecast"]);
-  state.minute = 30 * 1440;
-  reveal(state, ["remoteRefuge"]);
-}
-
-function testStormWindow(from: number, until: number, temperatureC = 5): void {
-  const clear = testAtmosphere({ temperatureC });
-  vi.mocked(climate.sampleAtmosphere).mockImplementation((_weather, _world, minute) => minute >= from && minute < until
-    ? { ...clear, cloud: 1, precipMmPerHour: 8,
-      rainMmPerHour: temperatureC > 0 ? 8 : 0, snowCmPerHour: temperatureC <= 0 ? 8 : 0,
-      precip: temperatureC > 0 ? "rain" : "snow", windKmh: 40 }
-    : { ...clear });
-}
 
 describe("weather teaching opportunity lifecycle", () => {
   beforeEach(() => testRain(8, 5, 40));
@@ -798,30 +751,6 @@ describe("natural-first weather", () => {
 describe("Chapter 3 refuge storm evidence", () => {
   beforeEach(() => testRain(8, 5, 40));
 
-  function remoteAttempt(state: GameState, world: ReturnType<typeof newGame>["world"], stormId = 90) {
-    siteCamp(state, world);
-    activateRemoteStorm(state);
-    const home = state.player.region;
-    // A refuge region with room in it: land more than a kilometre from its own
-    // camp, so protection counted anywhere in the region is not the same thing as
-    // protection within the local radius, and open meadow to be exposed on. A
-    // region of mostly sea has neither.
-    const remote = regionAt(world, regionNear(world, home, (id) => {
-      if (id === home) return false;
-      const region = regionAt(world, id);
-      if (region.campCell === null) return false;
-      const land = region.cells.filter((cell) => passable(cellAt(world, cell).terrain));
-      return land.some((cell) => straightKm(world, region.campCell!, cell) > 1)
-        && land.some((cell) => cellAt(world, cell).terrain === "meadow" && !isLee(world, cell, atmosphereAt(state, world, cell).windBearingDeg))
-        && land.some((cell) => cellAt(world, cell).terrain === "spruce");
-    }));
-    state.opportunities.context.weather = {
-      opportunity: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
-      stormId, source: "natural", area: { region: remote.id, centre: remote.campCell!, radiusKm: 1 },
-      announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
-      atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
-    return { home, remote };
-  }
 
   it("counts adequate protection anywhere in the refuge region, beyond the local one-kilometre radius", () => {
     const { state, world } = newGame(17);
@@ -904,69 +833,6 @@ describe("Chapter 3 refuge storm evidence", () => {
     stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(91));
     expect(state.opportunities.context.weather).toMatchObject({ status: "reserved", attempts: 2, stormId: null });
     for (const id of ["remoteRefuge", "fieldFire", "fieldMeal"] as const) expect(state.opportunities.completedAt[id]).toBeDefined();
-  });
-
-  it("keeps an introduced remote-storm lesson completable by an heir before day thirty-one", () => {
-    const { state, world } = newGame(17);
-    const { remote } = remoteAttempt(state, world, 96);
-    state.weather.storm = { id: 96, source: "natural", kind: "rain", from: state.minute, until: state.minute + 60, warned: true };
-    die(state, "froze", regionAt(world, state.player.region).name);
-    beginAgain(state, world);
-    land(state, world, { first: "Ilze", last: "Berg" });
-
-    state.minute = 1440;
-    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(96));
-    expect(activeOpportunityKeys(state, calendar(state.minute, state.startDoy))).toContain("remoteStorm");
-    expect(state.opportunities.context.weather).toMatchObject({ opportunity: "remoteStorm", status: "reserved", attempts: 2 });
-
-    state.opportunities.context.weather!.status = "running";
-    state.opportunities.context.weather!.stormId = 97;
-    state.opportunities.context.weather!.area = { region: remote.id, centre: remote.campCell!, radiusKm: 1 };
-    recordOpportunityEvent(state, {
-      kind: "stormEnded", minute: state.minute + 60, stormId: 97, stormKind: "rain", survivorAlive: true,
-      minutesByProtection: [0, 0, 60, 0], atCampMinutes: 0, awayFromCampMinutes: 60, maxWetness: 10 }, world);
-    expect(state.opportunities.completedAt.remoteStorm).toBeDefined();
-  });
-
-  it("keeps the next field lesson eligible for an heir when the refuge opportunity opened before its modal", () => {
-    const { state, world } = newGame(17);
-    siteCamp(state, world);
-    activateRemoteRefuge(state);
-    const remote = landNeighbour(world, state.player.region);
-    const refuge = requireCamp(regionAt(world, remote));
-    placeAt(state, world, refuge);
-    recordOpportunityEvent(state, {
-      kind: "protectionChanged", minute: state.minute, region: remote, cell: refuge,
-      from: 1, to: 2, source: "improved" }, world);
-    expect(state.opportunities.discoveredAt.fieldFire).toBeDefined();
-    die(state, "froze", regionAt(world, remote).name);
-    beginAgain(state, world);
-    land(state, world, { first: "Ilze", last: "Berg" });
-
-    expect(activeOpportunityKeys(state, calendar(state.minute, state.startDoy))).toContain("fieldFire");
-    reveal(state, ["fieldFire"]);
-    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 1 };
-    recordOpportunityEvent(state, { kind: "fireLit", minute: state.minute, region: state.player.region, cell: cellOf(state, world), atCamp: false }, world);
-    expect(state.opportunities.completedAt.fieldFire).toBeDefined();
-  });
-
-  it("keeps the next forecast lesson eligible for an heir while its chapter opportunity remains", () => {
-    const { state, world } = newGame(17);
-    siteCamp(state, world);
-    activateWeatherReading(state);
-    finish(state, ["readWeather"]);
-    state.opportunities.context.weather = {
-      opportunity: "readWeather", status: "running", createdAt: state.minute, attempts: 1,
-      stormId: 13, source: "natural", area: null, announcedAt: state.minute, resolvedAt: null,
-      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
-      readerIndex: current(state).index, plan: null };
-    state.weather.storm = { id: 13, source: "natural", kind: "rain", from: state.minute, until: state.minute + 60, warned: true };
-    die(state, "froze", regionAt(world, state.player.region).name);
-    beginAgain(state, world);
-    land(state, world, { first: "Ilze", last: "Berg" });
-
-    expect(state.opportunities.discoveredAt.prepareWeather).toBeDefined();
-    expect(activeOpportunityKeys(state, calendar(state.minute, state.startDoy))).toContain("prepareWeather");
   });
 
   it("treats a later camp in the refuge region as beyond the original home", () => {
@@ -1111,78 +977,4 @@ describe("misses and retries", () => {
     expect(state.opportunities.completedAt).toEqual(completedBefore);
   });
 
-  it("rebases a missed attempt through begin again and retries after one heir day", () => {
-    const { state, world } = newGame(17);
-    siteCamp(state, world);
-    activateShelterTest(state);
-    state.minute = 2000;
-    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 1900, until: 2200, warned: true };
-    state.weather.nextStormId = 2;
-    state.opportunities.context.weather = {
-      opportunity: "testShelter", status: "running", createdAt: 1800, attempts: 1,
-      stormId: 1, source: "natural",
-      area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
-      announcedAt: 1840, resolvedAt: null,
-      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
-    state.opportunities.discoveredAt = { site: 0, testShelter: 0 };
-    const area = structuredClone(state.opportunities.context.weather!.area);
-    const completed = structuredClone(state.opportunities.completedAt);
-    const introduced = structuredClone(state.opportunities.discoveredAt);
-    die(state, "froze", regionAt(world, state.player.region).name);
-
-    beginAgain(state, world);
-    land(state, world, { first: "Ilze", last: "Berg" });
-
-    expect(state.minute).toBe(0);
-    expect(state.weather.storm).toBeNull();
-    expect(state.weather.stormFreeSince).toBe(0);
-    expect(state.opportunities.completedAt).toEqual(completed);
-    expect(state.opportunities.discoveredAt).toMatchObject(introduced);
-    expect(state.opportunities.context.weather).toMatchObject({
-      opportunity: "testShelter", status: "resolved", createdAt: 0, attempts: 1,
-      area, resolvedAt: 0 });
-    state.minute = 1439;
-    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(92));
-    expect(state.opportunities.context.weather?.attempts).toBe(1);
-    state.minute = 1440;
-    stepOpportunityContext(state, world, calendar(state.minute, state.startDoy), new Rng(92));
-    expect(state.opportunities.context.weather).toMatchObject({
-      opportunity: "testShelter", status: "reserved", createdAt: 1440, attempts: 2,
-      stormId: null, source: null, area });
-  });
-
-  it("normalizes a prior landing save on direct land before the heir retry day", () => {
-    const { state, world } = newGame(17);
-    siteCamp(state, world);
-    activateShelterTest(state);
-    state.minute = 2000;
-    die(state, "froze", regionAt(world, state.player.region).name);
-    beginAgain(state, world);
-    const area = { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 } as const;
-    state.opportunities.context.weather = {
-      opportunity: "testShelter", status: "resolved", createdAt: 81000, attempts: 4,
-      stormId: 8, source: "natural", area, announcedAt: 81500, resolvedAt: 82000,
-      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
-    state.weather.stormFreeSince = 82750;
-    state.opportunities.discoveredAt = { site: 0, testShelter: 0 };
-    queueOpportunityMessage(state, "The rain passed without shelter being tested. Another opportunity will come.");
-    const completed = structuredClone(state.opportunities.completedAt);
-    const introduced = structuredClone(state.opportunities.discoveredAt);
-    const notices = [...state.opportunities.notices.flatMap((notice) => notice.messages)];
-    const loaded = readSave(serialize(state))!.state;
-
-    land(loaded, world, { first: "Ilze", last: "Berg" });
-    advance(loaded, world, 1439);
-    expect(loaded.opportunities.context.weather?.attempts).toBe(4);
-    advance(loaded, world, 1);
-
-    expect(loaded.minute).toBe(1440);
-    expect(loaded.weather.stormFreeSince).toBe(0);
-    expect(loaded.opportunities.context.weather).toMatchObject({
-      opportunity: "testShelter", status: "reserved", createdAt: 1440, attempts: 5,
-      stormId: null, source: null, area });
-    expect(loaded.opportunities.completedAt).toEqual(completed);
-    expect(loaded.opportunities.discoveredAt).toMatchObject(introduced);
-    expect(loaded.opportunities.notices.flatMap((notice) => notice.messages)).toEqual(notices);
-  });
 });

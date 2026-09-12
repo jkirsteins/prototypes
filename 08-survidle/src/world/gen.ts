@@ -70,10 +70,46 @@ export function generateWorld(seed: number, solved?: SolvedWorld): World {
   return world;
 }
 
+/**
+ * Regions already read off a solved world, kept so a second `World` made from
+ * the same seed - every reload, and every game a test starts - pays a map
+ * lookup instead of a flood over the lattice square and four route searches.
+ * Keyed on the solved arrays so a hand-made fixture world, which has its own,
+ * never reads another's regions, and on the seed too because a region's name
+ * and its wildlife capacity are drawn from the seed rather than the ground.
+ */
+const builtRegions = new WeakMap<SolvedWorld, Map<string, RegionDef>>();
+
+/**
+ * Each world keeps its own region objects: the start region's camp moves to the
+ * landing, and capacity is a number the caller may set. Only `cells` is handed
+ * on as it stands - it is the one big array, and nothing writes to it.
+ */
+function ownCopy(r: RegionDef): RegionDef {
+  return {
+    ...r,
+    frac: { ...r.frac },
+    capacity: { ...r.capacity },
+    neighbours: r.neighbours.map((n) => ({ ...n })),
+    spots: r.spots.map((s) => ({ ...s })),
+  };
+}
+
 export function regionAt(world: World, id: number): RegionDef {
   let r = world.regions.get(id);
   if (!r) {
-    r = buildRegion(world, id);
+    let shared = builtRegions.get(world.solved);
+    if (!shared) {
+      shared = new Map();
+      builtRegions.set(world.solved, shared);
+    }
+    const key = `${world.seed}:${id}`;
+    const built = shared.get(key);
+    if (built) r = ownCopy(built);
+    else {
+      r = buildRegion(world, id);
+      shared.set(key, ownCopy(r));
+    }
     world.regions.set(id, r);
   }
   return r;
