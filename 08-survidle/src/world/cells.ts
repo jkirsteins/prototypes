@@ -9,7 +9,7 @@ import type { Terrain } from "../sim/types";
 import type { ParentSummary } from "./aggregate";
 import type { FineGrid } from "./fine-route";
 import { regionAtPatch } from "./fine-terrain";
-import { FINE_CHUNK, type FineRefinement, refineChunk } from "./refine";
+import { CHANNEL_RIVER, CHANNEL_STREAM, FINE_CHUNK, type FineRefinement, refineChunk } from "./refine";
 import { type PatchId, parentXY, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
 import { FLAG_FORD, FLAG_STREAM, KIND, type SolvedWorld } from "./solve";
 import { latitudeAt, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
@@ -50,6 +50,9 @@ export interface World extends FineGrid {
   /** Rings of the lattice the start search walked; 40 means the fallback anchor. */
   startRing: number;
 }
+
+/** What kind of water a patch or a cell holds. A stream exists only at the fine lattice, as a parent's flag. */
+export type WaterKind = "lake" | "sea" | "river" | "stream";
 
 export interface Cell { x: number; y: number; terrain: Terrain; region: number }
 export interface FinePatch { id: PatchId; x: number; y: number; terrain: Terrain; region: number }
@@ -204,6 +207,64 @@ export function parentIdx(world: World, patch: PatchId): number {
 export function heightAt(world: World, x: number, y: number): number {
   if (!inWorld(world, x, y)) return 0;
   return world.solved.height[parentIdx(world, patchId(x, y))];
+}
+
+/**
+ * Ground height in metres above sea level at the patch itself: the chunk's
+ * refinement of its parent's solved height, which is what a walk climbs, a
+ * ray is blocked by and a summary bounds. Outside the world is sea level.
+ */
+export function fineHeightAt(world: World, patch: PatchId): number {
+  const { x, y } = patchXY(patch);
+  if (!inWorld(world, x, y)) return 0;
+  const { chunk, i } = fineChunkFor(world, patch);
+  return chunk.fine.height[i];
+}
+
+/**
+ * The refined height where the chunk is already resident and the parent's
+ * solved height where it is not: for the map, which reads a block of ground
+ * per glyph and must not generate the world to shade one.
+ */
+export function fineHeightPeek(world: World, x: number, y: number): number {
+  if (!inWorld(world, x, y)) return 0;
+  const chunk = residentChunk(world, x, y);
+  return chunk ? chunk.fine.height[chunkIndexOf(x, y)] : heightAt(world, x, y);
+}
+
+/**
+ * The water at the patch itself: the sea and the lakes resolved at 50 m, this
+ * chunk's own ponds, and the one-patch channel of a river or a stream. Land
+ * beside a channel reads null, which is what makes a river bank ordinary
+ * ground.
+ */
+export function fineWaterAt(world: World, patch: PatchId): WaterKind | null {
+  const { x, y } = patchXY(patch);
+  if (!inWorld(world, x, y)) return "sea";
+  const { chunk, i } = fineChunkFor(world, patch);
+  const kind = chunk.fine.kind[i];
+  if (kind === KIND.sea) return "sea";
+  if (kind === KIND.lake) return "lake";
+  if (kind === KIND.river) return "river";
+  const channel = chunk.fine.channel[i];
+  if (channel === CHANNEL_RIVER) return "river";
+  if (channel === CHANNEL_STREAM) return "stream";
+  return null;
+}
+
+/**
+ * Water a survivor standing on this patch can reach: a channel under the feet
+ * counts, since a stream or a river is one patch wide and being on it is being
+ * at it, and any water on the four neighbouring patches counts as beside.
+ * `fishing` excludes a stream, which is too thin to fish.
+ */
+export function waterBesideAt(world: World, patch: PatchId, want: WaterKind | "fishing" | "any" = "any"): boolean {
+  const here = fineWaterAt(world, patch);
+  const channel = here === "stream" || here === "river" ? here : null;
+  const beside = neighbours(world, patch).map((n) => fineWaterAt(world, n));
+  if (want === "any") return channel !== null || beside.some((w) => w !== null);
+  if (want === "fishing") return channel === "river" || beside.some((w) => w !== null && w !== "stream");
+  return channel === want || beside.includes(want);
 }
 
 /** Cubic metres a second passing through the patch's parent. */

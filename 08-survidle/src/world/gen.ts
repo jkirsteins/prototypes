@@ -17,7 +17,7 @@ import { CELL_KM } from "../units";
 import { coastLineU, LATTICE, LATTICE_H, LATTICE_W, TERRAINS, WORLD_CELL_H, WORLD_CELL_W, WORLD_H, WORLD_W } from "./terrain";
 import { wildlifeCapacity } from "./wildlife";
 
-export { cellAt, cellIdx, dischargeAt, fordAt, heightAt, latitudeOfRow, moistureAt, neighbours, regionOf, regionPeek, solvedTerrainAt, streamAt, terrainOf, terrainPeek, waterKindOf, type Cell, type World } from "./cells";
+export { cellAt, cellIdx, dischargeAt, fineHeightAt, fineHeightPeek, fineWaterAt, fordAt, heightAt, latitudeOfRow, moistureAt, neighbours, regionOf, regionPeek, solvedTerrainAt, streamAt, terrainOf, terrainPeek, waterBesideAt, waterKindOf, type Cell, type WaterKind, type World } from "./cells";
 export { TERRAINS, WORLD_H, WORLD_W } from "./terrain";
 
 /** A named place to walk to: its cell and the route length from camp. */

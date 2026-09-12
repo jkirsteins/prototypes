@@ -95,7 +95,9 @@ export function frontierRoute(
   avoidFell = false,
 ): number[] | null {
   const conditions = routeConditions(state, world, ice);
-  if (isKnown(state, to) || !passable(cellAt(world, to).terrain, conditions.iceAt(to)) || conditions.blockedAt?.(to)) return null;
+  // The ford is what makes a river parent's channel crossable; without it the
+  // one step into the dark could never be the step across the water.
+  if (isKnown(state, to) || !passable(cellAt(world, to).terrain, conditions.iceAt(to), fordAt(world, to)) || conditions.blockedAt?.(to)) return null;
   const edges = neighbours(world, to).filter((cell) => isKnown(state, cell));
   let best: number[] | null = null;
   for (const edge of edges) {

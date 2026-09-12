@@ -1,7 +1,6 @@
 /** Compatibility facade over exact hierarchical fine-patch routes. */
 import type { IceMode, Terrain } from "../sim/types";
-import { fordAt, type World } from "./cells";
-import { temporaryElevationM } from "./fine-fields";
+import { fineHeightAt, fordAt, type World } from "./cells";
 import { filterReachableFineCandidates, findHierarchicalRoute, type TraversalProfile } from "./fine-route";
 import { type MetricPoint, PATCH_KM, PATCH_M, type PatchId, patchCenter, patchId, patchXY } from "./spatial";
 
@@ -79,7 +78,7 @@ function profileFor(
     elevationAt(patch) {
       let elevation = elevations.get(patch);
       if (elevation === undefined) {
-        elevation = temporaryElevationM(world, patch);
+        elevation = fineHeightAt(world, patch);
         elevations.set(patch, elevation);
       }
       return elevation;
