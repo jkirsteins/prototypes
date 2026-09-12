@@ -11,9 +11,9 @@
  * keeps these cases in the fast suite where the gate is.
  */
 import { describe, expect, it } from "vitest";
-import { DX8, DY8 } from "../src/world/hydro";
-import { FINE_CHUNK, type FineRefinement, POND_MIN_DEPTH_M, POOL_MIN_DEPTH_M, refineChunk, rimAt } from "../src/world/refine";
-import { KIND, solveWorld } from "../src/world/solve";
+import { DX8, DY8, NO_FLOW, receiverOf } from "../src/world/hydro";
+import { CHANNEL_RIVER, CHANNEL_STREAM, channelDischargeAt, FINE_CHUNK, type FineRefinement, POND_MIN_DEPTH_M, POOL_MIN_DEPTH_M, refineChunk, rimAt } from "../src/world/refine";
+import { FLAG_STREAM, KIND, solveWorld } from "../src/world/solve";
 import { FINE_PER_PARENT } from "../src/world/spatial";
 
 const W = 240;
@@ -182,5 +182,88 @@ describe("the fine chunk's shores", () => {
     }
     expect(pools).toBeGreaterThan(0);
     expect(deep).toBeGreaterThan(0);
+  });
+});
+
+/** The solved cells of the chunk the solve gave running water. */
+function flowingParents(): number[] {
+  return parentsOfChunk().filter((p) => solved.kind[p] === KIND.river || (solved.flags[p] & FLAG_STREAM) !== 0);
+}
+
+/** The parents whose channel drains into this one. */
+function upstreamOf(parent: number): number[] {
+  const px = parent % solved.w;
+  const py = (parent - px) / solved.w;
+  const out: number[] = [];
+  for (let k = 0; k < 8; k++) {
+    const qx = px + DX8[k];
+    const qy = py + DY8[k];
+    if (qx < 0 || qy < 0 || qx >= solved.w || qy >= solved.h) continue;
+    const q = qy * solved.w + qx;
+    const flowing = solved.kind[q] === KIND.river || (solved.flags[q] & FLAG_STREAM) !== 0;
+    if (flowing && solved.flowDir[q] !== NO_FLOW && receiverOf(q, solved.flowDir[q], solved.w) === parent) out.push(q);
+  }
+  return out;
+}
+
+describe("the fine chunk's channels", () => {
+  it("runs water downhill from every entry to every exit", () => {
+    expect(chunk.channels.length).toBeGreaterThan(20);
+    for (const path of chunk.channels) {
+      expect(path.patches[0]).toBe(path.entry);
+      expect(path.patches[path.patches.length - 1]).toBe(path.exit);
+      expect(path.patches.length).toBeGreaterThan(1);
+      for (let k = 1; k < path.patches.length; k++) {
+        expect(chunk.filled[path.patches[k]], `step ${k} of parent ${path.parent}`).toBeLessThan(chunk.filled[path.patches[k - 1]]);
+      }
+    }
+  });
+
+  it("gives every river and stream parent one path per entry, out of the cell and downhill", () => {
+    const byParent = new Map<number, typeof chunk.channels>();
+    for (const path of chunk.channels) byParent.set(path.parent, [...(byParent.get(path.parent) ?? []), path]);
+    let handed = 0;
+    let mouths = 0;
+    let held = 0;
+    for (const parent of flowingParents()) {
+      const paths = byParent.get(parent) ?? [];
+      const upstream = upstreamOf(parent);
+      expect(paths.length, `parent ${parent}`).toBeGreaterThan(0);
+      expect(paths.length, `parent ${parent}`).toBeLessThanOrEqual(Math.max(1, upstream.length));
+      for (const path of paths) {
+        for (const i of path.patches) expect(channelDischargeAt(chunk, solved, i)).toBe(solved.discharge[parent]);
+        expect(chunk.channel[path.entry]).toBe(solved.kind[parent] === KIND.river ? CHANNEL_RIVER : CHANNEL_STREAM);
+        const dir = solved.flowDir[parent];
+        if (path.out >= 0) {
+          // The water left on the side the solve's flow direction points at.
+          const ex = chunk.x0 + (path.exit % chunk.stride);
+          const ey = chunk.y0 + Math.floor(path.exit / chunk.stride);
+          expect(DX8[dir] > 0 ? ex % FINE_PER_PARENT === FINE_PER_PARENT - 1 : DX8[dir] < 0 ? ex % FINE_PER_PARENT === 0 : true, `exit of ${parent}`).toBe(true);
+          expect(DY8[dir] > 0 ? ey % FINE_PER_PARENT === FINE_PER_PARENT - 1 : DY8[dir] < 0 ? ey % FINE_PER_PARENT === 0 : true, `exit of ${parent}`).toBe(true);
+          handed++;
+        } else if (chunk.kind[path.exit] === KIND.lake || chunk.kind[path.exit] === KIND.sea) mouths++;
+        else held++;
+      }
+    }
+    // Every path either hands its water to the cell below, ends in water, or
+    // is held by ground the solve could not see: a hollow whose sill is too
+    // high to cut through, which the flood filled instead.
+    expect(handed + mouths).toBeGreaterThan(chunk.channels.length * 0.9);
+    expect(held).toBeLessThan(chunk.channels.length * 0.1);
+  });
+
+  it("brings each parent's water in where the parent above it took it out", () => {
+    const entries = new Map<number, number[]>();
+    for (const path of chunk.channels) entries.set(path.parent, [...(entries.get(path.parent) ?? []), path.entry]);
+    let handovers = 0;
+    for (const path of chunk.channels) {
+      if (path.out < 0) continue;
+      const below = parentOf(chunk, path.out);
+      if (!entries.has(below)) continue;
+      expect(upstreamOf(below), `parent ${below}`).toContain(path.parent);
+      expect(entries.get(below), `parent ${below} from ${path.parent}`).toContain(path.out);
+      handovers++;
+    }
+    expect(handovers).toBeGreaterThan(10);
   });
 });

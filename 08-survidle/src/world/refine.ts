@@ -12,10 +12,10 @@
  */
 import { derive } from "../rng";
 import { CELL_KM } from "../units";
-import { DX8, DY8, lakeComponents, priorityFlood } from "./hydro";
+import { DIST8, DX8, DY8, lakeComponents, NO_FLOW, priorityFlood, receiverOf } from "./hydro";
 import { valueNoiseMetres } from "./noise";
 import { FINE_PER_PARENT, PATCH_M } from "./spatial";
-import { KIND, type SolvedWorld } from "./solve";
+import { FLAG_STREAM, KIND, type SolvedWorld } from "./solve";
 import { upsampleGrid } from "./upsample";
 
 /** Patches to a side of a chunk: 16 parent cells. */
@@ -41,6 +41,33 @@ export const POOL_MIN_DEPTH_M = 0.3;
 /** A depression this deep is a pond: a water patch with its own surface, which the solve could not see at 300 m. */
 export const POND_MIN_DEPTH_M = 2;
 
+/** A channel patch of a river parent. */
+export const CHANNEL_RIVER = 1;
+/** A channel patch of a parent the solve flagged a stream. */
+export const CHANNEL_STREAM = 2;
+/** How far a channel patch is cut below the one above it where the fine surface has no way down to the exit, metres. */
+const CHANNEL_CUT_M = 0.05;
+/**
+ * How high a sill a channel cuts through on its way to the exit, metres.
+ * Above this the fine ground is holding the water back, so the channel ends
+ * in the hollow the flood found and the water leaves the cell by spilling
+ * over the rim rather than by a cut channel.
+ */
+const CHANNEL_SILL_M = 1;
+/** One channel across one parent cell: where the water comes in, where it leaves, and the patches between. */
+export interface ChannelPath {
+  /** The solved cell the channel crosses. */
+  parent: number;
+  /** The patch the water enters at, chunk-local. */
+  entry: number;
+  /** The patch it leaves the parent from, chunk-local. */
+  exit: number;
+  /** Entry to exit inclusive, chunk-local, one patch wide. */
+  patches: number[];
+  /** The patch in the cell below that the water steps into, chunk-local; -1 where it stopped in this cell or left the chunk. */
+  out: number;
+}
+
 export interface FineRefinement {
   /** The chunk's origin in patches. */
   x0: number;
@@ -62,6 +89,18 @@ export interface FineRefinement {
   depression: Int32Array;
   /** The spill height in metres of each depression, by id. */
   rims: Float32Array;
+  /** CHANNEL_RIVER or CHANNEL_STREAM on a channel patch, 0 elsewhere. */
+  channel: Uint8Array;
+  /** One path per entry, the parents in the order they were walked. */
+  channels: ChannelPath[];
+}
+
+/** The discharge a channel patch carries, cubic metres a second: the parent's, referenced rather than copied. */
+export function channelDischargeAt(chunk: FineRefinement, solved: SolvedWorld, i: number): number {
+  if (!chunk.channel[i]) return 0;
+  const x = chunk.x0 + (i % chunk.stride);
+  const y = chunk.y0 + Math.floor(i / chunk.stride);
+  return solved.discharge[Math.floor(y / FINE_PER_PARENT) * solved.w + Math.floor(x / FINE_PER_PARENT)];
 }
 
 /** The spill height of the patch's depression, or its own height outside one. */
@@ -285,6 +324,215 @@ function floodChunk(win: Window, height: Float32Array, kind: Uint8Array, surface
   return { filled, depressions: { id, rims: new Float32Array(rims) } };
 }
 
+
+/**
+ * The channels: the solve's rivers and streams walked across one parent cell
+ * at a time, in the order water reaches them, which is the order of their
+ * discharge. The water comes in where the parent above it went out, or at the
+ * middle of the shared edge when that parent is outside the chunk, and leaves
+ * on the side the solve's flow direction points at; between the two it takes
+ * the steepest way down the filled fine surface, one patch wide. Where the
+ * fine surface does not fall it is cut, by centimetres: a channel is a
+ * channel because the water got through.
+ */
+function carveChannels(solved: SolvedWorld, win: Window, cx: number, cy: number, height: Float32Array, filled: Float32Array, kind: Uint8Array, channel: Uint8Array): { paths: ChannelPath[]; stepOut: Map<number, number> } {
+  const flowing: number[] = [];
+  for (let j = 0; j < CHUNK_PARENTS; j++) {
+    for (let i = 0; i < CHUNK_PARENTS; i++) {
+      const px = cx * CHUNK_PARENTS + i;
+      const py = cy * CHUNK_PARENTS + j;
+      if (px >= solved.w || py >= solved.h) continue;
+      const parent = py * solved.w + px;
+      if (solved.kind[parent] === KIND.river || (solved.flags[parent] & FLAG_STREAM) !== 0) flowing.push(parent);
+    }
+  }
+  flowing.sort((a, b) => solved.discharge[a] - solved.discharge[b] || a - b);
+  const paths: ChannelPath[] = [];
+  /** The patch each parent's channel stepped out into, by that parent. */
+  const stepOut = new Map<number, number>();
+  for (const parent of flowing) {
+    const px = parent % solved.w;
+    const py = (parent - px) / solved.w;
+    const wx0 = (px - win.px0) * FINE_PER_PARENT;
+    const wy0 = (py - win.py0) * FINE_PER_PARENT;
+    const parentPatches: number[] = [];
+    for (let dy = 0; dy < FINE_PER_PARENT; dy++) {
+      for (let dx = 0; dx < FINE_PER_PARENT; dx++) parentPatches.push((wy0 + dy) * win.ww + wx0 + dx);
+    }
+    const dir = solved.flowDir[parent];
+    const side = dir === NO_FLOW ? [] : edgePatches(win, wx0, wy0, DX8[dir], DY8[dir]);
+    let exit = -1;
+    for (const i of side) if (exit < 0 || filled[i] < filled[exit]) exit = i;
+    const mark = solved.kind[parent] === KIND.river ? CHANNEL_RIVER : CHANNEL_STREAM;
+    for (const entry of entriesOf(solved, win, parent, stepOut, filled)) {
+      const patches = trace(win, entry, exit, parentPatches, height, filled, kind);
+      const last = patches[patches.length - 1];
+      const beyond = last === exit && dir !== NO_FLOW ? receiverOf(last, dir, win.ww) : -1;
+      const out = beyond >= 0 && beyond < win.ww * win.wh ? beyond : -1;
+      for (const i of patches) {
+        channel[i] = mark;
+        if (mark === CHANNEL_RIVER && kind[i] === KIND.land) kind[i] = KIND.river;
+      }
+      paths.push({ parent, entry, exit: patches[patches.length - 1], patches, out });
+      // The water arrives in the parent below at the patch it stepped into.
+      if (out >= 0) stepOut.set(parent, out);
+    }
+  }
+  return { paths, stepOut };
+}
+
+/** The solved cell a window patch belongs to. */
+function parentOfWindowPatch(solved: SolvedWorld, win: Window, i: number): number {
+  const x = i % win.ww;
+  const y = (i - x) / win.ww;
+  return (win.py0 + Math.floor(y / FINE_PER_PARENT)) * solved.w + win.px0 + Math.floor(x / FINE_PER_PARENT);
+}
+
+/** The parent's patches along the side facing (dx, dy): six along an edge, one at a corner. */
+function edgePatches(win: Window, wx0: number, wy0: number, dx: number, dy: number): number[] {
+  const out: number[] = [];
+  if (dx !== 0 && dy !== 0) {
+    out.push((wy0 + (dy > 0 ? FINE_PER_PARENT - 1 : 0)) * win.ww + wx0 + (dx > 0 ? FINE_PER_PARENT - 1 : 0));
+  } else if (dx !== 0) {
+    const x = wx0 + (dx > 0 ? FINE_PER_PARENT - 1 : 0);
+    for (let k = 0; k < FINE_PER_PARENT; k++) out.push((wy0 + k) * win.ww + x);
+  } else {
+    const y = wy0 + (dy > 0 ? FINE_PER_PARENT - 1 : 0);
+    for (let k = 0; k < FINE_PER_PARENT; k++) out.push(y * win.ww + wx0 + k);
+  }
+  return out;
+}
+
+/**
+ * Where a parent's channel starts: one entry per parent above it, each the
+ * patch that parent's channel stepped into, or the middle of the shared edge
+ * when it lies outside the chunk. A parent with nothing above it starts at
+ * its highest patch, where the water first gathers.
+ */
+function entriesOf(solved: SolvedWorld, win: Window, parent: number, stepOut: Map<number, number>, filled: Float32Array): number[] {
+  const px = parent % solved.w;
+  const py = (parent - px) / solved.w;
+  const wx0 = (px - win.px0) * FINE_PER_PARENT;
+  const wy0 = (py - win.py0) * FINE_PER_PARENT;
+  const out: number[] = [];
+  for (let k = 0; k < 8; k++) {
+    const qx = px + DX8[k];
+    const qy = py + DY8[k];
+    if (qx < 0 || qy < 0 || qx >= solved.w || qy >= solved.h) continue;
+    const q = qy * solved.w + qx;
+    const flowing = solved.kind[q] === KIND.river || (solved.flags[q] & FLAG_STREAM) !== 0;
+    if (!flowing || solved.flowDir[q] === NO_FLOW || receiverOf(q, solved.flowDir[q], solved.w) !== parent) continue;
+    const passed = stepOut.get(q);
+    const side = edgePatches(win, wx0, wy0, DX8[k], DY8[k]);
+    const entry = passed !== undefined && parentOfWindowPatch(solved, win, passed) === parent ? passed : side[Math.floor((side.length - 1) / 2)];
+    if (!out.includes(entry)) out.push(entry);
+  }
+  if (out.length > 0) return out;
+  let head = wy0 * win.ww + wx0;
+  for (let dy = 0; dy < FINE_PER_PARENT; dy++) {
+    for (let dx = 0; dx < FINE_PER_PARENT; dx++) {
+      const i = (wy0 + dy) * win.ww + wx0 + dx;
+      if (filled[i] > filled[head]) head = i;
+    }
+  }
+  return [head];
+}
+
+/**
+ * From the entry down: the steepest step among the eight neighbours that
+ * stays inside the parent or lands on the exit patch. The solve decided
+ * which side the water leaves by, so where the fine surface has no way down
+ * to that side the rest of the route is the one over the lowest sill, cut by
+ * centimetres to keep the water running downhill: a channel is a channel
+ * because the water got through.
+ */
+function trace(win: Window, entry: number, exit: number, parentPatches: number[], height: Float32Array, filled: Float32Array, kind: Uint8Array): number[] {
+  const patches = [entry];
+  const seen = new Set<number>([entry]);
+  let cur = entry;
+  const reachable = (i: number) => i === exit || parentPatches.includes(i);
+  for (let step = 0; step < FINE_PER_PARENT * FINE_PER_PARENT * 2; step++) {
+    if (cur === exit || (kind[cur] !== KIND.land && cur !== entry)) return patches;
+    let best = -1;
+    let bestSlope = 0;
+    const cx = cur % win.ww;
+    const cy = (cur - cx) / win.ww;
+    for (let k = 0; k < 8; k++) {
+      const nx = cx + DX8[k];
+      const ny = cy + DY8[k];
+      if (nx < 0 || ny < 0 || nx >= win.ww || ny >= win.wh) continue;
+      const nb = ny * win.ww + nx;
+      if (seen.has(nb) || !reachable(nb)) continue;
+      const slope = (filled[cur] - filled[nb]) / DIST8[k];
+      if (slope > bestSlope) {
+        bestSlope = slope;
+        best = nb;
+      }
+    }
+    if (best < 0) break;
+    seen.add(best);
+    patches.push(best);
+    cur = best;
+  }
+  if (cur === exit || exit < 0) return patches;
+  for (const next of overTheSill(win, cur, exit, parentPatches, seen, filled)) {
+    const cut = filled[cur] - CHANNEL_CUT_M;
+    if (filled[next] > cut) filled[next] = cut;
+    if (height[next] > filled[next]) height[next] = filled[next];
+    patches.push(next);
+    seen.add(next);
+    cur = next;
+  }
+  return patches;
+}
+
+/**
+ * The rest of the way to the exit over the lowest sill: the route whose
+ * highest patch is as low as it can be, which is the route the water finds
+ * when the cell holds it back. Label-correcting over the parent's 36
+ * patches, so the cost is nothing.
+ */
+function overTheSill(win: Window, from: number, exit: number, parentPatches: number[], seen: Set<number>, filled: Float32Array): number[] {
+  const open = parentPatches.filter((i) => !seen.has(i));
+  if (!open.includes(exit)) open.push(exit);
+  const cost = new Map<number, number>([[from, filled[from]]]);
+  const prev = new Map<number, number>();
+  for (let pass = 0; pass < open.length + 1; pass++) {
+    let changed = false;
+    for (const i of [from, ...open]) {
+      const here = cost.get(i);
+      if (here === undefined) continue;
+      const ix = i % win.ww;
+      const iy = (i - ix) / win.ww;
+      for (let k = 0; k < 8; k++) {
+        const nx = ix + DX8[k];
+        const ny = iy + DY8[k];
+        if (nx < 0 || ny < 0 || nx >= win.ww || ny >= win.wh) continue;
+        const nb = ny * win.ww + nx;
+        if (!open.includes(nb)) continue;
+        const through = filled[nb] > here ? filled[nb] : here;
+        const known = cost.get(nb);
+        if (known !== undefined && known <= through) continue;
+        cost.set(nb, through);
+        prev.set(nb, i);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  const sill = cost.get(exit);
+  if (sill === undefined || sill - filled[from] > CHANNEL_SILL_M) return [];
+  const back: number[] = [];
+  let cur = exit;
+  while (cur !== from) {
+    back.push(cur);
+    const up = prev.get(cur);
+    if (up === undefined) return [];
+    cur = up;
+  }
+  return back.reverse();
+}
+
 /** The chunk's 96 by 96 patch out of a window array. */
 function cutOut<T extends { [index: number]: number; length: number }>(out: T, source: T, win: Window, x0: number, y0: number, w: number, h: number): T {
   for (let y = 0; y < h; y++) {
@@ -305,6 +553,14 @@ export function refineChunk(seed: number, solved: SolvedWorld, cx: number, cy: n
   const height = fineHeights(seed, solved, win);
   const { kind, surface } = waterKinds(solved, win, height);
   const { filled, depressions } = floodChunk(win, height, kind, surface);
+  const channel = new Uint8Array(win.ww * win.wh);
+  const { paths } = carveChannels(solved, win, cx, cy, height, filled, kind, channel);
+  const local = (i: number) => {
+    const x = i % win.ww;
+    const lx = win.fx0 + x - x0;
+    const ly = win.fy0 + (i - x) / win.ww - y0;
+    return lx < 0 || ly < 0 || lx >= w || ly >= h ? -1 : ly * FINE_CHUNK + lx;
+  };
   return {
     x0, y0, w, h,
     stride: FINE_CHUNK,
@@ -314,5 +570,13 @@ export function refineChunk(seed: number, solved: SolvedWorld, cx: number, cy: n
     surface: cutOut(new Float32Array(PATCHES), surface, win, x0, y0, w, h),
     depression: cutOut(new Int32Array(PATCHES).fill(-1), depressions.id, win, x0, y0, w, h),
     rims: depressions.rims,
+    channel: cutOut(new Uint8Array(PATCHES), channel, win, x0, y0, w, h),
+    channels: paths.map((path) => ({
+      parent: path.parent,
+      entry: local(path.entry),
+      exit: local(path.exit),
+      patches: path.patches.map(local),
+      out: path.out < 0 ? -1 : local(path.out),
+    })),
   };
 }
