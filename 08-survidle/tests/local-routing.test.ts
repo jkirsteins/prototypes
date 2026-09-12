@@ -11,6 +11,12 @@ import { cellAt, FINE_CHUNK } from "../src/world/cells";
 import { regionAt } from "../src/world/gen";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 
+/**
+ * A walk that only frozen water carries: the home region and one neighbour are
+ * mapped and both bear ice, and the target is water out from the neighbour's bank,
+ * which a thaw there takes away. Which neighbour and which cell is the world's
+ * business, so `iceCrossing` finds them by that rule.
+ */
 function crossing() {
   const g = newGame(42);
   const home = g.state.player.region;

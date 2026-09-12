@@ -11,7 +11,7 @@
  * has any business redrawing: a raw float where the reader is shown a whole
  * number, a share that climbs with every minute of work. Such a value does
  * not belong in the markup. It belongs on an element with a name, written
- * each frame by src/ui/bars.ts, which is what the body's bars, the hurry
+ * on each render by src/ui/bars.ts, which is what the body's bars, the hurry
  * pulse, the wear bars and the Do rows' mastery all do.
  *
  * This ran red when it was written: the gear panel redrew on 300 frames of
@@ -57,13 +57,17 @@ const MINUTES_PER_FRAME = (GAME_MINUTES_PER_REAL_SECOND * PEAK) / FPS;
  * covers those. A panel that wants more is showing something that moves per
  * frame, and that something belongs in a named fill written by bars.ts.
  *
- * Measured at the time of writing: clock 31, skills 31 while working, and 0
- * to 2 for every other panel.
+ * Three panels read the weather rather than the clock, and the weather is
+ * sampled per game minute: the stats panel's temperature, the gear panel's
+ * felt warmth and garment wetness, and the map's sky over the cells in view.
+ * A shower crossing the landing really does change all three several times in
+ * half an hour, so their claim is MINUTE too; a value that moved per frame
+ * would still read 300 of 300 against it.
  */
 const MINUTE = 35;
 const BUDGET: Record<string, number> = {
   stats: MINUTE,
-  gear: 2,
+  gear: MINUTE,
   skills: MINUTE,
   weather: MINUTE,
   camp: 5,
@@ -74,7 +78,7 @@ const BUDGET: Record<string, number> = {
   inventory: 5,
   journal: 5,
   log: 5,
-  map: 5,
+  map: MINUTE,
 };
 
 function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]): Record<string, string> {

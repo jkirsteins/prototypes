@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { worldCacheStats } from "../src/world/aggregate";
-import { cellAt, cellIdx, newWorld, neighbours, regionOf, regionPeek, terrainOf, terrainPeek, patchAt } from "../src/world/cells";
+import { cellAt, cellIdx, neighbours, regionOf, regionPeek, terrainOf, terrainPeek, patchAt } from "../src/world/cells";
 import { regionAtPatch, terrainAtPatch } from "../src/world/fine-terrain";
 import { latticeOf, regionAt } from "../src/world/gen";
 import { PATCH_KM, patchId } from "../src/world/spatial";
 import { LATTICE } from "../src/world/terrain";
 import { rangeNoise } from "../src/world/wildlife";
+import { solvedWorld } from "./world-fixture";
 
 describe("fine world and regions", () => {
   it("keeps wildlife range geography at its 25.2 km wavelength", () => {
@@ -14,7 +15,7 @@ describe("fine world and regions", () => {
   });
 
   it("does not invent a camp or named spot in an all-water region", () => {
-    const world = newWorld(21);
+    const world = solvedWorld(21);
     const region = regionAt(world, regionAtPatch(21, patchId(0, 0)));
     expect(region.landCells).toBe(0);
     expect(region.campCell).toBeNull();
@@ -22,7 +23,7 @@ describe("fine world and regions", () => {
   });
 
   it("uses one fine identity across cells, peeks and generated patches", () => {
-    const world = newWorld(21);
+    const world = solvedWorld(21);
     const id = patchId(6411, 1875);
     expect(cellIdx(world, 6411, 1875)).toBe(id);
     expect(terrainPeek(world, 6411, 1875)).toBe(terrainAtPatch(21, id));
@@ -36,7 +37,7 @@ describe("fine world and regions", () => {
   });
 
   it("constructs the exact region once inside its physical search square", () => {
-    const world = newWorld(21);
+    const world = solvedWorld(21);
     const id = regionAtPatch(21, patchId(6411, 1875));
     const { lx, ly } = latticeOf(id);
     expect(LATTICE * PATCH_KM).toBeCloseTo(4.2, 8);

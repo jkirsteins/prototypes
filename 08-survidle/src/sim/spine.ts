@@ -1,6 +1,6 @@
 /**
  * The season spine: eight thresholds a year the journal is written
- * against and the goals list will key to. Each has a detector on the
+ * against and the opportunities list will key to. Each has a detector on the
  * world, an expected day from the curve, a line a week ahead and a line
  * when it arrives. Runs daily, alive or not; with nobody home it only
  * keeps the memory current, so the heir's year starts right.

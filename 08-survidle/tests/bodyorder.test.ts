@@ -14,9 +14,10 @@ import { regionState } from "../src/sim/regionstate";
 import { siteCamp } from "./siting-helpers";
 import { Rng } from "../src/rng";
 import { hurryKind } from "../src/ui/hurry";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { testAtmosphere, testRain } from "./weather-helpers";
 import { cellAt, regionAt } from "../src/world/gen";
+import { dryForestNear, terrainCellNear } from "./world-facts";
 import { runOrders } from "../src/sim/orders";
 import { stepTask } from "../src/sim/tasks";
 
@@ -63,7 +64,7 @@ describe("the body row", () => {
     for (const st of Object.values(raw.state.regions) as Record<string, unknown>[]) {
       st.orders = [];
     }
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     const list = ordersHere(file.state, world);
     expect(isCampRow(list[0])).toBe(true);
     expect(isBodyRow(list[1])).toBe(true);
@@ -75,7 +76,7 @@ describe("the body row", () => {
     for (const st of Object.values(raw.state.regions) as { orders: { kind: string }[] }[]) {
       st.orders = st.orders.filter((o: { kind: string }) => o.kind !== "camp");
     }
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     const list = ordersHere(file.state, world);
     expect(list.map((o) => o.kind)).toEqual(["camp", "body"]);
   });
@@ -130,18 +131,18 @@ describe("the body row", () => {
     expect(qty(pile(state, st.campCell!), "firewood")).toBe(5);
   });
 
-  it("a dry read never lays the body down: the sleep latch is the serving read's to move", () => {
+  it("a dry read never records collapse: the serving read owns physical recovery memory", () => {
     const { state, world } = newGame(3);
     const p = state.player;
     expect(p.sleeping).toBeNull();
-    // Under the collapse line, which is the one sleep clause no clock and no
-    // stickiness has a say in: the next serving read puts this body down.
+    // Under the collapse line, the next serving read records forced Rest.
     p.energy = SLEEP_AT;
     for (let i = 0; i < 20; i++) expect(judgeBodyRow(state, world, cal, new Rng(1)).v).not.toBe("met");
+    expect(p.collapsed).toBe(false);
+    // The minute, and only the minute, records it without starting sleep.
+    expect(currentNeed(state, world, cal)).toBe("spent");
+    expect(p.collapsed).toBe(true);
     expect(p.sleeping).toBeNull();
-    // The minute, and only the minute, moves it.
-    expect(currentNeed(state, world, cal)).toBe("sleep");
-    expect(p.sleeping).toEqual({ collapsed: true });
   });
 
   it("a dry read never writes bodyNeed: the one minute a finished sleep or rest opens for the scheduler stays open", () => {
@@ -212,7 +213,7 @@ describe("the body row takes its turn by rank", () => {
   it("sets storm shelter work aside at storm end so ready work resumes with cover progress kept", () => {
     testRain(8, 5, 40);
     const { state, world } = newGame(17);
-    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
+    const cell = terrainCellNear(world, state.player.region, "meadow").cell;
     placeAt(state, world, cell);
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 0, until: 10, warned: true };
     const work = addOrder(state, world, { task: "readSky", where: "nearest", until: { kind: "once" }, deliver: "leave" }, "job");
@@ -236,7 +237,7 @@ describe("the body row takes its turn by rank", () => {
 
   it("claims a matching shelter task from lower-ranked work under the body row's name", () => {
     const { state, world } = newGame(17);
-    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "spruce")!;
+    const cell = terrainCellNear(world, state.player.region, "spruce").cell;
     placeAt(state, world, cell);
     const work = addOrder(state, world, { task: "findShelter", where: { cell }, until: { kind: "once" }, deliver: "leave" }, "job");
     runOrders(state, world, cal, new Rng(1));
@@ -252,7 +253,7 @@ describe("the body row takes its turn by rank", () => {
 
   it("sets aside its own emergency build at weatherproof while keeping site progress", () => {
     const { state, world } = newGame(17);
-    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
+    const cell = terrainCellNear(world, state.player.region, "meadow").cell;
     placeAt(state, world, cell);
     state.weather.precip = "none";
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
@@ -274,7 +275,7 @@ describe("the body row takes its turn by rank", () => {
 
   it("leaves higher-ranked work running, then owns every storm step and resumes set-aside work", () => {
     const { state, world } = newGame(17);
-    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "spruce")!;
+    const cell = terrainCellNear(world, state.player.region, "spruce").cell;
     placeAt(state, world, cell);
     state.weather.precip = "none";
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
@@ -332,7 +333,8 @@ describe("the body row takes its turn by rank", () => {
     state.player.energy = SLEEP_AT;
     advance(state, world, 1);
 
-    expect(state.player.sleeping).toEqual({ collapsed: true });
+    expect(state.player.collapsed).toBe(true);
+    expect(state.player.sleeping).toBeNull();
     expect(state.intent?.orderId).not.toBe(grind.id);
     expect(state.task?.id).not.toBe("sticks");
   });
@@ -359,6 +361,8 @@ describe("the body row takes its turn by rank", () => {
 
   it("above the work, it takes the minute mid-chunk and the work keeps its minutes", () => {
     const { state, world } = newGame(3);
+    // Forest away from any water, so the drink really is a trip.
+    placeAt(state, world, dryForestNear(world, state.player.region).cell);
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     advance(state, world, 30);
     expect(state.intent?.orderId).toBe(grind.id);
@@ -392,9 +396,16 @@ describe("the camp row and a chunk in hand", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
-    advance(state, world, 60);
-    expect(state.intent?.orderId).toBe(grind.id);
-    expect(state.task).not.toBeNull();
+    // A chunk genuinely mid-flight: how long the walk out takes is the ground's
+    // business, and a catch that appears on a chunk boundary would be a
+    // different case, so the case runs on until the work is really in hand.
+    let inHand = false;
+    for (let i = 0; i < 600 && !inHand; i++) {
+      advance(state, world, 1);
+      const task = state.task;
+      inHand = state.intent?.orderId === grind.id && task?.id === "sticks" && task.progress > 0 && task.progress < task.duration - 2;
+    }
+    expect(inHand).toBe(true);
     // A catch hanging in the snares, which is the camp's other want: it asks
     // for his feet, so it is work like any other and takes its turn.
     st.snareCatch = { count: 1, age: 0 };

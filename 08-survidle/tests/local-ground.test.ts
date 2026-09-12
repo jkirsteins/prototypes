@@ -6,7 +6,7 @@ import { conditionsAt, dryGroundAt, ensureGround, groundAt } from "../src/sim/we
 import { rebaseWeather } from "../src/sim/weather";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
-import { migrate, serialize, deserialize } from "../src/sim/save";
+import { migrate, serialize, readSave } from "../src/sim/save";
 import { cellOf } from "../src/sim/position";
 import { cellAt, regionAt, type World } from "../src/world/gen";
 import { markKnown } from "../src/sim/mapped";
@@ -497,7 +497,7 @@ describe("persistent regional weather", () => {
       expect(state.weather.ground[id].surfaceWaterMm).toBeGreaterThan(0);
     }
     state.weather.ground[other].snowCm = 29;
-    expect(deserialize(serialize(state))!.state.weather.ground[other].snowCm).toBe(29);
+    expect(readSave(serialize(state))!.state.weather.ground[other].snowCm).toBe(29);
     expect(state.rng).toBe(rng);
   });
 });

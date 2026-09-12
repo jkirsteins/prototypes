@@ -5,7 +5,7 @@ import { setWildlifeEventSink } from "../src/sim/wildlife-events";
 import type { WildlifeStartleEvent } from "../src/sim/wildlife-encounter";
 import { cellAt, neighbours } from "../src/world/gen";
 import { passable } from "../src/world/route";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 
 afterEach(() => { setWildlifeEventSink(null); vi.restoreAllMocks(); });
 
@@ -48,7 +48,7 @@ describe("reproducible startle playtests", () => {
       }
       // Re-evaluation and saved escape both keep the episode silent.
       stepStartleScenario(scene, scenario!, true);
-      const loaded = deserialize(serialize(scene.state, 0))!.state;
+      const loaded = readSave(serialize(scene.state, 0))!.state;
       stepStartleScenario({ state: loaded, world: scene.world }, scenario!, true);
       expect(events).toHaveLength(1);
     }

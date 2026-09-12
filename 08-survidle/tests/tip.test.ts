@@ -21,13 +21,14 @@ import { createCarcass, stepCarcasses } from "../src/sim/hunting";
 import { metricPointForPlayer } from "../src/sim/wildlife-space";
 import { seeFrom } from "../src/sim/sight";
 import { siteCamp } from "./siting-helpers";
+import { leeCellNear, terrainCellNear } from "./world-facts";
 import { campCellOf, cellOf, placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { levelAt, mapTargetAtClient, mapTargetAtPoint, viewOrigin } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { mapInventoryHtml, tipHtml, tipKey } from "../src/ui/tip";
 import { cellAt, regionAt } from "../src/world/gen";
-import { ensureGround } from "../src/sim/weather";
+import { atmosphereAt, ensureGround } from "../src/sim/weather";
 import { testAtmosphere } from "./weather-helpers";
 
 /** The point at the middle of the glyph holding this cell, in the board's own pixels. */
@@ -215,10 +216,10 @@ describe("what the tooltip says", () => {
 
   it("names terrain lee and usable profile, refreshing when a low alternative appears at the same protection", () => {
     const { state, world } = newGame(17);
-    // Spruce canopy is lee whatever the ground does; rock never is.
-    const cells = regionAt(world, world.start).cells;
-    const lee = cells.find((cell) => cellAt(world, cell).terrain === "spruce")!;
-    const exposed = cells.find((cell) => cellAt(world, cell).terrain === "rock")!;
+    // Spruce is lee whatever the ground does; meadow with nothing upwind is not.
+    const lee = terrainCellNear(world, world.start, "spruce").cell;
+    const wind = atmosphereAt(state, world, world.start).windBearingDeg;
+    const exposed = leeCellNear(world, world.start, "meadow", wind, false);
     placeAt(state, world, lee);
     markKnown(state, lee);
     const cal = calendar(0);
@@ -226,13 +227,13 @@ describe("what the tooltip says", () => {
     site.emergencyMinutes = 90;
     const key = tipKey(state, world, lee);
     expect(tipHtml(state, world, cal, lee)).toContain("high profile");
-    expect(tipHtml(state, world, cal, lee)).toContain("lee ground");
+    expect(tipHtml(state, world, cal, lee)).toContain("sheltered from the wind, under the spruce");
     site.cover = 2;
     expect(tipKey(state, world, lee)).not.toBe(key);
     expect(tipHtml(state, world, cal, lee)).toContain("low profile");
     placeAt(state, world, exposed);
     markKnown(state, exposed);
-    expect(tipHtml(state, world, cal, exposed)).toContain("exposed to wind");
+    expect(tipHtml(state, world, cal, exposed)).toContain("open to the wind from the");
   });
 
   it("does not reveal an unearned gale through tooltip text or its cache key", () => {
@@ -359,10 +360,10 @@ describe("the map inventory", () => {
 
     const resting = read(mapInventoryHtml(state, world, null));
     expect(resting).toContain("Camp: 20 kg firewood");
-    expect(resting).toContain("Carried: 4 sticks");
+    expect(resting).toContain("Carried: iron axe, 4 sticks");
     const hovered = read(mapInventoryHtml(state, world, highlighted));
     expect(hovered).toContain("Camp: 20 kg firewood");
-    expect(hovered).toContain("Carried: 4 sticks");
+    expect(hovered).toContain("Carried: iron axe, 4 sticks");
     expect(hovered).toContain("Highlighted: 2 logs");
   });
 
@@ -386,6 +387,7 @@ describe("the map inventory", () => {
     const empty = regionAt(world, state.player.region).cells.find((cell) => cell !== camp)!;
     markKnown(state, empty);
     state.player.pack = emptyInventory();
+    state.player.tools = [];
 
     expect(mapInventoryHtml(state, world, camp)).toBe("");
     expect(mapInventoryHtml(state, world, empty)).toBe("");

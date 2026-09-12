@@ -10,7 +10,7 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder, keepTarget } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { beginTask, check } from "../src/sim/tasks";
 import { siteCamp } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
@@ -89,6 +89,7 @@ describe("tools as items", () => {
     expect(beginTask(state, world, cal, "craft", "knife")).toBe(true);
     advance(state, world, 60);
     expect(hasTool(p, "knife")).toBe(true);
+    expect(state.opportunities.completedAt["make:knife"]).toBeDefined();
     expect(qty(p.pack, "knife")).toBe(0);
     addItem(p.pack, "stone", 2);
     addItem(p.pack, "stick", 1);
@@ -111,8 +112,8 @@ describe("tools as items", () => {
     const raw = JSON.parse(serialize(state));
     expect(raw.version).toBe(SAVE_VERSION);
     expect(raw.worldVersion).toBe(WORLD_VERSION);
-    expect(deserialize(JSON.stringify(raw))).not.toBeNull();
+    expect(readSave(JSON.stringify(raw))).not.toBeNull();
     raw.version = SAVE_VERSION - 1;
-    expect(deserialize(JSON.stringify(raw))).toBeNull();
+    expect(readSave(JSON.stringify(raw))).toBeNull();
   });
 });

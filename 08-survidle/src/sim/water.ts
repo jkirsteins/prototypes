@@ -6,7 +6,7 @@ import { localWeather } from "./weather";
  */
 import type { World } from "../world/gen";
 import { gutOverloaded } from "./gut";
-import { goalDeed } from "./goals";
+import { recordOpportunityEvent } from "./opportunities";
 import { addItem, carried, pile, qty, removeItem, takeUp } from "./inventory";
 import { body } from "./person";
 import { TOOLS, WATER_STORE_L } from "./items";
@@ -211,7 +211,7 @@ export function drink(state: GameState, world: World): boolean {
   }
   if (want === WATER_FULL - p.water) return false;
   p.water = WATER_FULL - want;
-  goalDeed(state, { kind: "drank" });
+  recordOpportunityEvent(state, { kind: "drank" });
   return true;
 }
 
@@ -234,9 +234,3 @@ export function fillVessels(state: GameState, world: World): number {
   return added;
 }
 
-/** Drinks at the thirsty line when a vessel or the shore allows, like auto-eat. */
-export function autoDrink(state: GameState, world: World): void {
-  const p = state.player;
-  if (p.water >= THIRSTY_L) return;
-  drink(state, world);
-}

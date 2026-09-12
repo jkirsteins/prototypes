@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { newGame } from "../src/sim/newgame";
-import { awaySeconds, catchUp, deserialize, serialize } from "../src/sim/save";
+import { awaySeconds, catchUp, readSave, serialize } from "../src/sim/save";
 import { mountAwayDial } from "../src/ui/dial";
 import { AWAY_HOURS_DEFAULT, AWAY_HOURS_MAX, GAME_MINUTES_PER_REAL_SECOND } from "../src/units";
 import { kitOut, REFERENCE_ORDERS } from "../src/sim/reference";
@@ -17,7 +17,7 @@ describe("the away dial", () => {
     expect(state.awayHours).toBe(8);
     const raw = JSON.parse(serialize(state));
     delete raw.state.awayHours;
-    expect(deserialize(JSON.stringify(raw))!.state.awayHours).toBe(8);
+    expect(readSave(JSON.stringify(raw))!.state.awayHours).toBe(8);
   });
 
   it("awaySeconds is the dial in seconds", () => {

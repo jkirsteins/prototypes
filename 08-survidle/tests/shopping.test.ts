@@ -3,7 +3,7 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, pile } from "../src/sim/inventory";
 import { advance } from "../src/sim/advance";
 import { newGame } from "../src/sim/newgame";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { clearShopping, shoppingList, shoppingSourceSpots, shoppingTarget, trackShopping } from "../src/sim/shopping";
 import { heathCell, placeAt } from "../src/sim/position";
 import { beginTask } from "../src/sim/tasks";
@@ -12,6 +12,7 @@ import { placesHtml } from "../src/ui/panels";
 import { shoppingSource } from "../src/sim/shopping";
 import { siteCamp } from "./siting-helpers";
 import { regionAt } from "../src/world/gen";
+import { regionWithSpots } from "./world-facts";
 
 describe("the tracked shopping target", () => {
   it("starts empty and an older save gains the same empty target", () => {
@@ -20,7 +21,7 @@ describe("the tracked shopping target", () => {
 
     const raw = JSON.parse(serialize(state)) as { state: Record<string, unknown> };
     delete raw.state.shopping;
-    const loaded = deserialize(JSON.stringify(raw));
+    const loaded = readSave(JSON.stringify(raw));
     expect(loaded).not.toBeNull();
     expect((loaded!.state as unknown as { shopping?: unknown }).shopping).toBeNull();
   });
@@ -146,6 +147,9 @@ describe("the tracked shopping target", () => {
 
   it("marks a known place when it can answer a current shortage", () => {
     const { state, world } = newGame(3);
+    // A region given both an outcrop and a forest: the stone and the stick a
+    // knife wants are each answered by a named place only where there is one.
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["outcrop", "forest"])).campCell);
     state.shopping = shoppingTarget("craft", "knife");
     const html = placesHtml(state, world, calendar(state.minute, state.startDoy));
     expect(html).toMatch(/outcrop[\s\S]*stone for stone knife/);

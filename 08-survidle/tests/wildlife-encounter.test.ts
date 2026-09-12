@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
-  DISTURBANCE_PROFILES, evaluateUngulateEncounter, escapeDistanceM, neutralMovementProfile, startleLogText,
+  DISTURBANCE_PROFILES, evaluateUngulateEncounter, escapeDistanceM, neutralMovementProfile, speciesRevealedByPerception, startleLogText,
   type UngulateEncounterInput, type StartlePerception,
 } from "../src/sim/wildlife-encounter";
 
@@ -133,7 +133,9 @@ describe("departure disclosure", () => {
     { recognized: false, speciesKnown: false, distance: 40, kind: "ungulate" },
     { recognized: true, speciesKnown: true, distance: 130, kind: "unknown" },
   ])("sight discloses only legible detail: %j", ({ distance, kind, ...knowledge }) => {
-    expect(evaluateUngulateEncounter({ ...fixture, ...knowledge, geometry: { ...fixture.geometry, distanceM: distance } }).perception).toEqual({ kind: "seen", identification: kind });
+    const result = evaluateUngulateEncounter({ ...fixture, ...knowledge, geometry: { ...fixture.geometry, distanceM: distance } });
+    expect(result.perception).toEqual({ kind: "seen", identification: kind });
+    expect(speciesRevealedByPerception(result.perception, "deer")).toBe(kind === "subject" || kind === "species" ? "deer" : null);
   });
 
   it.each([
@@ -144,6 +146,7 @@ describe("departure disclosure", () => {
     const result = evaluateUngulateEncounter({ ...fixture, ...knowledge, recognized: true, sightRoll: 1, geometry: { ...fixture.geometry, distanceM: distance } });
     expect(result.perception).toMatchObject({ kind: "heard", identification: kind });
     expect(result.perception).toHaveProperty("uncertaintyM");
+    expect(speciesRevealedByPerception(result.perception, "deer")).toBeNull();
   });
 
   it("Hunting cannot make a masked departure audible", () => {

@@ -18,6 +18,7 @@ import { ensureGround } from "../src/sim/weather";
 import { inventoryHtml } from "../src/ui/panels";
 import { siteCamp } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
+import { dryForestNear } from "./world-facts";
 
 const cal = calendar(0);
 afterEach(() => vi.restoreAllMocks());
@@ -109,7 +110,7 @@ describe("water", () => {
     // means once the body drinks whatever is within reach; the meat in the
     // pack is what keeps starvation out of the race.
     regionState(state, world, state.player.region).orders.length = 0;
-    placeAtSpot(state, world, state.player.region, "forest");
+    placeAt(state, world, dryForestNear(world, state.player.region).cell);
     state.player.pack.items.driedMeat = 5;
     advance(state, world, 1440 * 4);
     expect(state.dead?.cause).toBe("thirst");
@@ -224,6 +225,9 @@ describe("water at camp", () => {
   });
 
   it("camp water freezes without a fire under -5 C and thaws by a fed fire", () => {
+    // freezeCamps reads the local air at the camp cell, not the ambient it is
+    // handed, so the cold goes in at the sampling boundary.
+    testAtmosphere({ temperatureC: -8 });
     const { state, world, st, camp } = atCamp();
     // Under half the capacity, so no bucket rolls a split and the numbers are exact.
     addItem(camp, "barkBucket", 2);
@@ -243,6 +247,7 @@ describe("water at camp", () => {
   });
 
   it("a bucket at camp over half full may split in the freeze, same as a carried one", () => {
+    testAtmosphere({ temperatureC: -8 });
     const { state, world, camp } = atCamp();
     addItem(camp, "barkBucket", 1);
     addItem(camp, "water", 3);

@@ -1,3 +1,4 @@
+import { reveal } from "./opportunity-helpers";
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
@@ -7,7 +8,7 @@ import { newGame, newPerson } from "../src/sim/newgame";
 import { orderGate } from "../src/sim/ladder";
 import { addOrder, orderMet, ordersHere, runOrders } from "../src/sim/orders";
 import { current, record } from "../src/sim/record";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { levelMinutes, masteryKey, skillOf } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { TASK_IDS } from "../src/sim/types";
@@ -19,13 +20,11 @@ import { patchCenter } from "../src/world/spatial";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { cellAt, regionAt } from "../src/world/gen";
 import { protectionOf } from "../src/sim/shelter";
-import { passable } from "../src/world/route";
-import type { GameState, GoalId, GoalOpportunity, Terrain } from "../src/sim/types";
-import type { World } from "../src/world/gen";
-import { introduceGoals } from "../src/sim/goals";
-import { isKnown } from "../src/sim/mapped";
-import { paintPatch, requireCamp } from "./siting-helpers";
+import type { OpportunityKey, WeatherOpportunityContext } from "../src/sim/types";
 import { testRain } from "./weather-helpers";
+import { terrainCellNear, terrainRunNear } from "./world-facts";
+import { mapRegion } from "../src/sim/mapped";
+import { passable } from "../src/world/route";
 
 function game() {
   const g = newGame(17);
@@ -34,21 +33,20 @@ function game() {
   return g;
 }
 
-const THROUGH_SHELTER: GoalId[] = [
+const THROUGH_SHELTER: OpportunityKey[] = [
   "site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook",
   "findUsefulCover", "makeUsefulShelter", "testShelter", "snareMeal", "huntMeal", "fishMeal",
   "trapMeal", "foodSource", "store", "fat", "firstOrder", "water", "keptDays",
 ];
 
-function weatherLesson(state: ReturnType<typeof game>["state"], stormId: number, status: GoalOpportunity["status"] = "announced"): void {
-  for (const id of THROUGH_SHELTER) state.goals.done[id] = true;
+function weatherLesson(state: ReturnType<typeof game>["state"], stormId: number, status: WeatherOpportunityContext["status"] = "announced"): void {
+  for (const id of THROUGH_SHELTER) state.opportunities.completedAt[id] = 0;
   state.minute = 7 * 1440;
-  introduceGoals(state, ["readWeather"]);
-  state.goals.opportunity = {
-    goal: "readWeather", status, createdAt: state.minute, attempts: 1,
+  reveal(state, ["readWeather"]);
+  state.opportunities.context.weather = {
+    opportunity: "readWeather", status, createdAt: state.minute, attempts: 1,
     stormId, source: "natural", area: null, announcedAt: state.minute, resolvedAt: null,
-    minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
-  };
+    minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
 }
 
 describe("weather sense", () => {
@@ -57,20 +55,16 @@ describe("weather sense", () => {
     const storm = { id: 9, source: "natural" as const, kind: "gale" as const, from: 100, until: 520, warned: false };
     state.weather.storm = storm;
     expect(weather.forecastKnowledge(state, storm)).toEqual({
-      stage: 0, coming: false, arrivalMinute: null, kind: null, severity: null, durationMinutes: null,
-    });
+      stage: 0, coming: false, arrivalMinute: null, kind: null, severity: null, durationMinutes: null });
     state.minute = 40;
     expect(weather.forecastKnowledge(state, storm)).toEqual({
-      stage: 1, coming: true, arrivalMinute: null, kind: null, severity: null, durationMinutes: null,
-    });
+      stage: 1, coming: true, arrivalMinute: null, kind: null, severity: null, durationMinutes: null });
     state.skills.weatherSense.xp = levelMinutes(13);
     expect(weather.forecastKnowledge(state, storm)).toEqual({
-      stage: 2, coming: true, arrivalMinute: 100, kind: "gale", severity: "heavy", durationMinutes: null,
-    });
+      stage: 2, coming: true, arrivalMinute: 100, kind: "gale", severity: "heavy", durationMinutes: null });
     state.skills.weatherSense.xp = levelMinutes(25);
     expect(weather.forecastKnowledge(state, storm)).toEqual({
-      stage: 3, coming: true, arrivalMinute: 100, kind: "gale", severity: "heavy", durationMinutes: 420,
-    });
+      stage: 3, coming: true, arrivalMinute: 100, kind: "gale", severity: "heavy", durationMinutes: 420 });
   });
 
   it("credits a matching announced sky read only when it reveals a new fact and binds the reader", () => {
@@ -81,24 +75,24 @@ describe("weather sense", () => {
     expect(before.stage).toBe(0);
     startTask(state, world, calendar(state.minute, state.startDoy), "readSky");
     stepTask(state, world, calendar(state.minute, state.startDoy), new Rng(1), 10);
-    expect(state.goals.done.readWeather).toBe(true);
-    expect(state.goals.opportunity?.readerIndex).toBe(current(state).index);
+    expect(state.opportunities.completedAt.readWeather).toBeDefined();
+    expect(state.opportunities.context.weather?.readerIndex).toBe(current(state).index);
     expect(weather.forecastKnowledge(state, state.weather.storm).stage).toBeGreaterThan(0);
   });
 
   it("binds a new reader on a retry after the reading lesson is already complete", () => {
     const { state, world } = game();
     weatherLesson(state, 8);
-    state.goals.done.readWeather = true;
-    introduceGoals(state, ["prepareWeather"]);
-    state.goals.opportunity!.attempts = 2;
-    state.goals.opportunity!.readerIndex = null;
+    state.opportunities.completedAt.readWeather = 0;
+    reveal(state, ["prepareWeather"]);
+    state.opportunities.context.weather!.attempts = 2;
+    state.opportunities.context.weather!.readerIndex = null;
     state.weather.storm = { id: 8, source: "natural", kind: "rain", from: state.minute + 90, until: state.minute + 450, warned: false };
 
     expect(startTask(state, world, calendar(state.minute, state.startDoy), "readSky")).toBe(true);
     stepTask(state, world, calendar(state.minute, state.startDoy), new Rng(1), 10);
 
-    expect(state.goals.opportunity?.readerIndex).toBe(current(state).index);
+    expect(state.opportunities.context.weather?.readerIndex).toBe(current(state).index);
   });
 
   it("does not credit a repeated read, a passive warning, an unrelated storm, or a read with no new fact", () => {
@@ -111,8 +105,8 @@ describe("weather sense", () => {
       if (kind === "repeated") state.player.skyReadDay = weather.skyReadDay(state);
       startTask(state, world, calendar(state.minute, state.startDoy), "readSky");
       stepTask(state, world, calendar(state.minute, state.startDoy), new Rng(1), 10);
-      expect(state.goals.done.readWeather, kind).toBeUndefined();
-      expect(state.goals.opportunity?.readerIndex, kind).toBeFalsy();
+      expect(state.opportunities.completedAt.readWeather, kind).toBeUndefined();
+      expect(state.opportunities.context.weather?.readerIndex, kind).toBeFalsy();
     }
 
     const { state, world } = game();
@@ -120,8 +114,8 @@ describe("weather sense", () => {
     weatherLesson(state, 11, "reserved");
     state.weather.storm = { id: 11, source: "natural", kind: "rain", from: state.minute + 61, until: state.minute + 421, warned: false };
     advance(state, world, 1);
-    expect(state.goals.opportunity?.status).toBe("announced");
-    expect(state.goals.done.readWeather).toBeUndefined();
+    expect(state.opportunities.context.weather?.status).toBe("announced");
+    expect(state.opportunities.completedAt.readWeather).toBeUndefined();
   });
   it("stacks practice, six survived storms, a weather eye and a current reading", () => {
     expect(weather.warningMinutes).toBeTypeOf("function");
@@ -224,9 +218,9 @@ describe("weather sense", () => {
     const { state, world } = game();
     expect(state.player.skyReadDay).toBeNull();
     state.player.skyReadDay = 0;
-    expect(deserialize(serialize(state))?.state.player.skyReadDay).toBe(0);
+    expect(readSave(serialize(state))?.state.player.skyReadDay).toBe(0);
     delete (state.player as Partial<typeof state.player>).skyReadDay;
-    expect(deserialize(serialize(state))?.state.player.skyReadDay).toBeNull();
+    expect(readSave(serialize(state))?.state.player.skyReadDay).toBeNull();
     state.player.skyReadDay = 0;
     newPerson(state, world, cellOf(state, world), state.player.region);
     expect(state.player.skyReadDay).toBeNull();
@@ -262,51 +256,29 @@ describe("weather sense", () => {
 
 describe("the storm choice", () => {
   /**
-   * Paints a straight run of ground away from where the survivor stands,
-   * walled either side by open water so the walk home is exactly this
-   * corridor and its terrain sets the time. `kinds[0]` is the patch under the
-   * survivor; the last is the camp.
-   */
-  function corridor(state: GameState, world: World, kinds: Terrain[]): { from: number; camp: number; path: number[] } {
-    const from = cellOf(state, world);
-    const region = state.player.region;
-    const step = cellAt(world, from + kinds.length).region === region ? 1 : -1;
-    const cells = kinds.map((_, i) => from + i * step);
-    for (const cell of cells) {
-      expect(cellAt(world, cell).region).toBe(region);
-      expect(isKnown(state, cell)).toBe(true);
-    }
-    for (const [i, cell] of cells.entries()) {
-      paintPatch(world, cell, kinds[i]);
-      paintPatch(world, cell - world.w, "water");
-      paintPatch(world, cell + world.w, "water");
-    }
-    expect(state.weather.iceCm).toBe(0);
-    return { from, camp: cells[cells.length - 1], path: cells.slice(1) };
-  }
-
-  /**
-   * A 600 m return that starts on rock and crosses onto meadow at the first
-   * step: twelve meadow patches at the walking speed of this weather, which
-   * is a 10.909-minute walk.
+   * Two steps home over a terrain boundary: the walker stands on rock and the
+   * camp is on meadow one cell beyond the first meadow cell. The two terrains, not the two
+   * cell numbers, are what sets the ten and a half minutes the walk takes.
    */
   function rockReturn() {
     const g = game();
     testRain(8, 5, 40);
     const { state, world } = g;
-    const kinds: Terrain[] = ["rock", ...Array(12).fill("meadow")];
-    const { camp, path } = corridor(state, world, kinds);
+    const [from, mid, camp] = terrainRunNear(world, state.player.region, ["rock", "meadow", "meadow"]);
+    placeAt(state, world, from);
+    // The walker knows the ground they are standing in; without that there is no
+    // route home to weigh against the warning.
+    mapRegion(state, world, state.player.region);
     regionState(state, world, state.player.region).campCell = camp;
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 13.25, until: 373.25, warned: false };
-    return { ...g, camp, path };
+    return { ...g, from, mid, camp };
   }
 
   it("keeps the feasible rock-to-meadow return across the terrain boundary", () => {
     const control = rockReturn();
     expect(startTask(control.state, control.world, calendar(0), "walk", `cell:${control.camp}`)).toBe(true);
-    expect(control.state.route?.path).toEqual(control.path);
-    // The 600 m walk takes 10.909 minutes, so the camp is reached on the 11th.
-    advance(control.state, control.world, 10);
+    expect(control.state.route?.path).toEqual([control.mid, control.camp]);
+    advance(control.state, control.world, 9);
     expect(cellOf(control.state, control.world)).not.toBe(control.camp);
     advance(control.state, control.world, 1);
     expect(cellOf(control.state, control.world)).toBe(control.camp);
@@ -314,11 +286,11 @@ describe("the storm choice", () => {
     expect(control.state.route).toBeNull();
     expect(control.state.player.xM).toBe(patchCenter(control.camp).xM);
 
-    const { state, world, camp, path } = rockReturn();
+    const { state, world, mid, camp } = rockReturn();
     expect(minutesToCamp(state, world, calendar(0))).toBeCloseTo(10.909);
     runOrders(state, world, calendar(0), new Rng(1));
-    expect(state.route?.path).toEqual(path);
-    for (let minute = 1; minute <= 10; minute++) {
+    expect(state.route?.path).toEqual([mid, camp]);
+    for (let minute = 1; minute < 10; minute++) {
       advance(state, world, 1);
       expect(state.task?.id, `minute ${minute}`).toBe("walk");
     }
@@ -339,8 +311,8 @@ describe("the storm choice", () => {
   it("keeps an achievable return while the warning counts down mid-walk", () => {
     const { state, world } = game();
     testRain(8, 5, 40);
-    const r = regionAt(world, state.player.region);
-    const { from, camp } = corridor(state, world, Array(7).fill("spruce"));
+    const [from, camp] = terrainRunNear(world, state.player.region, ["spruce", "spruce"]);
+    const r = regionAt(world, cellAt(world, camp).region);
     regionState(state, world, r.id).campCell = camp;
     siteFor(regionState(state, world, r.id), camp).structures.leanTo = true;
     state.player.frostbite.feet = 1;
@@ -359,8 +331,8 @@ describe("the storm choice", () => {
 
   it("walks to a camp ten minutes away while the warning still allows it", () => {
     const { state, world } = game();
-    const r = regionAt(world, state.player.region);
-    const { camp } = corridor(state, world, Array(7).fill("spruce"));
+    const [, camp] = terrainRunNear(world, state.player.region, ["spruce", "spruce"]);
+    const r = regionAt(world, cellAt(world, camp).region);
     regionState(state, world, r.id).campCell = camp;
     siteFor(regionState(state, world, r.id), camp).structures.leanTo = true;
     state.player.frostbite.feet = 1;
@@ -369,34 +341,31 @@ describe("the storm choice", () => {
     expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)).toMatchObject({ id: "walk", arg: `cell:${camp}` });
   });
 
-  it("finds cover instead of taking a three-hour walk against an hour's warning", () => {
+  it("finds cover instead of a walk home longer than the hour's warning", () => {
     const { state, world } = game();
     const r = regionAt(world, state.player.region);
-    const camp = requireCamp(r);
-    regionState(state, world, r.id).campCell = camp;
-    // The far corner of the region under deep snow the whole way: the driver
-    // is set high enough that even the scoured ridges and the ground under the
-    // crowns on the route still lie deep. A walk this long needs
-    // generated ground: its search evicts and regenerates painted chunks.
-    const { x, y } = cellAt(world, camp);
-    const far = r.cells.reduce((best, cell) => {
-      const c = cellAt(world, cell);
-      if (!passable(c.terrain) || !isKnown(state, cell)) return best;
-      const d = (c.x - x) ** 2 + (c.y - y) ** 2;
-      return d > best.d ? { cell, d } : best;
-    }, { cell: camp, d: -1 }).cell;
+    regionState(state, world, r.id).campCell = r.campCell;
+    // The far corner of the region, through deep snow: which cell that is the
+    // world decides, and the case is that the walk outlasts the warning.
+    let far = r.campCell;
+    let longest = 0;
+    for (const cell of r.cells) {
+      if (!passable(cellAt(world, cell).terrain)) continue;
+      placeAt(state, world, cell);
+      weather.ensureGround(state, world, state.player.region).snowCm = 40;
+      const minutes = minutesToCamp(state, world, calendar(0)) ?? 0;
+      if (minutes > longest) { longest = minutes; far = cell; }
+    }
     placeAt(state, world, far);
-    weather.ensureGround(state, world, state.player.region).snowCm = 120;
+    weather.ensureGround(state, world, state.player.region).snowCm = 40;
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
-    const minutes = minutesToCamp(state, world, calendar(0))!;
-    expect(minutes).toBeCloseTo(193.25, 2);
-    expect(minutes).toBeGreaterThan(weather.warningMinutes(state));
+    expect(minutesToCamp(state, world, calendar(0))).toBeGreaterThan(60);
     expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("findShelter");
   });
 
   it("finds and improves cover, then lights and feeds a field fire without a camp", () => {
     const { state, world } = game();
-    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "spruce")!;
+    const cell = terrainCellNear(world, state.player.region, "spruce").cell;
     placeAt(state, world, cell);
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
     addItem(state.player.pack, "fireDrill", 1);
@@ -420,7 +389,7 @@ describe("the storm choice", () => {
 
   it("builds on open ground and stops work at weatherproof to light the fire", () => {
     const { state, world } = game();
-    const cell = regionAt(world, state.player.region).cells.find(c => cellAt(world, c).terrain === "meadow")!;
+    const cell = terrainCellNear(world, state.player.region, "meadow").cell;
     placeAt(state, world, cell);
     state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
     addItem(state.player.pack, "fireDrill", 1);

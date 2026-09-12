@@ -4,7 +4,7 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, herePile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { check, pausedList, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { taskHtml } from "../src/ui/panels";
 import { resetPanels, setPanel } from "../src/ui/render";
@@ -92,7 +92,7 @@ describe("tasks set aside", () => {
     startTask(state, world, cal, "chop");
     run(g, 15);
     stopTask(state, world);
-    const back = deserialize(serialize(state))!;
+    const back = readSave(serialize(state))!;
     expect(Object.values(back.state.paused)[0].fraction).toBeCloseTo(0.25, 2);
   });
 });

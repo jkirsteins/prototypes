@@ -13,16 +13,17 @@ import { FINE_CHUNK as CHUNK_PATCHES } from "../src/world/cells";
 import { current } from "../src/sim/record";
 import type { GameState } from "../src/sim/types";
 import { visibleWildlife } from "../src/sim/wildlife-agents";
-import { cellAt, regionAt, type World } from "../src/world/gen";
-import { FINE_CHUNK, newWorld } from "../src/world/cells";
+import { cellAt, heightAt, regionAt, type World } from "../src/world/gen";
+import { FINE_CHUNK } from "../src/world/cells";
 import { parentSummary } from "../src/world/aggregate";
-import { CANOPY_HEIGHT_M } from "../src/world/terrain";
+import { CANOPY_HEIGHT_M, TERRAIN_INDEX } from "../src/world/terrain";
 import * as fineTerrain from "../src/world/fine-terrain";
-import { fieldsAtPatch } from "../src/world/fine-terrain";
-import { TERRAIN_INDEX } from "../src/world/terrain";
 import { testAtmosphere } from "./weather-helpers";
+import { solvedWorld } from "./world-fixture";
+import { regionsOutward } from "./world-facts";
 
 const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const FOREST = new Set(["spruce", "pine", "birch"]);
 
 /** A meadow-or-bog cell in `region` with `n` more open cells running straight from it in some cardinal direction. */
 function openRun(world: World, region: number, n: number): { vantage: number; end: number } {
@@ -43,10 +44,10 @@ function openRun(world: World, region: number, n: number): { vantage: number; en
         end = ny * world.w + nx;
       }
       if (ok) {
-        const observer = fieldsAtPatch(world.seed, y * world.w + x).elevationM + 1.7;
+        const observer = heightAt(world, x, y) + 1.7;
         let horizon = -Infinity;
         for (let i = 1; i <= n; i++) {
-          const elevation = fieldsAtPatch(world.seed, (y + dy * i) * world.w + x + dx * i).elevationM;
+          const elevation = heightAt(world, x + dx * i, y + dy * i);
           const slope = (elevation - observer) / i;
           if (i === n && slope < horizon) ok = false;
           horizon = Math.max(horizon, slope);
@@ -58,11 +59,26 @@ function openRun(world: World, region: number, n: number): { vantage: number; en
   throw new Error(`region ${region} has no ${n}-patch open run`);
 }
 
-/** A closed-spruce cell in `region`, and one of its passable neighbours. */
+/**
+ * A spruce cell near `region` deep enough in the wood that all eight cells
+ * around it are wood too: no edge to walk to and look out from. A region of
+ * 4 km may hold no such cell, so the search widens outward from home.
+ */
 function spruceCell(world: World, region: number): number {
-  const idx = regionAt(world, region).cells.find((c) => cellAt(world, c).terrain === "spruce");
-  if (idx === undefined) throw new Error(`region ${region} has no spruce`);
-  return idx;
+  const wooded = (c: number) => FOREST.has(cellAt(world, c).terrain);
+  const closed = (c: number) => {
+    if (cellAt(world, c).terrain !== "spruce") return false;
+    const x = c % world.w;
+    const y = Math.floor(c / world.w);
+    if (x < 1 || y < 1 || x >= world.w - 1 || y >= world.h - 1) return false;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && !wooded(c + dy * world.w + dx)) return false;
+    return true;
+  };
+  for (const id of regionsOutward(world, region, 400)) {
+    const idx = regionAt(world, id).cells.find(closed);
+    if (idx !== undefined) return idx;
+  }
+  throw new Error(`no region within reach of ${region} has a spruce cell closed on every side`);
 }
 
 // Seed 1's start region, at solar noon on landing day (1 April): bright enough that light never gates the range.
@@ -77,7 +93,7 @@ function openWorld(): { state: GameState; world: World; vantage: number } {
   const terrain = new Uint8Array(FINE_CHUNK * FINE_CHUNK);
   terrain.fill(7); // TERRAINS[7] is meadow.
   const region = new Int32Array(FINE_CHUNK * FINE_CHUNK);
-  const world = newWorld(1);
+  const world = solvedWorld(1);
   world.fineChunks.set(0, { cx: 0, cy: 0, terrain, region,
     samples: terrain.length, parentSummaries: new Map() });
   // The middle of the chunk, so a ray has the same room in every direction.
@@ -154,7 +170,7 @@ function fineSightFixture(rows: string[], heights: Record<string, number> = {}):
   const elevationOf = { ...SCENE_ELEVATION_M, ...heights };
   const state = newGame(1).state;
   const elevations = new Map<number, number>();
-  const world = newWorld(1);
+  const world = solvedWorld(1);
   const terrain = new Uint8Array(FINE_CHUNK * FINE_CHUNK);
   terrain.fill(TERRAIN_INDEX.meadow);
   const region = new Int32Array(FINE_CHUNK * FINE_CHUNK);
@@ -407,27 +423,34 @@ describe("sight", () => {
     const { state, world } = newGame(1);
     testAtmosphere({ cloud: 0, precipMmPerHour: 0, extinctionPerKm: 0.06 });
     let scenario: { vantage: number; ridge: number; behind: number } | null = null;
-    const forest = new Set(["spruce", "pine", "birch"]);
-    for (const vantage of regionAt(world, state.player.region).cells) {
-      if (forest.has(cellAt(world, vantage).terrain)) continue;
+    const open = new Set(["meadow", "bog", "fell", "rock"]);
+    // Ground, all the way out: a water cell shows its surface at sea level
+    // whatever the bed under it does, so a ray that runs out over the fjord is
+    // not the case this test is about, and the sea floor is not a vantage.
+    for (const vantage of regionsOutward(world, state.player.region, 60).flatMap((id) => regionAt(world, id).cells)) {
+      if (!open.has(cellAt(world, vantage).terrain)) continue;
       const vx = vantage % world.w;
       const vy = Math.floor(vantage / world.w);
-      const observer = fieldsAtPatch(world.seed, vantage).elevationM + 1.7;
+      const observer = heightAt(world, vx, vy) + 1.7;
       const range = Math.min(12, sightRangeCells(state, world, NOON, vantage));
       for (const [dx, dy] of DIRS) {
         let highestSlope = -Infinity;
         let ridge = -1;
+        let ridgeAt = -1;
         for (let distance = 1; distance <= range; distance++) {
           const x = vx + dx * distance;
           const y = vy + dy * distance;
           const cell = y * world.w + x;
-          if (x < 0 || y < 0 || x >= world.w || y >= world.h || forest.has(cellAt(world, cell).terrain)) break;
-          const elevation = fieldsAtPatch(world.seed, cell).elevationM;
+          if (x < 0 || y < 0 || x >= world.w || y >= world.h || !open.has(cellAt(world, cell).terrain)) break;
+          const elevation = heightAt(world, x, y);
           const slope = (elevation - observer) / distance;
           if (slope > highestSlope + 8) {
             highestSlope = slope;
             ridge = cell;
-          } else if (ridge >= 0 && highestSlope > slope + 15) {
+            ridgeAt = distance;
+            // Both cells lie past the ring a survivor knows by standing in it,
+            // so what hides the far one is the ridge and not the ring's edge.
+          } else if (ridge >= 0 && ridgeAt >= 2 && distance >= 4 && highestSlope > slope + 15) {
             scenario = { vantage, ridge, behind: cell };
             break;
           }

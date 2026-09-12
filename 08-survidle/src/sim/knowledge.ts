@@ -9,6 +9,7 @@ import { cellAt, regionAt, type RegionDef, type World } from "../world/gen";
 import { absence } from "./animals";
 import type { Calendar } from "./calendar";
 import { kmBetween, watersideCell } from "./position";
+import { recordOpportunityEvent } from "./opportunities";
 import { regionState } from "./regionstate";
 import { fishSpecies, type Species, SPECIES_DEFS, waterOf } from "./species";
 import type { GameState, Observation } from "./types";
@@ -28,6 +29,7 @@ export function readShore(state: GameState, world: World, cell: number): Observa
   const region = regionAt(world, cellAt(world, cell).region);
   const obs: Observation = { minute: state.minute, fish: shoreFish(world, region, cell) };
   state.player.known[cell] = obs;
+  recordOpportunityEvent(state, { kind: "waterRead", species: obs.fish });
   return obs;
 }
 

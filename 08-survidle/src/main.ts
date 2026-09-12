@@ -8,7 +8,7 @@ import { createBeacon, deathTransition, type Sink } from "./beacon/beacon";
 import { BEACON } from "./beacon/config";
 import { createDatadogSink } from "./beacon/datadog";
 import { applyTesterLink, loadRecord, saveRecord } from "./beacon/storage";
-import { addFirewood, drop, dropAll, eat, take } from "./sim/actions";
+import { drop, dropAll, take } from "./sim/actions";
 import { advance } from "./sim/advance";
 import { calendar, dayNumber } from "./sim/calendar";
 import { setCueSink } from "./sim/cues";
@@ -16,8 +16,8 @@ import { setWildlifeEventSink } from "./sim/wildlife-events";
 import type { WildlifeStartleEvent } from "./sim/wildlife-encounter";
 import { since } from "./sim/epitaph";
 import { createForecaster, noteMonthRow } from "./sim/forecaster";
+import { log } from "./sim/log";
 import { startIntent, type Where } from "./sim/intent";
-import type { FoodId } from "./sim/items";
 import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
 import { isKnown, knowledgeGen } from "./sim/mapped";
@@ -28,13 +28,13 @@ import { abandon, feltTemperature } from "./sim/player";
 import { campCellOf, cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
-import { awaySeconds, catchUp, clearSave, loadGame, SAVE_KEY, saveGame } from "./sim/save";
+import { awaySeconds, catchUp, clearSave, knowLoadedGround, loadGame, SAVE_KEY, saveGame } from "./sim/save";
+import { recordOpportunityEvent } from "./sim/opportunities";
 import { canPersist, inspectSave } from "./sim/world-version";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
-import type { GameState, ItemId, TaskId } from "./sim/types";
+import type { GameState, ItemId, OpportunityEvent, OpportunityKey, TaskId } from "./sim/types";
 import { insertWalkAtTop } from "./sim/walkorders";
-import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature, localWeather } from "./sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture, type WeatherShotName } from "./sim/weather-scenarios";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
@@ -43,8 +43,9 @@ import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
-import { introduceGoals, unintroducedGoals } from "./sim/goals";
-import { goalGuideHtml, goalIntroductionToOpen, goalMomentToOpen, goalNoticeToOpen, goalsHtml } from "./ui/goalpanel";
+import { catalogPage, opportunityCatalogAction, opportunityCatalogHtml, opportunityCatalogKeyboard } from "./ui/opportunity-catalog";
+import { opportunityPanelHtml } from "./ui/opportunity-panel";
+import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
 import { levelAt, LEVELS, legendHtml, mapAggregateAtPoint, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, type TargetResolution, viewOrigin } from "./ui/map";
@@ -55,22 +56,27 @@ import {
   manualHtml, oldWorldHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
-import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
+import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, simulationPaused, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
 import { advanceHurry, hurryClick, hurryKind, newHurry } from "./ui/hurry";
 import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
 import { newSpeedHistory, updateSpeedHistory } from "./ui/speed-history";
 import { shoppingHtml, shoppingQuery } from "./ui/shopping";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
+import { hideLoading, showLoading } from "./ui/loading";
 import { recognitionHtml } from "./ui/wildlife-panel";
 import { type WorldCacheStats, worldCacheStats } from "./world/aggregate";
-import { generateWorld, regionAt, type World } from "./world/gen";
+import { regionAt, type World } from "./world/gen";
+import { loadWorld } from "./world/worldloader";
 
 const params = new URLSearchParams(location.search);
 // The face self-test page: a page of generated faces to judge, in place of the game.
 if (params.has("faces")) location.replace(`${import.meta.env.BASE_URL}faces.html`);
 /** Test aid: how many times faster than 60x the clock runs. Not a game feature. */
 const speed = Math.max(0.1, Number(params.get("speed")) || 1);
+/** Test aid: how many times faster the light on open water ripples; 2 halves all three wave periods. Not a game feature. */
+const shimmerSpeed = Number(params.get("shimmer"));
+if (Number.isFinite(shimmerSpeed) && shimmerSpeed > 0) document.documentElement.style.setProperty("--water-shimmer-speed", String(shimmerSpeed));
 const forcedSeed = params.get("seed");
 /** Test aid beside seed: the day of year the run begins on, for a summer or autumn pass. Not a game feature. */
 const forcedDay = params.get("day");
@@ -145,17 +151,38 @@ function resetForecastAt(): void {
 // Assigned once mountAwayDial() runs, below; fresh() runs once before that during
 // boot(), when there is nothing yet to refresh.
 let awayDial: AwayDial | null = null;
+// Assigned once the forecaster exists, below; fresh() runs once before that
+// during boot(), when there is no forecast waiting on a world.
+let tellForecaster: ((w: World) => void) | null = null;
+
+// A world is being made. The run underneath stands still while it is: the
+// frame does nothing, and a second click cannot start a second solve.
+let solving = false;
 
 /**
+ * A new run: the world is solved behind the bar first, so nothing starts on a
+ * world that is not there yet.
+ *
  * `persist` is false only for the world boot() builds under an old-world
  * message: that world exists so the page has something to render behind the
  * overlay, and saving it here would silently overwrite the very save the
  * message is about, before the player has chosen to discard it.
  */
-function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0, persist = true) {
-  const g = newWorld(seed, boat, startDoy);
-  state = g.state;
-  world = g.world;
+async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0, persist = true): Promise<void> {
+  if (solving) return;
+  solving = true;
+  // The finally is what makes the flag and the bar safe to hold: a solve that
+  // throws would otherwise leave the frame standing still with every later
+  // click a no-op, behind a full-page overlay that never comes down.
+  try {
+    const loaded = await loadWorld(seed, showLoading);
+    const g = newWorld(seed, boat, startDoy, loaded);
+    state = g.state;
+    world = g.world;
+  } finally {
+    hideLoading();
+    solving = false;
+  }
   wasDead = false;
   ui.selected = null;
   ui.away = null;
@@ -176,24 +203,33 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
     persistGame();
   }
   awayDial?.refresh();
+  tellForecaster?.(world);
 }
 
-function boot() {
+async function boot() {
   ui.panes = loadPanes(localStorage);
   const savedText = forcedSeed || startDoy !== undefined ? null : localStorage.getItem(SAVE_KEY);
   if (savedText && inspectSave(savedText) === "old-world") {
     oldWorldSave = true;
-    fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy, 0, false);
+    await fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy, 0, false);
     return;
   }
-  const saved = forcedSeed || startDoy !== undefined ? null : loadGame();
+  let refusal = "";
+  const saved = forcedSeed || startDoy !== undefined ? null : loadGame(localStorage, (reason) => { refusal = reason; });
   if (saved) {
     state = saved.state;
     // Set before the catch-up below runs, so a death the catch-up itself deals
     // is not already read as "seen": the first frame must still emit died for it.
     wasDead = Boolean(saved.state.dead);
-    world = generateWorld(state.seed);
+    solving = true;
+    try {
+      world = await loadWorld(state.seed, showLoading);
+    } finally {
+      hideLoading();
+      solving = false;
+    }
     fillPopulations(state, world);
+    knowLoadedGround(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
     if (elapsed > 30 && !state.dead && !state.landing) {
       setCueSink(null);
@@ -207,7 +243,9 @@ function boot() {
       persistGame();
     }
   } else {
-    fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy);
+    await fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy);
+    // A save this build cannot read is not silently dropped: the new run says why it is new.
+    if (refusal) log(state, refusal);
   }
 }
 
@@ -220,6 +258,34 @@ let lastTipKey = "";
 let hoverTarget: MapTarget | null = null;
 let lastMapKey = "";
 let lastWeatherKey = "";
+/**
+ * Shows or hides an element only when that changes it. `hidden` set to the
+ * value it already holds still records a mutation and invalidates style,
+ * and this runs for every pane on every render.
+ */
+function setHidden(el: HTMLElement | null, hidden: boolean) {
+  if (el && el.hidden !== hidden) el.hidden = hidden;
+}
+/**
+ * The map's tooltip, on its own so a pointer event can draw it at once
+ * instead of waiting up to a render interval. Its text is guarded by its
+ * own key so a pointer crossing one cell redraws it once.
+ */
+function renderTip(cal = calendar(state.minute, state.startDoy)) {
+  const tip = document.getElementById("maptip")!;
+  setHidden(tip, ui.hover === null);
+  if (ui.hover !== null) {
+    const tk = tipKey(state, world, cal, ui.hover, hoverTarget);
+    if (tk !== lastTipKey) {
+      lastTipKey = tk;
+      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay, hoverTarget));
+    }
+  }
+}
+// Match the existing layout breakpoint; content height never changes page size.
+function opportunityPageSize(): number { return window.matchMedia("(max-width: 700px)").matches ? 6 : 8; }
+let opportunityOpener: HTMLElement | null = null;
+
 function render(nowMs = performance.now()) {
   if (ui.wildlifeStartles.length) document.getElementById("mapdyn")!.style.setProperty("--wildlife-now", `${nowMs}ms`);
   // Arriving where you were looking ends the looking.
@@ -237,7 +303,7 @@ function render(nowMs = performance.now()) {
   setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
   setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
-  setPanel("goals", goalsHtml(state, world, cal));
+  setPanel("opportunities", opportunityPanelHtml(state));
   setPanel("shopping", shoppingHtml(state, world, cal));
   const wxKey = weatherKey(state, world, cal, ui.hurry.rate);
   if (wxKey !== lastWeatherKey) {
@@ -265,79 +331,90 @@ function render(nowMs = performance.now()) {
   setPanel("dosubs", ui.filter.trim() ? "" : subtabsHtml(ui.panes));
   // Shown and hidden, never rendered on demand: a pane built when it is
   // asked for is a pane whose scroll position starts again every time.
-  for (const id of PANE_IDS) {
-    const el = document.getElementById(`pane-${id}`);
-    if (el) el.hidden = id !== ui.panes.pane;
-  }
+  for (const id of PANE_IDS) setHidden(document.getElementById(`pane-${id}`), id !== ui.panes.pane);
   // The tooltip is shown and hidden, never created and destroyed: a box
   // rebuilt under the pointer flickers, and one detached under it never
   // gets the leave that would have closed it. Its text is guarded by its
   // own key so a pointer crossing one cell redraws it once.
-  const tip = document.getElementById("maptip")!;
-  tip.hidden = ui.hover === null;
-  if (ui.hover !== null) {
-    const tk = tipKey(state, world, cal, ui.hover, hoverTarget);
-    if (tk !== lastTipKey) {
-      lastTipKey = tk;
-      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay, hoverTarget));
-    }
-  }
+  renderTip(cal);
   setPanel("dopurposes", doPurposesHtml(state, world, ui));
   setPanel("doitems", doHtml(state, world, cal, ui));
   setPanel("inventory", inventoryHtml(state, world, cal, ui.travelDisplay));
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal, ui));
-  updateBars(state, world);
+  updateBars(state, world, document, { hurry: ui.hurry, speed });
   updateFills(state);
   updateSky(state, cal, ambient);
 
   // The settings panel is static markup with its own listeners (the slider must
   // not be redrawn mid-drag), so it is shown and hidden rather than rewritten.
-  document.getElementById("settings")!.hidden = !ui.settings;
+  setHidden(document.getElementById("settings"), !ui.settings);
   const travelSelect = document.querySelector<HTMLSelectElement>("[data-display=travel]");
   if (travelSelect && travelSelect.value !== ui.travelDisplay) travelSelect.value = ui.travelDisplay;
   const cloudShadows = document.querySelector<HTMLInputElement>("[data-display=cloud-shadows]");
   if (cloudShadows && cloudShadows.checked !== ui.cloudShadows) cloudShadows.checked = ui.cloudShadows;
 
   const overlay = document.getElementById("overlay")!;
+  if (!oldWorldSave && !ui.opportunityPresentation) ui.opportunityPresentation = nextOpportunityPresentation(state, ui);
   if (oldWorldSave) {
     setPanel("overlay", oldWorldHtml());
     overlay.hidden = false;
   } else if (ui.manual) {
     setPanel("overlay", manualHtml());
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (ui.cemetery) {
     setPanel("overlay", cemeteryHtml(state, ui));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (ui.away) {
     setPanel("overlay", awayHtml(ui.away, awayInfo?.seconds ?? 0, awayInfo?.capped ?? false, since(current(state), ui.awayFromDay, current(state).name.first), current(state).person, current(state).name.first));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (state.landing) {
     setPanel("overlay", landingHtml(state, world));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (state.dead) {
     setPanel("overlay", tombstoneHtml(state, world, ui));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (ui.welcome) {
     setPanel("overlay", welcomeHtml(state, cal));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (ui.teach) {
     setPanel("overlay", conceptHtml(state, world, cal, ui.teach));
-    overlay.hidden = false;
-  } else if (ui.goalGuide) {
-    setPanel("overlay", goalGuideHtml(state, world, cal, ui.goalGuide.ids, ui.goalGuide.done, ui.goalGuide.automatic, ui.goalGuide.notices));
-    overlay.hidden = false;
+    setHidden(overlay, false);
   } else if (ui.recognition !== null) {
     setPanel("overlay", recognitionHtml(state, ui.recognition));
-    overlay.hidden = false;
+    setHidden(overlay, false);
+  } else if (ui.opportunityPresentation) {
+    const newBatch = overlay.querySelector<HTMLElement>(".opportunity-modal")?.dataset.notice !== ui.opportunityPresentation.id;
+    setPanel("overlay", opportunityModalHtml(state, ui.opportunityPresentation));
+    setHidden(overlay, false);
+    if (newBatch || !overlay.contains(document.activeElement)) {
+      // Start long batches at their heading, not at an OK below the fold.
+      overlay.scrollTop = 0;
+      overlay.querySelector<HTMLElement>("#opportunity-modal-heading")?.focus({ preventScroll: true });
+    }
+  } else if (ui.opportunityCatalog.open) {
+    ui.opportunityCatalog.page = catalogPage(state, ui.opportunityCatalog.category, ui.opportunityCatalog.page, opportunityPageSize()).page;
+    setPanel("overlay", opportunityCatalogHtml(state, ui.opportunityCatalog, opportunityPageSize()));
+    setHidden(overlay, false);
+    if (!overlay.contains(document.activeElement)) overlay.querySelector<HTMLButtonElement>('[data-act="opportunity-close"]')?.focus();
   } else {
-    overlay.hidden = true;
+    setHidden(overlay, true);
   }
 }
 
 let lastReal = performance.now();
 let lastSave = performance.now();
+/** How often the panels are rendered from state: ten times a second, a tenth of the display rate and six times a game minute. */
+const RENDER_INTERVAL_MS = 100;
+let lastRender = -Infinity;
 function frame(now: number) {
+  if (solving) {
+    // The clock moves on while a world is solved; the run does not, so the
+    // wait cannot be read later as time the survivor lived through.
+    lastReal = now;
+    requestAnimationFrame(frame);
+    return;
+  }
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
   if (import.meta.env.DEV && startleRestore) {
@@ -345,7 +422,7 @@ function frame(now: number) {
     requestAnimationFrame(frame);
     return;
   }
-  if (!weatherShotName && !state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalGuide && ui.recognition === null) {
+  if (!weatherShotName && !simulationPaused(state, ui)) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
@@ -363,7 +440,7 @@ function frame(now: number) {
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra, { wildlife: "detailed", live: document.visibilityState === "visible" });
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
-  } else if (ui.away || ui.teach || ui.welcome || ui.goalGuide || ui.recognition !== null) {
+  } else if (ui.away || ui.teach || ui.welcome || ui.opportunityPresentation || ui.recognition !== null) {
     // An open moment holds the game still. Without the bump, a modal left open
     // past thirty seconds trips the catch-up branch above, and the player
     // dismisses it into an away report they never earned.
@@ -374,25 +451,28 @@ function frame(now: number) {
     // crossed inside an offline catch-up waits behind that catch-up's own away
     // report; momentToOpen owns the whole rule.
     if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
-    // The queue itself stays put until the overlay is dismissed: it is what
-    // makes the congratulation survive a reload. goalMomentToOpen already
-    // refuses to reopen while goal guidance is set, so leaving it be here does
-    // not requeue the overlay every frame.
-    const reached = goalMomentToOpen(state, ui);
-    if (reached) ui.goalGuide = { ids: unintroducedGoals(state, calendar(state.minute, state.startDoy)), done: reached, automatic: true };
-    const introduced = goalIntroductionToOpen(state, calendar(state.minute, state.startDoy), ui);
-    if (introduced) ui.goalGuide = { ids: introduced, done: [], automatic: true };
-    const notices = goalNoticeToOpen(state, ui);
-    if (notices) ui.goalGuide = { ids: [], done: [], notices, automatic: true };
-    if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.goalGuide && ui.recognition === null) {
+    // Wildlife recognition waits behind an already open opportunity presentation.
+    if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.opportunityPresentation && ui.recognition === null) {
       ui.recognition = state.wildlife.recognitionQueue[0] ?? null;
     }
   }
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
-  render(now);
-  updateSpeedHistory(document, ui.speedHistory, now, GAME_MINUTES_PER_REAL_SECOND * ui.hurry.rate);
+  // The one value the map reads every frame: the startle animations are
+  // paused CSS keyframes that sample this clock through their delay.
+  if (ui.wildlifeStartles.length) document.getElementById("mapdyn")!.style.setProperty("--wildlife-now", `${now}ms`);
+  // State is rendered on its own clock. Nothing a panel shows moves faster
+  // than a game minute, so drawing every panel on every display frame paid
+  // a style pass and a layout sixty times a second for markup that had not
+  // changed. Motion that has to be smooth - water, fog, rain, the startle,
+  // the portrait - is CSS on the compositor or a per-frame write above,
+  // not a render. Input still renders at once through its own handlers.
+  if (now - lastRender >= RENDER_INTERVAL_MS) {
+    lastRender = now;
+    render(now);
+    updateSpeedHistory(document, ui.speedHistory, now, GAME_MINUTES_PER_REAL_SECOND * ui.hurry.rate);
+  }
   portraitMotion.frame(document, now, document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
   const cal = calendar(state.minute, state.startDoy);
   sounds.frame(state, world, cal, ambientTemperature(cal, localWeather(state, world)), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
@@ -432,6 +512,11 @@ function onClick(ev: Event) {
   const target = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]");
   if (!target) return;
   const act = target.dataset.act;
+  const previousDetail = ui.opportunityCatalog.detail;
+  // Only a control outside the overlay can be returned to: the overlay keeps
+  // its markup while hidden, so a modal's own OK button stays connected and
+  // would swallow the focus the dismissal is meant to hand back.
+  if (act?.startsWith("opportunity-") && !ui.opportunityCatalog.open && !target.closest("#overlay")) opportunityOpener = target;
   const restoreScroll = anchorScroll(target);
   const cal = calendar(state.minute, state.startDoy);
   const rng = new Rng(state.rng);
@@ -495,18 +580,6 @@ function onClick(ev: Event) {
       ui.selected = r === state.player.region ? null : r;
       break;
     }
-    case "eat":
-      eat(state, world, target.dataset.food as FoodId, rng);
-      break;
-    case "feed":
-      addFirewood(state, world, 36);
-      break;
-    case "drink":
-      drink(state, world);
-      break;
-    case "fill":
-      fillVessels(state, world);
-      break;
     case "take":
     case "drop": {
       const item = target.dataset.item as ItemId;
@@ -537,7 +610,7 @@ function onClick(ev: Event) {
       break;
     case "next-boat":
       // The first boat has no world to run yet: it is rebuilt a week later from the same seed.
-      if (state.landing && state.landing.oldCamp === null) fresh(state.seed, startDoy, state.landing.boat + 1);
+      if (state.landing && state.landing.oldCamp === null) void fresh(state.seed, startDoy, state.landing.boat + 1);
       else nextBoat(state, world);
       resetForecastAt();
       break;
@@ -548,7 +621,7 @@ function onClick(ev: Event) {
       // land() no-ops without a landing or a name; only a real heir's landing is a begin-again.
       if (wasLanding && heir && state.landing === null) beacon.beganAgain(state, Date.now());
       // Every landing gets its welcome, fresh survivor or heir. The first
-      // goal follows it; the manual remains available on demand.
+      // opportunity follows it; the manual remains available on demand.
       if (wasLanding && state.landing === null) ui.welcome = true;
       ui.confirmAbandon = false;
       resetForecastAt();
@@ -576,7 +649,7 @@ function onClick(ev: Event) {
     case "reset-world":
       if (!window.confirm("Reset all world data? This cannot be undone.")) break;
       clearSave();
-      fresh();
+      void fresh();
       ui.settings = false;
       lastReal = performance.now();
       render();
@@ -606,14 +679,20 @@ function onClick(ev: Event) {
       // was open were paused, not spent away.
       lastReal = performance.now();
       break;
-    case "goal-close":
-      if (ui.goalGuide?.automatic) introduceGoals(state, ui.goalGuide.ids);
-      if (ui.goalGuide) state.goals.queue = state.goals.queue.filter((id) => !ui.goalGuide!.done.includes(id));
-      if (ui.goalGuide?.notices) state.goals.noticeQueue = state.goals.noticeQueue.filter((notice) => !ui.goalGuide!.notices!.includes(notice));
-      ui.goalGuide = null;
-      // The same bump the rung moment's dismiss does: the minutes the
-      // screen was open were paused, not spent away.
-      lastReal = performance.now();
+    case "opportunity-open":
+    case "opportunity-close":
+    case "opportunity-category":
+    case "opportunity-page":
+    case "opportunity-detail":
+    case "opportunity-back":
+    case "opportunity-current":
+      opportunityCatalogAction(state, ui, act, target.dataset.opportunity ?? target.dataset.category ?? target.dataset.page ?? "", opportunityPageSize());
+      break;
+    case "opportunity-set-current":
+    case "opportunity-modal-ok":
+      if (opportunityModalAction(state, ui, act, target.dataset.notice ?? "", target.dataset.opportunity as OpportunityKey | undefined ?? null)) {
+        lastReal = performance.now();
+      }
       break;
     case "shopping-track": {
       const id = target.dataset.id;
@@ -632,11 +711,6 @@ function onClick(ev: Event) {
       if (box) box.value = ui.filter;
       break;
     }
-    case "goal-open": {
-      const id = target.dataset.goal;
-      if (id) ui.goalGuide = { ids: [id as import("./sim/types").GoalId], done: [], automatic: false };
-      break;
-    }
     case "recognition-close":
       if (ui.recognition !== null && state.wildlife.recognitionQueue[0] === ui.recognition) state.wildlife.recognitionQueue.shift();
       ui.recognition = null;
@@ -652,7 +726,7 @@ function onClick(ev: Event) {
       ui.cemetery = false;
       ui.confirmLeave = false;
       clearSave();
-      fresh();
+      void fresh();
       break;
     case "dismiss":
       ui.away = null;
@@ -743,6 +817,14 @@ function onClick(ev: Event) {
   if (FORECAST_ACTS.includes(target.dataset.act!)) requestForecast();
   persistGame();
   render();
+  if ((act === "opportunity-close" || act === "opportunity-modal-ok" || act === "opportunity-set-current") && !ui.opportunityPresentation) {
+    const opener = opportunityOpener?.isConnected ? opportunityOpener : document.querySelector<HTMLElement>('#opportunities [data-act="opportunity-open"]');
+    opener?.focus();
+  } else if (act === "opportunity-detail" || act === "opportunity-current") {
+    document.querySelector<HTMLButtonElement>('#overlay [data-act="opportunity-back"]')?.focus();
+  } else if (act === "opportunity-back") {
+    [...document.querySelectorAll<HTMLButtonElement>('#overlay [data-act="opportunity-detail"]')].find((button) => button.dataset.opportunity === previousDetail)?.focus();
+  }
   restoreScroll();
 }
 
@@ -750,7 +832,15 @@ function zoomBy(delta: number) {
   ui.zoom = Math.max(0, Math.min(LEVELS.length - 1, ui.zoom + delta));
 }
 
-boot();
+try {
+  await boot();
+} catch (err) {
+  // The bar is the whole of the UI until the world exists, so a solve that
+  // fails says so there rather than leaving a blank overlay and a dead module.
+  // Nothing below can run without a world, so the failure still ends the load.
+  showLoading(`the world could not be made: ${err instanceof Error ? err.message : String(err)}`, 0);
+  throw err;
+}
 const weatherShot = weatherShotName ? weatherShotFixture(weatherShotName) : null;
 if (weatherShot) {
   state = weatherShot.state;
@@ -758,7 +848,7 @@ if (weatherShot) {
   ui.zoom = weatherShot.definition.zoom;
   ui.welcome = false;
   ui.teach = null;
-  ui.goalGuide = null;
+  ui.opportunityPresentation = null;
 }
 beacon.opened(state);
 // Built once world is real; the worker keeps its own copy keyed by seed, so a
@@ -768,10 +858,13 @@ const forecaster = createForecaster(
   typeof Worker === "undefined" ? undefined : new Worker(new URL("./sim/forecast.worker.ts", import.meta.url), { type: "module" }),
 );
 forecaster.onRow = (row) => { noteMonthRow(state, row); };
+// The worker builds its world from these arrays instead of solving the seed itself.
+forecaster.setWorld(world);
+tellForecaster = (w) => forecaster.setWorld(w);
 /** The actions that change what the forecast reads: orders, needs, camp state. */
 const FORECAST_ACTS = [
   "task", "stop", "intent", "row-kind", "finish", "order-up", "order-down", "order-remove", "order-pin", "dismiss",
-  "eat", "feed", "drink", "fill", "take", "drop", "drop-all",
+  "take", "drop", "drop-all",
 ];
 /** A request when nothing overlays the game: the list, the day, the dial, the region and the hour each call this; the frame calls it on a cadence. */
 function requestForecast(): void {
@@ -805,6 +898,16 @@ document.addEventListener("visibilitychange", () => {
 });
 document.addEventListener("click", onClick);
 document.addEventListener("keydown", (ev) => {
+  const presentation = document.querySelector<HTMLElement>('#overlay:not([hidden]) .opportunity-modal');
+  if (presentation) {
+    opportunityModalKeyboard(presentation, ev);
+    return;
+  }
+  const catalog = document.querySelector<HTMLElement>('#overlay:not([hidden]) .opportunity-catalog');
+  if (catalog) {
+    opportunityCatalogKeyboard(catalog, ev);
+    return;
+  }
   if (ev.key === "+" || ev.key === "=") zoomBy(-1);
   else if (ev.key === "-" || ev.key === "_") zoomBy(1);
   else return;
@@ -933,6 +1036,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     hoverBlock = block;
     hoverTarget = targetUnder(ev, "geometric");
     ui.hover = hoverTarget?.patch ?? null;
+    renderTip();
   });
   board.addEventListener("pointerdown", (ev) => {
     pointerType = ev.pointerType;
@@ -980,10 +1084,10 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     render();
   });
   board.addEventListener("pointerleave", (ev) => {
-    if (ev.pointerType !== "touch") {
-      hoverTarget = null;
-      ui.hover = null;
-    }
+    if (ev.pointerType === "touch") return;
+    hoverTarget = null;
+    ui.hover = null;
+    renderTip();
   });
   board.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
@@ -1031,6 +1135,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
       hoverTarget = null;
       ui.hover = cell;
       showTarget(cell);
+      renderTip();
     }
   });
   map.addEventListener("pointerout", (ev) => {
@@ -1040,6 +1145,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
       hoverTarget = null;
       ui.hover = null;
       clearTarget();
+      renderTip();
     }
   });
 }
@@ -1057,6 +1163,7 @@ declare global {
     startleStep?(): void;
     startleAdvance?(minutes: number): void;
     startleEnd?(): void;
+    opportunityEvent?(event: OpportunityEvent): void;
   } }
 }
 window.survidle = {
@@ -1100,4 +1207,11 @@ if (import.meta.env.DEV) {
     render();
   };
   window.survidle.startleEnd = () => startleRestore?.();
+  // Browser checks need a real perception or deed without waiting for the
+  // world to hand one over. It goes through the same seam the simulation
+  // uses, so discovery, credit and the notice queue behave as they do in play.
+  window.survidle.opportunityEvent = (event) => {
+    recordOpportunityEvent(state, event, world);
+    render();
+  };
 }

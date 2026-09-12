@@ -6,12 +6,13 @@ import { resolveCell, yieldItem } from "../src/sim/intent";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { TRAP_HOLD_KG } from "../src/sim/items";
 import { readShore } from "../src/sim/knowledge";
+import { discoverOpportunity } from "../src/sim/opportunities";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { check, startTask } from "../src/sim/tasks";
 import { ICE_SHORE_CM } from "../src/sim/water";
 import { ensureGround } from "../src/sim/weather";
@@ -110,6 +111,7 @@ describe("the basket trap", () => {
 
   it("a trap whose shore holds char draws oily kilos, and the take produces oily fish", () => {
     const g = readyToSet(200);
+    discoverOpportunity(g.state.opportunities, "trap:char", g.state.minute, false);
     setTrap(g);
     // Force the draw onto a single oily species regardless of what this shore actually read.
     g.st.trap!.fish = ["char"];
@@ -126,6 +128,7 @@ describe("the basket trap", () => {
     expect(g.st.trap!.oilyKg).toBe(0);
     expect(qty(g.state.player.pack, "oilyFish")).toBeGreaterThan(0);
     expect(qty(g.state.player.pack, "fish")).toBe(0);
+    expect(g.state.opportunities.completedAt["trap:char"]).toBeDefined();
   });
 
   it("keeps drawing with nobody home, at the base rate", () => {
@@ -236,7 +239,7 @@ describe("the basket trap", () => {
     const g = readyToSet();
     setTrap(g);
     g.st.trap!.kg = 2.4;
-    const file = deserialize(serialize(g.state))!;
+    const file = readSave(serialize(g.state))!;
     const region = file.state.regions[g.state.player.region];
     expect(region.trap).toMatchObject({ cell: g.cell, kg: 2.4 });
     expect(region.trap!.fish).toEqual(g.obs.fish);

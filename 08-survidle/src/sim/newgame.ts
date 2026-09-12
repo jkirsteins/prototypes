@@ -1,7 +1,7 @@
 import { derive, Rng } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
 import { calendar, fmtDate, START_DOY } from "./calendar";
-import { newGoals } from "./goals";
+import { newOpportunities } from "./opportunities";
 import { AWAY_HOURS_DEFAULT } from "../units";
 import { patchCenter } from "../world/spatial";
 import { addItem, emptyInventory } from "./inventory";
@@ -48,6 +48,7 @@ function freshPlayer(person: Person, cell: number, region: number): Player {
     // reserve derives from its fatigue.
     sleepDebt: 10,
     sleeping: null,
+    collapsed: false,
     bodyNeed: null,
     coldSpent: false,
     wetness: 0,
@@ -88,8 +89,10 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
   state.ledger = [];
   creditYield(state, "kit", ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg);
   // A person coming into being looks around: the ground underfoot and
-  // whatever the eye reaches from it is the whole of what they know.
-  seeFrom(state, world, calendar(state.minute, state.startDoy), cell);
+  // whatever the eye reaches from it is the whole of what they know. It is
+  // what they arrive knowing rather than something they discovered, so the
+  // leaves it makes possible arrive without a word.
+  seeFrom(state, world, calendar(state.minute, state.startDoy), cell, false);
   markWalked(state, cell);
 }
 
@@ -106,9 +109,9 @@ export function firstRecord(seed: number, startDoy: number, person?: Person): Li
  * aboard the first boat, the date a week later per boat asked for. The
  * placeholder under the overlay is the median survivor, which land replaces.
  */
-export function newWorld(seed: number, boat = 0, startDoy = START_DOY): { state: GameState; world: World } {
+export function newWorld(seed: number, boat = 0, startDoy = START_DOY, world?: World): { state: GameState; world: World } {
   const doy = startDoy + 7 * boat;
-  const g = newGame(seed, doy);
+  const g = newGame(seed, doy, undefined, world);
   const start = regionAt(g.world, g.world.start);
   if (start.campCell === null) throw new Error("starting region has no passable camp");
   const candidates = rollCandidates(seed, 1, boat, []);
@@ -118,8 +121,10 @@ export function newWorld(seed: number, boat = 0, startDoy = START_DOY): { state:
 }
 
 /** A fresh run: spring, an axe, the clothes on your back and a day's food. */
-export function newGame(seed: number, startDoy = START_DOY, person?: Person): { state: GameState; world: World } {
-  const world = generateWorld(seed);
+// The start region's camp is the landing shore (gen.ts findStart).
+export function newGame(seed: number, startDoy = START_DOY, person?: Person, given?: World): { state: GameState; world: World } {
+  // A world already solved (the loading bar's worker) is used as it stands; otherwise one is made here.
+  const world = given ?? generateWorld(seed);
   const start = regionAt(world, world.start);
   if (start.campCell === null) throw new Error("starting region has no passable camp");
   const first = firstRecord(seed, startDoy, person);
@@ -156,7 +161,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     landing: null,
     spine: { fired: {}, announced: {} },
     manualSeen: false,
-    goals: newGoals(calendar(0, startDoy).season),
+    opportunities: newOpportunities(calendar(0, startDoy).season),
     shopping: null,
     taught: {},
     teachQueue: [],
@@ -171,11 +176,11 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     precip: local.precip, clear: local.clear, offset: local.offset, snowCm: local.snowCm,
     rolledDay: local.rolledDay, dryDays: local.dryDays, wetDay: local.wetDay, iceCm: local.iceCm,
   });
-  seeFrom(state, world, calendar(state.minute, state.startDoy), start.campCell);
+  seeFrom(state, world, calendar(state.minute, state.startDoy), start.campCell, false);
   markWalked(state, start.campCell);
   enterRegion(state, world, world.start);
   // A camp is chosen, and a choice needs the ground in front of you.
-  mapRegion(state, world, world.start);
+  mapRegion(state, world, world.start, false);
   if (startDoy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${start.name}. {You} {have} an axe, wool on {your} back and a kilo of dried meat.`);
   else log(state, `${fmtDate(calendar(0, startDoy))}. {You} {wake} at ${start.name} with an axe, wool on {your} back and a kilo of dried meat.`);
   return { state, world };

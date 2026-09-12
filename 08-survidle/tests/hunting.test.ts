@@ -10,7 +10,8 @@ import { regionState } from "../src/sim/regionstate";
 import { setSkillLevel } from "../src/sim/horizon";
 import { check, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
-import { cellAt, regionAt, spotOf } from "../src/world/gen";
+import { cellAt, hasSpot, regionAt, spotOf } from "../src/world/gen";
+import { regionNear, terrainCellNear, watersideNear } from "./world-facts";
 import { siteCamp } from "./siting-helpers";
 import { isWorkIntent } from "../src/sim/types";
 import { mapRegion } from "../src/sim/mapped";
@@ -23,6 +24,15 @@ afterEach(() => vi.restoreAllMocks());
 
 const cal = calendar(0);
 
+/**
+ * A region near the landing with both a heath and a forest spot. A hunting case
+ * that compares two named grounds needs a region that has both, and a coastal
+ * landing region need not: which region that is belongs to the world.
+ */
+function huntGround(world: ReturnType<typeof newGame>["world"]): number {
+  return regionNear(world, world.start, (id) => hasSpot(regionAt(world, id), "heath") && hasSpot(regionAt(world, id), "forest"));
+}
+
 function armedGame() {
   const g = newGame(1);
   siteCamp(g.state, g.world);
@@ -34,7 +44,7 @@ function armedGame() {
 describe("hunting knowledge", () => {
   it("requires current evidence before a named hunt can start", () => {
     const { state, world } = armedGame();
-    const cell = spotOf(regionAt(world, state.player.region), "heath")!.cell;
+    const cell = spotOf(regionAt(world, huntGround(world)), "heath")!.cell;
     placeAt(state, world, cell);
     expect(check(state, world, cal, "hunt", "hare")).toMatchObject({ ok: false, why: "no fresh sign" });
     noteHuntSign(state, cell, "hare");
@@ -45,7 +55,7 @@ describe("hunting knowledge", () => {
 
   it("keeps a beginner on the nearest plausible ground but lets an expert choose the better return", () => {
     const { state, world } = armedGame();
-    const r = regionAt(world, state.player.region);
+    const r = regionAt(world, huntGround(world));
     const heath = spotOf(r, "heath")!.cell;
     const forest = spotOf(r, "forest")!.cell;
     placeAt(state, world, heath);
@@ -60,7 +70,7 @@ describe("hunting knowledge", () => {
 
   it("never chooses terrain the survivor has not mapped", () => {
     const { state, world } = armedGame();
-    const heath = spotOf(regionAt(world, state.player.region), "heath")!.cell;
+    const heath = spotOf(regionAt(world, huntGround(world)), "heath")!.cell;
     placeAt(state, world, heath);
     state.knowledge = newKnowledge();
     markSeen(state.knowledge, heath);
@@ -104,16 +114,16 @@ describe("hunting knowledge", () => {
   it("learns negative evidence without learning the hidden population", () => {
     const { state, world } = armedGame();
     const cell = bestHuntCell(state, world, cal);
-    // The failure has to name prey this ground actually offers; which species
-    // that is follows from the patch the hunter picks.
-    const species = huntSpeciesWeights(state, world, cal, cell)[0].species;
     const before = huntEstimate(state, world, cal, cell).kgPerHour;
-    noteFailedHunt(state, cell, species);
-    noteFailedHunt(state, cell, species);
+    // The best prey on this ground: the estimate is a weighted mean, so failing
+    // to find a species worth less than the mean would raise it.
+    const prey = huntSpeciesWeights(state, world, cal, cell).reduce((a, b) => a.value >= b.value ? a : b).species;
+    noteFailedHunt(state, cell, prey);
+    noteFailedHunt(state, cell, prey);
     expect(huntEstimate(state, world, cal, cell).kgPerHour).toBeLessThan(before);
 
     const st = regionState(state, world, state.player.region);
-    st.pop[species] = 0;
+    st.pop[prey] = 0;
     expect(huntEstimate(state, world, cal, cell).kgPerHour).toBeLessThan(before);
   });
 
@@ -247,33 +257,25 @@ describe("hunting knowledge", () => {
       return g;
     })();
     setSkillLevel(state, "hunting", 20);
-    const rock = regionAt(world, state.player.region).cells.find((cell) => /rock|fell/.test(cellAt(world, cell).terrain))!;
+    const rock = terrainCellNear(world, state.player.region, "rock").cell;
     expect(huntSpeciesWeights(state, world, cal, rock).some((row) => row.species === "reindeer")).toBe(true);
   });
 
   it("does not use hidden candidate-cell ice until the hunter reaches that ground", () => {
     const { state, world } = armedGame();
-    const visited = new Set<number>();
-    const pending = [state.player.region];
-    let shore: number | undefined;
-    while (pending.length && visited.size < 100 && shore === undefined) {
-      const id = pending.shift()!;
-      if (visited.has(id)) continue;
-      visited.add(id);
-      const region = regionAt(world, id);
-      if (id !== state.player.region) shore = region.cells.find((cell) => watersideCell(world, cell, "lake"));
-      for (const neighbour of region.neighbours) if (!visited.has(neighbour.id)) pending.push(neighbour.id);
-    }
-    expect(shore).toBeDefined();
-    const candidateRegion = cellAt(world, shore!).region;
+    // A lake shore outside the region the hunter stands in: the nearest one may
+    // be a long way from a coastal landing, and how far is the world's business.
+    const shore = watersideNear(world, cellOf(state, world), "lake", (cell) => cellAt(world, cell).region !== state.player.region);
+    expect(watersideCell(world, shore, "lake")).toBe(true);
+    const candidateRegion = cellAt(world, shore).region;
 
     ensureGround(state, world, state.player.region).iceCm = ICE_THIN_CM;
     ensureGround(state, world, candidateRegion).iceCm = 0;
     state.weather.iceCm = ICE_THIN_CM;
-    expect(huntSpeciesWeights(state, world, cal, shore!).some((row) => row.species === "mallard")).toBe(false);
+    expect(huntSpeciesWeights(state, world, cal, shore).some((row) => row.species === "mallard")).toBe(false);
 
-    placeAt(state, world, shore!);
-    expect(huntSpeciesWeights(state, world, cal, shore!).some((row) => row.species === "mallard")).toBe(true);
+    placeAt(state, world, shore);
+    expect(huntSpeciesWeights(state, world, cal, shore).some((row) => row.species === "mallard")).toBe(true);
   });
 });
 
@@ -286,6 +288,7 @@ describe("carcass recovery", () => {
 
     const recovered = processCarcass(state, world, carcass.id);
     expect(recovered).not.toBeNull();
+    expect(recovered).toMatchObject({ species: "deer", carcassId: carcass.id });
     expect(recovered!.meatKg).toBeGreaterThan(0);
     expect(recovered!.meatKg).toBeLessThan(12);
     expect(qty(state.player.pack, "rawMeat") + qty(herePile(state, world), "rawMeat")).toBeCloseTo(recovered!.meatKg);

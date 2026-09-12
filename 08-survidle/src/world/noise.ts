@@ -50,11 +50,15 @@ export function fbmMetres(xM: number, yM: number, seed: number, wavelengthM: num
   let sum = 0;
   let amp = 1;
   let norm = 0;
+  // The octave scale is doubled rather than raised: the solve's determinism rule
+  // allows only the four operations and a square root, and this file is one of
+  // the files it greps.
+  let scale = 1;
   for (let i = 0; i < octaves; i++) {
-    const scale = 2 ** i;
     sum += amp * valueNoiseMetres(xM, yM, seed + i * 101, wavelengthM / scale, yWavelengthM / scale);
     norm += amp;
     amp *= 0.5;
+    scale *= 2;
   }
   return sum / norm;
 }

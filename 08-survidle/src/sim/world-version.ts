@@ -1,13 +1,12 @@
 /**
- * The line between the old 300 metre cell world and the authoritative fine
- * lattice. A save carries both numbers in its envelope: the schema version
- * for the shape of GameState, and the world version for which terrain model
- * generated it. Either one falling behind the current pair makes the save
- * unreadable, since the fine lattice's patch ids mean nothing against the
- * old cell grid.
+ * The line between terrain models. A save carries both numbers in its
+ * envelope: the schema version for the shape of GameState, and the world
+ * version for which terrain model generated it. Either one falling behind the
+ * current pair makes the save unreadable, since a patch id means nothing
+ * against a lattice of another shape or a world of another solve.
  */
 export const SAVE_VERSION = 10;
-export const WORLD_VERSION = 2;
+export const WORLD_VERSION = 3;
 
 export type SaveCompatibility = "current" | "old-world" | "invalid";
 

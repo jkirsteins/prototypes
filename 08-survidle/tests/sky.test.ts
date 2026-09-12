@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -30,6 +30,9 @@ function clearSkyGame(): { state: GameState; world: World } {
 const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, nextStormId: 1, stormFreeSince: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
 /** Minutes since the run start for a clock hour on day one. */
 const at = (hour: number) => calendar((hour - 8) * 60);
+
+// A test that installs a controlled atmosphere owns it only for its own case.
+afterEach(() => vi.restoreAllMocks());
 
 describe("forecast knowledge in the weather wall", () => {
   it.each(["snow", "gale"] as const)("reads stored %s only at an earned stage, without leaking it into stage-one markup", (kind) => {
@@ -90,8 +93,8 @@ describe("forecast knowledge in the weather wall", () => {
     current(state).person.quirks = [];
     state.minute = 10;
     state.weather.storm = { id: 9, source: "natural", kind: "gale", from: 100, until: 460, warned: false };
-    state.goals.opportunity = {
-      goal: "readWeather", status: "announced", createdAt: 0, attempts: 1,
+    state.opportunities.context.weather = {
+      opportunity: "readWeather", status: "announced", createdAt: 0, attempts: 1,
       stormId: 9, source: "natural", area: null, announcedAt: 10, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
@@ -300,6 +303,10 @@ describe("sky in the page", () => {
 
   it("keeps one varied constellation star pattern through a clear night and hides it by day or cloud", () => {
     const { state } = newGame(21);
+    // The run begins under whatever sky the landing has; the clear night this
+    // case is about is stated rather than hoped for.
+    state.weather.clear = true;
+    state.weather.precip = "none";
     const root = document.createElement("div");
     root.innerHTML = skyHtml(WALL);
     const visibleConstellation = () => root.querySelector<SVGElement>('[data-constellation][opacity="1"]')?.id;
@@ -435,6 +442,8 @@ describe("sky in the page", () => {
 
   it("shows Perseid streaks only on clear nights in their late-summer window", () => {
     const { state } = newGame(21, 223);
+    state.weather.clear = true;
+    state.weather.precip = "none";
     const root = document.createElement("div");
     root.innerHTML = skyHtml(WALL);
     const opacity = () => root.querySelector("#sky-perseids")?.getAttribute("opacity");

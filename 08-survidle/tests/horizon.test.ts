@@ -32,14 +32,17 @@ describe("the horizon stages", () => {
     const { state, world } = setUpStage(17, stage("manual"));
     const list = ordersHere(state, world).filter(isWorkOrder);
     expect(list.map((o) => `${o.req.task}:${o.req.arg ?? ""}`)).toEqual([
-      "thaw:", "fill:hole", "build:firePit", "stone:", "sticks:", "bark:", "craft:cordage", "craft:fireDrill",
+      // The water wants read the ground they are given: an open shore is
+      // fetched from, an iced one is cut. A landing on salt water also opens a
+      // seaweed want, which no inland stage has.
+      "thaw:", "fill:shore", "build:firePit", "stone:", "sticks:", "bark:", "craft:cordage", "craft:fireDrill",
       "light:", "chop:", "split:", "build:leanTo", "build:boughBed", "build:snowShelter", "craft:knife",
       "craft:snare", "build:snare", "craft:barkBucket", "craft:fishingSpear", "read:", "craft:basketTrap",
       "setTrap:", "cook:rawFat", "cook:fish", "cook:oilyFish", "cook:", "crack:", "build:dryingRack",
       "build:snare", "hang:", "craft:bow", "craft:arrows", "hunt:any", "split:", "chop:", "eggs:", "roots:",
-      "roots:", "cook:roots", "tapSap:", "fish:any", "berries:", "craft:needle", "repair:", "craft:furHat",
+      "roots:", "cook:roots", "tapSap:", "seaweed:", "fish:any", "berries:", "craft:needle", "repair:", "craft:furHat",
       "craft:furMittens", "stone:", "craft:whetstone", "hone:", "craft:wedges", "sticks:", "bark:",
-      "build:turfHut", "build:waterStore", "build:snare", "fill:hole",
+      "build:turfHut", "build:waterStore", "build:snare", "fill:shore",
     ]);
     for (const o of list) {
       expect(o.kind).toBe("job");
@@ -101,12 +104,15 @@ describe("the horizon stages", () => {
     expect(campSite(regionState(manual.state, manual.world, manual.state.player.region))!.structures.turfHut).toBe(false);
   });
 
-  it("reports the current manual-stage balance miss honestly at the day-four freeze", () => {
-    const r = runStage(17, stage("manual"), 6);
+  it("reports the current manual-stage balance miss honestly at the freeze", () => {
+    // The cap is over the freeze, so the run ends on the body and not on the
+    // cap. The day is the measured reading, and the band is the stage's own.
+    const manual = stage("manual");
+    const r = runStage(17, manual, 30);
     expect(r.capped).toBe(false);
-    expect(r.days).toBe(4);
+    expect(r.days).toBe(7);
     expect(r.cause).toBe("froze");
-    expect(r.inBand).toBe(r.days >= 0 && r.days <= 2);
+    expect(r.inBand).toBe(r.days >= manual.band[0] && r.days <= manual.band[1]);
     expect(r.inBand).toBe(false);
   });
 

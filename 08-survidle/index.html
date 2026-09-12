@@ -7,12 +7,14 @@
     <title>08 - Survidle</title>
   </head>
   <body>
+    <!-- Shown while the worker solves the world; the run does not start until it is done. -->
+    <div id="loading" hidden><div class="bar"><i></i></div><p>raising the land</p></div>
     <!-- Left is info, middle is interactive, right is the queue. The left
          column is read-only but for the away slider, which only changes what
          is being read beside it. -->
     <div id="app">
       <aside id="left" class="col">
-        <section id="goals" class="panel"></section>
+        <section id="opportunities" class="panel"></section>
         <section id="shopping" class="panel"></section>
         <section id="stats" class="panel"></section>
         <section id="forecastbox" class="panel">

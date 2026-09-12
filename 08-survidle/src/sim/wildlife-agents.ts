@@ -8,7 +8,8 @@ import { regionDensity } from "./animals";
 import { regionState, siteAt } from "./regionstate";
 import { oddsFactor, skillLevel } from "./skills";
 import { noteHuntSign } from "./hunting";
-import type { AgentSpecies, GameState, Species, WildlifeMode, WildlifeState, WildlifeSubject } from "./types";
+import { recordOpportunityEvent } from "./opportunities";
+import type { AgentSpecies, GameState, Species, Terrain, WildlifeMode, WildlifeState, WildlifeSubject } from "./types";
 import { cellOf } from "./position";
 import { visibleCells } from "./sight";
 import { record } from "./record";
@@ -20,7 +21,7 @@ import { hasQuirk } from "./person";
 import { cue } from "./cues";
 import { illuminance } from "./light";
 import { cellForMetricPoint, encounterGeometry, metricAreaForCell, metricPointForPlayer, metricPointForWildlife, resolveSpatialEstimate, type MetricPoint } from "./wildlife-space";
-import { escapeDistanceM, evaluateUngulateEncounter, neutralMovementProfile, startleLogText, type UngulateEncounterInput, type WildlifeStartleEvent } from "./wildlife-encounter";
+import { escapeDistanceM, evaluateUngulateEncounter, neutralMovementProfile, speciesRevealedByPerception, startleLogText, type UngulateEncounterInput, type WildlifeStartleEvent } from "./wildlife-encounter";
 import { emitWildlifeEvent } from "./wildlife-events";
 import { notePopulationChange } from "./hunt-audit";
 
@@ -270,7 +271,7 @@ export function activateWildlife(state: GameState, world: World, rng: Rng): void
   }
 }
 
-const COVER = { water: 0, fell: 0.05, rock: 0.1, bog: 0.2, spruce: 0.85, pine: 0.5, birch: 0.4, meadow: 0.1 };
+const COVER: Record<Terrain, number> = { water: 0, river: 0, fell: 0.05, rock: 0.1, bog: 0.2, spruce: 0.85, pine: 0.5, birch: 0.4, meadow: 0.1 };
 const NOISY_WORK = new Set(["chop", "split", "splitWedges", "build", "mend", "iceHole", "crack", "stone"]);
 type EncounterRolls = Pick<UngulateEncounterInput, "detectionRoll" | "auditoryDetectionRoll" | "sightRoll" | "hearingRoll">;
 
@@ -488,6 +489,8 @@ export function evaluateWildlifeDisturbance(state: GameState, world: World, cal:
       group, terrain, bearingRad: geometry.bearingRad, distanceM: geometry.distanceM,
     });
     if (result.perception.kind !== "none" && logText !== null) {
+      const species = speciesRevealedByPerception(result.perception, subject.species);
+      if (species !== null) recordOpportunityEvent(state, { kind: "speciesSeen", species });
       const event: WildlifeStartleEvent = {
         id: eventId, subjectId: subject.id, source: geometry.subject,
         bearingRad: geometry.bearingRad, distanceM: geometry.distanceM,
@@ -775,6 +778,9 @@ export function noteWildlifeSightings(state: GameState, visible: number[], day: 
   for (const id of visible) {
     const subject = state.wildlife.subjects.find((s) => s.id === id);
     if (!subject) continue;
+    // This caller's subjects passed visibleWildlife, the map's naming boundary.
+    const species = speciesRevealedByPerception({ kind: "seen", identification: state.wildlife.recognized[id] ? "subject" : "species" }, subject.species);
+    if (species !== null) recordOpportunityEvent(state, { kind: "speciesSeen", species });
     if (subject.active) noteHuntSign(state, subject.active.cell, subject.species);
     if (state.wildlife.recognized[id]) continue;
     const f = state.wildlife.familiarity[id] ?? { points: state.wildlife.inherited[id] ?? 0, lastDay: -1 };

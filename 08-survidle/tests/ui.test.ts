@@ -6,8 +6,8 @@ import { calendar } from "../src/sim/calendar";
 import { bodyRowOf, campRowOf } from "../src/sim/bodyorder";
 import { addItem, herePile, pile } from "../src/sim/inventory";
 import { createCarcass, noteHuntSign } from "../src/sim/hunting";
-import { startIntent } from "../src/sim/intent";
-import { LEAN_KCAL_PER_DAY, RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
+import { resolveCell, startIntent } from "../src/sim/intent";
+import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { isKnown, knownShare, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { SPECIES_DEFS, type Species } from "../src/sim/species";
@@ -20,17 +20,17 @@ import { current } from "../src/sim/record";
 import { discovery, regionState, SEEN, siteFor } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
-import { ambientTemperature, ensureGround } from "../src/sim/weather";
+import { ambientTemperature, conditionsAt, ensureGround } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
 import { lighting } from "../src/ui/sky";
 import { doHtml } from "../src/ui/dopanel";
-import { campHtml, forecastHtml, rosterHtml, instantHtml, inventoryHtml, placesHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml, weatherHtml } from "../src/ui/panels";
+import { campHtml, forecastHtml, rosterHtml, inventoryHtml, placesHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml, weatherHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
 import { allPanesHtml, paneFor, paneHtml } from "./pane";
 import { tipHtml } from "../src/ui/tip";
-import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
+import { advanceHurry, hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
 import { huntedLand } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, speciesHere, spotOf } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
@@ -68,6 +68,9 @@ describe("reachability: everything in the catalogue has a button", () => {
   const localGame = huntedLand().filter((s) => regionAt(world, state.player.region).capacity[s]);
   for (const species of localGame) noteHuntSign(state, cellOf(state, world), species);
   const html = allActions(state, world);
+  // The felling's mastery key names the tree the nearest forest holds, and which
+  // tree that is belongs to the ground.
+  const fellingKind = cellAt(world, resolveCell(state, world, calendar(state.minute), "chop", undefined, "nearest").cell).terrain;
 
   it("every recipe", () => {
     for (const id of RECIPE_IDS) expect(html).toContain(`data-opt="intent:craft:${id}"`);
@@ -86,9 +89,11 @@ describe("reachability: everything in the catalogue has a button", () => {
     expect(html).toContain('data-specific="fish"');
   });
   it("every gather and camp task, in the Do list", () => {
-    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "lightTorch", "sharpen", "repair", "rest", "sleep"]) {
+    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "lightTorch", "sharpen", "repair", "rest"]) {
       expect(html).toContain(`data-opt="intent:${id}:`);
     }
+    expect(html).not.toContain('data-opt="intent:sleep:');
+    expect(html).not.toContain('data-opt="intent:night:');
   });
   it("every walk out of camp, in the map's places list", () => {
     for (const s of regionAt(world, state.player.region).spots) {
@@ -102,7 +107,9 @@ describe("reachability: everything in the catalogue has a button", () => {
     const cal = calendar(state.minute);
     const ways = travelHtml(state, world, cal);
     for (const nb of regionAt(world, state.player.region).neighbours) {
-      expect(ways).toContain(`data-arg="region:${nb.id}"`);
+      // A neighbour across water has no dry road out, so the button it gets is
+      // the ice crossing; every neighbour has one or the other.
+      expect(ways).toContain(`data-arg="region:${nb.id}`);
     }
   });
   it("shows a legal button, not a greyed one, when the inputs are there", () => {
@@ -130,7 +137,7 @@ describe("reachability: everything in the catalogue has a button", () => {
     // named beside it, so "Woodcraft > Spruce felling 1" under "Woodcraft 2" in
     // the Skills panel reads as one tree rather than two numbers that disagree.
     expect(document.querySelector('[data-opt="intent:chop:"] small.crumb')?.textContent)
-      .toBe("Woodcraft > Spruce felling 1");
+      .toBe(`Woodcraft > ${fellingKind[0].toUpperCase()}${fellingKind.slice(1)} felling 1`);
     // Walking trains nothing, so it carries neither breadcrumb nor bar.
     expect(document.querySelector('[data-opt="intent:rest:"] small.crumb')).toBeNull();
     expect(document.querySelector('[data-opt="intent:hunt:elk"] small.rec.warn')?.textContent).toBe("Hunting 8, you are 1");
@@ -142,7 +149,7 @@ describe("reachability: everything in the catalogue has a button", () => {
     // that rather than toward the next digit, which is 0.25% speed and unfelt.
     const bar = document.querySelector('[data-opt="intent:chop:"] .bar.mastery');
     expect(bar?.getAttribute("title")).toBe("an extra stick per tree at 20");
-    expect(bar?.querySelector(".fill")?.getAttribute("data-fill")).toBe("masteryTo:woodcraft|chop:spruce");
+    expect(bar?.querySelector(".fill")?.getAttribute("data-fill")).toBe(`masteryTo:woodcraft|chop:${fellingKind}`);
     // Gathering dead wood is speed only: it has a breadcrumb and no bar to fill.
     expect(document.querySelector('[data-opt="intent:deadwood:"] small.crumb')).not.toBeNull();
     expect(document.querySelector('[data-opt="intent:deadwood:"] .bar.mastery')).toBeNull();
@@ -193,7 +200,11 @@ describe("panels", () => {
     siteCamp(state, world);
     // Dusk, where the light is well away from the stylesheet's daylight defaults.
     const cal = calendar(19 * 60);
-    const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
+    // The map is lit by the air where the survivor stands, the same sample
+    // updateSky reads, so the figures compared here come from that and not from
+    // the region's mean.
+    const air = conditionsAt(state, world, cal, cellOf(state, world));
+    const light = lighting(cal, air, air.temperatureC);
     expect(light.brightness).toBeLessThan(1);
     setPanel("map", mapHtml(world, state, newUiState(), cal));
     const style = document.querySelector("#map .scroll-x")!.getAttribute("style")!;
@@ -574,6 +585,16 @@ describe("panels", () => {
     expect(document.querySelector("#val-health")!.textContent).toBe("42");
     expect(document.querySelector<HTMLElement>('[data-bar="task"]')!.style.width).toBe("50.0%");
     expect(document.querySelector('[data-val="task"]')!.textContent).toContain("30 min left (30 s)");
+    // With the frame loop's clock beside it, the bracket is the wall clock
+    // under the hurry: a hand-started once action runs at up to 6x.
+    const h = newHurry();
+    advanceHurry(h, state, world, 0.05);
+    updateBars(state, world, document, { hurry: h, speed: 1 });
+    const text = document.querySelector('[data-val="task"]')!.textContent!;
+    expect(text).toContain("30 min left (");
+    const secs = Number(/\((\d+) s\)/.exec(text)?.[1]);
+    expect(secs).toBeGreaterThan(0);
+    expect(secs).toBeLessThan(10);
   });
 
   it("region card shows the travel button for another region, and the spots and loose piles for here", () => {
@@ -859,26 +880,23 @@ describe("the Do panel", () => {
     for (const s of huntedLand()) if (roster.capacity[s]) expect(html).toContain(`data-opt="intent:hunt:${s}"`);
     expect(html).toContain('data-opt="intent:fish:any"');
     expect(html).toContain('data-specific="fish"');
-    for (const id of ["sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "night", "rest", "sleep"]) {
+    for (const id of ["sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "rest"]) {
       expect(html).toContain(`data-opt="intent:${id}:`);
     }
+    expect(html).not.toContain('data-opt="intent:sleep:');
+    expect(html).not.toContain('data-opt="intent:night:');
     expect(html).toContain('data-opt="intent:lightTorch:"');
     expect(html).not.toContain('class="tabs"');
   });
 
-  it("a lean food past the day's ceiling shows a disabled eat button with its own reason; fat's stays open", () => {
+  it("the pack draws no eat button: the self-care row is the one route to a meal", () => {
     const g = newGame(21);
     siteCamp(g.state, g.world);
     const p = g.state.player;
-    // Lean kcal lives on the shared gut counter's leanKcal field.
-    p.gut = { day: 1, kg: {}, leanKcal: LEAN_KCAL_PER_DAY };
     addItem(p.pack, "cookedMeat", 1);
     addItem(p.pack, "fat", 1);
-    const html = instantHtml(g.state, g.world);
-    expect(html).toContain('data-act="eat" data-food="cookedMeat" disabled');
-    expect(html).toContain("not more lean meat today");
-    expect(html).toContain('data-act="eat" data-food="fat" >');
-    expect(html).not.toContain('data-act="eat" data-food="fat" disabled');
+    const html = inventoryHtml(g.state, g.world, calendar(g.state.minute));
+    expect(html).not.toContain('data-act="eat"');
   });
 
   it("the Hunt group also offers reading the shore and setting and emptying the trap", () => {
@@ -959,7 +977,9 @@ describe("the Do panel", () => {
     // the bar's, which bars.ts writes every frame.
     expect(html).toContain("<b>Fell any tree</b>");
     expect(html).not.toContain("until camp has");
-    expect(html).toMatch(/walking [0-9.]+ km to forest/);
+    // The verb belongs to the ground crossed - a bog is picked through, not
+    // walked over - so the row is read for the distance and the destination.
+    expect(html).toMatch(/[0-9.]+ km to forest/);
     expect(html).toContain('data-act="stop"');
     // A tree half felled and stopped does not create a second finish control.
     placeAtSpot(g.state, g.world, g.state.player.region, "forest");

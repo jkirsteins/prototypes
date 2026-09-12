@@ -5,13 +5,13 @@ import { newGame } from "../src/sim/newgame";
 import { feltTemperature, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import type { Protection, Weather } from "../src/sim/types";
 import { ambientTemperature, stepWeather } from "../src/sim/weather";
 import { galeProtection, isLee, profileOf, protectionOf } from "../src/sim/shelter";
-import { cellAt, neighbours, regionAt, type World } from "../src/world/gen";
-import { fieldsAt } from "../src/world/terrain";
+import { cellAt } from "../src/world/gen";
 import { testRain } from "./weather-helpers";
+import { leeCellNear, terrainCellNear } from "./world-facts";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -53,13 +53,13 @@ describe("rain and snow storms", () => {
     state.weather.offset = offset;
     const raw = JSON.parse(serialize(state));
     raw.state.weather.storm = { from: 60, until: 420, warned: true };
-    const back = deserialize(JSON.stringify(raw))!.state;
+    const back = readSave(JSON.stringify(raw))!.state;
     expect(back.weather.storm).toEqual({ id: 1, source: "natural", kind, from: 60, until: 420, warned: true });
     expect(back.rng).toBe(state.rng);
-    expect(back.goals).toEqual(state.goals);
+    expect(back.opportunities).toEqual(state.opportunities);
     expect(back.shopping).toEqual(state.shopping);
     back.weather.offset *= -1;
-    expect(deserialize(serialize(back))!.state.weather.storm?.kind).toBe(kind);
+    expect(readSave(serialize(back))!.state.weather.storm?.kind).toBe(kind);
   });
 
   it("keeps freezing precipitation in snow at the zero-degree boundary", () => {
@@ -71,7 +71,7 @@ describe("rain and snow storms", () => {
       const raw = JSON.parse(serialize(state));
       raw.state.weather.offset = zeroOffset + delta;
       raw.state.weather.storm = { from, until: 420, warned: false };
-      expect(deserialize(JSON.stringify(raw))!.state.weather.storm?.kind).toBe(kind);
+      expect(readSave(JSON.stringify(raw))!.state.weather.storm?.kind).toBe(kind);
     }
   });
 
@@ -128,60 +128,17 @@ describe("rain and snow storms", () => {
   });
 });
 
-/** Elevation of a patch, read straight from the fields rather than through the
- * shelter rule these fixtures exist to check. */
-function elevationOf(world: World, cell: number): number {
-  const { x, y } = cellAt(world, cell);
-  return fieldsAt(world.seed, x, y).e;
-}
-
-/**
- * The first patch around seed 17's start answering each description: spruce
- * canopy, an open meadow slope, a meadow sitting lower than all four of its
- * neighbours, and the rock, fell, pine and water the wind gets at. Neither a
- * meadow that low nor open fell is in every region, so the search walks
- * outward from the start until it has all seven.
- */
-const WANTED = ["spruce", "open", "depression", "pine", "rock", "fell", "water"];
-
-function galeGround(): Record<"spruce" | "open" | "depression" | "pine" | "rock" | "fell" | "water", number> {
-  const { world } = newGame(17);
-  const found: Partial<Record<string, number>> = {};
-  // Each patch is read as its own and as four neighbours' ground.
-  const heights = new Map<number, number>();
-  const elevation = (cell: number) => {
-    const known = heights.get(cell);
-    if (known !== undefined) return known;
-    const height = elevationOf(world, cell);
-    heights.set(cell, height);
-    return height;
-  };
-  const queue = [world.start];
-  const seen = new Set(queue);
-  for (let i = 0; i < queue.length && i < 60 && WANTED.some((name) => found[name] === undefined); i++) {
-    const region = regionAt(world, queue[i]);
-    for (const neighbour of region.neighbours) {
-      if (!seen.has(neighbour.id)) { seen.add(neighbour.id); queue.push(neighbour.id); }
-    }
-    for (const cell of region.cells) {
-      const { terrain } = cellAt(world, cell);
-      if (terrain !== "meadow") { found[terrain] ??= cell; continue; }
-      if (found.open !== undefined && found.depression !== undefined) continue;
-      const around = neighbours(world, cell);
-      const dip = around.length === 4 && around.every((other) => elevation(other) > elevation(cell));
-      found[dip ? "depression" : "open"] ??= cell;
-    }
-  }
-  for (const name of WANTED) {
-    if (found[name] === undefined) throw new Error(`seed 17 has no ${name} patch around the start`);
-  }
-  return found as ReturnType<typeof galeGround>;
-}
-
-const GROUND = galeGround();
-const SPRUCE = GROUND.spruce;
-const OPEN = GROUND.open;
-const DEPRESSION = GROUND.depression;
+// Seed 17's generated terrain, found by what each cell has to be: a spruce
+// canopy, open meadow with nothing upwind of it, meadow behind a blocking
+// upwind slope, and exposed ground whose own upwind slope must not turn it
+// into lee. The controlled atmosphere these tests run under blows from due
+// north, so north is the wind every fixture is found against.
+const GALE_WIND = 0;
+const GALE_WORLD = newGame(17).world;
+const GALE_HOME = GALE_WORLD.start;
+const SPRUCE = terrainCellNear(GALE_WORLD, GALE_HOME, "spruce").cell;
+const OPEN = leeCellNear(GALE_WORLD, GALE_HOME, "meadow", GALE_WIND, false);
+const SLOPE_LEE = leeCellNear(GALE_WORLD, GALE_HOME, "meadow", GALE_WIND);
 
 function galeSite(cell = OPEN) {
   const g = exposure(0, "rain");
@@ -206,16 +163,20 @@ function windLoss(g: ReturnType<typeof galeSite>): number {
 describe("gale protection", () => {
   beforeEach(() => testRain(8, 10, 40));
 
-  it("reads lee from existing canopy and depressions, never from exposed rock or fell", () => {
+  it("reads lee from the canopy overhead and the blocking ground upwind, never from exposed rock or fell", () => {
     const { world } = newGame(17);
     expect(isLee).toBeTypeOf("function");
     for (const [cell, terrain, lee] of [
-      [SPRUCE, "spruce", true], [DEPRESSION, "meadow", true],
-      [OPEN, "meadow", false], [GROUND.pine, "pine", false],
-      [GROUND.rock, "rock", false], [GROUND.fell, "fell", false], [GROUND.water, "water", false],
+      [SPRUCE, "spruce", true], [SLOPE_LEE, "meadow", true],
+      [OPEN, "meadow", false], [leeCellNear(world, GALE_HOME, "pine", GALE_WIND, false), "pine", false],
+      // Rock and fell behind a blocking slope of their own: still exposed,
+      // which is the rule these two are here for.
+      [leeCellNear(world, GALE_HOME, "rock", GALE_WIND), "rock", false],
+      [leeCellNear(world, GALE_HOME, "fell", GALE_WIND), "fell", false],
+      [terrainCellNear(world, GALE_HOME, "water").cell, "water", false],
     ] as const) {
       expect(cellAt(world, cell).terrain).toBe(terrain);
-      expect(isLee(world, cell)).toBe(lee);
+      expect(isLee(world, cell, GALE_WIND)).toBe(lee);
     }
   });
 
@@ -253,14 +214,14 @@ describe("gale protection", () => {
     expect(galeProtection).toBeTypeOf("function");
     for (const [cell, cover, emergencyMinutes, effective] of [
       [OPEN, 0, 0, 0], [OPEN, 0, 30, 0], [OPEN, 0, 90, 1],
-      [OPEN, 2, 0, 2], [DEPRESSION, 1, 0, 2], [SPRUCE, 3, 0, 3],
+      [OPEN, 2, 0, 2], [SLOPE_LEE, 1, 0, 2], [SPRUCE, 3, 0, 3],
       [SPRUCE, 0, 240, 3],
     ] as const) {
       const g = galeSite(cell);
       g.site.cover = cover;
       g.site.emergencyMinutes = emergencyMinutes;
       const before = JSON.stringify(g.site);
-      expect(galeProtection(g.world, cell, g.site)).toBe(effective);
+      expect(galeProtection(g.state, g.world, cell, g.site)).toBe(effective);
       expect(JSON.stringify(g.site)).toBe(before);
     }
   });
@@ -270,7 +231,7 @@ describe("gale protection", () => {
     frame.site.emergencyMinutes = 90;
     const found = galeSite();
     found.site.cover = 2;
-    const scrape = galeSite(DEPRESSION);
+    const scrape = galeSite(SLOPE_LEE);
     scrape.site.cover = 1;
     expect(protectionOf(frame.site)).toBe(2);
     expect(protectionOf(found.site)).toBe(2);
@@ -346,7 +307,7 @@ describe("ordinary gale generation", () => {
 
   it("replays gale windows across a save with the same weather and random state", () => {
     const { state } = newGame(17);
-    const back = deserialize(serialize(state))!.state;
+    const back = readSave(serialize(state))!.state;
     const a = new Rng(5), b = new Rng(5);
     let gales = 0;
     for (let day = 1; day <= 365; day++) {

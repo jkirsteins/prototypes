@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { SAVE_VERSION, WORLD_VERSION } from "../src/sim/world-version";
 import { calendar } from "../src/sim/calendar";
+import { alertness, SLEEP_ONSET } from "../src/sim/sleep";
 import { bodyRowOf, isCampRow, isBodyRow } from "../src/sim/bodyorder";
 import { stormOptions } from "../src/sim/body";
 import { rootStockFor } from "../src/sim/camp";
@@ -9,7 +10,7 @@ import { newGame } from "../src/sim/newgame";
 import { campSite, fillPopulations, siteFor } from "../src/sim/regionstate";
 import { rootKgLeft } from "../src/sim/stocks";
 import { startTask } from "../src/sim/tasks";
-import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
+import { awaySeconds, catchUp, deserialize, loadGame, readSave, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
 import { addOrder, conditionOpen, orderMet, orderSentence } from "../src/sim/orders";
 import { AWAY_HOURS_MAX } from "../src/units";
 import { isWorkOrder, type GameState } from "../src/sim/types";
@@ -77,10 +78,12 @@ describe("advance", () => {
     expect(state.task).toBeNull();
   });
 
-  it("falls asleep on its own when idle and spent: the body's own row puts it down", () => {
+  it("falls asleep on its own when idle and sleepy: the body's own row puts it down", () => {
     const { state, world } = newGame(8);
     siteCamp(state, world);
-    state.player.energy = 9;
+    // The debt, not the energy: a spent body is rested by the care row and a
+    // sleepy one is put to bed, and the two were separated.
+    state.player.sleepDebt = SLEEP_ONSET + 1 + alertness(calendar(state.minute, state.startDoy).hour);
     advance(state, world, 5);
     expect(state.task?.id).toBe("sleep");
     expect(state.player.bodyNeed).toBe("sleep");
@@ -90,8 +93,12 @@ describe("advance", () => {
   it("survives the colder default April day with the starting kit", () => {
     const { state, world } = newGame(8);
     siteCamp(state, world);
-    expect(localWeather(state, world).temperatureC).toBeCloseTo(-3.5, 1);
-    expect(localWeather(state, world).iceCm).toBeCloseTo(19.7, 1);
+    // Below freezing with the water shut, which is what "the colder default
+    // April day" means; the landing reads about -1 C at sea level now rather
+    // than the -3.5 C of a ridge, and how cold it is is not what this case is
+    // about - surviving the day with the arrival kit is.
+    expect(localWeather(state, world).temperatureC).toBeLessThan(0);
+    expect(localWeather(state, world).iceCm).toBeGreaterThan(0);
     advance(state, world, 1440);
     expect(state.dead).toBeNull();
     expect(state.player.health).toBeGreaterThan(0);
@@ -112,7 +119,7 @@ describe("save", () => {
     active.escapeRemainingM = 123;
     active.escapeStartedMinute = 4;
     active.escapeEpisode = 2;
-    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const loaded = readSave(JSON.stringify(raw))!.state;
     expect(loaded.wildlife.subjects[0].active).toMatchObject({
       cell: active.cell, position: expectedPoint, travel: null,
       escapeRemainingM: 123, escapeStartedMinute: 4, escapeEpisode: 2,
@@ -132,7 +139,7 @@ describe("save", () => {
     delete active.escapeStartedMinute;
     delete active.lastDetectionMinute;
     delete active.escapeEpisode;
-    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const loaded = readSave(JSON.stringify(raw))!.state;
     expect(loaded.wildlife.subjects[0].active).toMatchObject({
       escapeRemainingM: 420, escapeStartedMinute: state.minute,
       lastDetectionMinute: state.minute, escapeEpisode: 0,
@@ -160,7 +167,7 @@ describe("save", () => {
     delete active.escapeEpisode;
     const events: string[] = [];
     setWildlifeEventSink((event) => events.push(event.id));
-    const loaded = deserialize(JSON.stringify(raw))!.state;
+    const loaded = readSave(JSON.stringify(raw))!.state;
     const deer = loaded.wildlife.subjects[0];
     const point = resolveSpatialEstimate(loaded.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
     // Remain 500 m away, beyond both detection and settlement ranges.
@@ -183,7 +190,7 @@ describe("save", () => {
     const { state, world } = newGame(9);
     siteCamp(state, world);
     advance(state, world, 500);
-    const file = deserialize(serialize(state, 1234));
+    const file = readSave(serialize(state, 1234));
     expect(file).not.toBeNull();
     expect(file!.savedAt).toBe(1234);
     const expected = JSON.parse(JSON.stringify(state));
@@ -195,36 +202,40 @@ describe("save", () => {
     const { state, world } = newGame(9);
     state.weather.storm = { id: 4, source: "synthetic", kind: "rain", from: 600, until: 960, warned: false };
     state.weather.nextStormId = 5;
-    state.goals.opportunity = {
-      goal: "testShelter", status: "reserved", createdAt: 20, attempts: 2,
+    state.opportunities.context.weather = {
+      opportunity: "testShelter", status: "reserved", createdAt: 20, attempts: 2,
       stormId: 4, source: "synthetic", area: { region: 7, centre: 99, radiusKm: 1 },
       announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
       readerIndex: 1, plan: null,
     };
-    state.goals.opportunity.plan = stormOptions(state, world, state.weather.storm);
-    const back = deserialize(serialize(state))!.state;
+    state.opportunities.context.weather.plan = stormOptions(state, world, state.weather.storm);
+    const back = readSave(serialize(state))!.state;
     expect(back.weather.storm).toEqual(state.weather.storm);
     expect(back.weather.nextStormId).toBe(5);
-    expect(back.goals.opportunity).toEqual(state.goals.opportunity);
+    expect(back.opportunities.context.weather).toEqual(state.opportunities.context.weather);
   });
 
   it("adds zeroed storm metrics to an opportunity from before shelter testing", () => {
     const { state } = newGame(9);
-    state.goals.opportunity = {
-      goal: "testShelter", status: "reserved", createdAt: 20, attempts: 1,
+    state.opportunities.context.weather = {
+      opportunity: "testShelter", status: "reserved", createdAt: 20, attempts: 1,
       stormId: null, source: null, area: null, announcedAt: null, resolvedAt: null,
       minutesByProtection: [4, 3, 2, 1], atCampMinutes: 9, awayFromCampMinutes: 1, maxWetness: 70,
     };
     const raw = JSON.parse(serialize(state));
-    delete raw.state.goals.opportunity.minutesByProtection;
-    delete raw.state.goals.opportunity.atCampMinutes;
-    delete raw.state.goals.opportunity.awayFromCampMinutes;
-    delete raw.state.goals.opportunity.maxWetness;
-    delete raw.state.goals.opportunity.readerIndex;
-    delete raw.state.goals.opportunity.plan;
+    delete raw.state.opportunities.context.weather.minutesByProtection;
+    delete raw.state.opportunities.context.weather.atCampMinutes;
+    delete raw.state.opportunities.context.weather.awayFromCampMinutes;
+    delete raw.state.opportunities.context.weather.maxWetness;
+    delete raw.state.opportunities.context.weather.readerIndex;
+    delete raw.state.opportunities.context.weather.plan;
+    raw.state.opportunities.context.weather.goal = raw.state.opportunities.context.weather.opportunity;
+    delete raw.state.opportunities.context.weather.opportunity;
+    raw.state["goals"] = { opportunity: raw.state.opportunities.context.weather };
+    delete raw.state.opportunities;
 
-    expect(deserialize(JSON.stringify(raw))!.state.goals.opportunity).toMatchObject({
+    expect(readSave(JSON.stringify(raw))!.state.opportunities.context.weather).toMatchObject({
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
       readerIndex: null, plan: null,
     });
@@ -232,15 +243,20 @@ describe("save", () => {
 
   it.each(["fieldFire", "fieldMeal"] as const)("migrates a legacy %s opportunity into the shared remote storm attempt", (goal) => {
     const { state } = newGame(9);
-    state.goals.opportunity = {
-      goal, status: "reserved", createdAt: 20, attempts: 2,
+    state.opportunities.context.weather = {
+      opportunity: goal, status: "reserved", createdAt: 20, attempts: 2,
       stormId: null, source: null, area: { region: 7, centre: 99, radiusKm: 1 },
       announcedAt: null, resolvedAt: null,
       minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
 
-    expect(deserialize(serialize(state))!.state.goals.opportunity).toMatchObject({
-      goal: "remoteStorm", status: "reserved", attempts: 2,
+    const raw = JSON.parse(serialize(state));
+    raw.state.opportunities.context.weather.goal = raw.state.opportunities.context.weather.opportunity;
+    delete raw.state.opportunities.context.weather.opportunity;
+    raw.state["goals"] = { opportunity: raw.state.opportunities.context.weather };
+    delete raw.state.opportunities;
+    expect(readSave(JSON.stringify(raw))!.state.opportunities.context.weather).toMatchObject({
+      opportunity: "remoteStorm", status: "reserved", attempts: 2,
       area: { region: 7, centre: 99, radiusKm: 1 },
     });
   });
@@ -250,11 +266,11 @@ describe("save", () => {
     const raw = JSON.parse(serialize(state));
     raw.state.weather.storm = { kind: "rain", from: 600, until: 960, warned: false };
     delete raw.state.weather.nextStormId;
-    delete raw.state.goals.opportunity;
-    const back = deserialize(JSON.stringify(raw))!.state;
+    delete raw.state.opportunities;
+    const back = readSave(JSON.stringify(raw))!.state;
     expect(back.weather.storm).toEqual({ id: 1, source: "natural", kind: "rain", from: 600, until: 960, warned: false });
     expect(back.weather.nextStormId).toBe(2);
-    expect(back.goals.opportunity).toBeNull();
+    expect(back.opportunities.context.weather).toBeNull();
   });
 
   it("keeps a fractional tick across a save and reload", () => {
@@ -262,7 +278,7 @@ describe("save", () => {
     const reloaded = newGame(9);
     advance(uninterrupted.state, uninterrupted.world, 1, { wildlife: "detailed" });
     advance(reloaded.state, reloaded.world, 0.4, { wildlife: "detailed" });
-    const file = deserialize(serialize(reloaded.state))!;
+    const file = readSave(serialize(reloaded.state))!;
     advance(file.state, reloaded.world, 0.6, { wildlife: "detailed" });
     expect(file.state).toEqual(uninterrupted.state);
   });
@@ -278,7 +294,7 @@ describe("save", () => {
     expect(deserialize(JSON.stringify(stale))).toBeNull();
     const current = JSON.parse(serialize(newGame(9).state));
     delete current.state.advanceCarry;
-    expect(deserialize(JSON.stringify(current))!.state.advanceCarry).toBe(0);
+    expect(readSave(JSON.stringify(current))!.state.advanceCarry).toBe(0);
   });
 
   it("a new game starts with the new body fields, and an old save gets them filled", () => {
@@ -323,7 +339,7 @@ describe("save", () => {
     delete raw.state.regions[state.player.region].smoke;
     delete raw.state.regions[state.player.region].logsWet;
     delete raw.state.regions[state.player.region].trap.age;
-    const back = deserialize(JSON.stringify(raw))!.state;
+    const back = readSave(JSON.stringify(raw))!.state;
     expect(back.player.water).toBe(2.5);
     expect(back.player.frostbite).toEqual({ feet: 0, hands: 0 });
     expect(back.player.toes).toBe(false);
@@ -358,7 +374,7 @@ describe("save", () => {
     const raw = JSON.parse(serialize(state));
     expect(raw.state.route.walked.length).toBe(1);
     delete raw.state.route.walked;
-    const back = deserialize(JSON.stringify(raw))!.state;
+    const back = readSave(JSON.stringify(raw))!.state;
     expect(back.route!.walked).toEqual([]);
     expect(back.route!.path).toEqual(state.route!.path);
   });
@@ -371,7 +387,7 @@ describe("save", () => {
     // after a run started looks like. The whole-record default cannot see it,
     // and the first sight check of the catch-up reads the missing level.
     delete raw.state.skills.wayfinding;
-    const back = deserialize(JSON.stringify(raw))!;
+    const back = readSave(JSON.stringify(raw))!;
     expect(back.state.skills.wayfinding).toEqual({ xp: 0, mastery: {}, pool: 0 });
     expect(() => catchUp(back.state, world, 60)).not.toThrow();
   });
@@ -408,7 +424,7 @@ describe("save", () => {
     (st as unknown as { pop: Record<string, number> }).pop = { hare: 10, grouse: 20, deer: 3, elk: 1, fish: 40 };
     state.task = { id: "fish", progress: 0, duration: 60, repeat: false };
     state.paused["hunt:grouse@123"] = { id: "hunt", arg: "grouse", fraction: 0.5, cell: 123 };
-    const file = deserialize(serialize(state))!;
+    const file = readSave(serialize(state))!;
     fillPopulations(file.state, world);
     const pop = file.state.regions[id].pop as Record<string, number | undefined>;
     expect(pop.grouse).toBeUndefined();
@@ -431,7 +447,7 @@ describe("save", () => {
       { id: 2, kind: "job", req: { task: "hunt", arg: "grouse", until: { kind: "once" }, deliver: "camp", where: "nearest" }, done: 0, minutes: 0, skipped: "" },
     ];
     st.nextOrderId = 3;
-    const file = deserialize(serialize(state))!;
+    const file = readSave(serialize(state))!;
     const orders = file.state.regions[id].orders;
     // The list carried neither care row, so the load migrates both on at the top.
     expect(isCampRow(orders[0])).toBe(true);
@@ -453,7 +469,7 @@ describe("save", () => {
       delete inv.items.ice;
       for (const id of toolIds) delete inv.items[id];
     }
-    const file = deserialize(JSON.stringify(raw));
+    const file = readSave(JSON.stringify(raw));
     expect(file).not.toBeNull();
     for (const st of Object.values(file!.state.regions)) expect(st.iceHole).toBeNull();
     expect(() => advance(file!.state, world, 1440)).not.toThrow();
@@ -474,7 +490,7 @@ describe("save", () => {
     delete rawOrder.givenDoy;
     delete rawOrder.dayOpened;
     delete rawOrder.dayBase;
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     const back = file.state.regions[id].orders[2];
     if (!isWorkOrder(back)) throw new Error("the migrated row is not work");
     expect(() => orderMet(file.state, world, cal, back, false)).not.toThrow();
@@ -483,8 +499,8 @@ describe("save", () => {
   });
 
   it("rejects garbage", () => {
-    expect(deserialize("not json")).toBeNull();
-    expect(deserialize("{}")).toBeNull();
+    expect(readSave("not json")).toBeNull();
+    expect(readSave("{}")).toBeNull();
   });
 
   it("catches up on time away, capped at a day, and reports what happened", () => {
@@ -535,7 +551,7 @@ describe("the world save", () => {
     state.nextCarcassId = 4;
     state.huntPressure[12] = 0.45;
     state.player.huntSigns[12] = { species: { deer: 40 } };
-    const back = deserialize(serialize(state))!.state;
+    const back = readSave(serialize(state))!.state;
     expect(back.carcasses).toEqual(state.carcasses);
     expect(back.nextCarcassId).toBe(4);
     expect(back.huntPressure).toEqual({ 12: 0.45 });
@@ -548,7 +564,7 @@ describe("the world save", () => {
       species: { deer: 40 },
       failures: { deer: { at: 50, count: 3 } },
     };
-    const back = deserialize(serialize(state))!.state;
+    const back = readSave(serialize(state))!.state;
     expect(back.player.huntSigns[12]).toEqual(state.player.huntSigns[12]);
   });
 
@@ -559,7 +575,7 @@ describe("the world save", () => {
     delete old.state.nextCarcassId;
     delete old.state.huntPressure;
     delete old.state.player.huntSigns;
-    const back = deserialize(JSON.stringify(old))!.state;
+    const back = readSave(JSON.stringify(old))!.state;
     expect(back.carcasses).toEqual([]);
     expect(back.nextCarcassId).toBe(1);
     expect(back.huntPressure).toEqual({});
@@ -576,7 +592,7 @@ describe("the world save", () => {
     delete v4.state.year;
     delete v4.state.landing;
     delete v4.state.spine;
-    const file = deserialize(JSON.stringify(v4))!;
+    const file = readSave(JSON.stringify(v4))!;
     expect(file.state.year).toBe(1);
     expect(file.state.landing).toBeNull();
     expect(file.state.survivors).toHaveLength(1);
@@ -609,7 +625,7 @@ describe("the producers' save", () => {
       delete st.trap;
     }
     old.state.ledger = [{ day: 1, yield: { fish: 0, snare: 0, hunt: 0, berries: 0, kit: 0 }, eaten: 0, burn: { base: 0, activity: 0, walk: 0, cold: 0, sick: 0 }, sleepMin: 0, workMin: 0 }];
-    const file = deserialize(JSON.stringify(old))!;
+    const file = readSave(JSON.stringify(old))!;
     expect(file).not.toBeNull();
     expect(file.state.player.known).toEqual({});
     for (const st of Object.values(file.state.regions)) {
@@ -635,7 +651,7 @@ describe("the producers' save", () => {
       (st as { roots?: number }).roots = 12;
       delete (st as { nests?: number }).nests;
     }
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     const st = file.state.regions[id]!;
     expect(st.rootCells).toEqual({});
     expect((st as { roots?: number }).roots).toBeUndefined();

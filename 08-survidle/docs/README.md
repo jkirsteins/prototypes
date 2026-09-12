@@ -26,6 +26,9 @@ or a single advanced action runs at up to 6x from start to end, and a
 standing or counted order goes 3 minutes ahead each time you click its
 row, one click per two-thirds of a second. Body needs, the runner's
 waiting, and everything done while you are away run at the one scale.
+The seconds in brackets on the task bar and on an option row are the wall
+clock under all of that - the hurry and the body's pace - not the one
+scale, so a once action's "40 min (10 s)" is what you will actually wait.
 
 ## How it plays
 
@@ -105,15 +108,21 @@ waiting, and everything done while you are away run at the one scale.
   the old one, and the region panel says what the cell offers first.
 - **Orders belong to a camp.** Walk into a new region and its list is
   empty; come back and the old list resumes.
-- **A big north.** The world is about 540 by 390 km, the shape of the far
-  north: sea and fjords to the northwest, a fell spine inland, lakes and bog
-  to the east. It is generated as you touch it, so loading is instant.
-  Regions are about 4 km across; country you have never entered is fog, and
-  the next valley over is dimly seen. The map is always centred on you;
+- **A big north.** The world is about 540 by 667 km, real ground from 61 N
+  to 67 N: height in metres above the sea, valleys cut by erosion and
+  drainage rather than drawn in, lakes that each have an outlet, streams and
+  rivers running down to fjords on the west coast, stone exposed at the
+  rate real geology gives it, and the treeline set by latitude and distance
+  from the sea. Solving that takes a few seconds at the start of a run,
+  shown by a loading bar; after that, the map and regions are still built
+  as you touch them, the same as before. Regions are about 4 km across;
+  country you have never entered is fog, and the next valley over is
+  dimly seen. The map is always centred on you;
   the fog is per cell, not per region: what you have walked is a thread
   through the black, and what the eye reaches from where you stand is a
   blot around it. Closed spruce shows you the ground underfoot and no
-  more; open bog and a fell top show you the horizon; the dark shows you
+  more, but trees at the water's edge show you the water and the far
+  shore; open bog and a fell top show you the horizon; the dark shows you
   nothing at all.
 - **You cannot walk where you do not know the way.** A route may not cross
   ground you have never seen, so "walk to camp" can say there is no way
@@ -201,8 +210,10 @@ waiting, and everything done while you are away run at the one scale.
   berries, about 1.2 kg, among them. Warmth settles toward what
   your felt temperature can hold: ambient, plus clothing, fire and shelter
   at camp, plus activity, minus wetness. Below 20 warmth you lose health
-  fast. Energy drains awake and faster working; below 20 you work at half
-  speed, and if you idle while spent you fall asleep where you stand.
+  fast. Stamina drains through physical work. At 20 Stamina the survivor
+  collapses and must Rest to 55 before working again. Sleepiness is separate:
+  its pressure and the time of day determine when the survivor falls asleep
+  and wakes. Sleep is automatic; Rest remains an explicit action.
 - **The elements.** Water is a reserve like food: drink at a shore, carry it
   in a bark bucket or a waterskin, melt snow at the fire in winter for a kilo
   of wood a litre. Lakes freeze; thin ice is a shortcut that can take you,
@@ -232,9 +243,10 @@ waiting, and everything done while you are away run at the one scale.
   tapped for three weeks in May and shore seaweed on a coastal camp fill
   the season's plant band; nests give eggs in May and June. Once the
   larder holds a winter's food, hunting and fishing stand down for the
-  woodpile until it dips back under that line. Auto-eat and auto-feed
-  keep you alive while the tab is closed, as long as the food and
-  firewood are there.
+  woodpile until it dips back under that line. The self-care and camp
+  rows on the activity queue eat, drink and feed the fire while the tab is
+  closed, as long as the food and firewood are there and the player has
+  not ranked work over them; nothing eats behind those rows' backs.
 - **Spares.** A tool recipe yields a spare that is taken up when the one in
   hand breaks; "keep camp at 1 axe" is how the axe is never the end of the
   run.
@@ -414,6 +426,25 @@ and accelerated work. The same simulated wind vector drives rain and snow
 drift. Fog and optional ASCII cloud glyphs use slower presentation-only cycles
 of 12 and 16 real seconds. Those decorative shape changes do not accelerate
 with work, pause, or alter the simulated feature's location or visibility.
+Liquid water in the current viewshed ripples on the same kind of wall clock.
+It is faked for the eye, not modelled: three smooth waves cross the sheet in
+different directions, with wavelengths of 4, 2.5 and 6 cells and periods of
+5, 3.75 and 8 real seconds, and each cell shows their sum. A cell's start in
+each wave comes from its position, with up to a radian of seeded jitter, and
+each wave peaks at its own seeded brightness, so neighbours move together
+without the sheet sliding as one texture. Each wave is an overlay in the
+cell's lit blue whose opacity the compositor animates, so a lake costs the
+main thread no paint; at the two close zoom rungs the peak is halved so a
+big cell does not wash out its detail glyphs. Ice, marked cells and
+remembered water lie still, and reduced motion turns it off. `?shimmer=2`
+is a test aid that runs all three waves twice as fast; it is not a game
+feature.
+
+Panels are rendered from state ten times a second, not on every display
+frame: nothing a panel shows moves faster than a game minute, and every
+per-frame writer compares before it writes. Motion that must be smooth is
+CSS on the compositor. Input still renders at once through its own
+handlers, and the map tip draws on the pointer event itself.
 
 ### Stationary ground consequences
 
@@ -508,10 +539,15 @@ limit could never reveal.
     npm run test:slow
     npm run build
     npm run weather:profile
+    npm run terrain
 
 `npm test` is the commit gate and stays under twenty seconds; it excludes
 `tests/slow/`, which holds the runs measured in whole simulated seasons -
-the three-life lineage on seed 17. `npm run test:slow` runs those, and is
+the three-life lineage on seed 17. A fresh clone pays for the worlds
+first: the fast suite touches about fourteen full-size seeds, each solved
+once and cached, which is around seventy seconds and six hundred MB under
+`node_modules/.cache/` before the twenty-second runs begin. See
+`docs/testing.md` for the cache. `npm run test:slow` runs those, and is
 worth a run when the reference player, the lineage or the landing moves.
 
 Every browser pass runs at 1440 by 900 and at 390 wide against
@@ -524,14 +560,14 @@ are 300 m cell coordinates:
 
 | shot | minute | x | y | simulated feature |
 | --- | ---: | ---: | ---: | --- |
-| clear | 1,440 | 450 | 1,100 | clear comparison above rock |
+| clear | 1,440 | 1,696 | 880 | clear comparison above rock |
 | sunny-clouds | 170,160 | 700 | 950 | dry midsummer sun under a broken cloud field |
 | approaching-rain | 86,760 | 1,040 | 150 | rain-band edge |
-| local-rain | 108,720 | 1,300 | 376 | 11.53 mm/h rain core |
-| persisted-snow | 480,480 | 296 | 1,200 | 10.66 cm/h snow over 39 cm retained ground snow |
-| valley-fog | 19,560 | 840 | 1,000 | dry 0.39 fog in a local bog depression |
+| local-rain | 108,720 | 1,112 | 400 | 12.42 mm/h rain core |
+| persisted-snow | 480,480 | 872 | 864 | 14.71 cm/h snow over 60 cm retained ground snow |
+| valley-fog | 19,560 | 1,432 | 1,036 | dry 0.57 fog in a local bog depression |
 | windward-lee | 3,960 | 700 | 950 | terrain-modified extinction gradient |
-| obscured | 480,480 | 450 | 1,100 | 0.21 km MOR at the clear comparison rock |
+| obscured | 480,480 | 1,696 | 880 | 0.36 km MOR at the clear comparison rock |
 
 The URL only selects a catalog entry. Normal `GameState`, `WeatherWorld`,
 `visibleCells` and `mapHtml` generate every class, variable, glyph and known
@@ -549,13 +585,23 @@ ASCII ripple glyphs. Reduced-motion mode freezes those glyphs.
 The sunny-cloud pair advances the normal simulation by 60 game minutes and
 captures the resulting cloud-shadow field before and after; it does not assign
 or modify rendering classes.
-The valley cell's normalized elevation is 0.321; its west, east, north and
-south samples 6 km away are 0.490, 0.446, 0.408 and 0.424. `fog-frame-a.png`
+The valley cell stands at 108 m; its west, east, north and south samples 6 km
+away are at 509, 457, 388 and 506 m. `fog-frame-a.png`
 and `fog-frame-b.png` hold the same frozen simulation minute and visibility
 footprint 3.2 real seconds apart; only presentation animation continues.
 
 `scripts/mapstats.ts` prints a downsampled view of the whole world and its
-terrain shares: `npx vite-node scripts/mapstats.ts 42`.
+terrain shares, plus the full-resolution water kinds, stream count, rock
+share and a height histogram: `npx vite-node scripts/mapstats.ts 42`.
+
+`npm run terrain` is the realism report: for seeds 42, 1 and 7 it solves
+(or reads the cached solve) and prints each measure from the
+terrain-hydrology spec's section 6 beside its real target - distance from
+land to water, lake share, the largest river mouths, coastline length,
+exposed rock by band, bog share by latitude, valley bearings, mean slope
+per class and the solve time. `npm run terrain -- <seed>` runs one seed;
+`npm run terrain -- --time` runs the older stage-by-stage timing spike
+instead of the report.
 
 `npm run reference` runs the day-one order list a competent player would
 write, headless, on five seeds, about ten seconds; the gate is alive and
@@ -619,7 +665,7 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/sim/stocks.ts`: the spring egg stock, seeded on 1 May, and the root ground - what a cell's stand holds, what is left in each cell that has been dug, and the growing season's regrowth.
 - `src/sim/skills.ts`: the level curves, recommended levels, mastery extras and pool perks.
 - `src/sim/light.ts`: the illuminance at a cell in lux - the sun, the moon, cloud, snow and flame - the light each activity needs, and the odds a light buys; `src/ui/map.ts`: the rings a light source lights.
-- `src/sim/water.ts`: the water reserve, drinking, filling vessels and auto-drink.
+- `src/sim/water.ts`: the water reserve, drinking and filling vessels; the self-care row in `src/sim/body.ts` is what drinks.
 - `src/sim/clothing.ts`: per-garment wetness, drying and frostbite chance.
 - `src/sim/fire.ts`: wet wood, burn rate and lighting odds in weather, indoor smoke.
 - `src/sim/hazards.ts`: the hourly rolls: frostbite, fire spread, ice underfoot, freezing vessels.

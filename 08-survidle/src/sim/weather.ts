@@ -506,8 +506,8 @@ export function forecastText(state: GameState): string {
   const blowing = stormNow(state.weather, state.minute);
   if (!storm) return "";
   if (!blowing && !stormComing(state)) {
-    const opportunity = state.goals.opportunity;
-    return opportunity?.goal === "readWeather" && opportunity.status === "announced"
+    const opportunity = state.opportunities.context.weather;
+    return opportunity?.opportunity === "readWeather" && opportunity.status === "announced"
       && opportunity.stormId === storm.id && state.minute < storm.from
       ? "conditions are changing"
       : "";

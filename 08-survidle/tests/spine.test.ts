@@ -25,10 +25,30 @@ describe("the season spine", () => {
     siteCamp(state, world);
     state.dead = { cause: "froze", minute: 0 };
     advance(state, world, 430 * 1440, { nobody: true });
-    const fired = THRESHOLDS.filter((id) => state.spine.fired[id] !== undefined);
-    expect(fired).toEqual(["berries", "rut", "firstFrost", "firstSnow", "lakeFreeze", "dark", "coldSnap", "iceOut"]);
-    expect(state.spine.fired.coldSnap).toBe(2);
+    // Six of the eight are what a year at this landing reaches. The cold snap
+    // wants -20 C at the cell and a sea-level coast never sees it, so the snap
+    // and the ice-out that waits behind it are driven below on the same
+    // detector, with the air pushed under the line rather than the world moved.
+    const reached = THRESHOLDS.filter((id) => state.spine.fired[id] !== undefined);
+    expect(reached).toEqual(["berries", "rut", "firstFrost", "firstSnow", "lakeFreeze", "dark"]);
     expect(state.spine.fired.berries).toBe(1);
+
+    const snapDay = calendar(314 * 1440, state.startDoy);
+    expect(snapDay.season).toBe("winter");
+    state.weather.offset = -30;
+    state.weather.iceCm = 20;
+    stepSpine(state, snapDay, null);
+    const snapYear = state.spine.fired.coldSnap;
+    expect(snapYear).toBeDefined();
+    // Once a winter: the same snap a day later is the same winter's.
+    stepSpine(state, calendar(315 * 1440, state.startDoy), null);
+    expect(state.spine.fired.coldSnap).toBe(snapYear);
+    // Ice-out waits for the snap and for the water to open.
+    state.weather.iceCm = 0;
+    stepSpine(state, calendar(330 * 1440, state.startDoy), null);
+    expect(state.spine.fired.iceOut).toBeDefined();
+    expect(THRESHOLDS.filter((id) => state.spine.fired[id] !== undefined))
+      .toEqual(["berries", "rut", "firstFrost", "firstSnow", "lakeFreeze", "dark", "coldSnap", "iceOut"]);
   });
 
   // Driving this through advance() over the full 12 days would need a

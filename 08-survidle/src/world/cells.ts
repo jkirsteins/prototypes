@@ -1,14 +1,17 @@
 /**
- * The world as cells, generated a chunk at a time the first time anything
- * looks at it. Terrain and region are pure functions of the seed, so a chunk
- * is only a cache. Region definitions live in gen.ts and are lazy too.
+ * The world as 50 m patches on top of the solved 300 m arrays. The solve
+ * (solve.ts) is the world's height, water and discharge; the fine chunks are
+ * the authoritative ground everything in the game addresses. A patch reads
+ * its own terrain and region from its chunk and reads height, discharge and
+ * water kind at its parent cell.
  */
 import type { Terrain } from "../sim/types";
 import type { ParentSummary } from "./aggregate";
 import type { FineGrid } from "./fine-route";
-import { fieldsAtPatch, regionAtPatch, terrainAtPatch } from "./fine-terrain";
-import { type PatchId, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
-import { TERRAIN_INDEX, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
+import { regionAtPatch, terrainAtPatch } from "./fine-terrain";
+import { type PatchId, parentXY, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
+import { FLAG_FORD, FLAG_STREAM, KIND, type SolvedWorld } from "./solve";
+import { latitudeAt, TERRAIN_INDEX, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
 import type { RegionDef } from "./gen";
 
 export const FINE_CHUNK = 96;
@@ -25,9 +28,11 @@ export interface FineChunk {
 
 export interface World extends FineGrid {
   seed: number;
-  /** Size in cells. */
+  /** Size in 50 m patches. */
   w: number;
   h: number;
+  /** The solved 300 m arrays: height, water, discharge and the coarse ground. */
+  solved: SolvedWorld;
   /** Generated 50 m terrain, retained in least-recently-used order. */
   fineChunks: Map<number, FineChunk>;
   fineChunkBuilds: number;
@@ -38,6 +43,8 @@ export interface World extends FineGrid {
   regions: Map<number, RegionDef>;
   /** The region the run begins in. */
   start: number;
+  /** The shore cell the first boat lands on. */
+  startCell: number;
   /** Rings of the lattice the start search walked; 40 means the fallback anchor. */
   startRing: number;
 }
@@ -45,11 +52,12 @@ export interface World extends FineGrid {
 export interface Cell { x: number; y: number; terrain: Terrain; region: number }
 export interface FinePatch { id: PatchId; x: number; y: number; terrain: Terrain; region: number }
 
-export function newWorld(seed: number): World {
+export function newWorld(seed: number, solved: SolvedWorld): World {
   const world: World = {
     seed,
     w: WORLD_W,
     h: WORLD_H,
+    solved,
     terrainAt: id => terrainOfPatch(world, id),
     fineChunks: new Map(),
     fineChunkBuilds: 0,
@@ -57,6 +65,7 @@ export function newWorld(seed: number): World {
     fineSummaryGeneration: 0,
     regions: new Map(),
     start: -1,
+    startCell: -1,
     startRing: -1,
   };
   // The routing adapter is behavior, not serializable world data.
@@ -174,12 +183,52 @@ export function cellIdx(world: World, x: number, y: number): number {
   return y * world.w + x;
 }
 
-/** Sea or lake for a water cell; null on land. The sea flag is the coast field's sign, so a lake is never salt. */
-export function waterKindOf(world: World, idx: number): "lake" | "sea" | null {
-  const x = idx % world.w;
-  const y = Math.floor(idx / world.w);
-  if (terrainOf(world, x, y) !== "water") return null;
-  return fieldsAtPatch(world.seed, idx).sea ? "sea" : "lake";
+/** The index into the solved arrays of the parent cell a patch sits in. */
+export function parentIdx(world: World, patch: PatchId): number {
+  const { x, y } = parentXY(patch);
+  return y * world.solved.w + x;
+}
+
+/** Metres above sea level at the patch's parent; the sea's floor is negative, a lake reads its surface. Outside the world is sea level. */
+export function heightAt(world: World, x: number, y: number): number {
+  if (!inWorld(world, x, y)) return 0;
+  return world.solved.height[parentIdx(world, patchId(x, y))];
+}
+
+/** Cubic metres a second passing through the patch's parent. */
+export function dischargeAt(world: World, x: number, y: number): number {
+  if (!inWorld(world, x, y)) return 0;
+  return world.solved.discharge[parentIdx(world, patchId(x, y))];
+}
+
+/** Moisture in 0..1 for the ground glyph forms, at the patch's parent. */
+export function moistureAt(world: World, x: number, y: number): number {
+  if (!inWorld(world, x, y)) return 0;
+  return world.solved.moisture[parentIdx(world, patchId(x, y))] / 255;
+}
+
+/** The coarse ground of the patch's parent: the presentation for unknown ground and the fallback when no chunk is resident. */
+export function solvedTerrainAt(world: World, x: number, y: number): Terrain {
+  if (!inWorld(world, x, y)) return "water";
+  return TERRAINS[world.solved.terrain[parentIdx(world, patchId(x, y))]];
+}
+
+export function streamAt(world: World, patch: PatchId): boolean {
+  return (world.solved.flags[parentIdx(world, patch)] & FLAG_STREAM) !== 0;
+}
+
+export function fordAt(world: World, patch: PatchId): boolean {
+  return (world.solved.flags[parentIdx(world, patch)] & FLAG_FORD) !== 0;
+}
+
+export function latitudeOfRow(world: World, y: number): number {
+  return latitudeAt(y + 0.5, world.h);
+}
+
+/** Sea, lake or river for a water patch, read at its parent; null where the parent is land. */
+export function waterKindOf(world: World, patch: PatchId): "lake" | "sea" | "river" | null {
+  const k = world.solved.kind[parentIdx(world, patch)];
+  return k === KIND.sea ? "sea" : k === KIND.lake ? "lake" : k === KIND.river ? "river" : null;
 }
 
 export function neighbours(world: World, idx: number): number[] {
@@ -192,3 +241,5 @@ export function neighbours(world: World, idx: number): number[] {
   if (y < world.h - 1) out.push(idx + world.w);
   return out;
 }
+
+export { WORLD_H, WORLD_W };

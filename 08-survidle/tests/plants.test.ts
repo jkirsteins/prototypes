@@ -5,12 +5,14 @@ import { qty } from "../src/sim/inventory";
 import { today } from "../src/sim/ledger";
 import { AUTO_EAT_ORDER, BERRY_PICK_KG, BERRY_WINTER_SHARE, FOODS, GUT, KCAL_FULL, SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY, SEAWEED_KG_PER_HOUR } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { placeAt, placeAtSpot } from "../src/sim/position";
+import { discoverOpportunity } from "../src/sim/opportunities";
+import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { WATER_FULL } from "../src/sim/water";
 import { cellAt, cellIdx, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
 import { ensureGround } from "../src/sim/weather";
 import { testAtmosphere } from "./weather-helpers";
+import { watersideNear } from "./world-facts";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -63,25 +65,26 @@ describe("sap, seaweed and winter berries", () => {
     expect(SEAWEED_KG_PER_HOUR).toBe(2);
   });
 
-  // No reference seed's home region or its neighbours touch the sea, so the task-level
-  // check runs against seed 17's own coastline instead: a hand-found land cell of a
-  // region that is not the landing region, adjacent to a "sea"-kind water cell (not a
-  // "lake"), stood on directly with placeAt rather than reached by walking.
+  // Seaweed is the sea's and no lake's, so the check runs on the nearest land
+  // cell beside a "sea"-kind water cell, stood on directly with placeAt rather
+  // than reached by walking.
   it("seaweed loads at the sea shore while it is open, and is turned back once it ices", () => {
     testAtmosphere({ temperatureC: 5 });
     const { state, world } = newGame(17, 90);
-    const idx = cellIdx(world, 1224, 12);
+    const idx = watersideNear(world, cellOf(state, world), "sea");
     expect(cellAt(world, idx).terrain).not.toBe("water");
     placeAt(state, world, idx);
     const cal = calendar(0, 90);
     ensureGround(state, world, state.player.region).iceCm = 0;
     const open = check(state, world, cal, "seaweed");
     expect(open.ok).toBe(true);
+    discoverOpportunity(state.opportunities, "forage:seaweed", state.minute, false);
     expect(open.duration).toBe(60);
     startTask(state, world, cal, "seaweed");
     for (let m = 0; m < 60 && state.task; m++) stepTask(state, world, cal, new Rng(m), 1);
     expect(qty(state.player.pack, "seaweed")).toBeCloseTo(SEAWEED_KG_PER_HOUR, 6);
     expect(today(state).yield.seaweed).toBeCloseTo(SEAWEED_KG_PER_HOUR * FOODS.seaweed.kcalPerKg, 6);
+    expect(state.opportunities.completedAt["forage:seaweed"]).toBe(state.minute);
     ensureGround(state, world, state.player.region).iceCm = 2;
     expect(check(state, world, cal, "seaweed").why).toBe("the shore is iced over");
   });

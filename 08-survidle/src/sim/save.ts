@@ -2,8 +2,9 @@ import { AWAY_HOURS_DEFAULT, GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
 import { ensureCareRows, isCareRow } from "./bodyorder";
-import { calendar, START_DOY } from "./calendar";
-import { GOALS, newGoals } from "./goals";
+import { calendar, dayNumber, START_DOY } from "./calendar";
+import { discoverAvailableOpportunities, newOpportunities, opportunityDef, OPPORTUNITIES, SEASONS } from "./opportunities";
+import type { OpportunityContextState, OpportunityKey, OpportunityNotice, OpportunityState, Season, WeatherOpportunityContext } from "./types";
 import { addItem } from "./inventory";
 import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
@@ -31,10 +32,14 @@ export function awaySeconds(state: GameState): number {
 
 export interface SaveFile { version: typeof SAVE_VERSION; worldVersion: typeof WORLD_VERSION; savedAt: number; state: GameState }
 
+/** A save written for a world this build can no longer make, with the sentence to show for it. */
+export interface RefusedSave { refused: string }
+
 export function serialize(state: GameState, now = Date.now()): string {
   // Knowledge is chunked typed arrays, which JSON cannot carry: it goes out
   // as its own compact string and comes back through migrate.
   const carried = { ...state, knowledge: encodeKnowledge(state.knowledge) };
+  delete (carried as unknown as Record<string, unknown>)["goals"];
   return JSON.stringify({ version: SAVE_VERSION, worldVersion: WORLD_VERSION, savedAt: now, state: carried });
 }
 
@@ -59,12 +64,15 @@ function loadKnowledge(state: LegacyKnowledge): KnowledgeChunks {
 }
 
 /**
- * Rejects anything but the current save, since deserialize never migrates
- * across a world-version boundary: a save from the old 300 m cell world has
- * its state's cell ids interpreted as fine patch ids by nothing here.
+ * A save carries no world, only its seed, and nothing migrates across a
+ * world-version boundary: the patch ids of a save written on another terrain
+ * model mean nothing on this one. Such a save is refused with its reason
+ * rather than read.
  */
-export function deserialize(text: string): SaveFile | null {
-  if (inspectSave(text) !== "current") return null;
+export function deserialize(text: string): SaveFile | RefusedSave | null {
+  const compatibility = inspectSave(text);
+  if (compatibility === "invalid") return null;
+  if (compatibility === "old-world") return { refused: "This save is from a world made by an older map and cannot be loaded; a new world begins." };
   try {
     const file = JSON.parse(text) as SaveFile;
     migrate(file.state);
@@ -96,37 +104,8 @@ export function migrate(state: GameState): void {
   state.landing ??= null;
   state.spine ??= { fired: {}, announced: {} };
   state.manualSeen ??= false;
-  // A save from before the ladder starts at its top, standing in the season
-  // it is in, so the load itself credits nothing. Under-crediting beats
-  // inferring a history from state, which is the inference goals exist to avoid.
-  state.goals ??= newGoals(calendar(state.minute, state.startDoy).season);
+  migrateLegacyOpportunities(state, state as unknown as Record<string, unknown>);
   state.shopping ??= null;
-  const legacyGoals = state.goals.introduced === undefined;
-  if (legacyGoals) migrateLegacyGoals(state);
-  state.goals.introduced ??= {};
-  state.goals.stepProgress ??= {};
-  state.goals.noticeQueue ??= [];
-  state.goals.opportunity ??= null;
-  if (state.goals.chapter3HomeRegion === undefined) {
-    const here = state.regions[state.player.region];
-    const camp = here?.campCell !== null && here?.campCell !== undefined
-      ? state.player.region
-      : Number(Object.entries(state.regions).find(([, region]) => region.campCell !== null)?.[0]);
-    state.goals.chapter3HomeRegion = state.goals.introduced.remoteRefuge && Number.isFinite(camp) ? camp : null;
-  }
-  if (state.goals.opportunity) {
-    if (state.goals.opportunity.goal === "fieldFire" || state.goals.opportunity.goal === "fieldMeal") {
-      state.goals.opportunity.goal = "remoteStorm";
-    }
-    state.goals.opportunity.minutesByProtection ??= [0, 0, 0, 0];
-    state.goals.opportunity.atCampMinutes ??= 0;
-    state.goals.opportunity.awayFromCampMinutes ??= 0;
-    state.goals.opportunity.maxWetness ??= 0;
-    state.goals.opportunity.readerIndex ??= null;
-    state.goals.opportunity.plan ??= null;
-  }
-  const goalIds = new Set(GOALS.map((goal) => goal.id));
-  state.goals.queue = (state.goals.queue ?? []).filter((id) => goalIds.has(id));
   if (state.task?.id === "explore" && state.task.originRegion === undefined) {
     const target = state.task.arg?.startsWith("region:") ? Number(state.task.arg.slice(7)) : Number.NaN;
     const otherCamp = Object.entries(state.regions)
@@ -278,6 +257,8 @@ export function migrate(state: GameState): void {
   }
   // An order's click carries the same task/arg shape under different field names.
   for (const st of Object.values(state.regions)) {
+    // Old traps have aggregate kilos only. Preserve them without inventing species credit.
+    if (st.trap) st.trap.caught ??= [];
     for (const o of st.orders ?? []) {
       if (isCareRow(o)) {
         delete (o as unknown as { req?: unknown }).req;
@@ -305,6 +286,17 @@ export function migrate(state: GameState): void {
   // any of them drops them here and round-trips clean.
   p.sleepDebt ??= 100 - p.energy;
   p.sleeping ??= null;
+  p.collapsed ??= false;
+  // Collapse used to be a second route into sleep. Preserve its recovery as
+  // exhausted Rest, while leaving ordinary sleep continuity untouched.
+  const legacyCollapse = (p.sleeping as { collapsed: boolean } | null)?.collapsed === true;
+  if (legacyCollapse) {
+    p.sleeping = null;
+    p.collapsed = true;
+    p.bodyNeed = "spent";
+    if (state.task?.id === "sleep") state.task = null;
+    if (state.intent?.mode === "care" && state.intent.care === "body") state.intent = null;
+  }
   // A save with no sticky need reads its need fresh on the next free minute,
   // which costs one minute of stickiness and nothing else.
   p.bodyNeed ??= null;
@@ -420,7 +412,7 @@ export function migrate(state: GameState): void {
       }
       // The old generated Walk was classified as hand work and could replace
       // itself with an ownerless collapse sleep. Let Self-care decide again.
-      if (!state.intent && state.task?.id === "sleep" && state.player.sleeping?.collapsed) {
+      if (!state.intent && state.task?.id === "sleep" && state.player.collapsed) {
         state.task = null;
         state.player.sleeping = null;
       }
@@ -459,35 +451,178 @@ export function migrate(state: GameState): void {
   }
 }
 
-/** Keeps a pre-guidance save at least as far through the journey as it was. */
-function migrateLegacyGoals(state: GameState): void {
-  const old = ["site", "firewood", "fire", "cook", "keptNight", "bed", "keptDays", "roof", "keptRain", "water", "snare", "store", "spring", "summer", "autumn", "winter"] as const;
-  const anchor = ["site", "firewood", "fire", "cook", "keptNight", "firstOrder", "keptDays", "foodSource", "foodSource", "foodSource", "store", "store", "spring", "summer", "autumn", "winter"] as const;
-  const journey = [
-    "site", "drink", "firewood", "fire", "bed", "roof", "forageMeal", "cook", "keptNight",
-    "snareMeal", "huntMeal", "fishMeal", "trapMeal", "firstOrder", "water", "keptDays",
-    "foodSource", "store", "fat", "longOrder", "toolCare", "explore", "secondCamp",
-    "seasonalFood", "durableRoof", "winterStores", "spring", "summer", "autumn", "winter",
-  ] as const;
-  const done = state.goals.done as Record<string, true | undefined>;
-  let current = old.findIndex((id) => !done[id]);
-  if (current < 0) current = old.length;
-  const before = current === old.length ? journey.length : journey.indexOf(anchor[current]);
-  for (let i = 0; i < before; i++) {
-    const goal = GOALS.find((candidate) => candidate.id === journey[i]);
-    if (!goal) continue;
-    done[goal.id] = true;
-    state.goals.progress[goal.id] = Math.max(state.goals.progress[goal.id] ?? 0, goal.target);
+
+interface LegacyProgressState {
+  done?: Record<string, true>;
+  progress?: Record<string, number>;
+  stepProgress?: Record<string, Record<string, number>>;
+  introduced?: Record<string, true>;
+  queue?: string[];
+  noticeQueue?: string[];
+  opportunity?: unknown;
+  chapter3HomeRegion?: number | null;
+  lastSeason?: Season;
+}
+
+function legacyStaticOpportunityKey(id: string): OpportunityKey | undefined {
+  if (SEASONS.includes(id as Season)) return `season:${id as Season}`;
+  return OPPORTUNITIES.find((def) => def.key === id && !def.group)?.key;
+}
+
+// Historical ordering belongs only to the save boundary.
+const LEGACY_STAGES: string[][] = [
+  ["site"],
+  ["drink"],
+  ["firewood"],
+  ["fire"],
+  ["bed", "roof", "keptNight"],
+  ["forageMeal", "cook"],
+  ["findUsefulCover"],
+  ["makeUsefulShelter"],
+  ["testShelter"],
+  ["readWeather"],
+  ["prepareWeather"],
+  ["surviveForecast"],
+  ["remoteRefuge"],
+  ["fieldFire"],
+  ["fieldMeal"],
+  ["remoteStorm"],
+  ["snareMeal", "huntMeal", "fishMeal"],
+  ["trapMeal", "foodSource", "store"],
+  ["fat"],
+  ["firstOrder", "water", "keptDays"],
+  ["longOrder", "toolCare"],
+  ["explore"],
+  ["secondCamp", "seasonalFood", "durableRoof"],
+  ["winterStores"],
+];
+
+function copyKnownLegacyProgress(next: OpportunityState, legacy: LegacyProgressState): void {
+  const ids = new Set([...Object.keys(legacy.introduced ?? {}), ...Object.keys(legacy.done ?? {}), ...Object.keys(legacy.stepProgress ?? {}), ...Object.keys(legacy.progress ?? {})]);
+  for (const id of ids) {
+    const key = legacyStaticOpportunityKey(id);
+    if (!key) continue;
+    const def = opportunityDef(key)!;
+    if (legacy.introduced?.[id] === true || legacy.done?.[id] === true) next.discoveredAt[key] = 0;
+    if (legacy.done?.[id] === true) next.completedAt[key] = 0;
+    const validProgress = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
+    const compatible = Object.fromEntries(def.steps.flatMap((step) => {
+      const value = legacy.stepProgress?.[id]?.[step.id];
+      return validProgress(value) ? [[step.id, value]] : [];
+    }));
+    // Older counted leaves had only an aggregate. One-step definitions have
+    // an unambiguous mapping; multi-step outcomes cannot infer missing deeds.
+    if (!legacy.stepProgress?.[id] && def.steps.length === 1 && validProgress(legacy.progress?.[id])) compatible[def.steps[0].id] = legacy.progress![id];
+    if (Object.keys(compatible).length) next.stepProgress[key] = compatible;
   }
+}
+
+function firstUnfinishedLegacyLeaf(legacy: LegacyProgressState, minute: number): OpportunityKey | null {
+  const after: Record<string, string[]> = {
+    findUsefulCover: ["cook"], makeUsefulShelter: ["findUsefulCover"], testShelter: ["makeUsefulShelter"],
+    readWeather: ["testShelter", "keptNight", "bed"], prepareWeather: ["readWeather"], surviveForecast: ["prepareWeather"],
+    remoteRefuge: ["surviveForecast"], fieldFire: ["remoteRefuge"], fieldMeal: ["fieldFire"], remoteStorm: ["fieldMeal"],
+  };
+  const weather = new Set(["readWeather", "prepareWeather", "surviveForecast", "remoteRefuge", "fieldFire", "fieldMeal", "remoteStorm"]);
+  const context = (legacy.opportunity as { goal?: string } | null | undefined)?.goal;
+  const eligible = (id: string): boolean => {
+    const key = legacyStaticOpportunityKey(id);
+    const def = key && opportunityDef(key);
+    if (!def || legacy.done?.[id] === true || after[id]?.some((prior) => legacy.done?.[prior] !== true)) return false;
+    const inherited = context === "readWeather" && ["readWeather", "prepareWeather", "surviveForecast"].includes(id)
+      || context === "remoteStorm" && ["fieldFire", "fieldMeal", "remoteStorm"].includes(id);
+    return def.notBeforeDay === undefined || dayNumber(minute) >= def.notBeforeDay || legacy.introduced?.[id] === true || inherited;
+  };
+  const lesson = LEGACY_STAGES.flat().find((id) => weather.has(id) && eligible(id));
+  if (lesson) return legacyStaticOpportunityKey(lesson) ?? null;
+  for (const stage of LEGACY_STAGES) {
+    const id = stage.find(eligible);
+    if (id) return legacyStaticOpportunityKey(id) ?? null;
+  }
+  const seasons: Season[] = ["spring", "summer", "autumn", "winter"];
+  const at = seasons.indexOf(legacy.lastSeason ?? "spring");
+  for (let i = 1; i <= seasons.length; i++) {
+    const season = seasons[(at + i) % seasons.length];
+    if (legacy.done?.[season] !== true) return legacyStaticOpportunityKey(season) ?? null;
+  }
+  return null;
+}
+
+function migrateLegacyNotices(legacy: LegacyProgressState, discovered: OpportunityKey[]): OpportunityNotice[] {
+  const completed = [...new Set((legacy.queue ?? []).flatMap((id) => { const key = legacyStaticOpportunityKey(id); return key ? [key] : []; }))];
+  const messages = (legacy.noticeQueue ?? []).filter((value): value is string => typeof value === "string");
+  return completed.length || messages.length || discovered.length ? [{ id: "legacy:1", minute: 0, completed, completedGroups: [], discovered, messages }] : [];
+}
+
+function migrateLegacyOpportunityContext(legacy: LegacyProgressState): OpportunityContextState {
+  const raw = legacy.opportunity as (Omit<WeatherOpportunityContext, "opportunity"> & { goal: string }) | null | undefined;
+  let weather: WeatherOpportunityContext | null = null;
+  const key = raw && typeof raw === "object" ? legacyStaticOpportunityKey(raw.goal) : undefined;
+  if (raw && key) {
+    const { goal, ...context } = raw;
+    weather = { ...context, opportunity: goal === "fieldFire" || goal === "fieldMeal" ? "remoteStorm" : key,
+      minutesByProtection: raw.minutesByProtection ?? [0, 0, 0, 0], atCampMinutes: raw.atCampMinutes ?? 0,
+      awayFromCampMinutes: raw.awayFromCampMinutes ?? 0, maxWetness: raw.maxWetness ?? 0,
+      readerIndex: raw.readerIndex ?? null, plan: raw.plan ?? null };
+  }
+  return { weather, chapter3HomeRegion: legacy.chapter3HomeRegion ?? null };
+}
+
+function migrateLegacyOpportunities(state: GameState, raw: Record<string, unknown>): void {
+  const legacy = raw["goals"] as LegacyProgressState | undefined;
+  if (!state.opportunities) {
+    const next = newOpportunities(calendar(state.minute, state.startDoy).season);
+    if (legacy) {
+      next.notices = [];
+      next.lastSeason = legacy.lastSeason ?? next.lastSeason;
+      copyKnownLegacyProgress(next, legacy);
+      next.current = firstUnfinishedLegacyLeaf(legacy, state.minute);
+      // The default state already knows site and the seasons. Presentation
+      // must instead follow what this legacy save had actually introduced.
+      const oldId = next.current?.startsWith("season:") ? next.current.slice(7) : next.current;
+      const discovered = next.current && oldId && legacy.introduced?.[oldId] !== true && legacy.done?.[oldId] !== true ? [next.current] : [];
+      if (next.current) next.discoveredAt[next.current] ??= 0;
+      next.notices.push(...migrateLegacyNotices(legacy, discovered));
+      next.context = migrateLegacyOpportunityContext(legacy);
+    }
+    state.opportunities = next;
+  }
+  delete raw["goals"];
+}
+
+/**
+ * The world half of a load, which needs the generated world and so cannot
+ * live in `migrate`. Ground the save already holds is ground a survivor has
+ * already stood on, so what it makes possible is knowledge the load hands
+ * back rather than a discovery: it arrives without a presentation.
+ */
+export function knowLoadedGround(state: GameState, world: World): void {
+  discoverAvailableOpportunities(state, world, calendar(state.minute, state.startDoy), false);
 }
 
 export function saveGame(state: GameState, storage: Storage = localStorage, now = Date.now()): void {
   storage.setItem(SAVE_KEY, serialize(state, now));
 }
 
-export function loadGame(storage: Storage = localStorage): SaveFile | null {
+/**
+ * The save a text holds, or null where there is none to read: unreadable, or
+ * refused. Callers that must tell the player why it was refused read
+ * `deserialize` itself, which keeps the reason.
+ */
+export function readSave(text: string): SaveFile | null {
+  const file = deserialize(text);
+  return file && "state" in file ? file : null;
+}
+
+/** A refused save loads as nothing; the caller is told why so the new run can say it. */
+export function loadGame(storage: Storage = localStorage, onRefused?: (reason: string) => void): SaveFile | null {
   const text = storage.getItem(SAVE_KEY);
-  return text ? deserialize(text) : null;
+  const file = text ? deserialize(text) : null;
+  if (file && "refused" in file) {
+    onRefused?.(file.refused);
+    return null;
+  }
+  return file;
 }
 
 export function clearSave(storage: Storage = localStorage): void {

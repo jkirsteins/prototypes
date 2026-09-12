@@ -66,18 +66,6 @@ export const SPENT_AT = 30;
 export const RESTED_AT = 55;
 
 /**
- * A collapse is not an ordinary evening rest. It holds until the reserve is
- * full, so queued work cannot repeatedly wake the survivor at the evening
- * line, spend the same small reserve, and put them straight back to sleep.
- */
-export const COLLAPSE_RECOVERED_AT = 100;
-
-/** The single hold condition for a collapse, shared by need and work gates. */
-export function collapseRecoveryPending(energy: number, sleeping: { collapsed: boolean } | null): boolean {
-  return sleeping?.collapsed === true && energy < COLLAPSE_RECOVERED_AT;
-}
-
-/**
  * Sleepiness at which the body reads as visibly sleepy: ten points under the
  * onset line, so a player gets the yawn before the body lies down and has a
  * chance to do something about the evening.
@@ -86,6 +74,8 @@ export const SLEEPY_AT = 50;
 
 /** Ten minutes: the step the sleep task's length is searched in, fine enough that a wake lands within a rounded quarter hour. */
 const WAKE_PROBE_STEP = 10;
+/** Long enough to find the next natural onset from any ordinary starting state. */
+const SLEEP_PROJECTION_MAX_MINUTES = 36 * 60;
 /** No sleep task runs shorter than an hour or longer than fourteen: below the hour nothing is recovered, above it nobody lies still. */
 export const SLEEP_MIN_MINUTES = 60;
 export const SLEEP_MAX_MINUTES = 14 * 60;
@@ -127,17 +117,32 @@ export function sleepiness(debt: number, hour: number): number {
   return debt - alertness(hour);
 }
 
-/**
- * Minutes of sleep from now until the wake line, by stepping the two
- * processes forward. Bounded below at an hour and above at fourteen.
- */
-export function minutesToWake(debt: number, hour: number, halfRate = false): number {
+/** Minutes awake from now until the onset line, by stepping the existing two processes forward. */
+export function minutesToSleep(debt: number, hour: number): number {
+  let d = debt;
+  for (let m = WAKE_PROBE_STEP; m <= SLEEP_PROJECTION_MAX_MINUTES; m += WAKE_PROBE_STEP) {
+    d = debtStep(d, false, WAKE_PROBE_STEP);
+    if (sleepiness(d, hour + m / 60) >= SLEEP_ONSET) return m;
+  }
+  return SLEEP_PROJECTION_MAX_MINUTES;
+}
+
+/** Minutes asleep from now until the live wake crossing, with no display or task floor. */
+export function minutesUntilWake(debt: number, hour: number, halfRate = false): number {
   let d = debt;
   for (let m = WAKE_PROBE_STEP; m <= SLEEP_MAX_MINUTES; m += WAKE_PROBE_STEP) {
     d = debtStep(d, true, WAKE_PROBE_STEP, halfRate);
-    if (m >= SLEEP_MIN_MINUTES && sleepiness(d, hour + m / 60) <= WAKE_AT) return m;
+    if (sleepiness(d, hour + m / 60) <= WAKE_AT) return m;
   }
   return SLEEP_MAX_MINUTES;
+}
+
+/**
+ * The legacy finite-task estimate keeps its one-hour floor. Automatic sleep
+ * uses minutesUntilWake and is owned by the body rather than this duration.
+ */
+export function minutesToWake(debt: number, hour: number, halfRate = false): number {
+  return Math.max(SLEEP_MIN_MINUTES, minutesUntilWake(debt, hour, halfRate));
 }
 
 /** A light sleeper on a storm night clears debt at half the rate: the quirk's rule, on the process that now carries it. */

@@ -1,14 +1,14 @@
+import { reveal } from "./opportunity-helpers";
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { introduceGoals } from "../src/sim/goals";
 import { STRUCTURES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { sheltered, workSpeed } from "../src/sim/player";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { levelMinutes, skillLevel } from "../src/sim/skills";
 import { builtProtection, COVER_CEILING, EMERGENCY_MINUTES, findCover, protectionOf, PROTECTION_WORDS } from "../src/sim/shelter";
 import { check, startTask, stepTask, stopTask } from "../src/sim/tasks";
@@ -141,7 +141,7 @@ describe("finding shelter", () => {
     finishTask(g);
     expect(skillLevel(g.state, "naturalShelter")).toBe(5);
     expect(siteFor(regionState(g.state, g.world, g.state.player.region), rock).cover).toBe(1);
-    expect(g.state.goals.done.roof).toBeUndefined();
+    expect(g.state.opportunities.completedAt.roof).toBeUndefined();
   });
 
   it("looks on open ground, spends the time and says that it found nothing", () => {
@@ -182,13 +182,13 @@ describe("finding shelter", () => {
 
   it("credits the roof deed only when the search first reaches weatherproof protection", () => {
     const fresh = newGame(17);
-    introduceGoals(fresh.state, ["roof"]);
+    reveal(fresh.state, ["roof"]);
     fresh.state.skills.naturalShelter = { xp: levelMinutes(5), mastery: {}, pool: 0 };
     const rock = cellWith(fresh, "rock");
     placeAt(fresh.state, fresh.world, rock);
     expect(startTask(fresh.state, fresh.world, calendar(0), "findShelter")).toBe(true);
     finishTask(fresh);
-    expect(fresh.state.goals.done.roof).toBe(true);
+    expect(fresh.state.opportunities.completedAt.roof).toBeDefined();
 
     const known = newGame(17);
     known.state.skills.naturalShelter = { xp: levelMinutes(5), mastery: {}, pool: 0 };
@@ -197,7 +197,7 @@ describe("finding shelter", () => {
     siteFor(regionState(known.state, known.world, known.state.player.region), knownRock).cover = 2;
     expect(startTask(known.state, known.world, calendar(0), "findShelter")).toBe(true);
     finishTask(known);
-    expect(known.state.goals.done.roof).toBeUndefined();
+    expect(known.state.opportunities.completedAt.roof).toBeUndefined();
   });
 
   it("binds an order to its named cell and otherwise searches underfoot", async () => {
@@ -223,7 +223,7 @@ describe("finding shelter", () => {
 describe("improving shelter", () => {
   it("works found pine cover to weatherproof in 30 effective minutes", () => {
     const g = newGame(17);
-    introduceGoals(g.state, ["roof"]);
+    reveal(g.state, ["roof"]);
     const pine = cellWith(g, "pine");
     placeAt(g.state, g.world, pine);
     const site = siteFor(regionState(g.state, g.world, g.state.player.region), pine);
@@ -237,7 +237,7 @@ describe("improving shelter", () => {
 
     expect(site.cover).toBe(2);
     expect(site.coverAge).toBe(0);
-    expect(g.state.goals.done.roof).toBe(true);
+    expect(g.state.opportunities.completedAt.roof).toBeDefined();
     expect(check(g.state, g.world, cal, "improveCover")).toMatchObject({ ok: false, why: "cover cannot be improved further" });
     expect(startTask(g.state, g.world, cal, "improveCover")).toBe(false);
     expect(site.cover).toBe(2);
@@ -275,7 +275,7 @@ describe("improving shelter", () => {
 
     expect(site.cover).toBe(3);
     expect(site.coverAge).toBe(0);
-    expect(g.state.goals.done.roof).toBeUndefined();
+    expect(g.state.opportunities.completedAt.roof).toBeUndefined();
     expect(check(g.state, g.world, cal, "improveCover")).toMatchObject({ ok: false });
     expect(startTask(g.state, g.world, cal, "improveCover")).toBe(false);
     expect(site.cover).toBe(3);
@@ -323,7 +323,7 @@ describe("improving shelter", () => {
     advance(g.state, g.world, 1);
 
     expect(site.cover).toBe(0);
-    expect(g.state.goals.done.roof).toBeUndefined();
+    expect(g.state.opportunities.completedAt.roof).toBeUndefined();
     const completionLog = g.state.log.slice(logAtStart).map((entry) => entry.text);
     expect(completionLog).toContain("Improve shelter: no cover found here. {You} {stop}.");
     expect(completionLog.some((line) => line.includes("cover into something"))).toBe(false);
@@ -369,7 +369,7 @@ describe("found cover keeping", () => {
     const raw = JSON.parse(serialize(g.state));
     delete raw.state.regions[g.state.player.region].sites[cell].cover;
     delete raw.state.regions[g.state.player.region].sites[cell].coverAge;
-    const loaded = deserialize(JSON.stringify(raw))!;
+    const loaded = readSave(JSON.stringify(raw))!;
     const savedSite = loaded.state.regions[g.state.player.region].sites[cell];
     expect(savedSite.cover).toBe(0);
     expect(savedSite.coverAge).toBe(0);
@@ -379,7 +379,7 @@ describe("found cover keeping", () => {
 describe("emergency shelter", () => {
   it("raises protection while the task is still running and emits the roof deed only on crossing two", () => {
     const g = emergencyGame();
-    introduceGoals(g.state, ["roof"]);
+    reveal(g.state, ["roof"]);
     const cal = calendar(g.state.minute, g.state.startDoy);
     expect(startTask(g.state, g.world, cal, "emergencyShelter")).toBe(true);
     const work = (minutes: number) => stepTask(g.state, g.world, cal, new Rng(1), minutes);
@@ -390,18 +390,18 @@ describe("emergency shelter", () => {
     work(1);
     expect(protectionOf(g.site)).toBe(1);
     work(59);
-    expect(g.state.goals.done.roof).toBeUndefined();
+    expect(g.state.opportunities.completedAt.roof).toBeUndefined();
     work(1);
     expect(protectionOf(g.site)).toBe(2);
     expect(g.state.task?.id).toBe("emergencyShelter");
     expect(sheltered(g.state, g.world)).toBe(true);
-    expect(g.state.goals.done.roof).toBe(true);
+    expect(g.state.opportunities.completedAt.roof).toBeDefined();
     // A second emission would credit a newly empty ledger, even though the
-    // ordinary goal ledger also protects against repeating completed goals.
-    delete g.state.goals.done.roof;
-    delete g.state.goals.progress.roof;
+    // ordinary opportunity ledger also protects against repeating completed opportunities.
+    delete g.state.opportunities.completedAt.roof;
+    delete g.state.opportunities.stepProgress.roof;
     work(150);
-    expect(g.state.goals.done.roof).toBeUndefined();
+    expect(g.state.opportunities.completedAt.roof).toBeUndefined();
     expect(g.state.task).toBeNull();
     expect(protectionOf(g.site)).toBe(3);
     expect(check(g.state, g.world, cal, "emergencyShelter").ok).toBe(false);
@@ -414,7 +414,7 @@ describe("emergency shelter", () => {
     g.site.cover = 2;
     expect(startTask(g.state, g.world, calendar(0), "emergencyShelter")).toBe(true);
     stepTask(g.state, g.world, calendar(0), new Rng(1), 90);
-    expect(g.state.goals.done.roof).toBeUndefined();
+    expect(g.state.opportunities.completedAt.roof).toBeUndefined();
     expect(protectionOf(g.site)).toBe(2);
     g.site.structures.cabin = true;
     expect(protectionOf(g.site)).toBe(3);
@@ -498,7 +498,7 @@ describe("emergency shelter", () => {
     expect(g.site.emergencyAge).toBe(0);
     expect(protectionOf(g.site)).toBe(0);
     expect(g.state.task?.id).toBe("emergencyShelter");
-    expect(g.state.goals.done.roof).toBeUndefined();
+    expect(g.state.opportunities.completedAt.roof).toBeUndefined();
     stopTask(g.state, g.world);
     g.site.emergencyAge = 40;
     expect(startTask(g.state, g.world, calendar(0), "emergencyShelter")).toBe(true);
@@ -521,10 +521,10 @@ describe("emergency shelter", () => {
     site.emergencyMinutes = 89;
     site.emergencyAge = 42;
     const raw = JSON.parse(serialize(g.state));
-    const loaded = deserialize(JSON.stringify(raw))!;
+    const loaded = readSave(JSON.stringify(raw))!;
     expect(loaded.state.regions[g.state.player.region].sites[here]).toMatchObject({ emergencyMinutes: 89, emergencyAge: 42 });
     delete raw.state.regions[g.state.player.region].sites[here].emergencyMinutes;
     delete raw.state.regions[g.state.player.region].sites[here].emergencyAge;
-    expect(deserialize(JSON.stringify(raw))!.state.regions[g.state.player.region].sites[here]).toMatchObject({ emergencyMinutes: 0, emergencyAge: 0 });
+    expect(readSave(JSON.stringify(raw))!.state.regions[g.state.player.region].sites[here]).toMatchObject({ emergencyMinutes: 0, emergencyAge: 0 });
   });
 });

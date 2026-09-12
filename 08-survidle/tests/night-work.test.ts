@@ -12,6 +12,7 @@ import { regionState } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { cellAt, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { openCampWithForestNear } from "./world-facts";
 import { testAtmosphere } from "./weather-helpers";
 
 /**
@@ -100,6 +101,9 @@ describe("work in the dark", () => {
 describe("the runner keeps its night gate", () => {
   it("still skips a standing order for the forest after dark, with the reason it always gave", () => {
     const { state, world } = newGame(17, DECEMBER);
+    // A camp off forest ground: the gate under test is the one on work away
+    // from camp, and a camp standing in the wood is not away from anything.
+    placeAt(state, world, openCampWithForestNear(world, state.player.region).camp);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
@@ -114,7 +118,7 @@ describe("the runner keeps its night gate", () => {
 });
 
 describe("the collapse", () => {
-  it("blocks the work row, then lets the ranked self-care row sleep", () => {
+  it("blocks the work row, then lets the ranked self-care row rest", () => {
     const c = camp(MIDNIGHT);
     // A click lands over the body's row, which is what makes the work the
     // player chose in the moment the player's: nothing tired, thirsty or cold
@@ -126,12 +130,15 @@ describe("the collapse", () => {
     c.state.player.energy = SLEEP_AT;
     advance(c.state, c.world, 1);
     expect(c.state.intent).toBeNull();
-    expect(c.state.player.sleeping?.collapsed).toBe(true);
+    expect(c.state.player.collapsed).toBe(true);
+    expect(c.state.player.sleeping).toBeNull();
     expect(c.state.task).toBeNull();
     advance(c.state, c.world, 1);
     expect(c.state.intent?.mode).toBe("care");
-    for (let i = 0; i < 300 && c.state.task?.id !== "sleep"; i++) advance(c.state, c.world, 1);
-    expect(c.state.task?.id).toBe("sleep");
+    // A walk home may stand between the collapse and the rest, and how long
+    // that walk is belongs to the ground.
+    for (let i = 0; i < 3000 && c.state.task?.id !== "rest"; i++) advance(c.state, c.world, 1);
+    expect(c.state.task?.id).toBe("rest");
   });
 
   it("does not fire while there is anything left in the body", () => {

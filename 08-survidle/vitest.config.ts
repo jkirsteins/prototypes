@@ -39,8 +39,8 @@ const slowTestFiles = [
   "tests/fish.test.ts",
   "tests/forecast.test.ts",
   "tests/forecaster.test.ts",
-  "tests/goals-deeds.test.ts",
-  "tests/goals-fire.test.ts",
+  "tests/opportunities-deeds.test.ts",
+  "tests/opportunities-fire.test.ts",
   "tests/hand.test.ts",
   "tests/hang.test.ts",
   "tests/hone.test.ts",
@@ -106,6 +106,7 @@ const slowTestFiles = [
 export default defineConfig({
   test: {
     environment: "happy-dom",
+    setupFiles: ["tests/setup-worlds.ts"],
     include: slow ? ["tests/slow/**/*.test.ts", ...slowTestFiles] : ["tests/**/*.test.ts"],
     exclude: slow ? [] : ["tests/slow/**", ...slowTestFiles],
   },

@@ -78,6 +78,11 @@ body { display: flex; flex-direction: column; height: 100vh; }
    three panes that are hidden would paint on top of the one that is not.
    The DOM says hidden and the screen said otherwise. */
 .pane[hidden] { display: none; }
+/* A pane's content scrolls inside the pane. The tab box clips at its own
+   height and the Do pane scrolls its rows itself; the other five drew their
+   content straight into the clip, so a Gear list longer than the box had a
+   bottom nobody could reach. */
+#camp, #inventory, #gear, #log, #journal { min-height: 0; overflow-y: auto; }
 
 .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
 .tabs .tab {
@@ -163,16 +168,19 @@ small, .dim { color: var(--dim); }
 /* Every horizon uses one line, so moving the slider never changes the panel height. */
 #forecast .row { min-height: 1.4em; padding: 2px 0; white-space: nowrap; }
 
-/* An empty ladder collapses rather than leaving a titled box with nothing in it. */
-#goals:empty { display: none; }
-#goals .goals { list-style: none; margin: 0; padding: 0; }
-#goals .goal { margin: 0; }
-#goals .goal-title { font-weight: 600; }
-#goals .goal-open {
-  width: 100%; padding: 4px 0; text-align: left; color: var(--text);
+/* The trail marker always leaves the field index within reach. */
+.opportunity-summary {
+  width: 100%; padding: 4px 0 4px 9px; margin-bottom: 8px; text-align: left; color: var(--text);
   background: transparent; border: 0; font: inherit; cursor: pointer;
+  border-left: 2px solid var(--accent);
 }
-#goals .goal-open:hover, #goals .goal-open:focus-visible { background: #1a1f28; outline: 1px solid var(--accent); }
+.opportunity-summary strong, .opportunity-current, .opportunity-step { display: block; }
+.opportunity-current { color: var(--accent); }
+.opportunity-steps { display: block; margin: 8px 0; }
+.opportunity-step { color: var(--dim); padding: 2px 0; }
+.opportunity-step.done, .opportunity-group.done, .opportunity-row.done, .opportunity-detail .done { color: var(--good); }
+.opportunity-summary:hover, .opportunity-row:hover { background: #1a1f28; }
+.opportunity-summary:focus-visible, .opportunity-catalog button:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 
 #shopping:empty { display: none; }
 #shopping ul { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -211,6 +219,13 @@ small, .dim { color: var(--dim); }
      unreachable. It is read, never pointed at. */
   pointer-events: none;
 }
+.bar .lbl .val { display: inline-flex; align-items: center; gap: 4px; pointer-events: auto; }
+/* The trend mark: a small triangle drawn in CSS, pointing the way the reading
+   has gone over the last ten game minutes; a dash while it holds. */
+.bar .trend { display: inline-block; width: 0; height: 0; opacity: 0.85; }
+.bar .trend[data-dir="up"] { border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 6px solid #fff; }
+.bar .trend[data-dir="down"] { border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid #fff; }
+.bar .trend[data-dir="steady"] { width: 6px; height: 0; border-top: 2px solid rgba(255, 255, 255, 0.55); }
 /* Text belongs only in a full-height readout. Compact meters are graphical
    and put their caption beside the bar, outside its clipped box. The guard
    keeps a future compact meter from silently reintroducing cut-off text. */
@@ -227,6 +242,7 @@ small, .dim { color: var(--dim); }
 .bar.warmth .fill { background: var(--warmth); }
 .bar.energy .fill { background: var(--energy); }
 .bar.sleepiness .fill { background: var(--sleepiness); }
+.sleep-forecast { color: var(--dim); font-size: 10px; margin: 1px 0 3px; }
 .bar.wet .fill { background: var(--wet); }
 .bar.water .fill { background: var(--water); }
 .bar.fire .fill { background: var(--fire); }
@@ -338,7 +354,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   100% { opacity: 0; transform: translate(-32px, 32px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sky-meteor, .weather-ripple, .fog-ripple, .cloud-ripple, .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
+  .sky-meteor, .weather-ripple, .fog-ripple, .cloud-ripple, .water-live .water-ripple, .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
   .weather-ripple:not(:first-child), .fog-ripple:not(:first-child), .cloud-ripple:not(:first-child) { display: none; }
   .weather-ripple:first-child, .fog-ripple:first-child, .cloud-ripple:first-child { opacity: var(--wx-glyph-opacity); }
   .sky-meteor { opacity: 0; }
@@ -653,7 +669,8 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   box-shadow: 0 0 0 1px rgba(5, 7, 12, 0.42);
   pointer-events: none;
 }
-.grid .c.t-water { color: #3a6fd8; background-color: #0a1633; }
+.grid .c.t-water { color: #3a6fd8; background-color: #0a1633; --water-rest: #0a1633; --water-lit: #24468f; }
+.grid .c.t-river { color: var(--water); }
 .grid .c.t-spruce { color: #1f8f3a; background-color: #0b1f11; }
 .grid .c.t-pine { color: #3fbf5a; background-color: #0e2415; }
 .grid .c.t-birch { color: #9be36a; background-color: #1a2a12; }
@@ -828,6 +845,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 #map .legend b.mk-camp { color: #6fcf6f; }
 #map .legend b.mk-trap { color: #4a5a78; }
 #map .legend b.mk-seep { color: #6fa8dc; }
+#map .legend b.mk-stream { color: var(--water); }
 #map .legend b.mk-animal { color: #b7ad87; }
 #map .legend b.ice-thin,
 #map .legend b.ice-safe { color: #3a6fd8; padding: 0 2px; }
@@ -1300,14 +1318,47 @@ button.act small.gives, span.act small.gives,
   border-left: 3px solid var(--accent);
   margin: 4px 0 0;
 }
-#overlay .box.goal-modal { width: min(460px, calc(100vw - 36px)); text-align: left; }
-.goal-guide + .goal-guide { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
-.goal-status { font-weight: 600; }
-.goal-complete { color: var(--good); }
-.goal-note { color: var(--dim); }
-.goal-steps { display: flex; flex-direction: column; gap: 5px; list-style: none; padding: 0; margin: 10px 0; }
-.goal-steps li { color: var(--dim); }
-.goal-steps li.done { color: var(--good); }
+/* Only the outer sheet may scroll on short viewports. Every index page has
+   eight stable row slots, or six at the existing narrow layout breakpoint. */
+#overlay:has(.opportunity-catalog) { overflow-y: auto; align-items: flex-start; padding: 18px; }
+#overlay .box.opportunity-catalog {
+  --opportunity-page-size: 8;
+  --opportunity-row-height: 64px;
+  width: min(660px, 100%); max-height: none; overflow: visible;
+  margin: 0 auto; text-align: left; padding: 18px 22px;
+}
+.opportunity-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.opportunity-categories { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 0 12px; border-bottom: 1px solid var(--line); }
+.opportunity-categories [aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+/* Lists and details reserve the same space. Fixed tracks include room for
+   wrapped titles and headings; short pages cannot pull navigation upwards. */
+.opportunity-body { height: calc(var(--opportunity-page-size) * var(--opportunity-row-height) + 16px); }
+.opportunity-rows { list-style: none; padding: 8px 0; margin: 0; display: grid; grid-template-rows: repeat(var(--opportunity-page-size), var(--opportunity-row-height)); }
+.opportunity-rows > li { display: flex; flex-direction: column; justify-content: end; min-width: 0; }
+.opportunity-group { display: block; font-weight: 600; padding-top: 3px; }
+.opportunity-row, .opportunity-unknown { display: flex; gap: 12px; align-items: baseline; padding: 7px 0 7px 12px; min-height: 32px; }
+.opportunity-row { width: 100%; border: 0; background: transparent; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.opportunity-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.opportunity-unknown, .opportunity-note { color: var(--dim); }
+.opportunity-row-status { margin-left: auto; flex: none; font-size: 11px; }
+.opportunity-pages { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.opportunity-pages button:first-child { justify-self: start; }
+.opportunity-pages button:last-child { justify-self: end; }
+.opportunity-detail { padding-top: 8px; }
+.opportunity-detail h2 { color: var(--text); text-transform: none; font-size: 15px; letter-spacing: normal; }
+.opportunity-detail-actions { display: flex; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+/* A batch shares the field index's ink and paper. Only the outer sheet scrolls. */
+#overlay:has(.opportunity-modal) { overflow-y: auto; align-items: flex-start; padding: 18px; }
+.opportunity-modal {
+  width: min(560px, 100%); margin: auto; padding: 20px 24px;
+  background: var(--panel); border: 1px solid var(--line); text-align: left;
+}
+.opportunity-modal-label { color: var(--dim); font-size: 11px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 1px; }
+.opportunity-completed { color: var(--good); }
+.opportunity-discovery { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.opportunity-discovery h2 { color: var(--text); font-size: 15px; text-transform: none; letter-spacing: normal; overflow-wrap: anywhere; }
+.opportunity-modal-actions { display: flex; justify-content: end; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.opportunity-modal button:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .cards { display: flex; gap: 12px; margin: 10px 0; align-items: stretch; }
 .card {
   flex: 1 1 0; min-width: 0; text-align: left;
@@ -1365,7 +1416,11 @@ button.act small.gives, span.act small.gives,
   body { height: auto; min-height: 100vh; }
   #app { grid-template-columns: 1fr; flex: none; }
   .col { display: contents; }
-  #goals { order: 0; }
+  #opportunities { order: 0; }
+  #overlay:has(.opportunity-catalog) { padding: 10px; }
+  #overlay:has(.opportunity-modal) { padding: 10px; }
+  .opportunity-modal { padding: 16px; }
+  #overlay .box.opportunity-catalog { --opportunity-page-size: 6; --opportunity-row-height: 96px; padding: 14px; }
   #shopping { order: 0; }
   #task { order: 1; }
   #stats { order: 2; }
@@ -1420,8 +1475,43 @@ button.act small.gives, span.act small.gives,
    shallows are the lit end and the open water the dark one - the way water
    reads standing on a beach. A lake has no offshore and keeps the plain
    colour. */
-.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; }
-.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; }
+.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; --water-rest: #102047; --water-lit: #3160b0; }
+.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; --water-rest: #060d20; --water-lit: #1a3474; }
+/* Light on open water: rippling, faked for the eye. Three smooth waves
+   cross the sheet in different directions, with different wavelengths and
+   speeds, and each cell shows their sum. A cell's start in each wave comes
+   from its position, so neighbours move together and the light travels and
+   spreads rather than blinking in place; three directions crossing means
+   no stripe.
+
+   Each wave is an overlay in the cell's lit blue whose opacity swells and
+   fades. Opacity is the one thing here the compositor animates by itself,
+   so a lake of two hundred cells costs the main thread nothing per frame;
+   a colour computed in place repainted every cell every frame and starved
+   the page. The overlay sits below the glyph inside the cell's own
+   stacking context. Wall clock, never the simulation's; remembered water
+   and ice lie still. */
+.grid .c.water-live { position: relative; isolation: isolate; }
+.grid .c.water-live .water-ripple {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--water-lit);
+  opacity: 0;
+  will-change: opacity;
+  animation: water-ripple 5s ease-in-out infinite;
+  /* ?shimmer= on the page sets the speed factor on the root; the delay scales with it so the pattern keeps its shape. */
+  animation-delay: calc(var(--water-delay) / var(--water-shimmer-speed, 1));
+}
+.grid .c.water-live .water-ripple-1 { animation-duration: calc(5s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-2 { animation-duration: calc(3.75s / var(--water-shimmer-speed, 1)); }
+.grid .c.water-live .water-ripple-3 { animation-duration: calc(8s / var(--water-shimmer-speed, 1)); }
+/* At the closest rung a glyph is one patch in a large box, and a peak that
+   reads as a glint on an 11 px glyph reads as a flat wash there. Half the gain
+   keeps the ~ and = legible. */
+.grid.fine .c.water-live .water-ripple { --water-gain: 0.5; }
+@keyframes water-ripple {
+  0%, 100% { opacity: 0; }
+  50% { opacity: calc(var(--water-peak, 0.4) * var(--water-gain, 1)); }
+}
 /* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
    depth palette. Thin ice remains dark and uncertain; safe ice forms the
    lighter continuous sheet. Marks still own their whole cell. */
@@ -1477,3 +1567,12 @@ button.act small.gives, span.act small.gives,
 .skycase figcaption { color: var(--dim); font-size: 11px; padding: 6px 2px 0; line-height: 1.5; }
 .skycase figcaption b { color: var(--text); }
 .initial-walk { display: block; }
+
+/* The world's loading bar: it covers the page because there is no run behind it yet. */
+#loading { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; z-index: 50; }
+/* The display rule above beats the user agent's [hidden] { display: none }, and
+   an overlay that cannot hide is the whole game covered. */
+#loading[hidden] { display: none; }
+#loading .bar { width: min(60vw, 420px); height: 8px; border: 1px solid var(--line); background: var(--panel); }
+#loading .bar > i { display: block; height: 100%; width: 0; background: var(--accent); }
+#loading p { color: var(--dim); margin: 0; }

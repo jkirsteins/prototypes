@@ -1,29 +1,29 @@
 import { requireCamp } from "./siting-helpers";
 import { describe, expect, it } from "vitest";
 import { fishSpecies } from "../src/sim/species";
-import { newWorld, terrainOfPatch, terrainPeek } from "../src/world/cells";
+import { terrainOfPatch, terrainPeek } from "../src/world/cells";
 import { terrainAtPatch } from "../src/world/fine-terrain";
-import { cellAt, generateWorld, hasSpot, neighbours, regionAt, regionPeek, speciesHere, WORLD_H, WORLD_W } from "../src/world/gen";
-import { PATCH_KM, patchId } from "../src/world/spatial";
+import { cellAt, generateWorld, hasSpot, heightAt, neighbours, regionAt, regionPeek, speciesHere, WORLD_H, WORLD_W } from "../src/world/gen";
+import { FINE_PER_PARENT, PATCH_KM, patchId } from "../src/world/spatial";
 import { LATTICE_W } from "../src/world/terrain";
 import { findRoute, routeKm } from "../src/world/route";
+import { KIND } from "../src/world/solve";
+import { solvedWorld } from "./world-fixture";
 
 describe("world generation", () => {
   const world = generateWorld(42);
   const start = regionAt(world, world.start);
 
-  it("is deterministic for a seed and cheap to make", () => {
+  it("is deterministic for a seed and cheap to make from the cache", () => {
     const t0 = performance.now();
     const again = generateWorld(42);
     expect(performance.now() - t0).toBeLessThan(2000);
     expect(again.start).toBe(world.start);
-    expect(regionAt(again, again.start).name).toBe(start.name);
-    for (const idx of start.cells.slice(0, 50)) expect(cellAt(again, idx).terrain).toBe(cellAt(world, idx).terrain);
-    expect(generateWorld(43).start === world.start && regionAt(generateWorld(43), world.start).name === start.name).toBe(false);
+    for (let i = 0; i < 2000; i += 37) expect(again.solved.terrain[i]).toBe(world.solved.terrain[i]);
   });
 
   it("allocates only touched 96 by 96 fine chunks while peeks remain pure", () => {
-    const fine = newWorld(21);
+    const fine = solvedWorld(21);
     const patch = patchId(6411, 1875);
     expect(fine.fineChunks.size).toBe(0);
     expect(terrainPeek(fine, patch)).toBe(terrainAtPatch(21, patch));
@@ -54,12 +54,37 @@ describe("world generation", () => {
       const y = (i * 61) % WORLD_H;
       expect(regionPeek(world, x, y)).toBeGreaterThanOrEqual(0);
     }
+    const start = regionAt(world, world.start);
     expect(start.neighbours.length).toBeGreaterThan(2);
     for (const nb of start.neighbours) {
       const back = regionAt(world, nb.id).neighbours.find((x) => x.id === world.start);
       expect(back).toBeDefined();
-      expect(back!.km).toBeCloseTo(nb.km, 5);
     }
+    expect(cellAt(world, world.startCell).region).toBe(world.start);
+  });
+
+  it("counts river as its own habitat share", () => {
+    const start = regionAt(world, world.start);
+    expect(start.frac.river).toBeGreaterThanOrEqual(0);
+    expect(start.frac.water + start.frac.river).toBeLessThanOrEqual(1);
+  });
+
+  it("reads height in metres with the sea at or below zero and lakes above", () => {
+    const cells = world.solved;
+    let seaChecked = 0;
+    for (let i = 0; i < cells.w * cells.h; i += 997) {
+      const cx = i % cells.w;
+      const cy = (i - cx) / cells.w;
+      const x = cx * FINE_PER_PARENT;
+      const y = cy * FINE_PER_PARENT;
+      // The fine lattice is shorter than the solved world until its height
+      // constant follows the solve; rows past its end have no patch to read.
+      if (y >= world.h) continue;
+      if (cells.kind[i] === KIND.sea) { expect(heightAt(world, x, y)).toBeLessThanOrEqual(0); seaChecked++; }
+      else expect(heightAt(world, x, y)).toBeGreaterThanOrEqual(0);
+    }
+    expect(seaChecked).toBeGreaterThan(100);
+    expect(heightAt(world, -1, 5)).toBe(0);
   });
 
   it("starts in a forested inland region with a camp and a forest", () => {

@@ -112,7 +112,7 @@ function regionAt(source: World | AggregateSource, patch: PatchId): number {
 }
 
 export function emptyTerrainCounts(): Record<Terrain, number> {
-  return { water: 0, fell: 0, rock: 0, bog: 0, spruce: 0, pine: 0, birch: 0, meadow: 0 };
+  return { water: 0, river: 0, fell: 0, rock: 0, bog: 0, spruce: 0, pine: 0, birch: 0, meadow: 0 };
 }
 
 function dominantTerrain(counts: Record<Terrain, number>): Terrain {

@@ -15,18 +15,31 @@ import { rootCellFullKg, rootCellKg, rootKgLeft, rootStockFor } from "../src/sim
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { cellAt, neighbours, regionAt, spotOf, type World } from "../src/world/gen";
 
-/** A cell of the wanted ground near the start, hunted for rather than written down: the world is generated, not fixed. */
+/**
+ * A cell of the wanted ground nearest the start, hunted for rather than written
+ * down: the world is generated, not fixed. The rings are walked one perimeter
+ * at a time and run out to 400 cells, because a terrain a landing's own
+ * neighbourhood lacks - a meadow on a bog coast - is ordinary, and "near the
+ * start" means what the survivor could reach and not what is underfoot.
+ */
 function findCell(world: World, from: number, want: (terrain: string, waterside: boolean) => boolean): number {
   const c0 = cellAt(world, from);
-  for (let ring = 0; ring <= 60; ring++) {
+  const at = (dx: number, dy: number): number | null => {
+    const x = c0.x + dx;
+    const y = c0.y + dy;
+    if (x < 0 || y < 0 || x >= world.w || y >= world.h) return null;
+    const idx = y * world.w + x;
+    const t = cellAt(world, idx).terrain;
+    return want(t, neighbours(world, idx).some((n) => cellAt(world, n).terrain === "water")) ? idx : null;
+  };
+  const here = at(0, 0);
+  if (here !== null) return here;
+  for (let ring = 1; ring <= 400; ring++) {
     for (let dy = -ring; dy <= ring; dy++) {
       for (let dx = -ring; dx <= ring; dx++) {
-        const x = c0.x + dx;
-        const y = c0.y + dy;
-        if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
-        const idx = y * world.w + x;
-        const t = cellAt(world, idx).terrain;
-        if (want(t, neighbours(world, idx).some((n) => cellAt(world, n).terrain === "water"))) return idx;
+        if (Math.abs(dx) !== ring && Math.abs(dy) !== ring) continue;
+        const found = at(dx, dy);
+        if (found !== null) return found;
       }
     }
   }

@@ -6,9 +6,10 @@ import {
   parentSummary,
   worldCacheStats,
 } from "../src/world/aggregate";
-import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, newWorld, terrainOfPatch } from "../src/world/cells";
+import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, terrainOfPatch } from "../src/world/cells";
 import { patchId, WORLD_FINE_W } from "../src/world/spatial";
 import type { Terrain } from "../src/sim/types";
+import { solvedWorld } from "./world-fixture";
 
 const TERRAIN_BY_CHAR: Record<string, Terrain> = { S: "spruce", M: "meadow", R: "rock" };
 
@@ -58,7 +59,7 @@ describe("fine terrain aggregates", () => {
   });
 
   it("invalidates its chunk summaries and only adjacent parent boundary summaries", () => {
-    const world = newWorld(21);
+    const world = solvedWorld(21);
     const affected = parentSummary(world, 16, 16);
     const sameChunk = parentSummary(world, 17, 16);
     const acrossBoundary = parentSummary(world, 15, 16);
@@ -75,7 +76,7 @@ describe("fine terrain aggregates", () => {
   });
 
   it("keeps the least recently used fine chunks within the declared limit", () => {
-    const world = newWorld(21);
+    const world = solvedWorld(21);
     terrainOfPatch(world, patchId(0, 0));
     const emptyChunk: Omit<FineChunk, "cx"> = {
       cy: 0,

@@ -3,7 +3,7 @@ import {
   decodeKnowledge, encodeKnowledge, inheritKnowledge, knowledgeAt, knowledgeCounts,
   knownPatches, markSeen, markVisited, newKnowledge, setKnowledge,
 } from "../src/sim/fineknowledge";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import { newGame } from "../src/sim/newgame";
 import { patchId } from "../src/world/spatial";
 
@@ -59,7 +59,7 @@ describe("knowledge in a save", () => {
     const { state } = newGame(1);
     const before = knowledgeCounts(state.knowledge);
     expect(before.known).toBeGreaterThan(0);
-    const loaded = deserialize(serialize(state))!;
+    const loaded = readSave(serialize(state))!;
     expect(loaded).not.toBeNull();
     expect(knowledgeCounts(loaded.state.knowledge)).toEqual(before);
     expect(encodeKnowledge(loaded.state.knowledge)).toBe(encodeKnowledge(state.knowledge));
@@ -72,7 +72,7 @@ describe("knowledge in a save", () => {
     const legacy = JSON.parse(serialize(state)) as { state: Record<string, unknown> };
     legacy.state.knowledge = undefined;
     legacy.state.mapped = { 5: 1, 6: 3 };
-    const loaded = deserialize(JSON.stringify(legacy))!;
+    const loaded = readSave(JSON.stringify(legacy))!;
     expect(knowledgeAt(loaded.state.knowledge, 5)).toBe("seen");
     expect(knowledgeAt(loaded.state.knowledge, 6)).toBe("inherited");
   });

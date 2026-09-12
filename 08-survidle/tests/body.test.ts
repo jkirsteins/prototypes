@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { ARROWS_TO_CARRY, bodyStep, currentNeed, minutesToCamp, SLEEP_AT, stormOptions } from "../src/sim/body";
-import { alertness, minutesToWake, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT } from "../src/sim/sleep";
+import { alertness, minutesToWake, RESTED_AT, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT } from "../src/sim/sleep";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { bankFire } from "../src/sim/fire";
 import { addItem, pile, qty, weight } from "../src/sim/inventory";
@@ -21,7 +21,8 @@ import { PACK_COMFORTABLE_KG } from "../src/units";
 import { isWorkOrder } from "../src/sim/types";
 import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
-import { siteCamp, requireCamp } from "./siting-helpers";
+import { requireCamp, siteCamp } from "./siting-helpers";
+import { forestCampOnWater, forestPairNear, leeCellNear, openCampWithForestNear, shoreCampWithDryForest, terrainCellNear, unnamedShoreRegion } from "./world-facts";
 import { ensureGround, iceMode } from "../src/sim/weather";
 import { testAtmosphere, testRain } from "./weather-helpers";
 import { levelMinutes } from "../src/sim/skills";
@@ -48,17 +49,40 @@ function stormForecast(state: G["state"], kind: "rain" | "snow" | "gale" = "rain
   };
 }
 /**
- * A forever felling from camp, with the camp cell to hand. Seed 39: meadow
- * camp, forest 0.6 km away. The felling is a row on the list, under the
- * body's own row, which is where standing work lives: the runner works
- * what the list gives it, and a body that wants something outranks a row
- * ranked below it and takes the minute back.
+ * Which ground a case stands its camp on, found by the rule it needs rather
+ * than named: the world offers a different cell to every seed and every
+ * generator, and the rule is what the case is actually about.
  */
-function felling(seed = 39, deliver: "leave" | "camp" = "leave") {
+type FindCamp = (world: G["world"], home: number) => number;
+
+/**
+ * Open ground with forest a short walk off: a camp you leave to work. A camp
+ * that itself stands in forest is worked without walking anywhere, and
+ * everything that happens on the way out of camp - provisioning the pack,
+ * filling the quiver, banking the fire - never fires at all.
+ */
+const OPEN_CAMP: FindCamp = (world, home) => openCampWithForestNear(world, home).camp;
+
+function campAt(seed: number, findCamp: FindCamp) {
   const g = newGame(seed);
-  siteCamp(g.state, g.world);
   const { state, world } = g;
-  const camp = regionState(state, world, state.player.region).campCell!;
+  placeAt(state, world, findCamp(world, state.player.region));
+  siteCamp(state, world);
+  return { g, state, world, camp: regionState(state, world, state.player.region).campCell as number };
+}
+
+const campYouLeave = (seed = 39) => campAt(seed, OPEN_CAMP);
+
+/**
+ * A forever felling from camp, with the camp cell to hand. The camp is found
+ * by the rule the case needs - open ground with forest a short walk off - so
+ * that the felling is work the runner leaves camp for. The felling is a row on
+ * the list, under the body's own row, which is where standing work lives: the
+ * runner works what the list gives it, and a body that wants something
+ * outranks a row ranked below it and takes the minute back.
+ */
+function felling(seed = 39, deliver: "leave" | "camp" = "leave", findCamp: FindCamp = OPEN_CAMP) {
+  const { g, state, world, camp } = campAt(seed, findCamp);
   addItem(state.player.pack, "driedMeat", 2);
   addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver, where: "nearest" }, "grind");
   advance(state, world, 1);
@@ -66,27 +90,22 @@ function felling(seed = 39, deliver: "leave" | "camp" = "leave") {
 }
 
 describe("the body's row against the work", () => {
-  it("collapsing, it sets the tree aside, walks to camp and dozes there until it is rested", () => {
+  it("collapsing, it sets the tree aside, walks to camp and rests to the recovery line", () => {
     const { g, state, world, camp } = felling();
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     advance(state, world, 20);
     state.player.energy = 20;
     advance(state, world, 1);
     expect(state.task?.id).toBe("walk");
-    expect(state.intent?.step).toBe("walking to camp to doze");
-    expect(state.player.bodyNeed).toBe("sleep");
+    expect(state.intent?.step).toBe("walking to camp for the evening");
+    expect(state.player.bodyNeed).toBe("spent");
     expect(Object.keys(state.paused)).toHaveLength(1);
-    expect(until(g, () => state.task?.id === "sleep")).toBe(true);
+    expect(until(g, () => state.task?.id === "rest")).toBe(true);
     expect(cellOf(state, world)).toBe(camp);
-    // A morning collapse is a doze by the fire and says so; only a sleep begun
-    // in the dark reads as sleeping.
-    expect(state.intent?.step).toBe("dozing by the fire");
-    expect(until(g, () => state.task?.id !== "sleep", 700)).toBe(true);
+    expect(state.intent?.step).toBe("resting after the day's work");
+    expect(until(g, () => state.task?.id !== "rest", 700)).toBe(true);
     expect(state.player.bodyNeed).toBeNull();
-    // Collapse is not an ordinary evening rest: it restores the full reserve
-    // before the interrupted work is allowed to restart.
-    // The observed minute includes the first minute of resumed work.
-    expect(state.player.energy).toBeGreaterThan(99.8);
+    expect(state.player.energy).toBeGreaterThanOrEqual(RESTED_AT - 0.2);
     // Back to the tree it left, and on with the same intent.
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     expect(state.task!.progress).toBeGreaterThan(15);
@@ -112,7 +131,7 @@ describe("the body's row against the work", () => {
     expect(other.state.task?.id).toBe("chop");
   });
 
-  it("makes a fire for the night when the means are at camp: the site, a split log, then light", () => {
+  it("makes a fire before collapse recovery when the means are at camp: the site, a split log, then light", () => {
     const { g, state, world, camp } = felling();
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, camp), "stone", 6);
@@ -120,28 +139,27 @@ describe("the body's row against the work", () => {
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.energy = 20;
     const steps: string[] = [];
-    until(g, () => {
+    expect(until(g, () => {
       const s = state.intent?.step ?? "";
       if (steps.at(-1) !== s) steps.push(s);
-      return state.task?.id === "sleep";
-    }, 1500);
-    expect(steps).toEqual(expect.arrayContaining(["walking to camp to doze", "clearing the fire site", "splitting a log for the fire", "lighting the fire", "dozing by the fire"]));
+      return s === "resting by the fire after the day's work";
+    }, 1500)).toBe(true);
+    expect(steps).toEqual(expect.arrayContaining(["walking to camp for the evening", "clearing the fire site", "splitting a log for the fire", "lighting the fire", "resting by the fire after the day's work"]));
     expect(regionState(state, world, state.player.region).fire.lit).toBe(true);
   });
 
-  it("with no way to camp it sleeps where it stands and says so", () => {
+  it("with no way to camp it rests where it stands and says so", () => {
     const { g, state, world } = felling();
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     // Overload the pack so no walk can start.
     addItem(state.player.pack, "stone", 40);
     state.player.energy = 20;
     advance(state, world, 1);
-    expect(state.task?.id).toBe("sleep");
-    expect(state.intent?.step).toContain("where {you} {stand}");
-    expect(state.log.some((e) => e.text.includes("{You} {sleep} where {you} {are}"))).toBe(true);
+    expect(state.task?.id).toBe("rest");
+    expect(state.intent?.step).toBe("resting after the day's work; no way to camp");
   });
 
-  it("cold, it goes to camp and rests until warm again, and sleep outranks cold", () => {
+  it("cold, it goes to camp and rests until warm again, and collapse outranks cold", () => {
     const { g, state, world, camp } = felling();
     const st = regionState(state, world, state.player.region);
     // A fire already going, so this region's camp can actually warm a cold body.
@@ -172,7 +190,7 @@ describe("the body's row against the work", () => {
     state.player.warmth = 20;
     state.player.energy = 15;
     advance(state, world, 1);
-    expect(state.player.bodyNeed).toBe("sleep");
+    expect(state.player.bodyNeed).toBe("spent");
   });
 
   it("a cold need holds until warm, across a fresh intent", () => {
@@ -260,12 +278,9 @@ describe("the body's row against the work", () => {
   });
 
   it("pockets provisions when leaving camp, up to 2 kg and never past the comfortable load", () => {
-    // Seed 3's camp sits on forest, so a "sticks" intent never leaves camp and provision()
-    // (fired from walkTo) never runs. Seed 39's camp is meadow; the forest is 0.6 km off.
-    const g = newGame(39);
-    siteCamp(g.state, g.world);
-    const { state, world } = g;
-    const camp = regionState(state, world, state.player.region).campCell!;
+    // A camp on forest is worked where it stands, so a "sticks" intent never
+    // leaves it and provision() (fired from walkTo) never runs.
+    const { state, world, camp } = campYouLeave();
     state.player.pack.items.driedMeat = 0;
     addItem(pile(state, camp), "driedMeat", 5);
     startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
@@ -280,10 +295,7 @@ describe("the body's row against the work", () => {
   // only when everything above it is met or blocked, by which time the runner is
   // out at the shore - was never once served on any gate seed.
   it("the quiver is filled whenever the bow leaves camp, whatever the errand", () => {
-    const g = newGame(39);
-    siteCamp(g.state, g.world);
-    const { state, world } = g;
-    const camp = regionState(state, world, state.player.region).campCell!;
+    const { state, world, camp } = campYouLeave();
     state.player.tools.push({ id: "bow", durability: 100, litres: 0 });
     addItem(pile(state, camp), "arrow", 12);
     expect(qty(state.player.pack, "arrow")).toBe(0);
@@ -293,10 +305,7 @@ describe("the body's row against the work", () => {
   });
 
   it("no bow, no arrows: an unarmed survivor leaves the quiver where it is", () => {
-    const g = newGame(39);
-    siteCamp(g.state, g.world);
-    const { state, world } = g;
-    const camp = regionState(state, world, state.player.region).campCell!;
+    const { state, world, camp } = campYouLeave();
     addItem(pile(state, camp), "arrow", 12);
     startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
     expect(qty(state.player.pack, "arrow")).toBe(0);
@@ -408,7 +417,7 @@ describe("the body's row against the work", () => {
     // Past the spent line the build goes on: it is ranked over the body's own
     // row, and a body that has to wait its turn takes nothing back from the
     // work. The body giving out is the one thing that does not wait to be
-    // ranked, and then it sleeps on the spot.
+    // ranked, and then it rests on the spot.
     let pastSpent = false;
     for (let m = 0; m < 3000 && state.intent?.mode === "hand"; m++) {
       advance(state, world, 1);
@@ -418,8 +427,9 @@ describe("the body's row against the work", () => {
     // Collapse releases the build to the queue. Its row visibly refuses work
     // until Self-care has restored the body, then the same row resumes.
     expect(state.player.energy).toBeLessThan(SLEEP_AT + 1);
-    expect(state.player.sleeping?.collapsed).toBe(true);
-    expect(until(g, () => state.task?.id === "sleep", 20)).toBe(true);
+    expect(state.player.collapsed).toBe(true);
+    expect(state.player.sleeping).toBeNull();
+    expect(until(g, () => state.task?.id === "rest", 20)).toBe(true);
     expect(until(g, () => state.task?.id === "build", 1000)).toBe(true);
     // The player sets it aside by choosing something else; the minutes are banked and read back into the next start.
     orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
@@ -435,11 +445,13 @@ describe("the body's row against the work", () => {
 
 describe("the runner in the elements", () => {
   it("drinks from a vessel, else walks to the shore, else melts snow at the fire", () => {
-    // Seed 10: the camp is a shore cell, so the felling is sent to the forest spot,
-    // 0.9 km off the water, and both fallbacks in this test actually walk somewhere.
+    // The camp is on the water and the region's forest spot is off it, so the
+    // felling happens away from any shore and both fallbacks here really walk.
     const g = newGame(10);
-    siteCamp(g.state, g.world);
     const { state, world } = g;
+    const region = shoreCampWithDryForest(world, state.player.region);
+    placeAt(state, world, regionAt(world, region).campCell);
+    siteCamp(state, world);
     mapRegion(state, world, state.player.region);
     addItem(state.player.pack, "driedMeat", 2);
     addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "forest" }, "grind");
@@ -573,9 +585,7 @@ describe("the runner in the elements", () => {
   });
 
   it("banks a big fire before walking off camp", () => {
-    const g = newGame(39);
-    siteCamp(g.state, g.world);
-    const { state, world } = g;
+    const { state, world } = campYouLeave();
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
@@ -661,11 +671,11 @@ describe("the runner in the elements", () => {
   });
 
   it("falls through to the camp-and-melt fallback when no shore can be walked to", () => {
-    // Seed 42: the forest coincides with camp, so once thirst falls through it can
-    // go straight to melting rather than needing a further walk to observe. The camp
+    // The forest coincides with camp, so once thirst falls through it can go
+    // straight to melting rather than needing a further walk to observe. The camp
     // is a shore cell, so the water under foot is shut with ice and the axe stowed,
     // or there would be nothing to fall through from.
-    const { g, state, world } = felling(42);
+    const { g, state, world } = felling(42, "leave", forestCampOnWater);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     // Overload the pack so no walk can start anywhere; melting needs none once at camp.
     addItem(state.player.pack, "stone", 40);
@@ -733,19 +743,19 @@ describe("the runner in the elements", () => {
   });
 
   it("a region with no named shore spot but real waterside cells still finds water to walk to", () => {
-    // findStart requires a shore spot, so no starting region can ever lack one; this
-    // stands the player in seed 2's region 94 instead, whose frac.water (2.0%) sits
-    // at placeSpots' 2% floor for naming a "shore" spot (share <= 0.02 gets none),
-    // though it still borders water.
+    // findStart requires a shore spot, so no starting region can ever lack one. The
+    // finder looks for the other case instead: a region under placeSpots' 2% water
+    // floor, which names no shore though it still borders water. Which region that
+    // is moves with the map, so the rule is what the test names.
     const g = newGame(2);
     siteCamp(g.state, g.world);
     const { state, world } = g;
-    const r = regionAt(world, 94);
+    const { region: id, dryForest } = unnamedShoreRegion(world, state.player.region);
+    const r = regionAt(world, id);
     expect(hasSpot(r, "shore")).toBe(false);
     // The camp itself is a shore cell now; stand in forest away from the water so the thirst has to walk.
-    const dryForest = r.cells.find((c) => ["spruce", "pine", "birch"].includes(cellAt(world, c).terrain) && !neighbours(world, c).some((n) => cellAt(world, n).terrain === "water"))!;
     placeAt(state, world, dryForest);
-    mapRegion(state, world, 94);
+    mapRegion(state, world, id);
     addItem(state.player.pack, "driedMeat", 2);
     startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
@@ -759,13 +769,13 @@ describe("the runner in the elements", () => {
 describe("the shared storm plan", () => {
   it("records the full return-home evidence and gives a close camp the body step", () => {
     const { state, world } = newGame(17);
-    const region = regionAt(world, state.player.region);
-    mapRegion(state, world, region.id);
-    const camp = region.cells.find((cell) => cellAt(world, cell).terrain === "spruce"
-      && neighbours(world, cell).some((other) => cellAt(world, other).region === region.id && cellAt(world, other).terrain === "spruce"))!;
-    const from = neighbours(world, camp).find((cell) => cellAt(world, cell).region === region.id && cellAt(world, cell).terrain === "spruce")!;
-    regionState(state, world, region.id).campCell = camp;
-    siteFor(regionState(state, world, region.id), camp).structures.leanTo = true;
+    // A camp under the canopy with the survivor one step off it: the walk home
+    // is a single cell, so the return is the cheap option and the evidence for
+    // it can be read whole.
+    const { region: id, camp, beside: from } = forestPairNear(world, state.player.region);
+    mapRegion(state, world, id);
+    regionState(state, world, id).campCell = camp;
+    siteFor(regionState(state, world, id), camp).structures.leanTo = true;
     placeAt(state, world, from);
     state.weather.storm = { id: 31, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
     const plan = stormOptions(state, world, state.weather.storm);
@@ -904,7 +914,7 @@ describe("the shared storm plan", () => {
 
   it("can recommend unfinished local work without calling it viable preparation", () => {
     const { state, world } = newGame(17);
-    const meadow = regionAt(world, state.player.region).cells.find((cell) => cellAt(world, cell).terrain === "meadow")!;
+    const meadow = terrainCellNear(world, state.player.region, "meadow").cell;
     placeAt(state, world, meadow);
     state.weather.storm = { id: 34, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
     const plan = stormOptions(state, world, state.weather.storm);
@@ -916,8 +926,8 @@ describe("the shared storm plan", () => {
 
   it("treats a high-profile weatherproof frame as inadequate in an active gale", () => {
     const { state, world } = newGame(17);
-    const open = 523076;
-    expect(cellAt(world, open).terrain).toBe("meadow");
+    // Open ground: a frame on it stands proud of everything around it.
+    const open = terrainCellNear(world, state.player.region, "meadow").cell;
     placeAt(state, world, open);
     siteFor(regionState(state, world, state.player.region), open).structures.leanTo = true;
     state.minute = 101;
@@ -932,8 +942,8 @@ describe("the shared storm plan", () => {
 
   it("does not treat short emergency work beside an exposed frame as low-profile gale cover", () => {
     const { state, world } = newGame(17);
-    const open = 523076;
-    expect(cellAt(world, open).terrain).toBe("meadow");
+    // Open ground, as above: nothing around the frame to break the wind.
+    const open = terrainCellNear(world, state.player.region, "meadow").cell;
     placeAt(state, world, open);
     siteFor(regionState(state, world, state.player.region), open).structures.leanTo = true;
     state.skills.weatherSense.xp = levelMinutes(13);
@@ -946,7 +956,7 @@ describe("the shared storm plan", () => {
 
   it("does not treat newly found cover below an exposed frame as adequate gale shelter", () => {
     const { state, world } = newGame(17);
-    const pine = regionAt(world, state.player.region).cells.find((cell) => cellAt(world, cell).terrain === "pine")!;
+    const pine = terrainCellNear(world, state.player.region, "pine").cell;
     placeAt(state, world, pine);
     siteFor(regionState(state, world, state.player.region), pine).structures.leanTo = true;
     state.skills.weatherSense.xp = levelMinutes(13);
@@ -964,7 +974,9 @@ describe("the shared storm plan", () => {
 
   it("starts partial local shelter instead of walking toward camp after a short warning", () => {
     const { state, world } = newGame(17);
-    const region = regionAt(world, state.player.region);
+    // Open ground far enough from its own region's camp that the walk back
+    // cannot beat the onset; which region holds such ground is the map's business.
+    const region = regionAt(world, terrainCellNear(world, state.player.region, "meadow").region);
     mapRegion(state, world, region.id);
     const camp = region.campCell;
     regionState(state, world, region.id).campCell = camp;
@@ -1031,7 +1043,7 @@ describe("the shared storm plan", () => {
 
   it("executes the local shelter work projected while standing at a bare camp", () => {
     const { state, world } = newGame(17);
-    const meadow = regionAt(world, state.player.region).cells.find((cell) => cellAt(world, cell).terrain === "meadow")!;
+    const meadow = terrainCellNear(world, state.player.region, "meadow").cell;
     placeAt(state, world, meadow);
     regionState(state, world, state.player.region).campCell = meadow;
     state.weather.storm = { id: 45, source: "natural", kind: "rain", from: 90, until: 450, warned: false };
@@ -1044,8 +1056,9 @@ describe("the shared storm plan", () => {
 
   it("accepts a low windbreak in lee as weatherproof during an active gale", () => {
     const { state, world } = newGame(17);
-    const spruce = 523074;
-    expect(cellAt(world, spruce).terrain).toBe("spruce");
+    // Forest in the lee of what stands upwind of it: the windbreak is low, and
+    // the lee is what makes it enough.
+    const spruce = leeCellNear(world, state.player.region, "spruce", testAtmosphere().windBearingDeg);
     placeAt(state, world, spruce);
     siteFor(regionState(state, world, state.player.region), spruce).cover = 1;
     state.minute = 101;

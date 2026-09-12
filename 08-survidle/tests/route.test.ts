@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FINE_CHUNK, newWorld } from "../src/world/cells";
+import { flatWorld } from "./world-fixture";
 import { fineRouteCacheStats } from "../src/world/fine-route";
 import { findRoute, knownRoute, remainingWalkMinutes, routeKm, routeMinutes, type RouteConditions } from "../src/world/route";
 import { patchId } from "../src/world/spatial";
@@ -7,7 +8,9 @@ import { TERRAIN_INDEX } from "../src/world/terrain";
 
 // Public fine chunk data keeps these geometry/cache tests independent of seed geography.
 function fixture() {
-  const world = newWorld(21);
+  // One parent-sized solved world under the fixture chunk: the fine patches are
+  // the case, and the parent reads only supply a height and a water kind.
+  const world = newWorld(21, flatWorld({ w: 16, h: 16, terrain: "pine", seed: 21 }).solved);
   const terrain = new Uint8Array(FINE_CHUNK * FINE_CHUNK).fill(TERRAIN_INDEX.pine);
   const region = new Int32Array(FINE_CHUNK * FINE_CHUNK);
   world.fineChunks.set(0, { cx: 0, cy: 0, terrain, region, samples: terrain.length, parentSummaries: new Map() });

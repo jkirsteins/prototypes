@@ -7,14 +7,17 @@ import { Rng, derive } from "../rng";
 import { SPECIES_IDS } from "../sim/species";
 import type { Habitat, Species, SpotId, Terrain } from "../sim/types";
 import { parentSummary, type ResourcePotential, resourcePotentialAt } from "./aggregate";
-import { type Cell, cellAt, cellIdx, neighbours, newWorld, regionPeek, terrainOf, type World } from "./cells";
-import { FINE_PER_PARENT, PATCH_KM, type PatchId } from "./spatial";
+import { type Cell, cellAt, cellIdx, inWorld, neighbours, newWorld, regionOf, regionPeek, solvedTerrainAt, streamAt, terrainOf, waterKindOf, type World } from "./cells";
 import { regionName } from "./names";
 import { findRoute, passable, routeKm } from "./route";
-import { fieldsAt, LATTICE, LATTICE_H, LATTICE_W, regionOfCell, TERRAINS, terrainAt, WORLD_H, WORLD_W } from "./terrain";
+import type { SolvedWorld } from "./solve";
+import { rememberSolved, solvedFor } from "./solvecache";
+import { FINE_PER_PARENT, PATCH_KM, type PatchId, patchXY } from "./spatial";
+import { CELL_KM } from "../units";
+import { coastLineU, LATTICE, LATTICE_H, LATTICE_W, TERRAINS, WORLD_CELL_H, WORLD_CELL_W, WORLD_H, WORLD_W } from "./terrain";
 import { wildlifeCapacity } from "./wildlife";
 
-export { cellAt, cellIdx, neighbours, regionOf, regionPeek, terrainOf, terrainPeek, waterKindOf, type Cell, type World } from "./cells";
+export { cellAt, cellIdx, dischargeAt, fordAt, heightAt, latitudeOfRow, moistureAt, neighbours, regionOf, regionPeek, solvedTerrainAt, streamAt, terrainOf, terrainPeek, waterKindOf, type Cell, type World } from "./cells";
 export { TERRAINS, WORLD_H, WORLD_W } from "./terrain";
 
 /** A named place to walk to: its cell and the route length from camp. */
@@ -48,15 +51,22 @@ export interface RegionDef {
   neighbours: { id: number; km: number }[];
   spots: Spot[];
   /** A passable shore or centroid patch; no camp exists in an all-water region. */
-  campCell: PatchId | null;
+  campCell: PatchId;
 }
 
-/** A world is cheap to make; regions and chunks come as they are touched. */
-export function generateWorld(seed: number): World {
-  const world = newWorld(seed);
+/** The solve is the dear part; regions and chunks come as they are touched. */
+export function generateWorld(seed: number, solved?: SolvedWorld): World {
+  const world = newWorld(seed, solved ?? solvedFor(seed, WORLD_CELL_W, WORLD_CELL_H));
+  if (solved) rememberSolved(solved, seed);
   const s = findStart(world);
   world.start = s.id;
+  world.startCell = s.cell;
   world.startRing = s.ring;
+  const region = regionAt(world, s.id);
+  if (region.campCell !== s.cell) {
+    region.campCell = s.cell;
+    region.spots = placeSpots(world, region);
+  }
   return world;
 }
 
@@ -73,9 +83,15 @@ export function latticeOf(id: number): { lx: number; ly: number } {
   return { lx: id % LATTICE_W, ly: Math.floor(id / LATTICE_W) };
 }
 
-/** Fishing happens from land beside water. */
-const isShore = (world: World) => (c: Cell) =>
-  passable(c.terrain) && neighbours(world, c.y * world.w + c.x).some((n) => terrainOf(world, n % world.w, Math.floor(n / world.w)) === "water");
+/** Land beside water for camp siting: a stream counts, same as any water neighbour, since a camp on a brook is still a camp by water. */
+const campWaterside = (world: World) => (c: Cell) => {
+  const idx = c.y * world.w + c.x;
+  return passable(c.terrain) && (streamAt(world, idx) || neighbours(world, idx).some((n) => waterKindOf(world, n) !== null));
+};
+
+/** Fishing happens from land beside a lake, sea or river; a stream is too thin to fish and is drinking water only. */
+const fishingShore = (world: World) => (c: Cell) =>
+  passable(c.terrain) && neighbours(world, c.y * world.w + c.x).some((n) => waterKindOf(world, n) !== null);
 
 function buildRegion(world: World, id: number): RegionDef {
   const { lx, ly } = latticeOf(id);
@@ -84,7 +100,7 @@ function buildRegion(world: World, id: number): RegionDef {
   const x1 = Math.min(WORLD_W, (lx + 2) * LATTICE);
   const y1 = Math.min(WORLD_H, (ly + 2) * LATTICE);
   const cells: number[] = [];
-  const count: Record<Terrain, number> = { water: 0, fell: 0, rock: 0, bog: 0, spruce: 0, pine: 0, birch: 0, meadow: 0 };
+  const count: Record<Terrain, number> = { water: 0, fell: 0, rock: 0, bog: 0, spruce: 0, pine: 0, birch: 0, meadow: 0, river: 0 };
   let sx = 0;
   let sy = 0;
   let seaCells = 0;
@@ -126,7 +142,7 @@ function buildRegion(world: World, id: number): RegionDef {
           addPotential(resourcePotentialAt(world, idx));
         }
         if (terrain === "water") {
-          if (fieldsAt(world.seed, x, y).sea) seaCells++;
+          if (waterKindOf(world, idx) === "sea") seaCells++;
           else lakeCells++;
         }
         sx += x;
@@ -148,11 +164,11 @@ function buildRegion(world: World, id: number): RegionDef {
   const rock = frac.rock + frac.fell;
   cells.sort((a, b) => a - b);
   const area = cells.length * PATCH_KM * PATCH_KM;
-  const landCells = cells.length - count.water;
+  const landCells = cells.length - count.water - count.river;
   const lake = lakeCells / n;
   const sea = seaCells / n;
   const shares: Record<Habitat, number> = {
-    fell: frac.fell, rock: frac.rock, bog: frac.bog, spruce: frac.spruce, pine: frac.pine, birch: frac.birch, meadow: frac.meadow, lake, sea,
+    fell: frac.fell, rock: frac.rock, bog: frac.bog, spruce: frac.spruce, pine: frac.pine, birch: frac.birch, meadow: frac.meadow, river: frac.river, lake, sea,
   };
   const cx = sx / n;
   const cy = sy / n;
@@ -160,12 +176,13 @@ function buildRegion(world: World, id: number): RegionDef {
   // Camp is the shore cell nearest the centroid: a survivor camps by the water,
   // and the centroid is only where the region's middle happens to be. A region
   // with no shore keeps the centroid camp.
-  const campCell = nearestCell(world, cells, cx, cy, isShore(world))
-    ?? nearestCell(world, cells, cx, cy, (c) => passable(c.terrain));
+  const campCell = nearestCell(world, cells, cx, cy, campWaterside(world))
+    ?? nearestCell(world, cells, cx, cy, (c) => passable(c.terrain))
+    ?? cells[0];
   const rng = new Rng(derive(world.seed, 1000 + id));
   const r: RegionDef = {
     id,
-    name: regionName(rng, { water: frac.water, rock, bog: frac.bog, forest }, new Set()),
+    name: regionName(rng, { water: frac.water + frac.river, rock, bog: frac.bog, forest }, new Set()),
     cells,
     landCells,
     cx,
@@ -190,7 +207,13 @@ function buildRegion(world: World, id: number): RegionDef {
     campCell,
   };
   let spots: Spot[] | undefined;
-  Object.defineProperty(r, "spots", { enumerable: true, get: () => spots ??= placeSpots(world, r) });
+  // Lazy, and writable: the start re-sites its own region's camp and hands back
+  // the spots placed around it, which a getter alone would refuse.
+  Object.defineProperty(r, "spots", {
+    enumerable: true,
+    get: () => spots ??= placeSpots(world, r),
+    set: (placed: Spot[]) => { spots = placed; },
+  });
   return r;
 }
 
@@ -215,7 +238,7 @@ function placeSpots(world: World, r: RegionDef): Spot[] {
     { id: "outcrop", pick: IS_ROCK, km: 0.4 + 1.2 * (1 - r.rock), share: r.rock },
     // The camp stands on the shore, so the shore spot is the next shore cell along: the
     // fishing place a minute away, never the camp's own cell.
-    { id: "shore", pick: isShore(world), km: 0, share: r.frac.water },
+    { id: "shore", pick: fishingShore(world), km: 0, share: r.frac.water },
     { id: "heath", pick: IS_HEATH, km: 0.3 + 1.0 * (1 - r.frac.bog - r.frac.meadow), share: r.frac.bog + r.frac.meadow },
   ];
   for (const want of wants) {
@@ -256,95 +279,123 @@ function nearestCell(world: World, cells: number[], cx: number, cy: number, ok: 
   return best;
 }
 
+/** Rows the first boat may land in: the southern 15 percent of the world. */
+const START_SOUTH_SHARE = 0.85;
+/** A shore is sheltered when at least this many of sixteen 5 km rays from its sea cell meet land. */
+const SHELTER_RAYS = 10;
+const SHELTER_REACH_CELLS = Math.round(5 / CELL_KM);
+/** Forest within this many cells of the landing, and its share. */
+const START_FOREST_CELLS = 10;
+const START_FOREST_SHARE = 0.4;
+const START_MAX_RING = 60;
+
+const RAY_DX = [1, 0.924, 0.707, 0.383, 0, -0.383, -0.707, -0.924, -1, -0.924, -0.707, -0.383, 0, 0.383, 0.707, 0.924];
+const RAY_DY = [0, 0.383, 0.707, 0.924, 1, 0.924, 0.707, 0.383, 0, -0.383, -0.707, -0.924, -1, -0.924, -0.707, -0.383];
+
 /**
- * Screen the bounded 3x3 lattice box with pure samples before allocating
- * exact region terrain. Ignore samples owned by neighboring regions: their
- * shores and outcrops otherwise cause many expensive false-positive builds.
- * The forest floor leaves room for sampling error; exact shares and reachable
- * named spots remain the final start gate.
+ * The start search works a 300 m cell at a time, stepping this many patches:
+ * water, ground and shelter are what the solve decided at 300 m, and a landing
+ * is chosen by them before any patch of it is read. The patch it returns is the
+ * middle of the cell it chose.
  */
-function looksLikeStart(seed: number, lx: number, ly: number): boolean {
-  const x0 = Math.max(0, (lx - 1) * LATTICE);
-  const y0 = Math.max(0, (ly - 1) * LATTICE);
-  const x1 = Math.min(WORLD_W - 1, (lx + 2) * LATTICE);
-  const y1 = Math.min(WORLD_H - 1, (ly + 2) * LATTICE);
-  let forest = 0;
-  let water = 0;
-  let rock = 0;
-  let members = 0;
-  const g = 15;
-  for (let j = 0; j < g; j++) {
-    for (let i = 0; i < g; i++) {
-      const x = Math.min(WORLD_W - 1, Math.max(0, Math.round(x0 + ((i + 0.5) / g) * (x1 - x0))));
-      const y = Math.min(WORLD_H - 1, Math.max(0, Math.round(y0 + ((j + 0.5) / g) * (y1 - y0))));
-      // Only the prospective region's own ground predicts its start quality.
-      if (regionOfCell(seed, x, y) !== ly * LATTICE_W + lx) continue;
-      members++;
-      const t = terrainAt(seed, x, y);
-      if (t === "spruce" || t === "pine" || t === "birch") forest++;
-      else if (t === "water") water++;
-      else if (t === "rock" || t === "fell") rock++;
+const CELL_STEP = FINE_PER_PARENT;
+
+/** Land beside the sea whose sea neighbour sees land on most sides: a sound or a fjord, not the open coast. */
+export function isShelteredShore(world: World, cell: number): boolean {
+  const { x, y } = patchXY(cell);
+  if (!passable(solvedTerrainAt(world, x, y))) return false;
+  const beside = [[CELL_STEP, 0], [-CELL_STEP, 0], [0, CELL_STEP], [0, -CELL_STEP]]
+    .map(([dx, dy]) => ({ x: x + dx, y: y + dy }))
+    .find((p) => inWorld(world, p.x, p.y) && waterKindOf(world, cellIdx(world, p.x, p.y)) === "sea");
+  if (beside === undefined) return false;
+  let hits = 0;
+  for (let r = 0; r < 16; r++) {
+    for (let d = 1; d <= SHELTER_REACH_CELLS; d++) {
+      const rx = Math.round(beside.x + RAY_DX[r] * d * CELL_STEP);
+      const ry = Math.round(beside.y + RAY_DY[r] * d * CELL_STEP);
+      if (!inWorld(world, rx, ry)) { hits++; break; }
+      if (waterKindOf(world, cellIdx(world, rx, ry)) !== "sea") { hits++; break; }
     }
   }
-  return members > 0 && forest / members >= 0.4 && water >= 1 && rock >= 1 && water / members < 0.15;
+  return hits >= SHELTER_RAYS;
 }
 
-// The search is the dear part of a world and a seed always gives the same answer.
-const STARTS = new Map<number, { id: number; ring: number }>();
+/** Share of forest among the 300 m cells within a square radius of the landing. */
+export function forestShareWithin(world: World, cell: number, radius: number): number {
+  const { x: cx, y: cy } = patchXY(cell);
+  let forest = 0;
+  let n = 0;
+  for (let y = cy - radius * CELL_STEP; y <= cy + radius * CELL_STEP; y += CELL_STEP) {
+    for (let x = cx - radius * CELL_STEP; x <= cx + radius * CELL_STEP; x += CELL_STEP) {
+      if (!inWorld(world, x, y)) continue;
+      n++;
+      const t = solvedTerrainAt(world, x, y);
+      if (t === "spruce" || t === "pine" || t === "birch") forest++;
+    }
+  }
+  return n ? forest / n : 0;
+}
+
+// Keyed by seed and size: a test world of a few hundred cells and the full
+// 1800 by 2224 world share a seed and land their start in different places.
+const STARTS = new Map<string, { id: number; cell: number; ring: number }>();
+
+/** The best landing in one lattice square: the sheltered shore with the most forest around it, or -1. */
+function landingIn(world: World, lx: number, ly: number): number {
+  const x0 = lx * LATTICE;
+  const y0 = ly * LATTICE;
+  let best = -1;
+  let bestForest = 0;
+  for (let y = y0 + (CELL_STEP >> 1); y < Math.min(world.h, y0 + LATTICE); y += CELL_STEP) {
+    if (y < world.h * START_SOUTH_SHARE) continue;
+    for (let x = x0 + (CELL_STEP >> 1); x < Math.min(world.w, x0 + LATTICE); x += CELL_STEP) {
+      const cell = y * world.w + x;
+      if (!isShelteredShore(world, cell)) continue;
+      const forest = forestShareWithin(world, cell, START_FOREST_CELLS);
+      if (forest < START_FOREST_SHARE || forest <= bestForest) continue;
+      // The forest must exist in the region and be walkable from the shore.
+      const r = regionAt(world, regionOf(world, x, y));
+      const target = r.spots.find((s) => s.id === "forest");
+      if (!target || findRoute(world, cell, target.cell) === null) continue;
+      best = cell;
+      bestForest = forest;
+    }
+  }
+  return best;
+}
 
 /**
- * The search anchor sits a little east of map centre, in forest country:
- * rock and water for an outcrop and a shore are usually within a few
- * rings of it. The search spirals out from the anchor for the first
- * lattice cell whose region is mostly forest, with a shore for water and
- * an outcrop for stone within it.
+ * The first survivor comes by boat in April, so the landing is a
+ * sheltered sea shore in the southern rows with forest around it, found
+ * by spiralling out from the coast line 55 km north of the south edge.
+ * Nothing about stone or a lake: some starts have none in a day's walk,
+ * and the run is about finding it.
  */
-function findStart(world: World): { id: number; ring: number } {
-  const cached = STARTS.get(world.seed);
+function findStart(world: World): { id: number; cell: number; ring: number } {
+  const key = `${world.seed}:${world.w}x${world.h}`;
+  const cached = STARTS.get(key);
   if (cached) return cached;
-  const ax = Math.floor((0.55 * WORLD_W) / LATTICE);
-  const ay = Math.floor((0.5 * WORLD_H) / LATTICE);
-  for (let ring = 0; ring < 40; ring++) {
+  const v = 0.92;
+  const ax = Math.floor((coastLineU(v) * world.w) / LATTICE);
+  const ay = Math.floor((v * world.h) / LATTICE);
+  for (let ring = 0; ring < START_MAX_RING; ring++) {
     for (let dy = -ring; dy <= ring; dy++) {
       for (let dx = -ring; dx <= ring; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
         const lx = ax + dx;
         const ly = ay + dy;
         if (lx < 0 || ly < 0 || lx >= LATTICE_W || ly >= LATTICE_H) continue;
-        if (!looksLikeStart(world.seed, lx, ly)) continue;
-        const id = ly * LATTICE_W + lx;
-        const r = regionAt(world, id);
-        if (r.campCell !== null && r.forest >= 0.45 && r.landCells * PATCH_KM ** 2 >= 10.8 && r.frac.water < 0.15 && r.spots.length >= 3
-          && hasSpot(r, "shore") && hasSpot(r, "outcrop")) {
-          const found = { id, ring };
-          STARTS.set(world.seed, found);
-          return found;
-        }
+        const cell = landingIn(world, lx, ly);
+        if (cell < 0) continue;
+        const found = { id: regionOf(world, cell % world.w, Math.floor(cell / world.w)), cell, ring };
+        STARTS.set(key, found);
+        return found;
       }
     }
   }
-  // No lattice cell passed the exact filter: take the nearest region that at least
-  // has a shore, since a start with no water is not a start. The anchor itself only
-  // if even that fails.
-  for (let ring = 0; ring < 40; ring++) {
-    for (let dy = -ring; dy <= ring; dy++) {
-      for (let dx = -ring; dx <= ring; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
-        const lx = ax + dx;
-        const ly = ay + dy;
-        if (lx < 0 || ly < 0 || lx >= LATTICE_W || ly >= LATTICE_H) continue;
-        const id = ly * LATTICE_W + lx;
-        const r = regionAt(world, id);
-        if (r.campCell !== null && r.landCells * PATCH_KM ** 2 >= 10.8 && hasSpot(r, "shore")) {
-          const found = { id, ring: 39 };
-          STARTS.set(world.seed, found);
-          return found;
-        }
-      }
-    }
-  }
-  const fallback = { id: ay * LATTICE_W + ax, ring: 40 };
-  STARTS.set(world.seed, fallback);
+  const id = ay * LATTICE_W + ax;
+  const fallback = { id, cell: regionAt(world, id).campCell, ring: START_MAX_RING };
+  STARTS.set(key, fallback);
   return fallback;
 }
 

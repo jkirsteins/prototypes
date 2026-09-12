@@ -1,28 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { cellAt, generateWorld, hasSpot, regionAt } from "../src/world/gen";
-import { passable } from "../src/world/route";
+import { cellAt, generateWorld, neighbours, regionAt, waterKindOf, WORLD_H } from "../src/world/gen";
+import { forestShareWithin, isShelteredShore } from "../src/world/gen";
+import { findRoute } from "../src/world/route";
 
 describe("the start", () => {
-  // These five are the seeds the baseline actually starts a run from: the
-  // four reference seeds the gate is measured on, plus seed 3, which many
-  // fixtures elsewhere rely on for its own shore. Not every seed clears
-  // findStart's terrain pre-screen inside 40 rings - some fall to the
-  // ring-40 fallback and lack an outcrop - so this only promises the start
-  // for the seeds the baseline depends on, not for seeds in general.
-  it("has a shore and an outcrop on the reference seeds and seed 3", () => {
-    const fallen: number[] = [];
+  it("lands the first boat on a sheltered sea shore in the southern rows with forest within 3 km, on every reference seed", () => {
     for (const seed of [17, 19, 42, 79, 3]) {
       const world = generateWorld(seed);
+      const cell = world.startCell;
+      const c = cellAt(world, cell);
+      expect(world.startRing, `seed ${seed} ring`).toBeLessThan(60);
+      expect(c.terrain, `seed ${seed} land`).not.toBe("water");
+      expect(neighbours(world, cell).some((n) => waterKindOf(world, n) === "sea"), `seed ${seed} beside the sea`).toBe(true);
+      expect(c.y, `seed ${seed} south`).toBeGreaterThanOrEqual(WORLD_H * 0.85);
+      expect(isShelteredShore(world, cell), `seed ${seed} sheltered`).toBe(true);
+      expect(forestShareWithin(world, cell, 10), `seed ${seed} forest`).toBeGreaterThanOrEqual(0.4);
+      expect(c.region).toBe(world.start);
+      expect(regionAt(world, world.start).campCell).toBe(cell);
+      // A land route into the forest exists.
       const r = regionAt(world, world.start);
-      expect(world.w).toBe(10800);
-      expect(world.h).toBe(7800);
-      expect(r.area).toBeCloseTo(r.cells.length * 0.05 * 0.05, 8);
-      expect(r.spots.every(spot => passable(cellAt(world, spot.cell).terrain))).toBe(true);
-      expect(hasSpot(r, "shore"), `seed ${seed} shore`).toBe(true);
-      expect(hasSpot(r, "outcrop"), `seed ${seed} outcrop`).toBe(true);
-      if (world.startRing >= 40) fallen.push(seed);
+      const forest = r.spots.find((s) => s.id === "forest");
+      expect(forest, `seed ${seed} forest spot`).toBeDefined();
+      expect(findRoute(world, cell, forest!.cell)).not.toBeNull();
     }
-    expect(fallen).toEqual([]);
+  });
+
+  it("asks for no stone", () => {
+    const world = generateWorld(42);
+    const r = regionAt(world, world.start);
+    // The outcrop spot may or may not exist; the start does not depend on it.
+    expect(r.spots.some((s) => s.id === "camp")).toBe(true);
   });
 
   it("finds a fresh fine-world start in under two seconds", () => {
@@ -30,6 +37,6 @@ describe("the start", () => {
     const world = generateWorld(21);
     expect(world.w).toBe(10800);
     expect(performance.now() - before).toBeLessThan(2000);
-    expect(hasSpot(regionAt(world, world.start), "shore")).toBe(true);
+    expect(regionAt(world, world.start).spots.some((s) => s.id === "shore")).toBe(true);
   });
 });

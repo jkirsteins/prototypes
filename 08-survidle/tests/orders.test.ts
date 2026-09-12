@@ -12,9 +12,8 @@ import { newGame } from "../src/sim/newgame";
 import { body } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot, rockCell } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
-import { catchUp, deserialize, serialize } from "../src/sim/save";
+import { catchUp, readSave, serialize } from "../src/sim/save";
 import { beginTask, startTask, stopTask } from "../src/sim/tasks";
-import { regionAt } from "../src/world/gen";
 import { ordersHtml } from "../src/ui/panels";
 import {
   addOrder, blockingOrder, chooseOrder, conditionOpen, inSeason, judgeOrders, keepBand, keepStock, keepTarget, keepTargetToday, moveOrder, moveOrderByHand, orderMet, orderSentence, ordersHere, pinOrderByHand, removeOrder, removeOrderByHand, resetWalkJudged, runOrders, countWord, NIGHT_SKIP, walkJudged,
@@ -24,6 +23,7 @@ import { BARK_DRY_RATIO } from "../src/sim/items";
 import { WINTER_START_DOY } from "../src/sim/year";
 import { today } from "../src/sim/ledger";
 import { siteCamp } from "./siting-helpers";
+import { openCampWithForestNear, walkableNeighbour } from "./world-facts";
 import { isWorkOrder } from "../src/sim/types";
 import { testAtmosphere } from "./weather-helpers";
 
@@ -55,7 +55,7 @@ describe("the order record", () => {
     }
     delete raw.state.intent.orderId;
     delete raw.state.intent.windDown;
-    const file = deserialize(JSON.stringify(raw))!;
+    const file = readSave(JSON.stringify(raw))!;
     const st = file.state.regions[file.state.player.region];
     // A save from before the list existed at all gets both care rows the same
     // way one from before either row existed does.
@@ -686,7 +686,9 @@ describe("orders belong to a camp", () => {
     const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(a.id);
-    const nb = regionAt(world, home).neighbours[0].id;
+    // A neighbour there is a way to on foot: a region's neighbours include the
+    // far side of any water it borders.
+    const nb = walkableNeighbour(world, home);
     mapRegion(state, world, home);
     mapRegion(state, world, nb);
     expect(startTask(state, world, calendar(state.minute), "travel", `region:${nb}`)).toBe(true);
@@ -760,7 +762,7 @@ describe("the away report", () => {
     const { state, world } = g;
     const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
     advance(state, world, 5);
-    const file = deserialize(serialize(state))!;
+    const file = readSave(serialize(state))!;
     const s2 = file.state;
     expect(s2.intent?.orderId).toBe(a.id);
     catchUp(s2, world, 120);
@@ -801,6 +803,9 @@ describe("rank", () => {
 describe("the night", () => {
   it("an order for the forest is skipped at night with 'dark; at first light' and chosen at dawn", () => {
     const { state, world } = newGame(17, WINTER_START_DOY);
+    // A camp off forest ground, or the felling would be worked at camp and the
+    // away branch of the night gate never reached.
+    placeAt(state, world, openCampWithForestNear(world, state.player.region).camp);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell!);
@@ -1191,6 +1196,9 @@ describe("a once order is the player's own", () => {
      */
     const winter = () => {
       const { state, world } = newGame(17, WINTER_START_DOY);
+      // Camp off forest ground: the felling has to be away from it for the
+      // dark to hold a standing order back at all.
+      placeAt(state, world, openCampWithForestNear(world, state.player.region).camp);
       siteCamp(state, world);
       const st = regionState(state, world, state.player.region);
       placeAt(state, world, st.campCell!);
@@ -1252,7 +1260,7 @@ describe("fall-through", () => {
     const blocked = addOrder(state, world, { task: "cook", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     blocked.pinned = true;
     state.player.bodyNeed = "sleep";
-    state.player.sleeping = { collapsed: true };
+    state.player.sleeping = { collapsed: false };
     state.player.sleepDebt = 1000;
     const st = regionState(state, world, state.player.region);
     st.orders = [blocked, ...st.orders.filter((o) => o.id !== blocked.id)];
@@ -1266,7 +1274,7 @@ describe("fall-through", () => {
     const { state, world } = newGame(3);
     const blocked = addOrder(state, world, { task: "cook", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     state.player.bodyNeed = "sleep";
-    state.player.sleeping = { collapsed: true };
+    state.player.sleeping = { collapsed: false };
     state.player.sleepDebt = 1000;
     const st = regionState(state, world, state.player.region);
     const bodyRow = bodyRowOf(state, world)!;
@@ -1413,9 +1421,16 @@ describe("pre-emption", () => {
       addOrder(state, world, { task: "stone", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     }
     const a = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
-    advance(state, world, 60);
-    expect(state.intent?.orderId).toBe(a.id);
-    expect(state.task).not.toBeNull();
+    // Mid-chunk, with room left in it: how long the walk out takes is the
+    // ground's business, and a chunk that ends on the minute under test would
+    // reach chooseOrder legitimately.
+    let inHand = false;
+    for (let i = 0; i < 600 && !inHand; i++) {
+      advance(state, world, 1);
+      const task = state.task;
+      inHand = state.intent?.orderId === a.id && task?.id === "sticks" && task.progress > 0 && task.progress < task.duration - 2;
+    }
+    expect(inHand).toBe(true);
     resetWalkJudged();
     advance(state, world, 1);
     // A minute spent mid-chunk never reaches chooseOrder at all, so none of

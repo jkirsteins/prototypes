@@ -8,20 +8,21 @@ import * as routing from "../src/sim/routing";
 import * as sight from "../src/sim/sight";
 import * as tasks from "../src/sim/tasks";
 import { localWeather } from "../src/sim/weather";
-import { FINE_CHUNK, newWorld } from "../src/world/cells";
+import { FINE_CHUNK } from "../src/world/cells";
 import * as cells from "../src/world/cells";
 import { regionAt } from "../src/world/gen";
 import * as fineTerrain from "../src/world/fine-terrain";
 import { PATCH_M, patchId } from "../src/world/spatial";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 import { testAtmosphere } from "./weather-helpers";
+import { solvedWorld } from "./world-fixture";
 
 afterEach(() => vi.restoreAllMocks());
 
 function fixture(blocked: boolean) {
   const game = newGame(17);
   const region = { ...regionAt(game.world, game.state.player.region) };
-  const world = newWorld(21);
+  const world = solvedWorld(21);
   world.start = region.id;
   const terrain = new Uint8Array(FINE_CHUNK ** 2).fill(TERRAIN_INDEX.meadow);
   const ownership = new Int32Array(FINE_CHUNK ** 2).fill(-1);

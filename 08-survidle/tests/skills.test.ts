@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { newGame } from "../src/sim/newgame";
 import { addItem, hasTool, qty, tool } from "../src/sim/inventory";
 import { cellOf, placeAtSpot } from "../src/sim/position";
-import { deserialize, serialize } from "../src/sim/save";
+import { readSave, serialize } from "../src/sim/save";
 import {
   chopSticks, craftSuccess, effectiveNeeds, EXTRAS, fishKg, gap, gapInjury, huntExtras, injuryChance,
   level, levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel, masteryMinutes, newSkills, poolCapacity,
@@ -17,8 +17,9 @@ import { workSpeed } from "../src/sim/player";
 import { regionDensity } from "../src/sim/animals";
 import { noteHuntSign } from "../src/sim/hunting";
 import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "../src/sim/species";
-import { regionAt } from "../src/world/gen";
+import { hasSpot, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { regionNear } from "./world-facts";
 import { skillsHtml } from "../src/ui/panels";
 
 describe("skill curves", () => {
@@ -109,15 +110,19 @@ describe("what trains what", () => {
     for (const id of SKILL_IDS) expect(state.skills[id]).toEqual({ xp: 0, mastery: {}, pool: 0 });
     const raw = JSON.parse(serialize(state, 1));
     delete raw.state.skills;
-    const file = deserialize(JSON.stringify(raw));
+    const file = readSave(JSON.stringify(raw));
     expect(file!.state.skills).toEqual(newSkills());
   });
 });
 
 type G = ReturnType<typeof newGame>;
 /** A fish the player's region holds; the tests want one that exists, not a particular one. */
-function aFish(g: G): Species {
-  return fishSpecies().find((s) => regionAt(g.world, g.state.player.region).capacity[s])!;
+/** A fish this region's water holds, optionally one answering a further rule. */
+function aFish(g: G, wants: (s: Species) => boolean = () => true): Species {
+  const here = fishSpecies().filter((s) => regionAt(g.world, g.state.player.region).capacity[s]);
+  const found = here.find(wants);
+  if (found === undefined) throw new Error(`no fish in region ${g.state.player.region} answers the rule; it holds ${here.join(", ") || "none"}`);
+  return found;
 }
 function run(g: G, minutes: number) {
   const rng = new Rng(1);
@@ -215,10 +220,14 @@ describe("effects", () => {
     const base = huntOdds(state, world, cal, d, "hare");
     state.skills.hunting.xp = levelMinutes(11);
     expect(huntOdds(state, world, cal, d, "hare")).toBeCloseTo(base * 1.1, 6);
-    const f = aFish(g);
+    // A fish whose practice a beginner already meets: a species recommended
+    // above level 1 also closes its gap on the way to 11, which halves into the
+    // odds alongside the skill and is a different rule.
+    const f = aFish(g, (species) => gap(state, `fish:${species}`) === 0);
     const df = regionDensity(state, world, state.player.region, f, cal);
     const fish = huntOdds(state, world, cal, df, f);
     state.skills.fishing.xp = levelMinutes(11);
+    expect(gap(state, `fish:${f}`)).toBe(0);
     expect(huntOdds(state, world, cal, df, f)).toBeCloseTo(fish * 1.1, 6);
   });
 
@@ -485,13 +494,14 @@ describe("pool yield perks", () => {
   });
 
   it("stone at a full pool is 5 per gather, taken from a real gather rather than the formula alone", () => {
-    // No seed's start region ever has an outcrop: findStart requires forest >= 0.45,
-    // which leaves no room for rock. Seed 4's world has one two lattice cells over,
-    // at region 2405 - reached directly, the way tests place the player anywhere.
+    // No seed's start region ever has an outcrop: findStart requires forest, which
+    // leaves little room for rock. The nearest region that names one stands in for
+    // it, reached directly, the way tests place the player anywhere.
     const g = newGame(4);
     siteCamp(g.state, g.world);
     const { state, world } = g;
-    placeAtSpot(state, world, 2405, "outcrop");
+    const rock = regionNear(world, state.player.region, (id) => hasSpot(regionAt(world, id), "outcrop"));
+    placeAtSpot(state, world, rock, "outcrop");
     state.skills.foraging.pool = poolCapacity("foraging");
     expect(startTask(state, world, cal, "stone")).toBe(true);
     run(g, 30);

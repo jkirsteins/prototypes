@@ -179,7 +179,7 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
       // Design scale: each effective level takes a third of the existing
       // six-degree wind loss off. Terrain lee also helps outdoor work;
       // a roof and its profile only count while actually using the shelter.
-      felt -= 6 * (3 - galeProtection(world, cellOf(state, world), campTask ? here : null)) / 3;
+      felt -= 6 * (3 - galeProtection(state, world, cellOf(state, world), campTask ? here : null)) / 3;
     } else if (!snowWindbreak) felt -= 6;
   }
   // A starving body has no insulation and no fuel: up to 4 C gone at the end of the fat.
@@ -351,7 +351,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const site = siteAt(r, cellOf(state, world));
   const protection = campTask ? protectionOf(site) : 0;
   const windProtection = stormNow(w, state.minute) && w.storm?.kind === "gale"
-    ? galeProtection(world, cellOf(state, world), campTask ? site : null) : protection;
+    ? galeProtection(state, world, cellOf(state, world), campTask ? site : null) : protection;
   const snowing = w.precip !== "none" && ambient <= 0;
   const snowWindbreak = stormNow(w, state.minute) && w.storm?.kind === "snow" && protection >= 1;
   const walled = roof && (site?.structures.cabin || site?.structures.turfHut || site?.structures.snowShelter);

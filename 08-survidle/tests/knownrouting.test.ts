@@ -18,6 +18,7 @@ import { check } from "../src/sim/tasks";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { passable } from "../src/world/route";
 import { cellOf } from "../src/sim/position";
+import { walkableNeighbour } from "./world-facts";
 
 const cal = calendar(0);
 
@@ -41,7 +42,7 @@ describe("the survivor routes on knowledge", () => {
   it("opens once the ground between is mapped", () => {
     const { state, world } = newGame(3);
     const home = state.player.region;
-    const nb = regionAt(world, home).neighbours[0].id;
+    const nb = walkableNeighbour(world, home);
     mapRegion(state, world, home);
     mapRegion(state, world, nb);
     state.discovered[nb] = SEEN;

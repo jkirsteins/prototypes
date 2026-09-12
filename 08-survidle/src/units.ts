@@ -8,6 +8,9 @@ export const GAME_MINUTES_PER_REAL_SECOND = 1;
 export const AWAY_HOURS_DEFAULT = 8;
 export const AWAY_HOURS_MAX = 24;
 
+/** The solved world's cell, in km: the lattice the height, water and discharge arrays are on. Fine patches are PATCH_KM. */
+export const CELL_KM = 0.3;
+
 /** Real paths wander; straight-line distance times this. */
 export const PATH_FACTOR = 1.25;
 
@@ -29,9 +32,26 @@ export function fmtDuration(minutes: number): string {
   return rest === 0 ? `${h} h` : `${h} h ${rest} min`;
 }
 
-/** "90 s" or "2 min 30 s" of wall clock for a game duration. */
+/**
+ * A span of days as a player reads one: exact inside a fortnight, weeks
+ * inside a season, months beyond. "Expected in 105 days" read as false
+ * precision to a tester; "about 3 months" is what he asked for.
+ */
+export function fmtDaysAbout(days: number): string {
+  const d = Math.max(0, Math.round(days));
+  if (d <= 14) return `${d} day${d === 1 ? "" : "s"}`;
+  if (d < 60) return `about ${Math.round(d / 7)} weeks`;
+  return `about ${Math.round(d / 30.44)} months`;
+}
+
+/** "90 s" or "2 min 30 s" of wall clock for a game duration at the one scale. */
 export function fmtReal(gameMinutes: number): string {
-  const s = Math.round(realSecondsFor(gameMinutes));
+  return fmtRealSeconds(realSecondsFor(gameMinutes));
+}
+
+/** "90 s" or "2 min 30 s" for a count of real seconds. */
+export function fmtRealSeconds(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
   if (s < 60) return `${s} s`;
   const m = Math.floor(s / 60);
   const rest = s % 60;
