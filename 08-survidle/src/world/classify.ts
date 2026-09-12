@@ -7,7 +7,7 @@ import { CELL_KM } from "../units";
 import { DIST8, DY8, NO_FLOW, receiverOf } from "./hydro";
 import { fbm } from "./noise";
 import { coastKmAt, latitudeAt, runoffLsKm2, seedsFor, TEMPLATE_H_KM, TEMPLATE_W_KM, TERRAIN_INDEX, treelineM } from "./terrain";
-import type { HydrologyResult } from "./solve";
+import type { HydrologyResult, SolvedWorld } from "./solve";
 
 const CELL_KM2 = CELL_KM * CELL_KM;
 
@@ -15,10 +15,25 @@ const CELL_KM2 = CELL_KM * CELL_KM;
 export function runoffWeights(w: number, h: number): Float32Array {
   const out = new Float32Array(w * h);
   for (let y = 0; y < h; y++) {
-    const v = (y + 0.5) / h;
-    for (let x = 0; x < w; x++) out[y * w + x] = CELL_KM2 * runoffLsKm2(coastKmAt((x + 0.5) / w, v)) / 1000;
+    for (let x = 0; x < w; x++) out[y * w + x] = runoffWeightOfCell(x, y, w, h);
   }
   return out;
+}
+
+/** What one cell adds to the river below it, cubic metres a second. */
+export function runoffWeightOfCell(x: number, y: number, w: number, h: number): number {
+  return CELL_KM2 * runoffLsKm2(coastKmOfCell(x, y, w, h)) / 1000;
+}
+
+/**
+ * Upslope area in cells from a solved discharge: the inverse of the runoff
+ * weight, which is how a consumer without the solve's `count` array recovers
+ * a catchment. The runoff rate varies across a catchment, so this is the area
+ * the discharge implies at the cell's own rate rather than an exact count.
+ */
+export function upslopeCellsOf(discharge: number, x: number, y: number, w: number, h: number): number {
+  const weight = runoffWeightOfCell(x, y, w, h);
+  return weight > 0 ? discharge / weight : 0;
 }
 
 /** Signed coast distance of a cell, km, positive inland. */
@@ -219,6 +234,21 @@ const SPRUCE_LAT_LIMIT = 66;
  * the solve.
  */
 export function uniformise(values: Float32Array, bins = 4096): Float32Array {
+  const scale = rankScale(values, bins);
+  const out = new Float32Array(values.length);
+  for (let i = 0; i < values.length; i++) out[i] = uniformAt(scale, values[i]);
+  return out;
+}
+
+/** The mapping uniformise() builds: a raw value's bucket, and the share of the population up to it. */
+export interface RankScale {
+  lo: number;
+  span: number;
+  cumulative: Float32Array;
+}
+
+/** The rank transform of a population, kept rather than applied, so a value outside the population can be drawn from the same distribution. */
+export function rankScale(values: Float32Array, bins = 4096): RankScale {
   const n = values.length;
   let lo = values[0];
   let hi = values[0];
@@ -228,24 +258,107 @@ export function uniformise(values: Float32Array, bins = 4096): Float32Array {
     if (v > hi) hi = v;
   }
   const span = hi - lo || 1;
-  const bucketOf = new Uint16Array(n);
   const counts = new Uint32Array(bins);
-  for (let i = 0; i < n; i++) {
-    let b = Math.floor(((values[i] - lo) / span) * bins);
-    if (b < 0) b = 0;
-    if (b >= bins) b = bins - 1;
-    bucketOf[i] = b;
-    counts[b]++;
-  }
+  for (let i = 0; i < n; i++) counts[bucketOf(lo, span, bins, values[i])]++;
   const cumulative = new Float32Array(bins);
   let running = 0;
   for (let b = 0; b < bins; b++) {
     running += counts[b];
     cumulative[b] = running / n;
   }
-  const out = new Float32Array(n);
-  for (let i = 0; i < n; i++) out[i] = cumulative[bucketOf[i]];
-  return out;
+  return { lo, span, cumulative };
+}
+
+function bucketOf(lo: number, span: number, bins: number, value: number): number {
+  let b = Math.floor(((value - lo) / span) * bins);
+  if (b < 0) b = 0;
+  if (b >= bins) b = bins - 1;
+  return b;
+}
+
+/** Where a raw value falls in the population's distribution, as a uniform 0..1 draw. */
+export function uniformAt(scale: RankScale, value: number): number {
+  return scale.cumulative[bucketOf(scale.lo, scale.span, scale.cumulative.length, value)];
+}
+
+/**
+ * The thin-soil noise at a position in template km: two octaves at 2 km, the
+ * same field whatever the lattice asking for it. Raw, so a caller comparing
+ * it against a rock rate must put it through the rank transform below first.
+ */
+export function soilNoiseAtKm(seed: number, xKm: number, yKm: number): number {
+  return fbm(xKm / 2 + 11, yKm / 2 + 5, seedsFor(seed).soil, 2);
+}
+
+/**
+ * How many samples the soil rank transform is built from when the solved
+ * world is too large to sample every cell: enough that the share of the
+ * population below any value is known to a fraction of a percent, which is
+ * finer than the rock rates it decides.
+ */
+const SOIL_SAMPLES = 250_000;
+
+const soilScales = new WeakMap<SolvedWorld, { seed: number; scale: RankScale }>();
+
+/**
+ * The rank transform classify() applied to the thin-soil noise, rebuilt from
+ * the solved kinds: the same population of land cells, so a consumer at any
+ * lattice can draw its own sample from the same distribution and a rock rate
+ * stays the share of ground it names. Large worlds are sampled on a stride;
+ * a miniature is sampled whole.
+ */
+export function solvedSoilScale(seed: number, solved: SolvedWorld): RankScale {
+  const held = soilScales.get(solved);
+  if (held && held.seed === seed) return held.scale;
+  const { w, h } = solved;
+  const stride = Math.max(1, Math.round(Math.sqrt(w * h / SOIL_SAMPLES)));
+  const kmPerU = TEMPLATE_W_KM / w;
+  const kmPerV = TEMPLATE_H_KM / h;
+  const raw: number[] = [];
+  for (let y = 0; y < h; y += stride) {
+    for (let x = 0; x < w; x += stride) {
+      if (solved.kind[y * w + x] !== KIND.land) continue;
+      raw.push(soilNoiseAtKm(seed, (x + 0.5) * kmPerU, (y + 0.5) * kmPerV));
+    }
+  }
+  const scale = rankScale(Float32Array.from(raw));
+  soilScales.set(solved, { seed, scale });
+  return scale;
+}
+
+/** The wetness index: upslope area against slope, with the slope floored so a sink is not infinitely wet. */
+export function wetnessIndex(upslopeCells: number, slope: number): number {
+  const s0 = slope < 0.001 ? 0.001 : slope;
+  return upslopeCells / (upslopeCells + 200 * s0);
+}
+
+/** The precipitation index in 0..1: the row's runoff between the inland 12 and the oceanic 50 litres a second per km2. */
+export function precipitationIndex(coastKm: number): number {
+  return (runoffLsKm2(coastKm) - 12) / 38;
+}
+
+/** Ground moisture in 0..1 from rainfall, wetness and aspect. Moisture is no longer a separate noise. */
+export function moistureIndex(p: number, wetness: number, northFacing: number): number {
+  return 0.5 * p + 0.4 * wetness + 0.1 * northFacing;
+}
+
+/**
+ * What a piece of land below the water is: hydrology section 3's land classes
+ * in their order, from the inputs any lattice can compute. The solve calls it
+ * per 300 m cell and the fine chunk calls it per 50 m patch, so the rules are
+ * stated once and the two lattices differ only in what they measure.
+ */
+export function landTerrainIndex(hm: number, slope: number, lat: number, coastKm: number, wetness: number, p: number, m: number, soil: number): number {
+  const treeline = treelineM(lat, coastKm);
+  const underTreeline = treeline - hm;
+  if (hm > treeline) return TERRAIN_INDEX.fell;
+  if (soil < rockRate(coastKm, slope, underTreeline)) return TERRAIN_INDEX.rock;
+  if (slope < 0.02 && wetness > 0.5 && p > 0.2) return TERRAIN_INDEX.bog;
+  if (underTreeline < 60 || (coastKm < 3 && soil < 0.5)) return TERRAIN_INDEX.meadow;
+  const spruceAllowed = coastKm > SPRUCE_COAST_KM && lat < SPRUCE_LAT_LIMIT;
+  if (underTreeline < 150 || coastKm < 10 || (m > 0.55 && !spruceAllowed)) return TERRAIN_INDEX.birch;
+  if (m > 0.55 && spruceAllowed) return TERRAIN_INDEX.spruce;
+  return TERRAIN_INDEX.pine;
 }
 
 /** Bare rock share by band; the highest applicable rate wins. A rate here
@@ -261,7 +374,6 @@ function rockRate(coastKm: number, slope: number, underTreeline: number): number
 
 export function classify(hydro: HydrologyResult, seed: number, w: number, h: number): { terrain: Uint8Array; kind: Uint8Array; flags: Uint8Array; moisture: Uint8Array } {
   const n = w * h;
-  const s = seedsFor(seed);
   const terrain = new Uint8Array(n);
   const kind = new Uint8Array(n);
   const flags = new Uint8Array(n);
@@ -289,7 +401,7 @@ export function classify(hydro: HydrologyResult, seed: number, w: number, h: num
     if (!isLand[i]) continue;
     const x = i % w;
     const y = (i - x) / w;
-    rawSoil[sk] = fbm((x + 0.5) * kmPerU / 2 + 11, (y + 0.5) * kmPerV / 2 + 5, s.soil, 2);
+    rawSoil[sk] = soilNoiseAtKm(seed, (x + 0.5) * kmPerU, (y + 0.5) * kmPerV);
     soilCell[sk] = i;
     sk++;
   }
@@ -323,24 +435,11 @@ export function classify(hydro: HydrologyResult, seed: number, w: number, h: num
     if (q >= STREAM_M3S) flags[i] |= FLAG_STREAM;
     const coastKm = coastKmOfCell(x, y, w, h);
     const lat = latitudeAt(y + 0.5, h);
-    const treeline = treelineM(lat, coastKm);
-    const hm = height[i];
-    const s0 = slope < 0.001 ? 0.001 : slope;
-    const a = count[i];
-    const wetness = a / (a + 200 * s0);
-    const p = (runoffLsKm2(coastKm) - 12) / 38;
-    const m = 0.5 * p + 0.4 * wetness + 0.1 * northFacing;
+    const wetness = wetnessIndex(count[i], slope);
+    const p = precipitationIndex(coastKm);
+    const m = moistureIndex(p, wetness, northFacing);
     moisture[i] = Math.round((m < 0 ? 0 : m > 1 ? 1 : m) * 255);
-    const soil = soilAt[i];
-    const underTreeline = treeline - hm;
-    if (hm > treeline) { terrain[i] = TERRAIN_INDEX.fell; continue; }
-    if (soil < rockRate(coastKm, slope, underTreeline)) { terrain[i] = TERRAIN_INDEX.rock; continue; }
-    if (slope < 0.02 && wetness > 0.5 && p > 0.2) { terrain[i] = TERRAIN_INDEX.bog; continue; }
-    if (underTreeline < 60 || (coastKm < 3 && soil < 0.5)) { terrain[i] = TERRAIN_INDEX.meadow; continue; }
-    const spruceAllowed = coastKm > SPRUCE_COAST_KM && lat < SPRUCE_LAT_LIMIT;
-    if (underTreeline < 150 || coastKm < 10 || (m > 0.55 && !spruceAllowed)) { terrain[i] = TERRAIN_INDEX.birch; continue; }
-    if (m > 0.55 && spruceAllowed) { terrain[i] = TERRAIN_INDEX.spruce; continue; }
-    terrain[i] = TERRAIN_INDEX.pine;
+    terrain[i] = landTerrainIndex(height[i], slope, lat, coastKm, wetness, p, m, soilAt[i]);
   }
   return { terrain, kind, flags, moisture };
 }
