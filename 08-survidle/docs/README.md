@@ -110,7 +110,9 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   empty; come back and the old list resumes.
 - **A big north.** The world is about 540 by 667 km, real ground from 61 N
   to 67 N: height in metres above the sea, valleys cut by erosion and
-  drainage rather than drawn in, lakes that each have an outlet, streams and
+  drainage rather than drawn in, glacial lakes that each have an outlet -
+  chains of them along the valley floors and shallow ones pitting the
+  plateau, about a twentieth of the land as in Norway - streams and
   rivers running down to fjords on the west coast, stone exposed at the
   rate real geology gives it, and the treeline set by latitude and distance
   from the sea. Solving that takes a few seconds at the start of a run,
@@ -597,7 +599,8 @@ share and a height histogram: `npx vite-node scripts/mapstats.ts 42`.
 `npm run terrain` is the realism report: for seeds 42, 1 and 7 it solves
 (or reads the cached solve) and prints each measure from the
 terrain-hydrology spec's section 6 beside its real target - distance from
-land to water, lake share, the largest river mouths, coastline length,
+land to water, lake share and the five largest lakes, the largest river
+mouths, coastline length,
 exposed rock by band, bog share by latitude, valley bearings, mean slope
 per class and the solve time. `npm run terrain -- <seed>` runs one seed;
 `npm run terrain -- --time` runs the older stage-by-stage timing spike

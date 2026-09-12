@@ -143,7 +143,30 @@ function directly. Six stages:
    100 km2 valley is 3 km wide and 400 m deep and the largest troughs are
    8 km wide and 700 m deep, the shape of a real fjord valley. Within 40 km of the coast an extra
    `300 * (1 - coastKm / 40)` m is taken off the floor so the trough
-   drowns. Then sea is re-read: a cell at or below 0 that is
+   drowns.
+
+   Ice also left rock basins, and they are what makes a Nordic landscape
+   a lake landscape, so a second carving follows the troughs, in every
+   direction rather than only toward the Atlantic:
+
+   - **Valley basins.** Every drainage line with a catchment of 2 km2 or
+     more is lowered by `50 * sqrt(A_km2 / 100) * b` m, capped at 300,
+     with half-width `min(2, 0.1 * sqrt(A_km2))` km and the same
+     parabolic cross profile as the troughs, taking the deeper where
+     basins overlap. `b = max(0, 2 * (noise - 0.5))` reads one octave of
+     value noise at a 2 km wavelength in world km, so deepened stretches
+     about a kilometre long sit between undeepened rock sills, the
+     spacing of the lake chains on a Norwegian valley floor. A 100 km2
+     valley is scoured up to 50 m, which after the fill is a lake in the
+     10 to 30 m mean depth of a real Nordic valley lake; the largest
+     valleys approach Hornindalsvatnet's 514 m and Mjosa's 449 m.
+   - **Plateau scour.** Land above 5 m whose slope to its receiver is
+     under 1 percent is lowered by `30 * max(0, 2 * (noise2 - 0.5))` m,
+     a second one-octave noise at a 2 km wavelength: hollows about a
+     kilometre across, the shallow lake plains of the interior, under
+     10 m of water.
+
+   Sea cells are never lowered. Then sea is re-read: a cell at or below 0 that is
    8-connected to the ocean edge is sea, the same neighbourhood the
    flood uses so no drowned cell is left between the two; a cell at or below 0 that is
    not connected stays land or lake. Stage 4 is re-run on the carved
@@ -198,7 +221,7 @@ Water first, in this order, then land.
 | Class | Rule |
 |---|---|
 | sea | height at or below 0 and 8-connected to the ocean edge |
-| lake | a filled depression with a fill depth of 2 m or more somewhere in it; the surface is the fill height |
+| lake | a filled depression with a fill depth of 2 m or more somewhere in it; the surface is the fill height. Most of them are glacial: the depressions the basin carving of stage 5 left along valley floors and across the low plateau |
 | river | land with discharge above 5 cubic metres a second, about 10 to 15 m wide at bankfull; its own terrain, impassable except on ice or at a ford |
 | ford | a river cell whose gradient to its receiver is above 0.5 percent, a riffle; passable at bog's walking cost |
 | stream | a land cell with discharge above 0.02 cubic metres a second, a year-round brook; a flag on the cell, not a terrain, and it counts as water beside for drinking, seeps and camp siting |
@@ -398,7 +421,9 @@ that fords a river and a route that refuses a river without a ford.
   first task; the iteration count is the knob, the 1.2 km grid is not.
 - **Lake share may run high** on an upsampled noisy surface. The 2 m
   fill-depth rule is the first defence; the report's lake share is the
-  check.
+  check. It ran the other way in practice: erosion leaves valleys that
+  drain monotonically, so without the basin carving the share sat at
+  2.7 percent against Sweden's 9 and Norway's 5 to 6.
 - **Float determinism** across engines rests on the banned-function
   rule and on the noise hash; a golden across two browsers is the proof.
 - **Memory on phones.** 44 MB of arrays plus the map. Measured in the

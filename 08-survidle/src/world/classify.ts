@@ -94,6 +94,99 @@ export function carveGlacial(height: Float32Array, w: number, h: number, dir: Ui
   for (let i = 0; i < n; i++) if (!seaBefore[i]) height[i] -= lower[i];
 }
 
+/** A valley floor is basined once its catchment reaches this. */
+const BASIN_MIN_KM2 = 2;
+/**
+ * Scour depth at the deepest point of a 100 km2 valley, metres. The lake that
+ * follows is shallower than the scour, since the flood fills only to the sill
+ * and the cross profile is parabolic: the reading it answers to is the 10 to
+ * 30 m mean depth of a Nordic valley lake. The square root of the catchment
+ * carries the largest valleys toward the few hundred metres of Hornindalsvatnet
+ * (514 m) and Mjosa (449 m), and the cap holds them under those.
+ */
+const BASIN_M = 50;
+const BASIN_MAX_DEPTH_M = 300;
+const BASIN_MAX_HALF_KM = 2;
+/**
+ * Wavelength of the noise that decides which stretches of a valley are
+ * overdeepened, km. Half of it deepens and half stands as a sill, so 2 km
+ * leaves a lake about a kilometre long between rock steps: the spacing of the
+ * lake chains that fill a Norwegian valley floor.
+ */
+const BASIN_WAVE_KM = 2;
+/** Scour depth of the hollows on the low plateau, metres: the shallow lake plains of the interior, mean depth under 10 m. */
+const SCOUR_M = 30;
+/** Wavelength of the plateau scour, km: hollows about a kilometre across, the size of the small lakes that pit a lake plain. */
+const SCOUR_WAVE_KM = 2;
+/** Ground flatter than this counts as plateau rather than valley side. */
+const SCOUR_MAX_SLOPE = 0.01;
+/** Below this the ground is coastal flat the sea would take, not plateau. */
+const SCOUR_MIN_M = 5;
+
+/**
+ * Ice left rock basins as well as troughs, and they are what makes a Nordic
+ * landscape a lake landscape. Two scours, both applied in place before the
+ * caller re-reads the sea:
+ *
+ * - Along every drainage line, in every direction, the floor drops where a
+ *   slow noise runs high and not at all where it runs low, so overdeepened
+ *   stretches sit between undeepened sills. Deeper and wider with the
+ *   catchment, on the same parabolic cross profile as the troughs.
+ * - On the low plateau, where the ground barely falls to its receiver, a
+ *   second noise sinks shallow hollows: the lake plains of the interior.
+ */
+export function carveBasins(height: Float32Array, w: number, h: number, dir: Uint8Array, count: Uint32Array, seaBefore: Uint8Array, seed: number): void {
+  const n = w * h;
+  const s = seedsFor(seed);
+  const kmPerU = TEMPLATE_W_KM / w;
+  const kmPerV = TEMPLATE_H_KM / h;
+  const lower = new Float32Array(n);
+  for (let c = 0; c < n; c++) {
+    if (seaBefore[c]) continue;
+    const x = c % w;
+    const y = (c - x) / w;
+    const xKm = (x + 0.5) * kmPerU;
+    const yKm = (y + 0.5) * kmPerV;
+    const km2 = count[c] * CELL_KM2;
+    if (km2 >= BASIN_MIN_KM2) {
+      const b = 2 * (fbm(xKm / BASIN_WAVE_KM + 3, yKm / BASIN_WAVE_KM + 19, s.basin, 1) - 0.5);
+      if (b > 0) {
+        let depth = BASIN_M * Math.sqrt(km2 / 100) * b;
+        if (depth > BASIN_MAX_DEPTH_M) depth = BASIN_MAX_DEPTH_M;
+        let halfKm = 0.1 * Math.sqrt(km2);
+        if (halfKm > BASIN_MAX_HALF_KM) halfKm = BASIN_MAX_HALF_KM;
+        const halfCells = halfKm / CELL_KM;
+        const reach = Math.ceil(halfCells);
+        for (let dy = -reach; dy <= reach; dy++) {
+          const yy = y + dy;
+          if (yy < 0 || yy >= h) continue;
+          for (let dx = -reach; dx <= reach; dx++) {
+            const xx = x + dx;
+            if (xx < 0 || xx >= w) continue;
+            const r2 = (dx * dx + dy * dy) / (halfCells * halfCells);
+            if (r2 >= 1) continue;
+            const d = depth * (1 - r2);
+            const j = yy * w + xx;
+            if (d > lower[j]) lower[j] = d;
+          }
+        }
+      }
+    }
+    if (height[c] <= SCOUR_MIN_M) continue;
+    let slope = 0;
+    if (dir[c] !== NO_FLOW) {
+      const r = receiverOf(c, dir[c], w);
+      slope = (height[c] - height[r]) / (DIST8[dir[c]] * CELL_KM * 1000);
+    }
+    if (slope >= SCOUR_MAX_SLOPE) continue;
+    const g = 2 * (fbm(xKm / SCOUR_WAVE_KM + 31, yKm / SCOUR_WAVE_KM + 13, s.scour, 1) - 0.5);
+    if (g <= 0) continue;
+    const d = SCOUR_M * g;
+    if (d > lower[c]) lower[c] = d;
+  }
+  for (let i = 0; i < n; i++) if (!seaBefore[i]) height[i] -= lower[i];
+}
+
 export const KIND = { land: 0, sea: 1, lake: 2, river: 3 } as const;
 export const FLAG_STREAM = 1;
 export const FLAG_FORD = 2;

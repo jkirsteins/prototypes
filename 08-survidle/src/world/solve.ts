@@ -4,7 +4,7 @@
  * and square roots so every engine solves the same seed to the same
  * cell. Nothing here is stored; a world is solved again from its seed.
  */
-import { carveGlacial, classify, FLAG_FORD, FLAG_STREAM, FORD_GRADIENT, KIND, RIVER_M3S, runoffWeights, STREAM_M3S } from "./classify";
+import { carveBasins, carveGlacial, classify, FLAG_FORD, FLAG_STREAM, FORD_GRADIENT, KIND, RIVER_M3S, runoffWeights, STREAM_M3S } from "./classify";
 import { coarseSize, coarseSurface, erode, ERODE_ITERATIONS, upsample } from "./erode";
 import { accumulate, connectedSea, flowDirections, lakeComponents, priorityFlood } from "./hydro";
 
@@ -13,7 +13,7 @@ export { KIND, FLAG_FORD, FLAG_STREAM, RIVER_M3S, STREAM_M3S, FORD_GRADIENT };
 export type SolveProgress = (stage: string, fraction: number) => void;
 export const STAGES = ["raising the land", "wearing the valleys", "filling the lakes", "cutting the fjords", "naming the ground"] as const;
 /** Bumped whenever the solve changes what a seed produces; the node cache is keyed by it. */
-export const GENERATOR_VERSION = 4;
+export const GENERATOR_VERSION = 5;
 /** A depression must be this deep somewhere to be a lake rather than damp ground. */
 export const LAKE_MIN_DEPTH_M = 2;
 
@@ -35,7 +35,7 @@ export function hydrologyPass(height: Float32Array, w: number, h: number, sea: U
 }
 
 /** Stages one to five of the six; classification joins in classify.ts: template, erosion, upsample, drainage, carving and the sea re-read, then drainage again with the lakes. */
-export function solveHydrology(seed: number, w: number, h: number, onProgress: SolveProgress = () => {}): HydrologyResult {
+export function solveHydrology(seed: number, w: number, h: number, onProgress: SolveProgress = () => {}, withBasins = true): HydrologyResult {
   onProgress(STAGES[0], 0);
   const { cw, ch } = coarseSize(w, h);
   const coarse = coarseSurface(seed, cw, ch);
@@ -48,6 +48,7 @@ export function solveHydrology(seed: number, w: number, h: number, onProgress: S
   const first = hydrologyPass(height, w, h, seaBefore, weights);
   onProgress(STAGES[3], 0);
   carveGlacial(height, w, h, first.dir, first.count, first.order, seaBefore);
+  if (withBasins) carveBasins(height, w, h, first.dir, first.count, seaBefore, seed);
   const sea = connectedSea(height, w, h);
   const n = w * h;
   const drowned = new Uint8Array(n);

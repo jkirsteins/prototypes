@@ -76,12 +76,12 @@ export function runoffLsKm2(coastKm: number): number {
   return 12 + 38 / (1 + d / 80);
 }
 
-interface Seeds { relief: number; islands: number; soil: number; detail: number }
+interface Seeds { relief: number; islands: number; soil: number; detail: number; basin: number; scour: number }
 const seedCache = new Map<number, Seeds>();
 export function seedsFor(seed: number): Seeds {
   let s = seedCache.get(seed);
   if (!s) {
-    s = { relief: derive(seed, 21), islands: derive(seed, 22), soil: derive(seed, 23), detail: derive(seed, 24) };
+    s = { relief: derive(seed, 21), islands: derive(seed, 22), soil: derive(seed, 23), detail: derive(seed, 24), basin: derive(seed, 25), scour: derive(seed, 26) };
     seedCache.set(seed, s);
   }
   return s;
