@@ -55,7 +55,9 @@ describe("the survivor routes on knowledge", () => {
     const home = state.player.region;
     // The landing maps the home region whole; a neighbour, never visited, is
     // ground the survivor has never seen, which is what this case is about.
-    const nb = regionAt(world, home).neighbours[0].id;
+    // A neighbour with land in it: a coast's neighbours include regions that
+    // are nothing but sea, and a region of sea names no camp and no spot.
+    const nb = regionAt(world, home).neighbours.map((n) => n.id).find((id) => regionAt(world, id).campCell !== null)!;
     const r = regionAt(world, nb);
     expect(r.spots.some((s) => !isKnown(state, s.cell))).toBe(true);
     // Cell capabilities read the true ground, not the survivor's map.
@@ -66,13 +68,16 @@ describe("the survivor routes on knowledge", () => {
     const { state, world } = newGame(3);
     const home = state.player.region;
     const camp = requireCamp(regionAt(world, home));
-    const nb = regionAt(world, home).neighbours[0];
+    // A neighbour whose camp is truly walkable from this one: a coast puts the
+    // far side of a fjord among a region's neighbours, and no mapping opens a
+    // way across water.
+    const nb = walkableNeighbour(world, home);
     // The neighbour's camp cell exists and is truly reachable, but nothing
     // has been mapped, so the survivor cannot plan a route to it.
-    expect(survivorRoute(state, world, camp, requireCamp(regionAt(world, nb.id)))).toBeNull();
+    expect(survivorRoute(state, world, camp, requireCamp(regionAt(world, nb)))).toBeNull();
     mapRegion(state, world, home);
-    mapRegion(state, world, nb.id);
-    expect(survivorRoute(state, world, camp, requireCamp(regionAt(world, nb.id)))).not.toBeNull();
+    mapRegion(state, world, nb);
+    expect(survivorRoute(state, world, camp, requireCamp(regionAt(world, nb)))).not.toBeNull();
   });
 
   it("frontierRoute permits one unknown final step and no route through unknown ground", () => {

@@ -6,11 +6,11 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { knowledgeAt } from "../src/sim/fineknowledge";
-import { knowledgeGen, markKnown } from "../src/sim/mapped";
+import { knowledgeGen, mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { patchOf, placeAtMetric, placeAtPatch } from "../src/sim/position";
 import { beginWalkToPatch } from "../src/sim/tasks";
-import { cellAt } from "../src/world/gen";
+import { cellAt, regionAt } from "../src/world/gen";
 import { passable, remainingKm } from "../src/world/route";
 import { fineNeighbours, PATCH_M, patchCenter, patchId, patchXY } from "../src/world/spatial";
 
@@ -93,7 +93,11 @@ describe("what walking knows", () => {
     const { state, world } = newGame(21);
     const from = patchOf(state, world);
     const to = fineNeighbours(world, from).find((edge) => !edge.diagonal && passable(cellAt(world, edge.patch).terrain))!.patch;
-    markKnown(state, to);
+    // Feet and eyes both write knowledge, and at 50 m a single step reads a
+    // whole new ring of ground. So the case maps the home region and the
+    // regions around it first: then nothing the walk sees or treads is new.
+    mapRegion(state, world, state.player.region);
+    for (const n of regionAt(world, state.player.region).neighbours) mapRegion(state, world, n.id);
     expect(beginWalkToPatch(state, world, to)).toBe(true);
     const before = knowledgeGen();
     advance(state, world, 60);

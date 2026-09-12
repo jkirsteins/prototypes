@@ -256,13 +256,17 @@ describe("clicking fog", () => {
     const ui = open(1);
     const here = cellOf(state, world);
     const p = pointOf(world, state, ui, here);
-    // The first block east of the survivor holding no ground they know. A
-    // fresh survivor knows a blob about a hundred metres across, so it is
-    // only a glyph or two out.
+    // The first block around the survivor holding no ground they know. How far
+    // out that is belongs to the seed: what a fresh survivor knows is what the
+    // eye reached from the landing, which is a different shape on every shore.
     let target = null;
-    for (let step = 1; step < 20 && !target; step++) {
-      const candidate = mapTargetAtPoint(world, state, ui, p.x + levelAt(1).px * step, p.y);
-      if (candidate?.patch !== null && candidate !== null && !isKnown(state, candidate.patch)) target = candidate;
+    const ways = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
+    for (let step = 1; step < 60 && !target; step++) {
+      for (const way of ways) {
+        const candidate = mapTargetAtPoint(world, state, ui,
+          p.x + levelAt(1).px * step * way.dx, p.y + levelAt(1).px * step * way.dy);
+        if (candidate?.patch !== null && candidate !== null && !isKnown(state, candidate.patch)) { target = candidate; break; }
+      }
     }
     expect(target).not.toBeNull();
     expect(target!.patch).not.toBeNull();

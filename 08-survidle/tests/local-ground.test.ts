@@ -100,7 +100,10 @@ describe("ground on one patch", () => {
     const region = state.player.region;
     const cells = regionAt(world, region).cells;
     const open = cells.find((cell) => cellAt(world, cell).terrain === "meadow" || cellAt(world, cell).terrain === "bog");
-    const under = cells.find((cell) => cellAt(world, cell).terrain === "spruce");
+    // Whichever crown the region grows: spruce holds most of a snowfall off the
+    // ground, pine less, birch least, and any of the three is a crown overhead.
+    const crown = ["spruce", "pine", "birch"].find((t) => cells.some((cell) => cellAt(world, cell).terrain === t));
+    const under = cells.find((cell) => cellAt(world, cell).terrain === crown);
     expect(open).toBeDefined();
     expect(under).toBeDefined();
     ensureGround(state, world, region).snowCm = 40;
