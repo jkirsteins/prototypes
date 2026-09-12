@@ -5,7 +5,7 @@
  * chunk never depends on where the generator put a river or a hill.
  */
 import type { Terrain } from "../src/sim/types";
-import { FINE_CHUNK, newWorld, type World } from "../src/world/cells";
+import { FINE_CHUNK, type World } from "../src/world/cells";
 import { refineChunk } from "../src/world/refine";
 import { KIND } from "../src/world/solve";
 import { TERRAIN_INDEX } from "../src/world/terrain";
@@ -25,7 +25,9 @@ export interface FineFixture {
 export function fineFixture(opts: { terrain: Terrain; seed?: number; heightM?: number } = { terrain: "pine" }): FineFixture {
   const seed = opts.seed ?? 21;
   const heightM = opts.heightM ?? 50;
-  const world = newWorld(seed, flatWorld({ w: 16, h: 16, terrain: opts.terrain, heightM, seed }).solved);
+  // flatWorld's own world, so the fixture keeps its start region: a case that
+  // opens a run on this ground needs somewhere for the run to begin.
+  const world = flatWorld({ w: 16, h: 16, terrain: opts.terrain, heightM, seed });
   const fine = refineChunk(seed, world.solved, 0, 0);
   fine.height.fill(heightM);
   fine.surface.fill(heightM);

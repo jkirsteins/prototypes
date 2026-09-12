@@ -10,7 +10,12 @@ import * as routing from "../src/sim/routing";
 import { skillLevel } from "../src/sim/skills";
 import { visibleCells } from "../src/sim/sight";
 import { regionAt } from "../src/world/gen";
-import { flatWorld, paintWorld } from "./world-fixture";
+import { fineFixture } from "./fine-fixture";
+import { FINE_CHUNK } from "../src/world/cells";
+import { CHANNEL_RIVER } from "../src/world/refine";
+import { KIND } from "../src/world/solve";
+import { TERRAIN_INDEX } from "../src/world/terrain";
+import { patchId } from "../src/world/spatial";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -21,18 +26,24 @@ function searchKey(args: unknown[]): string {
 
 describe("reachable ground", () => {
   it("leaves the far bank out when no ford crosses the river", () => {
-    const world = flatWorld({ w: 21, h: 5, terrain: "meadow" });
-    const river = [10, 31, 52, 73, 94];
-    paintWorld(world, river, "river");
+    // A river is a channel one 50 m patch wide now, not a painted 300 m column,
+    // so the barrier is carved into the chunk and the banks are ordinary ground.
+    const f = fineFixture({ terrain: "meadow" });
+    for (let y = 0; y < FINE_CHUNK; y++) {
+      const i = y * FINE_CHUNK + 48;
+      f.terrain[i] = TERRAIN_INDEX.river;
+      f.kind[i] = KIND.river;
+      f.channel[i] = CHANNEL_RIVER;
+    }
     // A summer start, so no ice turns the river into a road.
-    const { state } = newGame(1, 200, undefined, world);
-    for (let cell = 0; cell < world.w * world.h; cell++) markKnown(state, cell);
-    const reachable = routing.reachableFrom(state, world, 0, "none");
-    expect(reachable.has(9)).toBe(true);
-    expect(reachable.has(31 - 1)).toBe(true);
-    for (const cell of river) expect(reachable.has(cell)).toBe(false);
-    expect(reachable.has(11)).toBe(false);
-    expect(reachable.has(20)).toBe(false);
+    const { state } = newGame(1, 200, undefined, f.world);
+    for (let y = 0; y < FINE_CHUNK; y++) for (let x = 0; x < FINE_CHUNK; x++) markKnown(state, patchId(x, y));
+    const reachable = routing.reachableFrom(state, f.world, patchId(40, 32), "none");
+    expect(reachable.has(patchId(47, 32))).toBe(true);
+    expect(reachable.has(patchId(40, 10))).toBe(true);
+    for (let y = 0; y < FINE_CHUNK; y++) expect(reachable.has(patchId(48, y))).toBe(false);
+    expect(reachable.has(patchId(49, 32))).toBe(false);
+    expect(reachable.has(patchId(80, 32))).toBe(false);
   });
 });
 
