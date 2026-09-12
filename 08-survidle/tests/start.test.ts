@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cellAt, generateWorld, neighbours, regionAt, waterKindOf, WORLD_H } from "../src/world/gen";
 import { forestShareWithin, isShelteredShore } from "../src/world/gen";
+import { watersideCell } from "../src/sim/position";
 import { findRoute } from "../src/world/route";
 import { solvedFor } from "../src/world/solvecache";
 import { WORLD_CELL_H, WORLD_CELL_W } from "../src/world/terrain";
@@ -14,6 +15,9 @@ describe("the start", () => {
       expect(world.startRing, `seed ${seed} ring`).toBeLessThan(60);
       expect(c.terrain, `seed ${seed} land`).not.toBe("water");
       expect(neighbours(world, cell).some((n) => waterKindOf(world, n) === "sea"), `seed ${seed} beside the sea`).toBe(true);
+      // The landing is a patch on the shore side of the cell the search chose:
+      // water is beside the feet at 50 m, not somewhere in the 300 m around them.
+      expect(watersideCell(world, cell), `seed ${seed} water beside the patch`).toBe(true);
       expect(c.y, `seed ${seed} south`).toBeGreaterThanOrEqual(WORLD_H * 0.85);
       expect(isShelteredShore(world, cell), `seed ${seed} sheltered`).toBe(true);
       expect(forestShareWithin(world, cell, 10), `seed ${seed} forest`).toBeGreaterThanOrEqual(0.4);

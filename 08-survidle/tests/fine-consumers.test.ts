@@ -7,38 +7,17 @@
 import { describe, expect, it } from "vitest";
 import { FINE_CHUNK, fineHeightAt, fineWaterAt, newWorld, waterBesideAt, type World } from "../src/world/cells";
 import { findRoute } from "../src/world/route";
-import { CHANNEL_RIVER, CHANNEL_STREAM, refineChunk } from "../src/world/refine";
+import { CHANNEL_RIVER, CHANNEL_STREAM } from "../src/world/refine";
 import { FINE_PER_PARENT, patchId, patchXY } from "../src/world/spatial";
 import { FLAG_FORD, KIND } from "../src/world/solve";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 import { fieldTransport } from "../src/sim/climate";
 import { patchGroundModifiers } from "../src/sim/weather";
 import { DIST8, DX8, DY8, NO_FLOW } from "../src/world/hydro";
-import { flatWorld } from "./world-fixture";
+import { type FineFixture, fineFixture } from "./fine-fixture";
 
-interface Fixture {
-  world: World;
-  /** The chunk's own arrays, painted by the case. */
-  terrain: Uint8Array;
-  height: Float32Array;
-  kind: Uint8Array;
-  channel: Uint8Array;
-}
-
-/** One 96 by 96 chunk over 16 by 16 flat parents, resident before any case runs. */
-function fixture(seed = 21): Fixture {
-  const world = newWorld(seed, flatWorld({ w: 16, h: 16, terrain: "pine", seed }).solved);
-  const fine = refineChunk(seed, world.solved, 0, 0);
-  fine.height.fill(50);
-  fine.kind.fill(KIND.land);
-  fine.channel.fill(0);
-  const terrain = new Uint8Array(FINE_CHUNK * FINE_CHUNK).fill(TERRAIN_INDEX.pine);
-  fine.terrain = terrain;
-  world.fineChunks.set(0, {
-    cx: 0, cy: 0, fine, terrain, region: new Int32Array(FINE_CHUNK * FINE_CHUNK), samples: terrain.length, parentSummaries: new Map(),
-  });
-  return { world, terrain, height: fine.height, kind: fine.kind, channel: fine.channel };
-}
+const fixture = () => fineFixture({ terrain: "pine" });
+type Fixture = FineFixture;
 
 const at = (x: number, y: number) => y * FINE_CHUNK + x;
 

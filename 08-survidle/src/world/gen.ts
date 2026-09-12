@@ -7,7 +7,7 @@ import { Rng, derive } from "../rng";
 import { SPECIES_IDS } from "../sim/species";
 import type { Habitat, Species, SpotId, Terrain } from "../sim/types";
 import { parentSummary, type ResourcePotential, resourcePotentialAt } from "./aggregate";
-import { type Cell, cellAt, cellIdx, inWorld, neighbours, newWorld, regionOf, regionPeek, solvedTerrainAt, streamAt, terrainOf, waterKindOf, type World } from "./cells";
+import { type Cell, cellAt, cellIdx, inWorld, newWorld, regionOf, regionPeek, solvedTerrainAt, terrainOf, waterBesideAt, waterKindOf, type World } from "./cells";
 import { regionName } from "./names";
 import { findRoute, passable, routeKm } from "./route";
 import type { SolvedWorld } from "./solve";
@@ -83,15 +83,13 @@ export function latticeOf(id: number): { lx: number; ly: number } {
   return { lx: id % LATTICE_W, ly: Math.floor(id / LATTICE_W) };
 }
 
-/** Land beside water for camp siting: a stream counts, same as any water neighbour, since a camp on a brook is still a camp by water. */
-const campWaterside = (world: World) => (c: Cell) => {
-  const idx = c.y * world.w + c.x;
-  return passable(c.terrain) && (streamAt(world, idx) || neighbours(world, idx).some((n) => waterKindOf(world, n) !== null));
-};
+/** Land beside water for camp siting: a stream counts, same as any water beside the patch, since a camp on a brook is still a camp by water. */
+const campWaterside = (world: World) => (c: Cell) =>
+  passable(c.terrain) && waterBesideAt(world, c.y * world.w + c.x);
 
 /** Fishing happens from land beside a lake, sea or river; a stream is too thin to fish and is drinking water only. */
 const fishingShore = (world: World) => (c: Cell) =>
-  passable(c.terrain) && neighbours(world, c.y * world.w + c.x).some((n) => waterKindOf(world, n) !== null);
+  passable(c.terrain) && waterBesideAt(world, c.y * world.w + c.x, "fishing");
 
 function buildRegion(world: World, id: number): RegionDef {
   const { lx, ly } = latticeOf(id);
@@ -300,14 +298,20 @@ const RAY_DY = [0, 0.383, 0.707, 0.924, 1, 0.924, 0.707, 0.383, 0, -0.383, -0.70
  */
 const CELL_STEP = FINE_PER_PARENT;
 
+/** Which of the four neighbouring cells is the sea this shore faces, as a step in patches, or null where none is. */
+function seaSideOf(world: World, x: number, y: number): { dx: number; dy: number } | null {
+  return [{ dx: CELL_STEP, dy: 0 }, { dx: -CELL_STEP, dy: 0 }, { dx: 0, dy: CELL_STEP }, { dx: 0, dy: -CELL_STEP }]
+    .find((d) => inWorld(world, x + d.dx, y + d.dy) && waterKindOf(world, cellIdx(world, x + d.dx, y + d.dy)) === "sea")
+    ?? null;
+}
+
 /** Land beside the sea whose sea neighbour sees land on most sides: a sound or a fjord, not the open coast. */
 export function isShelteredShore(world: World, cell: number): boolean {
   const { x, y } = patchXY(cell);
   if (!passable(solvedTerrainAt(world, x, y))) return false;
-  const beside = [[CELL_STEP, 0], [-CELL_STEP, 0], [0, CELL_STEP], [0, -CELL_STEP]]
-    .map(([dx, dy]) => ({ x: x + dx, y: y + dy }))
-    .find((p) => inWorld(world, p.x, p.y) && waterKindOf(world, cellIdx(world, p.x, p.y)) === "sea");
-  if (beside === undefined) return false;
+  const side = seaSideOf(world, x, y);
+  if (side === null) return false;
+  const beside = { x: x + side.dx, y: y + side.dy };
   let hits = 0;
   for (let r = 0; r < 16; r++) {
     for (let d = 1; d <= SHELTER_REACH_CELLS; d++) {
@@ -334,6 +338,39 @@ export function forestShareWithin(world: World, cell: number, radius: number): n
     }
   }
   return n ? forest / n : 0;
+}
+
+/**
+ * The patch the boat lands on. `landingIn` chooses a 300 m cell by what the
+ * solve decided there, but the survivor stands on one 50 m patch of it, and a
+ * landing is on the water side of the cell: the patch with water beside it
+ * that lies furthest toward the sea the shelter test found. A cell whose fine
+ * ground offers none keeps the patch it was chosen by, so a start always
+ * exists.
+ */
+function landingPatch(world: World, cell: PatchId): PatchId {
+  const { x, y } = patchXY(cell);
+  const side = seaSideOf(world, x, y);
+  if (side === null) return cell;
+  const px = Math.floor(x / FINE_PER_PARENT) * FINE_PER_PARENT;
+  const py = Math.floor(y / FINE_PER_PARENT) * FINE_PER_PARENT;
+  let best = -1;
+  let bestReach = -Infinity;
+  let anyWater = -1;
+  let dry = -1;
+  for (let fy = py; fy < py + FINE_PER_PARENT; fy++) {
+    for (let fx = px; fx < px + FINE_PER_PARENT; fx++) {
+      const idx = cellIdx(world, fx, fy);
+      if (!passable(terrainOf(world, fx, fy))) continue;
+      if (dry < 0) dry = idx;
+      if (anyWater < 0 && waterBesideAt(world, idx)) anyWater = idx;
+      if (!waterBesideAt(world, idx, "sea")) continue;
+      // How far toward the sea the patch lies, in patches along the sea side.
+      const reach = ((fx - px) * side.dx + (fy - py) * side.dy) / CELL_STEP;
+      if (reach > bestReach) { bestReach = reach; best = idx; }
+    }
+  }
+  return best >= 0 ? best : anyWater >= 0 ? anyWater : dry >= 0 ? dry : cell;
 }
 
 // Keyed by seed and size: a test world of a few hundred cells and the full
@@ -385,8 +422,9 @@ function findStart(world: World): { id: number; cell: number; ring: number } {
         const lx = ax + dx;
         const ly = ay + dy;
         if (lx < 0 || ly < 0 || lx >= LATTICE_W || ly >= LATTICE_H) continue;
-        const cell = landingIn(world, lx, ly);
-        if (cell < 0) continue;
+        const chosen = landingIn(world, lx, ly);
+        if (chosen < 0) continue;
+        const cell = landingPatch(world, chosen);
         const found = { id: regionOf(world, cell % world.w, Math.floor(cell / world.w)), cell, ring };
         STARTS.set(key, found);
         return found;

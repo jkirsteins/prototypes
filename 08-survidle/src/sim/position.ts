@@ -6,7 +6,7 @@ import { localWeather } from "./weather";
  */
 import { type MetricPoint, PATCH_M, type PatchId, patchAtMetric, patchCenter } from "../world/spatial";
 import { clamp } from "../units";
-import { type Cell, cellAt, neighbours, regionAt, regionOf, streamAt, waterKindOf, type World } from "../world/gen";
+import { type Cell, cellAt, regionAt, regionOf, waterBesideAt, type WaterKind, type World } from "../world/gen";
 import { remainingKm, routeKm } from "../world/route";
 import { calendar } from "./calendar";
 import { markWalked } from "./mapped";
@@ -132,16 +132,17 @@ export function heathCell(world: World, idx: number): boolean {
 }
 
 /**
- * Land beside water: any water including a stream on the cell, one kind only,
- * or "fishing" for water that is a cell of its own - a lake, the sea or a
- * river. A brook of 20 litres a second is drinking water and nothing more:
+ * Land beside water: any water including a channel under the feet, one kind
+ * only, or "fishing" for water that is a patch of its own - a lake, the sea or
+ * a river. A brook of 20 litres a second is drinking water and nothing more:
  * nothing lives in it to catch and no axe cuts a hole in it.
+ *
+ * The reading is at the patch, not at its 300 m parent: a river or a stream is
+ * one patch wide, so the water is where the channel runs and the ground a
+ * hundred metres off is dry.
  */
-export function watersideCell(world: World, idx: number, kind: "lake" | "sea" | "river" | "stream" | "fishing" | "any" = "any"): boolean {
-  if (kind === "stream") return streamAt(world, idx);
-  if (kind === "any") return streamAt(world, idx) || neighbours(world, idx).some((n) => waterKindOf(world, n) !== null);
-  if (kind === "fishing") return neighbours(world, idx).some((n) => waterKindOf(world, n) !== null);
-  return neighbours(world, idx).some((n) => waterKindOf(world, n) === kind);
+export function watersideCell(world: World, idx: number, kind: WaterKind | "fishing" | "any" = "any"): boolean {
+  return waterBesideAt(world, idx, kind);
 }
 
 export function inForest(state: GameState, world: World): boolean {

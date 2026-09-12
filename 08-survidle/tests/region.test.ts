@@ -5,6 +5,8 @@ import { regionAtPatch } from "../src/world/fine-terrain";
 import { latticeOf, regionAt } from "../src/world/gen";
 import { PATCH_KM, patchId } from "../src/world/spatial";
 import { LATTICE } from "../src/world/terrain";
+import { passable } from "../src/world/route";
+import { watersideCell } from "../src/sim/position";
 import { rangeNoise } from "../src/world/wildlife";
 import { solvedWorld } from "./world-fixture";
 
@@ -20,6 +22,18 @@ describe("fine world and regions", () => {
     expect(region.landCells).toBe(0);
     expect(region.campCell).toBeNull();
     expect(region.spots).toEqual([]);
+  });
+
+  it("sites a camp on a patch with water beside it whenever the region has any", () => {
+    const world = solvedWorld(21);
+    const region = regionAt(world, regionAtPatch(21, patchId(5400, 2000)));
+    expect(region.landCells).toBeGreaterThan(0);
+    const beside = region.cells.filter((c) => passable(cellAt(world, c).terrain) && watersideCell(world, c));
+    expect(beside.length, "the region has water to camp by").toBeGreaterThan(0);
+    // The camp is one of them, and it is the nearest of them to the centroid.
+    expect(beside).toContain(region.campCell);
+    const distance = (c: number) => Math.hypot(c % world.w - region.cx, Math.floor(c / world.w) - region.cy);
+    expect(distance(region.campCell)).toBeCloseTo(Math.min(...beside.map(distance)), 6);
   });
 
   it("uses one fine identity across cells, peeks and generated patches", () => {
