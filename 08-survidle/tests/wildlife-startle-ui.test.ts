@@ -9,10 +9,12 @@ import { activateWildlife } from "../src/sim/wildlife-agents";
 import type { WildlifeStartleEvent } from "../src/sim/wildlife-encounter";
 import { DEFAULT_ZOOM, levelAt, mapHtml, mapKey, mapViewportBounds, viewOrigin } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState, resetPanels, setPanel } from "../src/ui/render";
-import { cellAt, neighbours } from "../src/world/gen";
+import { cellAt, type World } from "../src/world/gen";
+import type { GameState } from "../src/sim/types";
+import { visibleCells } from "../src/sim/sight";
 import { passable } from "../src/world/route";
 import { css, rule } from "./css";
-import { PATCH_M } from "../src/world/spatial";
+import { PATCH_M, patchXY } from "../src/world/spatial";
 
 
 function scene() {
@@ -34,6 +36,36 @@ beforeEach(() => {
   resetPanels();
   document.body.innerHTML = '<div id="mapdyn"></div>';
 });
+
+/**
+ * A patch the map draws as its own glyph at this rung, and one the survivor can
+ * actually see. Two things changed under this fixture at once: a neighbour 50 m
+ * off falls inside the survivor's own block at every rung but the closest, and
+ * that block's one mark is the survivor's, so the animal would never be drawn;
+ * and sight is a set of rays over 50 m patches, so which ground is visible is
+ * a shape, not a radius. The animal stands on the nearest visible patch that
+ * owns its glyph.
+ */
+function patchOfOwnGlyph(state: GameState, world: World, zoom: number): number {
+  const here = cellOf(state, world);
+  const span = levelAt(zoom).finePerGlyph;
+  const block = (patch: number) => {
+    const { x, y } = patchXY(patch);
+    return `${Math.floor(x / span)},${Math.floor(y / span)}`;
+  };
+  const mine = block(here);
+  const cal = calendar(state.minute, state.startDoy);
+  const origin = patchXY(here);
+  const seen = [...visibleCells(state, world, cal, here)]
+    .filter((patch) => block(patch) !== mine && passable(cellAt(world, patch).terrain))
+    .sort((a, b) => {
+      const pa = patchXY(a);
+      const pb = patchXY(b);
+      return (pa.x - origin.x) ** 2 + (pa.y - origin.y) ** 2 - ((pb.x - origin.x) ** 2 + (pb.y - origin.y) ** 2);
+    });
+  if (seen.length === 0) throw new Error(`nothing visible owns its own glyph at zoom ${zoom}`);
+  return seen[0];
+}
 
 describe("transient wildlife map cues", () => {
   it("adds one non-identifying cue over hidden ground, preserves map knowledge, and expires after 1200 ms", () => {
@@ -106,7 +138,7 @@ describe("transient wildlife map cues", () => {
     ui.zoom = zoom;
     activateWildlife(state, world, new Rng(1));
     const subject = state.wildlife.subjects.find((s) => s.active)!;
-    subject.active!.cell = neighbours(world, cellOf(state, world)).find((c) => passable(cellAt(world, c).terrain) && cellAt(world, c).region === state.player.region)!;
+    subject.active!.cell = patchOfOwnGlyph(state, world, zoom);
     const cell = cellAt(world, subject.active!.cell);
     event.source = { xM: (cell.x + 0.5) * PATCH_M, yM: (cell.y + 0.5) * PATCH_M };
     event.subjectId = subject.id;
