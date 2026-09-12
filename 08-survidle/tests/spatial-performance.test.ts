@@ -14,10 +14,12 @@
  * is not repeated here.
  */
 import { describe, expect, it } from "vitest";
+import { advance } from "../src/sim/advance";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
+import { patchOf } from "../src/sim/position";
 import { addOrder, runOrders } from "../src/sim/orders";
 import { serialize } from "../src/sim/save";
 import { clearObstacleReadCount, obstacleReadCount, sightReachCells, visibleCells } from "../src/sim/sight";
@@ -25,7 +27,7 @@ import { LEVELS, mapHtml } from "../src/ui/map";
 import { newUiState, type UiState } from "../src/ui/render";
 import { worldCacheStats } from "../src/world/aggregate";
 import { knownRoute } from "../src/world/route";
-import { PATCH_M, patchId } from "../src/world/spatial";
+import { patchId } from "../src/world/spatial";
 import type { GameState } from "../src/sim/types";
 import type { World } from "../src/world/cells";
 import { siteCamp } from "./siting-helpers";
@@ -33,9 +35,8 @@ import { testAtmosphere } from "./weather-helpers";
 
 const CAL = calendar(10);
 
-function playerPatch(state: GameState): number {
-  return patchId(Math.floor(state.player.xM / PATCH_M), Math.floor(state.player.yM / PATCH_M));
-}
+/** Game days the extended headless run covers. */
+const RUN_DAYS = 20;
 
 function open(zoom: number): UiState {
   return { ...newUiState(), zoom, welcome: false };
@@ -63,13 +64,11 @@ function schedulerRouteScene(seed: number) {
 
 describe("the lazy fine lattice", () => {
   it("does not allocate the whole fine world during boot or whole-map render", () => {
-    const started = performance.now();
     const { state, world } = newGame(21);
     mapHtml(world, state, { ...newUiState(), zoom: LEVELS.length - 1 }, calendar(0));
     const stats = worldCacheStats(world);
     expect(stats.fineChunks).toBeLessThan(96);
     expect(stats.generatedPatches).toBeLessThan(96 * 96 * 96);
-    expect(performance.now() - started).toBeLessThan(2000);
   });
 
   it("bounds every cache it keeps", () => {
@@ -117,7 +116,7 @@ describe("the lazy fine lattice", () => {
 describe("routing work", () => {
   it("walks 50 metres without building a second parent's topology", () => {
     const { state, world } = schedulerRouteScene(21);
-    const from = playerPatch(state);
+    const from = patchOf(state, world);
     // A neighbour patch inside the same parent: one topology, no portals.
     const to = from + 1;
     markKnown(state, to);
@@ -130,12 +129,19 @@ describe("routing work", () => {
 
   it("answers a repeated 20 km route from the route cache", () => {
     const { state, world } = schedulerRouteScene(21);
-    const from = playerPatch(state);
+    const from = patchOf(state, world);
     const to = from + 400;
     const cold = worldCacheStats(world);
     const first = knownRoute(world, from, to, () => true, "perf-20km");
     const warm = worldCacheStats(world);
+    expect(first).not.toBeNull();
     expect(warm.routeBuilds - cold.routeBuilds).toBe(1);
+    // One search, and a bounded one. The hierarchical router opens a parent's
+    // topology at a time inside its margin box; 400 patches of easting measured
+    // 2,216 of them. The ceiling is generous on purpose - the number moves with
+    // the ground a seed puts in the way - but it is a ceiling, so a search that
+    // started walking the whole lattice could not hide behind a fast host.
+    expect(warm.topologyBuilds - cold.topologyBuilds).toBeLessThan(5000);
     for (let i = 0; i < 20; i++) expect(knownRoute(world, from, to, () => true, "perf-20km")).toEqual(first);
     const after = worldCacheStats(world);
     expect(after.routeBuilds).toBe(warm.routeBuilds);
@@ -157,12 +163,54 @@ describe("routing work", () => {
   });
 });
 
+describe("an extended headless run", () => {
+  it("keeps every cache inside its cap and stops paying for ground it has walked", () => {
+    const scene = schedulerRouteScene(21);
+    const { state, world } = scene;
+    const days: { routes: number; chunks: number; summaries: number; topologies: number }[] = [];
+    for (let day = 0; day < RUN_DAYS; day++) {
+      const before = worldCacheStats(world);
+      for (let hour = 0; hour < 24; hour++) advance(state, world, 60);
+      const stats = worldCacheStats(world);
+      days.push({
+        routes: stats.routeBuilds - before.routeBuilds,
+        chunks: stats.fineChunkBuilds - before.fineChunkBuilds,
+        summaries: stats.parentSummaryBuilds - before.parentSummaryBuilds,
+        topologies: stats.topologyBuilds - before.topologyBuilds,
+      });
+      // Every cap, every day: a run that leaks is a run whose caches grow past
+      // the sizes they declare, and that shows the day it starts.
+      expect(stats.fineChunks).toBeLessThanOrEqual(stats.fineChunkLimit);
+      expect(stats.topologies).toBeLessThanOrEqual(stats.topologyLimit);
+      expect(stats.overlays).toBeLessThanOrEqual(stats.overlayLimit);
+      expect(stats.routes).toBeLessThanOrEqual(stats.routeLimit);
+    }
+    // The first day pays for the ground the survivor works in: chunks built,
+    // parents summarised, the parent topology around camp flooded. Every day
+    // after is the same ground, so none of that is paid twice however long the
+    // run goes on.
+    expect(days[0].routes).toBeGreaterThan(0);
+    for (const day of days.slice(1)) {
+      expect(day.chunks).toBe(0);
+      expect(day.summaries).toBe(0);
+      expect(day.topologies).toBe(0);
+    }
+    // Routing does go on, because the survivor keeps being sent somewhere, but
+    // its cost is a day's work rather than the run's length: no later day may
+    // cost more than twice the first ordinary day.
+    const ordinary = days[1].routes;
+    for (const day of days.slice(1)) expect(day.routes).toBeLessThanOrEqual(ordinary * 2);
+    // Wall time is vitest's own per-test figure rather than an assertion here:
+    // the run's length is a host reading and the counts above are not.
+  });
+});
+
 describe("visibility work", () => {
   it("reads each obstruction once per viewshed and nothing on a repeat", () => {
     const { state, world } = schedulerRouteScene(21);
     // A vantage the survivor's own sight has not already answered, so this
     // measures one cold viewshed rather than the cache it left behind.
-    const cell = playerPatch(state) + 30;
+    const cell = patchOf(state, world) + 30;
     clearObstacleReadCount();
     const close = visibleCells(state, world, CAL, cell);
     expect(close.size).toBeGreaterThan(0);
@@ -176,7 +224,7 @@ describe("visibility work", () => {
     const { state, world } = schedulerRouteScene(21);
     // Three kilometres north of the camp, so this is a cold long view rather
     // than the one the survivor's own eyes already paid for.
-    const cell = playerPatch(state) - 60 * world.w;
+    const cell = patchOf(state, world) - 60 * world.w;
     const reach = sightReachCells(state, world, CAL, cell);
     clearObstacleReadCount();
     visibleCells(state, world, CAL, cell);
