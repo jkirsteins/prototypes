@@ -1,6 +1,5 @@
 import type { Terrain } from "../sim/types";
-import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, patchAt, type World } from "./cells";
-import { temporaryElevationM } from "./fine-fields";
+import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, fineSurfaceAt, patchAt, type World } from "./cells";
 import { regionAtPatch } from "./fine-terrain";
 import { type FineGrid, fineRouteCacheStats } from "./fine-route";
 import { routeCacheStats } from "./route";
@@ -105,12 +104,13 @@ function terrainAt(source: World | AggregateSource, patch: PatchId): Terrain {
 }
 
 /**
- * The height a summary bounds: the same reader the sight march uses, so a
- * bound bounds what a ray measures. Both go to the chunk's refined height in
- * section 3 of the close-zoom plan, together.
+ * The height a summary bounds: the chunk's refined surface, the same reader the
+ * sight march uses, so a bound bounds what a ray measures. On land it is the
+ * refined ground; on water it is the water's level, which is what keeps a sea
+ * parent uniform to the optics however deep its floor falls.
  */
 function elevationAt(source: World | AggregateSource, patch: PatchId): number {
-  return isWorld(source) ? temporaryElevationM(source, patch) : source.elevationAt?.(patch) ?? 0;
+  return isWorld(source) ? fineSurfaceAt(source, patch) : source.elevationAt?.(patch) ?? 0;
 }
 
 function regionAt(source: World | AggregateSource, patch: PatchId): number {

@@ -22,8 +22,7 @@ import { visitedCamps } from "../sim/light";
 import { discovery, siteAt, VISITED } from "../sim/regionstate";
 import type { AgentSpecies, AtmosphereSample, GameState, LocalGroundWeather, RegionState, Terrain, WildlifeSubject } from "../sim/types";
 import { atmosphereAt, conditionsAt, conditionsWithGround, DEEP_SNOW_CM, groundAt, iceMode } from "../sim/weather";
-import { cellIdx, neighbours, regionPeek, streamAt, terrainPeek, waterKindOf, type World } from "../world/gen";
-import { temporaryElevationM } from "../world/fine-fields";
+import { cellIdx, fineHeightAt, fineHeightPeek, neighbours, regionPeek, streamAt, terrainPeek, waterKindOf, type World } from "../world/gen";
 import { WORLD_H, WORLD_W } from "../world/terrain";
 import { emptyTerrainCounts, parentSummary } from "../world/aggregate";
 import { FINE_PER_PARENT, PATCH_KM, PATCH_M, type PatchId } from "../world/spatial";
@@ -481,7 +480,9 @@ function addKnownPatch(state: GameState, world: World, out: GlyphSummary, x: num
   if (!isKnown(state, patch)) return;
   out.samples++;
   out.terrainCounts[terrainPeek(world, x, y)]++;
-  const elevationM = temporaryElevationM(world, patch);
+  // The refined height where the ground is already in hand, the parent's where
+  // it is not: a wide rung reads thousands of patches and must generate none.
+  const elevationM = fineHeightPeek(world, x, y);
   out.minElevationM = Math.min(out.minElevationM, elevationM);
   out.maxElevationM = Math.max(out.maxElevationM, elevationM);
 }
@@ -1189,7 +1190,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
           sea.push(off);
         } else {
           const summary = groundAtGlyph[i]?.summary;
-          const e = summary ? (summary.minElevationM + summary.maxElevationM) / 2 : elevationAt(world, cx, cy);
+          // A glyph that is one patch is toned by that patch's own height; a
+          // block is toned by the middle of what its summary found.
+          const e = summary ? (summary.minElevationM + summary.maxElevationM) / 2
+            : z === 1 ? fineHeightAt(world, cellIdx(world, cx, cy)) : elevationAt(world, cx, cy);
           step[i] = e;
           (TREES.includes(t) ? trees : land).push(e);
         }

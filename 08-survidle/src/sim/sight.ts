@@ -6,9 +6,8 @@
  */
 import { CELL_KM } from "../units";
 import { parentSummary } from "../world/aggregate";
-import { FINE_CHUNK } from "../world/cells";
+import { FINE_CHUNK, fineSurfaceAt } from "../world/cells";
 import { heightAt, regionPeek, terrainOf, type World } from "../world/gen";
-import { temporaryElevationM } from "../world/fine-fields";
 import { FINE_PER_PARENT, PATCH_KM, PATCH_M } from "../world/spatial";
 import { CANOPY_HEIGHT_M } from "../world/terrain";
 import type { Calendar } from "./calendar";
@@ -294,7 +293,7 @@ function groundHeightM(world: World, x: number, y: number): number {
   const cell = y * world.w + x;
   const cached = heights.get(cell);
   if (cached !== undefined) return cached;
-  const height = Math.max(0, temporaryElevationM(world, y * world.w + x));
+  const height = Math.max(0, fineSurfaceAt(world, y * world.w + x));
   if (heights.size >= GROUND_HEIGHT_LIMIT) heights.clear();
   heights.set(cell, height);
   return height;

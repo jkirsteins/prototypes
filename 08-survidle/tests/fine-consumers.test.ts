@@ -11,6 +11,9 @@ import { CHANNEL_RIVER, CHANNEL_STREAM, refineChunk } from "../src/world/refine"
 import { FINE_PER_PARENT, patchId, patchXY } from "../src/world/spatial";
 import { FLAG_FORD, KIND } from "../src/world/solve";
 import { TERRAIN_INDEX } from "../src/world/terrain";
+import { fieldTransport } from "../src/sim/climate";
+import { patchGroundModifiers } from "../src/sim/weather";
+import { DIST8, DX8, DY8, NO_FLOW } from "../src/world/hydro";
 import { flatWorld } from "./world-fixture";
 
 interface Fixture {
@@ -103,6 +106,42 @@ describe("routing across water", () => {
     expect(waterBesideAt(f.world, patchId(20, 20), "stream")).toBe(true);
     expect(waterBesideAt(f.world, patchId(20, 20), "fishing")).toBe(false);
     expect(waterBesideAt(f.world, patchId(48, 20), "fishing")).toBe(true);
+  });
+});
+
+describe("weather reads the ground the chunk measured", () => {
+  it("strips snow off a windward face, keeps it on a lee one, and ponds rain on wet ground", () => {
+    const f = fixture();
+    const fine = f.world.fineChunks.get(0)!.fine;
+    const wind = fieldTransport(f.world.seed);
+    // Which way the ground must fall to face the wind, and which to hide from it.
+    let windward = 0;
+    let lee = 0;
+    for (let d = 0; d < 8; d++) {
+      const into = -(DX8[d] * wind.xKmh + DY8[d] * wind.yKmh) / DIST8[d];
+      if (into > -(DX8[windward] * wind.xKmh + DY8[windward] * wind.yKmh) / DIST8[windward]) windward = d;
+      if (into < -(DX8[lee] * wind.xKmh + DY8[lee] * wind.yKmh) / DIST8[lee]) lee = d;
+    }
+    const steep = 255;
+    fine.slope[at(10, 10)] = steep;
+    fine.aspect[at(10, 10)] = windward;
+    fine.slope[at(20, 20)] = steep;
+    fine.aspect[at(20, 20)] = lee;
+    const bare = patchGroundModifiers(f.world, patchId(10, 10)).snow;
+    const sheltered = patchGroundModifiers(f.world, patchId(20, 20)).snow;
+    expect(bare).toBeLessThan(sheltered);
+    // Flat ground with no aspect scours nothing, which is what the whole world
+    // read while exposure was a placeholder.
+    fine.slope[at(30, 30)] = 0;
+    fine.aspect[at(30, 30)] = NO_FLOW;
+    fine.wetness[at(30, 30)] = 128;
+    // Pine holds a quarter of a snowfall off the ground and the wind takes nothing.
+    expect(patchGroundModifiers(f.world, patchId(30, 30)).snow).toBeCloseTo(0.75, 5);
+
+    fine.wetness[at(40, 40)] = 255;
+    fine.wetness[at(50, 40)] = 0;
+    expect(patchGroundModifiers(f.world, patchId(40, 40)).water).toBeGreaterThan(1);
+    expect(patchGroundModifiers(f.world, patchId(50, 40)).water).toBeLessThan(1);
   });
 });
 

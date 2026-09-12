@@ -111,6 +111,31 @@ function upslopeCells(solved: SolvedWorld, win: FineWindow, dir: Uint8Array, fil
 }
 
 /**
+ * What the classifier measured per patch, kept because consumers read the same
+ * numbers: the weather wants the slope and the aspect for how wind strips a
+ * patch, and the wetness for whether rain stands on it. Both are quantised to
+ * a byte - the slope over its first 45 degrees, the wetness over its whole
+ * range - because a modifier bounded to a few tenths cannot tell a finer step
+ * apart, and a byte a patch is 9 KB a chunk.
+ */
+export interface FineMeasures {
+  terrain: Uint8Array;
+  /** Downhill gradient at the patch, 1 at 45 degrees and above. */
+  slope: Uint8Array;
+  /** The wetness index of the patch, 0 shedding to 1 soaked. */
+  wetness: Uint8Array;
+  /** The fine flow direction the patch drains by, as hydro's 0..7, or NO_FLOW. */
+  aspect: Uint8Array;
+}
+
+const byte = (v: number): number => v <= 0 ? 0 : v >= 1 ? 255 : Math.round(v * 255);
+
+/** Back from a stored byte to the number the classifier measured. */
+export function fromByte(v: number): number {
+  return v / 255;
+}
+
+/**
  * The ground of a chunk's patches, as TERRAIN_INDEX values in the chunk's own
  * 96 by 96 layout. Water first: the chunk's sea, lake and pond patches are
  * water and a river parent's channel patches are river (the kind the channel
@@ -121,8 +146,11 @@ export function classifyFine(
   seed: number, solved: SolvedWorld, win: FineWindow,
   x0: number, y0: number, w: number, h: number, stride: number,
   height: Float32Array, filled: Float32Array, kind: Uint8Array,
-): Uint8Array {
+): FineMeasures {
   const out = new Uint8Array(stride * stride);
+  const slopeOut = new Uint8Array(stride * stride);
+  const wetnessOut = new Uint8Array(stride * stride);
+  const aspectOut = new Uint8Array(stride * stride).fill(NO_FLOW);
   const n = win.ww * win.wh;
   const standing = new Uint8Array(n);
   for (let i = 0; i < n; i++) if (kind[i] === KIND.sea || kind[i] === KIND.lake) standing[i] = 1;
@@ -138,8 +166,10 @@ export function classifyFine(
       const fy = y0 + y;
       const i = (fy - win.fy0) * win.ww + fx - win.fx0;
       const local = y * stride + x;
-      if (standing[i]) { out[local] = TERRAIN_INDEX.water; continue; }
-      if (kind[i] === KIND.river) { out[local] = TERRAIN_INDEX.river; continue; }
+      // Standing water and a channel are soaked by definition and have no
+      // slope a wind strips; the land rules below never see them.
+      if (standing[i]) { out[local] = TERRAIN_INDEX.water; wetnessOut[local] = 255; continue; }
+      if (kind[i] === KIND.river) { out[local] = TERRAIN_INDEX.river; wetnessOut[local] = 255; continue; }
       let slope = 0;
       let northFacing = 0.5;
       if (dir[i] !== NO_FLOW) {
@@ -148,7 +178,9 @@ export function classifyFine(
         if (slope < 0) slope = 0;
         const dy = DY8[dir[i]];
         northFacing = dy < 0 ? 1 : dy > 0 ? 0 : 0.5;
+        aspectOut[local] = dir[i];
       }
+      slopeOut[local] = byte(slope);
       const u = (fx + 0.5) / fineW;
       const v = (fy + 0.5) / fineH;
       const coastKm = coastKmAt(u, v);
@@ -165,8 +197,9 @@ export function classifyFine(
       let soil = uniformAt(soilScale, raw) + SOIL_BREAKUP * (fineNoise((fx + 0.5) * PATCH_M, (fy + 0.5) * PATCH_M, breakupSeed) - 0.5);
       if (soil < 0) soil = 0;
       if (soil > 1) soil = 1;
+      wetnessOut[local] = byte(wetness);
       out[local] = landTerrainIndex(height[i], slope, lat, coastKm, wetness, p, m, soil);
     }
   }
-  return out;
+  return { terrain: out, slope: slopeOut, wetness: wetnessOut, aspect: aspectOut };
 }

@@ -1,11 +1,11 @@
 import type { Rng } from "../rng";
 import { clamp, fmtDuration } from "../units";
-import { regionPeek, terrainOf, type World } from "../world/gen";
-import { TEMPORARY_DRAINAGE, TEMPORARY_EXPOSURE } from "../world/fine-fields";
-import { LATTICE, LATTICE_W } from "../world/terrain";
+import { fineGroundAt, fineHeightAt, latitudeOfRow, regionPeek, terrainOf, type World } from "../world/gen";
+import { DIST8, DX8, DY8, NO_FLOW } from "../world/hydro";
+import { coastKmAt, LATTICE, LATTICE_W, treelineM } from "../world/terrain";
 import { patchAtMetric, type PatchId } from "../world/spatial";
 import { calendar, START_MINUTE_OF_DAY, type Calendar } from "./calendar";
-import { sampleAtmosphere } from "./climate";
+import { fieldTransport, sampleAtmosphere } from "./climate";
 import { hasQuirk } from "./fears";
 import { survivedStorms } from "./record";
 import { skillLevel } from "./skills";
@@ -124,12 +124,52 @@ const CANOPY_SNOW_INTERCEPTION: Partial<Record<Terrain, number>> = {
 const SNOW_SCOUR_SPAN = 0.6;
 /** Rain stands on ground that does not drain and runs off ground that does. */
 const PONDING_SPAN = 0.5;
+/**
+ * The gradient at which a hillside's aspect counts for all it can. A slope of
+ * 15 percent is the break the fine detail is scaled by, and by it a windward
+ * face is taking the whole of the wind and a lee face is out of it.
+ */
+const FULL_ASPECT_SLOPE = 0.15;
+/** Height above the treeline at which the ground is as bare as ground gets: no wood, no scrub, nothing to hold a snowfall. */
+const BARE_ABOVE_TREELINE_M = 200;
+
+/**
+ * How far a patch stands out of the wind's way, 0 sheltered to 1 bare, from
+ * what the chunk measured: the gradient of the patch, which way it falls
+ * against the wind, and how far it stands above the treeline. A face that
+ * falls away from the wind is out of it and holds its snow; one that rises
+ * into it is stripped. The wind is the seed's own field transport rather than
+ * this hour's gust, because what this modifier shapes is a winter's worth of
+ * drifting, and it is what lets the reading be measured once per patch.
+ *
+ * Flat ground below the treeline reads 0.5 and scours nothing, which is what
+ * the whole world read while this was a placeholder.
+ */
+function exposureAt(world: World, cell: PatchId): number {
+  const { slope, aspect } = fineGroundAt(world, cell);
+  const wind = fieldTransport(world.seed);
+  const windSpeed = Math.hypot(wind.xKmh, wind.yKmh);
+  let windward = 0;
+  if (aspect !== NO_FLOW && windSpeed > 0) {
+    // The downhill direction against the wind's: ground that falls back into
+    // the wind is a windward face, ground that falls away from it is a lee one.
+    const downhill = DIST8[aspect];
+    windward = -(DX8[aspect] * wind.xKmh + DY8[aspect] * wind.yKmh) / (downhill * windSpeed);
+  }
+  const steep = Math.min(1, slope / FULL_ASPECT_SLOPE);
+  const x = cell % world.w;
+  const y = Math.floor(cell / world.w);
+  const treeline = treelineM(latitudeOfRow(world, y), coastKmAt((x + 0.5) / world.w, (y + 0.5) / world.h));
+  const bare = clamp((fineHeightAt(world, cell) - treeline) / BARE_ABOVE_TREELINE_M, 0, 1);
+  return clamp(0.5 + 0.5 * steep * windward + 0.5 * bare, 0, 1);
+}
 
 interface PatchGroundModifiers { snow: number; water: number }
 
 /**
- * Terrain and the physical fields are immutable, so each patch's modifiers are
- * computed once. The cache belongs to the world object, never to save state.
+ * Terrain and the ground the chunk measured are immutable, so each patch's
+ * modifiers are computed once. The cache belongs to the world object, never to
+ * save state.
  */
 const PATCH_MODIFIER_LIMIT = 16_384;
 const patchModifiers = new WeakMap<World, Map<PatchId, PatchGroundModifiers>>();
@@ -145,10 +185,13 @@ export function patchGroundModifiers(world: World, cell: PatchId): PatchGroundMo
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
   const canopy = 1 - (CANOPY_SNOW_INTERCEPTION[terrainOf(world, x, y)] ?? 0);
-  const scour = clamp(1 - SNOW_SCOUR_SPAN * (TEMPORARY_EXPOSURE * 2 - 1), 0.4, 1.6);
+  const scour = clamp(1 - SNOW_SCOUR_SPAN * (exposureAt(world, cell) * 2 - 1), 0.4, 1.6);
+  // Ground sheds water as freely as it is dry: the wetness index is the
+  // catchment standing above the patch against the slope carrying it away.
+  const drainage = 1 - fineGroundAt(world, cell).wetness;
   const modifiers: PatchGroundModifiers = {
     snow: canopy * scour,
-    water: clamp(1 + PONDING_SPAN * (0.5 - TEMPORARY_DRAINAGE) * 2, 0.5, 1.5),
+    water: clamp(1 + PONDING_SPAN * (0.5 - drainage) * 2, 0.5, 1.5),
   };
   if (modifiersFor.size >= PATCH_MODIFIER_LIMIT) modifiersFor.clear();
   modifiersFor.set(cell, modifiers);

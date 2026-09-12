@@ -113,6 +113,12 @@ export interface FineRefinement {
   channel: Uint8Array;
   /** What the ground is per patch, as a TERRAIN_INDEX: the fine classifier's, not the parent's. */
   terrain: Uint8Array;
+  /** The classifier's own slope per patch, quantised: what the weather reads for how bare a patch stands. */
+  slope: Uint8Array;
+  /** The classifier's own wetness index per patch, quantised: what the weather reads for whether rain stands. */
+  wetness: Uint8Array;
+  /** The fine flow direction per patch: which way the ground falls, for the aspect against the wind. */
+  aspect: Uint8Array;
   /** One path per entry, the parents in the order they were walked. */
   channels: ChannelPath[];
 }
@@ -600,7 +606,7 @@ export function refineChunk(seed: number, solved: SolvedWorld, cx: number, cy: n
   const { filled, depressions } = floodChunk(win, height, kind, surface);
   const channel = new Uint8Array(win.ww * win.wh);
   const { paths } = carveChannels(solved, win, cx, cy, height, filled, kind, channel);
-  const terrain = classifyFine(seed, solved, win, x0, y0, w, h, FINE_CHUNK, height, filled, kind);
+  const measures = classifyFine(seed, solved, win, x0, y0, w, h, FINE_CHUNK, height, filled, kind);
   const local = (i: number) => {
     const x = i % win.ww;
     const lx = win.fx0 + x - x0;
@@ -617,7 +623,10 @@ export function refineChunk(seed: number, solved: SolvedWorld, cx: number, cy: n
     depression: cutOut(new Int32Array(PATCHES).fill(-1), depressions.id, win, x0, y0, w, h),
     rims: depressions.rims,
     channel: cutOut(new Uint8Array(PATCHES), channel, win, x0, y0, w, h),
-    terrain,
+    terrain: measures.terrain,
+    slope: measures.slope,
+    wetness: measures.wetness,
+    aspect: measures.aspect,
     channels: paths.map((path) => {
       // A handover into a cell of the apron is a handover out of this chunk:
       // the water is the neighbour's from there on.

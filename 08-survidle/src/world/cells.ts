@@ -11,6 +11,8 @@ import type { FineGrid } from "./fine-route";
 import { regionAtPatch } from "./fine-terrain";
 import { CHANNEL_RIVER, CHANNEL_STREAM, FINE_CHUNK, type FineRefinement, refineChunk } from "./refine";
 import { type PatchId, parentXY, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
+import { fromByte } from "./fine-class";
+import { NO_FLOW } from "./hydro";
 import { FLAG_FORD, FLAG_STREAM, KIND, type SolvedWorld } from "./solve";
 import { latitudeAt, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
 import type { RegionDef } from "./gen";
@@ -222,6 +224,19 @@ export function fineHeightAt(world: World, patch: PatchId): number {
 }
 
 /**
+ * The height of the surface a ray is stopped by and a summary must bound: the
+ * refined ground on land, and the water's own level on a water patch, because
+ * the sea and a lake are flat whatever their floor does underneath. Outside the
+ * world is sea level.
+ */
+export function fineSurfaceAt(world: World, patch: PatchId): number {
+  const { x, y } = patchXY(patch);
+  if (!inWorld(world, x, y)) return 0;
+  const { chunk, i } = fineChunkFor(world, patch);
+  return chunk.fine.surface[i];
+}
+
+/**
  * The refined height where the chunk is already resident and the parent's
  * solved height where it is not: for the map, which reads a block of ground
  * per glyph and must not generate the world to shade one.
@@ -265,6 +280,24 @@ export function waterBesideAt(world: World, patch: PatchId, want: WaterKind | "f
   if (want === "any") return channel !== null || beside.some((w) => w !== null);
   if (want === "fishing") return channel === "river" || beside.some((w) => w !== null && w !== "stream");
   return channel === want || beside.includes(want);
+}
+
+/** What the classifier measured under a patch, for the consumers that read the same ground it classified. */
+export interface FineGround {
+  /** The downhill gradient at the patch, 1 at 45 degrees and above. */
+  slope: number;
+  /** Which way the ground falls, as one of hydro's eight directions, or NO_FLOW where it falls nowhere. */
+  aspect: number;
+  /** The wetness index, 0 shedding to 1 soaked. */
+  wetness: number;
+}
+
+/** The slope, the aspect and the wetness of the patch itself. Outside the world is flat open water. */
+export function fineGroundAt(world: World, patch: PatchId): FineGround {
+  const { x, y } = patchXY(patch);
+  if (!inWorld(world, x, y)) return { slope: 0, aspect: NO_FLOW, wetness: 1 };
+  const { chunk, i } = fineChunkFor(world, patch);
+  return { slope: fromByte(chunk.fine.slope[i]), aspect: chunk.fine.aspect[i], wetness: fromByte(chunk.fine.wetness[i]) };
 }
 
 /** Cubic metres a second passing through the patch's parent. */

@@ -13,11 +13,11 @@ import { FINE_CHUNK as CHUNK_PATCHES } from "../src/world/cells";
 import { current } from "../src/sim/record";
 import type { GameState } from "../src/sim/types";
 import { visibleWildlife } from "../src/sim/wildlife-agents";
-import { cellAt, heightAt, regionAt, type World } from "../src/world/gen";
+import { cellAt, fineSurfaceAt, heightAt, regionAt, type World } from "../src/world/gen";
 import { FINE_CHUNK } from "../src/world/cells";
 import { parentSummary } from "../src/world/aggregate";
 import { CANOPY_HEIGHT_M, TERRAIN_INDEX } from "../src/world/terrain";
-import * as fineFields from "../src/world/fine-fields";
+import * as cells from "../src/world/cells";
 import { testAtmosphere } from "./weather-helpers";
 import { solvedWorld } from "./world-fixture";
 import { regionsOutward } from "./world-facts";
@@ -45,10 +45,12 @@ function openRun(world: World, region: number, n: number): { vantage: number; en
         end = ny * world.w + nx;
       }
       if (ok) {
-        const observer = heightAt(world, x, y) + 1.7;
+        // The reader the ray itself marches over: the run must be clear in the
+        // refined surface, not in the parent's average of it.
+        const observer = fineSurfaceAt(world, idx) + 1.7;
         let horizon = -Infinity;
         for (let i = 1; i <= n; i++) {
-          const elevation = heightAt(world, x + dx * i, y + dy * i);
+          const elevation = fineSurfaceAt(world, (y + dy * i) * world.w + x + dx * i);
           const slope = (elevation - observer) / i;
           if (i === n && slope < horizon) ok = false;
           horizon = Math.max(horizon, slope);
@@ -109,7 +111,7 @@ function openWorld(): { state: GameState; world: World; vantage: number } {
 
 /** One elevation over the whole world, at the one reader the ray and the summaries share. */
 function flatFields(elevationM: number): void {
-  vi.spyOn(fineFields, "temporaryElevationM").mockReturnValue(elevationM);
+  vi.spyOn(cells, "fineSurfaceAt").mockReturnValue(elevationM);
 }
 
 function at(world: World, vantage: number, dx: number, dy: number): number {
@@ -186,7 +188,7 @@ function fineSightFixture(rows: string[], heights: Record<string, number> = {}):
     });
   });
   if (vantage < 0) throw new Error("the scene has no observer");
-  vi.spyOn(fineFields, "temporaryElevationM").mockImplementation((_world, patch) => elevations.get(patch) ?? 0);
+  vi.spyOn(cells, "fineSurfaceAt").mockImplementation((_world, patch: number) => elevations.get(patch) ?? 0);
   state.player.xM = (vantage % world.w + 0.5) * PATCH_M;
   state.player.yM = (Math.floor(vantage / world.w) + 0.5) * PATCH_M;
   state.player.region = 0;
