@@ -53,6 +53,22 @@ describe("the hydrology of a miniature world", () => {
     expect(drowned).toBeGreaterThan(20);
   });
 
+  // The basins nearly double the lake cells of the full world, where a cell is
+  // 300 m across. The miniature stretches the same template over cells a few km
+  // wide, which cannot resolve a basin one km long, so it reads a smaller gain;
+  // what it can prove is that the stage makes lakes rather than removing them.
+  it("turns the glacial basins into lakes, and they keep their outlets", () => {
+    const plain = solveHydrology(42, W, H, () => {}, false);
+    let withBasins = 0, without = 0;
+    for (let i = 0; i < n; i++) { withBasins += r.lake[i]; without += plain.lake[i]; }
+    expect(withBasins).toBeGreaterThan(1.25 * without);
+    for (let i = 0; i < n; i++) {
+      if (!r.lake[i] || r.dir[i] === NO_FLOW) continue;
+      const rc = receiverOf(i, r.dir[i], W);
+      expect(r.height[rc]).toBeLessThanOrEqual(r.height[i] + 0.01);
+    }
+  });
+
   it("is deterministic", () => {
     const again = solveHydrology(42, W, H);
     expect([...again.height]).toEqual([...r.height]);

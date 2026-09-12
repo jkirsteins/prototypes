@@ -19,7 +19,7 @@ import { cellOf, placeAt } from "../src/sim/position";
 import { patchCenter } from "../src/world/spatial";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { cellAt, regionAt } from "../src/world/gen";
-import { protectionOf } from "../src/sim/shelter";
+import { coverCeiling, protectionOf } from "../src/sim/shelter";
 import type { OpportunityKey, WeatherOpportunityContext } from "../src/sim/types";
 import { testRain } from "./weather-helpers";
 import { terrainCellNear, terrainRunNear } from "./world-facts";
@@ -346,11 +346,13 @@ describe("the storm choice", () => {
     const r = regionAt(world, state.player.region);
     regionState(state, world, r.id).campCell = r.campCell;
     // The far corner of the region, through deep snow: which cell that is the
-    // world decides, and the case is that the walk outlasts the warning.
+    // world decides, and the case is that the walk outlasts the warning. Ground
+    // that can hold no cover at all is a different case, an emergency shelter.
     let far = r.campCell;
     let longest = 0;
     for (const cell of r.cells) {
       if (!passable(cellAt(world, cell).terrain)) continue;
+      if (coverCeiling(world, cell) === 0) continue;
       placeAt(state, world, cell);
       weather.ensureGround(state, world, state.player.region).snowCm = 40;
       const minutes = minutesToCamp(state, world, calendar(0)) ?? 0;
