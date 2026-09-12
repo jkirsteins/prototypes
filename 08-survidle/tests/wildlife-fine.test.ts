@@ -10,7 +10,7 @@ import { visibleCells } from "../src/sim/sight";
 import { AGENT_SPECIES, activateWildlife, claimHuntableAnimal, dailyWildlife, evaluateWildlifeDisturbance, stepWildlife, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
 import { cellForMetricPoint, encounterGeometry, metricPointForPlayer, metricPointForWildlife } from "../src/sim/wildlife-space";
 import { cellAt, regionAt, type World } from "../src/world/gen";
-import { FINE_PER_PARENT, PATCH_M, patchAtMetric, patchCenter, patchId, patchXY } from "../src/world/spatial";
+import { FINE_PER_PARENT, PATCH_M, parentKey, parentXY, patchAtMetric, patchCenter, patchId, patchXY } from "../src/world/spatial";
 import { paintPatch } from "./siting-helpers";
 
 const seesStartle = { detectionRoll: 0, auditoryDetectionRoll: 1, sightRoll: 0, hearingRoll: 1 };
@@ -38,6 +38,17 @@ function paintBox(world: World, x0: number, y0: number, w: number, h: number, re
 const PEN_W = 9;
 const PEN_H = 8;
 
+/** Stands a subject on one patch of one region with one target and no route yet. */
+function place(deer: WildlifeSubject, region: number, cell: number, target: number): WildlifeSubject {
+  deer.region = region;
+  deer.active = {
+    cell, position: patchCenter(cell), travel: null, hunger: 20, thirst: 20, rest: 20,
+    alarm: 0, intent: "forage", target, route: [],
+    escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
+  };
+  return deer;
+}
+
 interface BarrierScene {
   state: GameState;
   world: World;
@@ -45,6 +56,8 @@ interface BarrierScene {
   animal: WildlifeSubject;
   barrierX: number;
   destination: number;
+  /** A patch on the herd's own side of the band, so the pen's walkability is testable. */
+  nearTarget: number;
 }
 
 /**
@@ -64,13 +77,8 @@ function wildlifeBarrierFixture(): BarrierScene {
   for (let y = y0 + 1; y < y0 + PEN_H - 1; y++) paintPatch(world, patchId(barrierX, y), "water", region);
   const start = patchId(x0 + 1, y0 + 3);
   const destination = patchId(x0 + PEN_W - 2, y0 + 3);
-  deer.region = region;
-  deer.active = {
-    cell: start, position: patchCenter(start), travel: null, hunger: 20, thirst: 20, rest: 20,
-    alarm: 0, intent: "forage", target: destination, route: [],
-    escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
-  };
-  return { state, world, calendar: calendar(state.minute, state.startDoy), animal: deer, barrierX, destination };
+  const nearTarget = patchId(barrierX - 1, y0 + 3);
+  return { state, world, calendar: calendar(state.minute, state.startDoy), animal: place(deer, region, start, destination), barrierX, destination, nearTarget };
 }
 
 /**
@@ -90,15 +98,13 @@ function regionSplitFixture(): BarrierScene {
   for (let y = y0 + 1; y < y0 + PEN_H - 1; y++) paintPatch(world, patchId(barrierX, y), "meadow", region + 1);
   const start = patchId(x0 + 1, y0 + 3);
   const destination = patchId(x0 + PEN_W - 2, y0 + 3);
-  deer.region = region;
-  deer.active = {
-    cell: start, position: patchCenter(start), travel: null, hunger: 20, thirst: 20, rest: 20,
-    alarm: 0, intent: "forage", target: destination, route: [],
-    escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
-  };
   state.minute = 0;
   state.wildlife.lastSpatialTick = -1;
-  return { state, world, calendar: calendar(state.minute, state.startDoy), animal: deer, barrierX, destination };
+  return {
+    state, world, calendar: calendar(state.minute, state.startDoy),
+    animal: place(deer, region, start, destination), barrierX, destination,
+    nearTarget: patchId(barrierX - 1, y0 + 3),
+  };
 }
 
 /** A herd on open painted ground with the survivor one metre to its east. */
@@ -159,13 +165,30 @@ describe("fine wildlife space", () => {
 describe("fine wildlife movement", () => {
   it("an active animal cannot cross an impassable fine band", () => {
     const scene = wildlifeBarrierFixture();
-    for (let minute = 1; minute <= 60; minute++) {
-      scene.state.minute = minute;
-      stepWildlife(scene.state, scene.world, calendar(minute, scene.state.startDoy), new Rng(minute), 1, "detailed");
-    }
+    const active = scene.animal.active!;
+    const start = active.cell;
+    const run = (minutes: number): void => {
+      const last = scene.state.minute + minutes;
+      for (let minute = scene.state.minute + 1; minute <= last; minute++) {
+        scene.state.minute = minute;
+        stepWildlife(scene.state, scene.world, calendar(minute, scene.state.startDoy), new Rng(minute), 1, "detailed");
+      }
+    };
 
-    expect(patchXY(scene.animal.active!.cell).x).toBeLessThan(scene.barrierX);
-    expect(cellAt(scene.world, scene.animal.active!.cell).terrain).toBe("meadow");
+    // The pen's own side is walkable and the herd follows a route across it,
+    // so the far side being unreached below is the water band and not an
+    // animal that never moves at all.
+    active.target = scene.nearTarget;
+    run(60);
+    expect(active.cell).not.toBe(start);
+    expect(patchXY(active.cell).x).toBeGreaterThan(patchXY(start).x);
+
+    active.target = scene.destination;
+    active.route = [];
+    run(60);
+
+    expect(patchXY(active.cell).x).toBeLessThan(scene.barrierX);
+    expect(cellAt(scene.world, active.cell).terrain).toBe("meadow");
   });
 
   it("reaches a target whose path leaves its region or gives it up, never standing on it", () => {
@@ -229,11 +252,21 @@ describe("fine wildlife detection", () => {
   it("reads alarm from exact metres inside one former parent area", () => {
     const { state, world, deer, cal } = openGroundFixture();
     const here = patchXY(cellOf(state, world));
-    const near = patchId(here.x + 1, here.y);
-    const far = patchId(here.x + 5, here.y);
-    // Both stand inside what one parent square spans, the coarse world's
-    // smallest step. Only their own metres can tell them apart.
-    expect(PATCH_M * 5).toBeLessThanOrEqual(PATCH_M * FINE_PER_PARENT);
+    // The two stands are the nearest and furthest patches of the one parent
+    // square the survivor is standing in, so the coarse world cannot tell them
+    // apart at all and only their own metres can.
+    const parentX0 = Math.floor(here.x / FINE_PER_PARENT) * FINE_PER_PARENT;
+    const offsets = [];
+    for (let x = parentX0; x < parentX0 + FINE_PER_PARENT; x++) if (x !== here.x) offsets.push(x);
+    offsets.sort((a, b) => Math.abs(a - here.x) - Math.abs(b - here.x));
+    const near = patchId(offsets[0], here.y);
+    const far = patchId(offsets[offsets.length - 1], here.y);
+    const parentOf = (cell: number): number => {
+      const p = parentXY(cell);
+      return parentKey(p.x, p.y);
+    };
+    expect(parentOf(near)).toBe(parentOf(far));
+    expect(parentOf(near)).toBe(parentOf(cellOf(state, world)));
     const alarmAt = (cell: number): number => {
       deer.active!.cell = cell;
       deer.active!.position = patchCenter(cell);
@@ -269,10 +302,15 @@ describe("fine wildlife detection", () => {
     const hidden = regionAt(world, state.player.region).cells.find((cell) => !visible.has(cell))!;
     expect(hidden).toBeDefined();
 
-    deer.active!.cell = here;
+    const stand = (cell: number): void => {
+      deer.active!.cell = cell;
+      deer.active!.position = patchCenter(cell);
+    };
+
+    stand(here);
     expect(visibleWildlife(state, world, cal)).toContain(deer);
 
-    deer.active!.cell = hidden;
+    stand(hidden);
     expect(visibleWildlife(state, world, cal)).not.toContain(deer);
   });
 });

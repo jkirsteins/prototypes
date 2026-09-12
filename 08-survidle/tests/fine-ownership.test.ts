@@ -8,13 +8,14 @@ import { forestGame, passableNeighbor, siteCamp } from "./siting-helpers";
 import { calendar } from "../src/sim/calendar";
 import { advance } from "../src/sim/advance";
 import { warmthAtFire } from "../src/sim/fire";
+import { processCarcass } from "../src/sim/hunting";
 import { addItem, freshTool, pile, pileAt, qty, reach } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAtPatch } from "../src/sim/position";
 import { regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { growWood, rootCellFullKg, setWoodPatchLeft, woodLeft, woodPatchFull, woodPatchLeft } from "../src/sim/stocks";
 import { check, pausedList, startTask, stopTask } from "../src/sim/tasks";
-import { iceHoleOpen } from "../src/sim/water";
+import { iceHoleOpen, sourceLitres } from "../src/sim/water";
 import { forgetHeardGround, surroundings } from "../src/sim/soundscape";
 import { parentSummary, resourcePotentialAt, TREES_PER_FOREST_KM2 } from "../src/world/aggregate";
 import { regionAt, terrainPeek, type World } from "../src/world/gen";
@@ -100,13 +101,18 @@ describe("fine ownership of local state", () => {
     const camp = siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     const neighbor = passableNeighbor(world, camp);
-    st.trap = { cell: camp, kg: 0, oilyKg: 0, fish: [], age: 0 };
+    const cal = calendar(state.minute, state.startDoy);
+    st.trap = { cell: camp, kg: 1, oilyKg: 0, fish: [], age: 0 };
     st.iceHole = { cell: camp, minute: state.minute };
     state.seeps[camp] = { class: "bog", litres: 2, ice: 0, dug: state.minute };
-    expect(st.trap.cell).toBe(camp);
+    // Read back through the paths the game itself uses, so a trap, a hole or a
+    // seep filed under the parent square rather than the patch fails here.
+    expect(check(state, world, cal, "emptyTrap", undefined, camp).ok).toBe(true);
+    expect(check(state, world, cal, "emptyTrap", undefined, neighbor).ok).toBe(false);
     expect(iceHoleOpen(state, camp)).toBe(true);
     expect(iceHoleOpen(state, neighbor)).toBe(false);
-    expect(state.seeps[neighbor]).toBeUndefined();
+    expect(sourceLitres(state, world, camp)).toBeGreaterThan(0);
+    expect(sourceLitres(state, world, neighbor)).toBe(0);
   });
 
   it("leaves a carcass on the patch it fell on", () => {
@@ -114,9 +120,13 @@ describe("fine ownership of local state", () => {
     const here = cellOf(state, world);
     const neighbor = passableNeighbor(world, here);
     state.carcasses.push({ id: 1, species: "hare", cell: here, killedAt: state.minute, warmAge: 0, yields: { meatKg: 2 } });
-    expect(state.carcasses.some((c) => c.cell === cellOf(state, world))).toBe(true);
+    // Butchering is the read path: 50 m away the kill is out of reach, and it
+    // is still lying where it fell when the survivor walks back onto it.
     placeAtPatch(state, world, neighbor);
-    expect(state.carcasses.some((c) => c.cell === cellOf(state, world))).toBe(false);
+    expect(processCarcass(state, world, 1)).toBe(null);
+    placeAtPatch(state, world, here);
+    expect(processCarcass(state, world, 1)).not.toBe(null);
+    expect(state.carcasses).toHaveLength(0);
   });
 
   it("shelters only the patch the cover was found on", () => {
