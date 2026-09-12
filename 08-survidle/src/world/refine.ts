@@ -303,7 +303,9 @@ function floodChunk(win: Window, height: Float32Array, kind: Uint8Array, surface
       if (filled[c] > rim) rim = filled[c];
       const cx = c % win.ww;
       const cy = (c - cx) / win.ww;
-      for (let k = 0; k < 8; k++) {
+      // Four neighbours, the neighbourhood lakeComponents grouped by, so an
+      // id is one of its depressions and carries one spill height.
+      for (let k = 0; k < 8; k += 2) {
         const nx = cx + DX8[k];
         const ny = cy + DY8[k];
         if (nx < 0 || ny < 0 || nx >= win.ww || ny >= win.wh) continue;
@@ -325,7 +327,6 @@ function floodChunk(win: Window, height: Float32Array, kind: Uint8Array, surface
   }
   return { filled, depressions: { id, rims: new Float32Array(rims) } };
 }
-
 
 /**
  * The channels: the solve's rivers and streams walked across one parent cell
