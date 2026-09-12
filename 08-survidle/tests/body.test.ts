@@ -450,7 +450,7 @@ describe("the runner in the elements", () => {
     const g = newGame(10);
     const { state, world } = g;
     const region = shoreCampWithDryForest(world, state.player.region);
-    placeAt(state, world, regionAt(world, region).campCell);
+    placeAt(state, world, regionAt(world, region).campCell!);
     siteCamp(state, world);
     mapRegion(state, world, state.player.region);
     addItem(state.player.pack, "driedMeat", 2);

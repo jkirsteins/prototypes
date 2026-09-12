@@ -728,7 +728,7 @@ describe("natural-first weather", () => {
     activateRemoteRefuge(state);
     const home = state.player.region;
     const remote = walkableNeighbour(world, home);
-    const refuge = regionAt(world, remote).campCell;
+    const refuge = regionAt(world, remote).campCell!;
     placeAt(state, world, refuge);
     siteFor(regionState(state, world, remote), refuge).cover = 2;
     recordOpportunityEvent(state, {
@@ -810,13 +810,13 @@ describe("Chapter 3 refuge storm evidence", () => {
       if (id === home) return false;
       const region = regionAt(world, id);
       const land = region.cells.filter((cell) => passable(cellAt(world, cell).terrain));
-      return land.some((cell) => straightKm(world, region.campCell, cell) > 1)
+      return land.some((cell) => straightKm(world, region.campCell!, cell) > 1)
         && land.some((cell) => cellAt(world, cell).terrain === "meadow" && !isLee(world, cell, atmosphereAt(state, world, cell).windBearingDeg))
         && land.some((cell) => cellAt(world, cell).terrain === "spruce");
     }));
     state.opportunities.context.weather = {
       opportunity: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
-      stormId, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
+      stormId, source: "natural", area: { region: remote.id, centre: remote.campCell!, radiusKm: 1 },
       announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
     return { home, remote };
@@ -829,8 +829,8 @@ describe("Chapter 3 refuge storm evidence", () => {
     // a storm, so the search keeps to land.
     const far = remote.cells
       .filter((cell) => passable(cellAt(world, cell).terrain))
-      .reduce((best, cell) => straightKm(world, remote.campCell, cell) > straightKm(world, remote.campCell, best) ? cell : best, remote.campCell);
-    expect(straightKm(world, remote.campCell, far)).toBeGreaterThan(1);
+      .reduce((best, cell) => straightKm(world, remote.campCell!, cell) > straightKm(world, remote.campCell!, best) ? cell : best, remote.campCell!);
+    expect(straightKm(world, remote.campCell!, far)).toBeGreaterThan(1);
     placeAt(state, world, far);
     siteFor(regionState(state, world, remote.id), far).structures.leanTo = true;
     state.weather.storm = { id: 90, source: "natural", kind: "rain", from: state.minute, until: state.minute + 60, warned: true };
@@ -920,7 +920,7 @@ describe("Chapter 3 refuge storm evidence", () => {
 
     state.opportunities.context.weather!.status = "running";
     state.opportunities.context.weather!.stormId = 97;
-    state.opportunities.context.weather!.area = { region: remote.id, centre: remote.campCell, radiusKm: 1 };
+    state.opportunities.context.weather!.area = { region: remote.id, centre: remote.campCell!, radiusKm: 1 };
     recordOpportunityEvent(state, {
       kind: "stormEnded", minute: state.minute + 60, stormId: 97, stormKind: "rain", survivorAlive: true,
       minutesByProtection: [0, 0, 60, 0], atCampMinutes: 0, awayFromCampMinutes: 60, maxWetness: 10 }, world);

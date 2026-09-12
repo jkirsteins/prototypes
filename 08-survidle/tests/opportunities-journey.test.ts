@@ -505,7 +505,7 @@ describe("opportunities are the world's, not a life's", () => {
     }
     expect(loaded.opportunities.completedAt.remoteRefuge).toBeUndefined();
     const remote = regionAt(world, home).neighbours[0].id;
-    const refuge = regionAt(world, remote).campCell;
+    const refuge = regionAt(world, remote).campCell!;
     placeAt(loaded, world, refuge);
     expect(recordOpportunityEvent(loaded, {
       kind: "protectionChanged", minute: loaded.minute, region: remote,

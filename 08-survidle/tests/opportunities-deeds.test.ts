@@ -570,7 +570,7 @@ describe("Chapter 3 field deeds", () => {
     openRemoteChapter(state);
     const home = state.player.region;
     const remote = regionAt(world, home).neighbours[0].id;
-    const refuge = regionAt(world, remote).campCell;
+    const refuge = regionAt(world, remote).campCell!;
     recordOpportunityEvent(state, { kind: "protectionChanged", minute: state.minute, region: remote, cell: refuge, from: 1, to: 2, source: "improved" }, world);
     const opportunity = state.opportunities.context.weather!;
     opportunity.stormId = 80;
@@ -620,7 +620,7 @@ describe("Chapter 3 field deeds", () => {
       const remote = regionAt(world, regionAt(world, state.player.region).neighbours[0].id);
       state.opportunities.context.weather = {
         opportunity: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
-        stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
+        stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell!, radiusKm: 1 },
         announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
         atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
       recordOpportunityEvent(state, ended(bad), world);
@@ -635,7 +635,7 @@ describe("Chapter 3 field deeds", () => {
     const remote = regionAt(world, regionAt(world, state.player.region).neighbours[0].id);
     state.opportunities.context.weather = {
       opportunity: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
-      stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
+      stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell!, radiusKm: 1 },
       announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
     expect(recordOpportunityEvent(state, ended(), world)).toContain("remoteStorm");

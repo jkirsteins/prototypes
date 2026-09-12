@@ -137,7 +137,7 @@ describe("where the work is done", () => {
     // A region that was given both spots: an outcrop to ask for and a forest to
     // fall back to. A region without an outcrop names no spot to refuse.
     const id = regionWithSpots(world, state.player.region, ["outcrop", "forest", "heath"]);
-    placeAt(state, world, regionAt(world, id).campCell);
+    placeAt(state, world, regionAt(world, id).campCell!);
     siteCamp(state, world);
     // Off forest ground, same reason as above, so the fallback is really tested.
     placeAtSpot(state, world, state.player.region, "heath");
@@ -168,7 +168,7 @@ describe("where the work is done", () => {
     // grounds to weigh against each other.
     const g = newGame(1);
     const { state, world } = g;
-    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["heath", "forest"])).campCell);
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["heath", "forest"])).campCell!);
     siteCamp(state, world);
     const r = regionAt(world, state.player.region);
     state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
@@ -201,7 +201,7 @@ describe("where the work is done", () => {
     // the forest are over their head and do not count toward that ground.
     const g = newGame(1);
     const { state, world } = g;
-    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["heath", "forest"])).campCell);
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["heath", "forest"])).campCell!);
     siteCamp(state, world);
     const r = regionAt(world, state.player.region);
     state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
@@ -318,7 +318,7 @@ describe("the work tier", () => {
     const { state, world } = g;
     // Stone is gathered at an outcrop, so the camp has to be in a region that
     // was given one; a region of forest and bog offers nothing to pick up.
-    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["outcrop"])).campCell);
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["outcrop"])).campCell!);
     siteCamp(state, world);
     mapRegion(state, world, state.player.region);
     const camp = regionState(state, world, state.player.region).campCell!;

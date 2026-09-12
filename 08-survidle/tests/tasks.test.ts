@@ -224,7 +224,7 @@ describe("tasks", () => {
     const { state, world } = g;
     // A region that can hold deer at all: a hunt cannot bring one down where
     // the species has no capacity.
-    placeAt(state, world, regionAt(world, regionNear(world, state.player.region, (id) => (regionAt(world, id).capacity.deer ?? 0) > 0)).campCell);
+    placeAt(state, world, regionAt(world, regionNear(world, state.player.region, (id) => (regionAt(world, id).capacity.deer ?? 0) > 0)).campCell!);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     state.player.tools.push({ id: "bow", durability: 100 });

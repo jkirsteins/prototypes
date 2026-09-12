@@ -123,14 +123,14 @@ export function iceShortcut(world: World, home: number, from: number): IceCrossi
  */
 export function walkableNeighbour(world: World, home: number): number {
   const land = (cell: number) => dryShod(world, cell);
-  const from = regionAt(world, home).campCell;
+  const from = regionAt(world, home).campCell!;
   for (const { id } of regionAt(world, home).neighbours) {
     if (id === home) continue;
     const inEither = (cell: number) => {
       const r = regionOfCell(world, cell);
       return r === home || r === id;
     };
-    if (flood(world, from, inEither, land).has(regionAt(world, id).campCell)) return id;
+    if (flood(world, from, inEither, land).has(regionAt(world, id).campCell!)) return id;
   }
   throw new Error(`no region beside ${home} is walkable from its camp without leaving the two`);
 }
@@ -442,6 +442,8 @@ export function openCampWithForestNear(world: World, home: number, withinCells =
   };
   for (const id of regionsOutward(world, home, 600)) {
     const camp = regionAt(world, id).campCell;
+    // An all-water region has no camp, and so no open camp either.
+    if (camp === null) continue;
     const terrain = terrainAt(camp);
     if (!passable(terrain) || FOREST.includes(terrain)) continue;
     const forestCells = forestRing(camp);
@@ -523,7 +525,7 @@ export function shoreCampWithDryForest(world: World, home: number, accept: (regi
   const wet = (cell: number) => streamAt(world, cell) || neighbours(world, cell).some((n) => streamAt(world, n) || waterKindOf(world, n) !== null);
   return regionNear(world, home, (id) => {
     const region = regionAt(world, id);
-    if (!wet(region.campCell) || !accept(id)) return false;
+    if (!wet(region.campCell!) || !accept(id)) return false;
     const forest = region.spots.find((s) => s.id === "forest");
     return forest !== undefined && !wet(forest.cell);
   });
@@ -539,9 +541,9 @@ export function shoreCampWithDryForest(world: World, home: number, accept: (regi
 export function forestCampOnWater(world: World, home: number): number {
   const id = regionNear(world, home, (r) => {
     const camp = regionAt(world, r).campCell;
-    return FOREST.includes(cellAt(world, camp).terrain) && neighbours(world, camp).some((n) => waterKindOf(world, n) !== null);
+    return camp !== null && FOREST.includes(cellAt(world, camp).terrain) && neighbours(world, camp).some((n) => waterKindOf(world, n) !== null);
   });
-  return regionAt(world, id).campCell;
+  return regionAt(world, id).campCell!;
 }
 
 /** The nearest region to `home`, itself included, that satisfies a rule. */

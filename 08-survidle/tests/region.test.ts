@@ -33,7 +33,7 @@ describe("fine world and regions", () => {
     // The camp is one of them, and it is the nearest of them to the centroid.
     expect(beside).toContain(region.campCell);
     const distance = (c: number) => Math.hypot(c % world.w - region.cx, Math.floor(c / world.w) - region.cy);
-    expect(distance(region.campCell)).toBeCloseTo(Math.min(...beside.map(distance)), 6);
+    expect(distance(region.campCell!)).toBeCloseTo(Math.min(...beside.map(distance)), 6);
   });
 
   it("uses one fine identity across cells, peeks and generated patches", () => {

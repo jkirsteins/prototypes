@@ -51,7 +51,7 @@ export interface RegionDef {
   neighbours: { id: number; km: number }[];
   spots: Spot[];
   /** A passable shore or centroid patch; no camp exists in an all-water region. */
-  campCell: PatchId;
+  campCell: PatchId | null;
 }
 
 /** The solve is the dear part; regions and chunks come as they are touched. */
@@ -175,8 +175,7 @@ function buildRegion(world: World, id: number): RegionDef {
   // and the centroid is only where the region's middle happens to be. A region
   // with no shore keeps the centroid camp.
   const campCell = nearestCell(world, cells, cx, cy, campWaterside(world))
-    ?? nearestCell(world, cells, cx, cy, (c) => passable(c.terrain))
-    ?? cells[0];
+    ?? nearestCell(world, cells, cx, cy, (c) => passable(c.terrain));
   const rng = new Rng(derive(world.seed, 1000 + id));
   const r: RegionDef = {
     id,
@@ -432,7 +431,10 @@ function findStart(world: World): { id: number; cell: number; ring: number } {
     }
   }
   const id = ay * LATTICE_W + ax;
-  const fallback = { id, cell: regionAt(world, id).campCell, ring: START_MAX_RING };
+  const camp = regionAt(world, id).campCell;
+  // The anchor is the last resort, and an all-water one is nowhere to land at all.
+  if (camp === null) throw new Error(`seed ${world.seed} has no landing and no camp in its anchor region`);
+  const fallback = { id, cell: camp, ring: START_MAX_RING };
   STARTS.set(key, fallback);
   return fallback;
 }

@@ -346,7 +346,7 @@ describe("checking the snares", () => {
     // for the snares: the felling has to happen away from any water, or the
     // thirst is answered where he stands and never ranks against anything.
     const region = shoreCampWithDryForest(world, state.player.region, (id) => hasSpot(regionAt(world, id), "heath"));
-    placeAt(state, world, regionAt(world, region).campCell);
+    placeAt(state, world, regionAt(world, region).campCell!);
     siteCamp(state, world);
     kitOut(state, world);
     state.player.energy = 100;

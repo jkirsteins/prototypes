@@ -106,7 +106,7 @@ describe("camp", () => {
     // A camp in country that holds wolves: a region whose capacity has none
     // never sends any, whatever the hour.
     const { state, world } = newGame(1);
-    placeAt(state, world, regionAt(world, regionNear(world, state.player.region, (id) => (regionAt(world, id).capacity.wolf ?? 0) > 0)).campCell);
+    placeAt(state, world, regionAt(world, regionNear(world, state.player.region, (id) => (regionAt(world, id).capacity.wolf ?? 0) > 0)).campCell!);
     siteCamp(state, world);
     const rng = new Rng(11);
     let hits = 0;
