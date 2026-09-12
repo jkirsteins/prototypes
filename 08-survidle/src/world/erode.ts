@@ -9,6 +9,7 @@ import { CELL_KM } from "../units";
 import { accumulate, DIST8, flowDirections, NO_FLOW, priorityFlood, receiverOf } from "./hydro";
 import { fbm } from "./noise";
 import { seedsFor, templateHeightM, TEMPLATE_H_KM, TEMPLATE_W_KM } from "./terrain";
+import { upsampleGrid } from "./upsample";
 
 export const COARSE_KM = 1.2;
 const COARSE_PER_FINE = COARSE_KM / CELL_KM;
@@ -84,56 +85,30 @@ export function erode(height: Float32Array, cw: number, ch: number, uplift: Floa
   }
 }
 
-/** Catmull-Rom weights for a fractional offset t in 0..1. */
-function cubic(t: number): [number, number, number, number] {
-  const t2 = t * t;
-  const t3 = t2 * t;
-  return [
-    -0.5 * t3 + t2 - 0.5 * t,
-    1.5 * t3 - 2.5 * t2 + 1,
-    -1.5 * t3 + 2 * t2 + 0.5 * t,
-    0.5 * t3 - 0.5 * t2,
-  ];
-}
+/** Detail amplitude at 300 m, metres: level ground and slopes of 15 percent and more. */
+export const COARSE_DETAIL_FLAT_M = 12;
+export const COARSE_DETAIL_STEEP_M = 60;
+/** Wavelength of the 300 m rung's detail octaves, km. */
+const COARSE_DETAIL_KM = 2.5;
 
 /**
  * Bicubic interpolation of the coarse surface onto the fine grid, plus
  * two octaves of detail at 2.5 km whose amplitude is 12 m on flat ground
- * and 60 m on slopes of 15 percent and more.
+ * and 60 m on slopes of 15 percent and more. The rung from 300 m to 50 m
+ * runs the same helper with its own amplitudes and octave.
  */
 export function upsample(coarse: Float32Array, cw: number, ch: number, w: number, h: number, seed: number): Float32Array {
   const s = seedsFor(seed);
-  const fine = new Float32Array(w * h);
-  const at = (x: number, y: number) => coarse[(y < 0 ? 0 : y >= ch ? ch - 1 : y) * cw + (x < 0 ? 0 : x >= cw ? cw - 1 : x)];
   const kmPerFineU = TEMPLATE_W_KM / w;
   const kmPerFineV = TEMPLATE_H_KM / h;
-  for (let y = 0; y < h; y++) {
-    const gy = (y + 0.5) / COARSE_PER_FINE - 0.5;
-    const iy = Math.floor(gy);
-    const wy = cubic(gy - iy);
-    for (let x = 0; x < w; x++) {
-      const gx = (x + 0.5) / COARSE_PER_FINE - 0.5;
-      const ix = Math.floor(gx);
-      const wx = cubic(gx - ix);
-      let v = 0;
-      for (let j = 0; j < 4; j++) {
-        let row = 0;
-        for (let i = 0; i < 4; i++) row += wx[i] * at(ix - 1 + i, iy - 1 + j);
-        v += wy[j] * row;
-      }
-      // Local slope of the coarse surface, metres per metre.
-      const cx = Math.min(cw - 1, Math.max(0, Math.round(gx)));
-      const cy = Math.min(ch - 1, Math.max(0, Math.round(gy)));
-      const dzx = (at(cx + 1, cy) - at(cx - 1, cy)) / (2 * COARSE_KM * 1000);
-      const dzy = (at(cx, cy + 1) - at(cx, cy - 1)) / (2 * COARSE_KM * 1000);
-      const slope = Math.sqrt(dzx * dzx + dzy * dzy);
-      const amp = 12 + 48 * (slope > 0.15 ? 1 : slope / 0.15);
-      const xKm = (x + 0.5) * kmPerFineU;
-      const yKm = (y + 0.5) * kmPerFineV;
-      const detail = (fbm(xKm / 2.5, yKm / 2.5, s.detail, 2) - 0.5) * 2 * amp;
-      // The sea keeps its floor: detail on the shelf is a tenth, so no fine cell rises through the surface by noise alone.
-      fine[y * w + x] = v <= 0 ? v + detail / 10 : v + detail;
-    }
-  }
-  return fine;
+  return upsampleGrid({
+    src: coarse,
+    sw: cw,
+    sh: ch,
+    ratio: COARSE_PER_FINE,
+    spacingM: COARSE_KM * 1000,
+    flatM: COARSE_DETAIL_FLAT_M,
+    steepM: COARSE_DETAIL_STEEP_M,
+    detail: (x, y) => fbm((x + 0.5) * kmPerFineU / COARSE_DETAIL_KM, (y + 0.5) * kmPerFineV / COARSE_DETAIL_KM, s.detail, 2) - 0.5,
+  }, w, h);
 }
