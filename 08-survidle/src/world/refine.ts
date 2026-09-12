@@ -127,10 +127,12 @@ interface Window {
 }
 
 function windowOf(solved: SolvedWorld, cx: number, cy: number): Window {
-  const px0 = Math.max(0, cx * CHUNK_PARENTS - APRON_PARENTS);
-  const py0 = Math.max(0, cy * CHUNK_PARENTS - APRON_PARENTS);
-  const px1 = Math.min(solved.w, cx * CHUNK_PARENTS + CHUNK_PARENTS + APRON_PARENTS);
-  const py1 = Math.min(solved.h, cy * CHUNK_PARENTS + CHUNK_PARENTS + APRON_PARENTS);
+  // A chunk beyond the solved arrays has no ground to refine, so the window
+  // collapses to one parent rather than going negative.
+  const px0 = Math.min(solved.w - 1, Math.max(0, cx * CHUNK_PARENTS - APRON_PARENTS));
+  const py0 = Math.min(solved.h - 1, Math.max(0, cy * CHUNK_PARENTS - APRON_PARENTS));
+  const px1 = Math.min(solved.w, Math.max(px0 + 1, cx * CHUNK_PARENTS + CHUNK_PARENTS + APRON_PARENTS));
+  const py1 = Math.min(solved.h, Math.max(py0 + 1, cy * CHUNK_PARENTS + CHUNK_PARENTS + APRON_PARENTS));
   return {
     px0, py0,
     pw: px1 - px0,
@@ -548,8 +550,8 @@ export function refineChunk(seed: number, solved: SolvedWorld, cx: number, cy: n
   const win = windowOf(solved, cx, cy);
   const x0 = cx * FINE_CHUNK;
   const y0 = cy * FINE_CHUNK;
-  const w = Math.min(FINE_CHUNK, solved.w * FINE_PER_PARENT - x0);
-  const h = Math.min(FINE_CHUNK, solved.h * FINE_PER_PARENT - y0);
+  const w = Math.max(0, Math.min(FINE_CHUNK, solved.w * FINE_PER_PARENT - x0));
+  const h = Math.max(0, Math.min(FINE_CHUNK, solved.h * FINE_PER_PARENT - y0));
   const height = fineHeights(seed, solved, win);
   const { kind, surface } = waterKinds(solved, win, height);
   const { filled, depressions } = floodChunk(win, height, kind, surface);
