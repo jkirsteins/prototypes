@@ -6,7 +6,7 @@
  * against a lattice of another shape or a world of another solve.
  */
 export const SAVE_VERSION = 10;
-export const WORLD_VERSION = 3;
+export const WORLD_VERSION = 4;
 
 export type SaveCompatibility = "current" | "old-world" | "invalid";
 

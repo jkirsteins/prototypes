@@ -12,8 +12,14 @@ export { KIND, FLAG_FORD, FLAG_STREAM, RIVER_M3S, STREAM_M3S, FORD_GRADIENT };
 
 export type SolveProgress = (stage: string, fraction: number) => void;
 export const STAGES = ["raising the land", "wearing the valleys", "filling the lakes", "cutting the fjords", "naming the ground"] as const;
-/** Bumped whenever the solve changes what a seed produces; the node cache is keyed by it. */
-export const GENERATOR_VERSION = 5;
+/**
+ * Bumped whenever what a seed produces changes: the node cache and the browser
+ * cache are keyed by it and the save sync's handshake carries it. The fine
+ * refinement is part of what a seed produces, so a change to it bumps this
+ * number even though the solved arrays themselves are untouched - two clients
+ * that disagree about the ground under a patch do not share a world.
+ */
+export const GENERATOR_VERSION = 6;
 /** A depression must be this deep somewhere to be a lake rather than damp ground. */
 export const LAKE_MIN_DEPTH_M = 2;
 
