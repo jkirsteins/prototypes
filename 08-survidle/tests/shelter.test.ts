@@ -14,6 +14,7 @@ import { builtProtection, COVER_CEILING, EMERGENCY_MINUTES, findCover, protectio
 import { check, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { TASK_IDS, type Terrain } from "../src/sim/types";
 import { cellAt, regionAt } from "../src/world/gen";
+import { patchId, patchXY } from "../src/world/spatial";
 
 type Game = ReturnType<typeof newGame>;
 
@@ -29,19 +30,38 @@ function emergencyGame() {
   return { ...g, site, meadow };
 }
 
+const foundCells = new WeakMap<Game["world"], Map<Terrain, number>>();
+
+/**
+ * The nearest 50 m patch of one terrain to the landing, hunted for ring by
+ * ring. Twelve regions was enough when a cell was 300 m of the solve's own
+ * classification; the refined ground names its terrain patch by patch, so a
+ * stand of meadow or pine that the landing's neighbourhood used to average
+ * into existence may be a few kilometres off. The read is the generated
+ * patch's own terrain, which is what the shelter rules read, and the search
+ * is cached per world because it builds chunks.
+ */
 function cellWith({ world }: Game, terrain: Terrain): number {
-  const pending = [world.start];
-  const visited = new Set<number>();
-  for (let i = 0; i < pending.length && visited.size < 12; i++) {
-    const id = pending[i];
-    if (visited.has(id)) continue;
-    visited.add(id);
-    const region = regionAt(world, id);
-    const cell = region.cells.find(cell => cellAt(world, cell).terrain === terrain);
-    if (cell !== undefined) return cell;
-    for (const neighbor of region.neighbours) if (!visited.has(neighbor.id)) pending.push(neighbor.id);
+  let byTerrain = foundCells.get(world);
+  if (!byTerrain) { byTerrain = new Map(); foundCells.set(world, byTerrain); }
+  const hit = byTerrain.get(terrain);
+  if (hit !== undefined) return hit;
+  const origin = patchXY(regionAt(world, world.start).campCell!);
+  for (let ring = 0; ring <= 400; ring++) {
+    for (let dy = -ring; dy <= ring; dy++) {
+      const edge = Math.abs(dy) === ring;
+      for (let dx = -ring; dx <= ring; dx += edge || ring === 0 ? 1 : 2 * ring) {
+        const x = origin.x + dx;
+        const y = origin.y + dy;
+        if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
+        const patch = patchId(x, y);
+        if (cellAt(world, patch).terrain !== terrain) continue;
+        byTerrain.set(terrain, patch);
+        return patch;
+      }
+    }
   }
-  throw new Error(`no ${terrain} cell in the twelve regions around the start`);
+  throw new Error(`no ${terrain} patch within twenty kilometres of the landing`);
 }
 
 function finishTask(g: Game): void {

@@ -4,7 +4,7 @@
  * These are the reads that used to be answered by a 300 m square.
  */
 import { describe, expect, it } from "vitest";
-import { forestGame, passableNeighbor, siteCamp } from "./siting-helpers";
+import { dryPair, forestGame, passableNeighbor, siteCamp } from "./siting-helpers";
 import { calendar } from "../src/sim/calendar";
 import { advance } from "../src/sim/advance";
 import { warmthAtFire } from "../src/sim/fire";
@@ -101,18 +101,22 @@ describe("fine ownership of local state", () => {
     const camp = siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     const neighbor = passableNeighbor(world, camp);
+    // The seep is asked on dry ground: open water beside a patch is water
+    // without limit, and a shore camp and its neighbours alike would answer
+    // the seep's question before the seep was dug.
+    const dry = dryPair(world, camp);
     const cal = calendar(state.minute, state.startDoy);
     st.trap = { cell: camp, kg: 1, oilyKg: 0, fish: [], age: 0 };
     st.iceHole = { cell: camp, minute: state.minute };
-    state.seeps[camp] = { class: "bog", litres: 2, ice: 0, dug: state.minute };
+    state.seeps[dry.here] = { class: "bog", litres: 2, ice: 0, dug: state.minute };
     // Read back through the paths the game itself uses, so a trap, a hole or a
     // seep filed under the parent square rather than the patch fails here.
     expect(check(state, world, cal, "emptyTrap", undefined, camp).ok).toBe(true);
     expect(check(state, world, cal, "emptyTrap", undefined, neighbor).ok).toBe(false);
     expect(iceHoleOpen(state, camp)).toBe(true);
     expect(iceHoleOpen(state, neighbor)).toBe(false);
-    expect(sourceLitres(state, world, camp)).toBeGreaterThan(0);
-    expect(sourceLitres(state, world, neighbor)).toBe(0);
+    expect(sourceLitres(state, world, dry.here)).toBeGreaterThan(0);
+    expect(sourceLitres(state, world, dry.there)).toBe(0);
   });
 
   it("leaves a carcass on the patch it fell on", () => {
@@ -142,7 +146,8 @@ describe("fine ownership of local state", () => {
 describe("resources a fine patch grows", () => {
   it("derives forest stock from 0.0025 square kilometres", () => {
     const { state, world } = forestGame(21);
-    const patch = findTerrainPatch(world, cellOf(state, world), "spruce");
+    // The patch underfoot is timber, whichever of the three the seed grows there.
+    const patch = cellOf(state, world);
     const potential = resourcePotentialAt(world, patch);
     expect(potential.areaKm2).toBeCloseTo(0.0025, 8);
     expect(potential.trees).toBeGreaterThan(0);

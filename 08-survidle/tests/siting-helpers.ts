@@ -1,11 +1,11 @@
 import { newGame } from "../src/sim/newgame";
-import { cellOf, placeAtPatch } from "../src/sim/position";
+import { cellOf, placeAtPatch, watersideCell } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import type { GameState, Terrain } from "../src/sim/types";
 import { FINE_CHUNK } from "../src/world/cells";
 import { cellAt, neighbours, regionAt, type RegionDef, type World } from "../src/world/gen";
 import { findRoute, passable } from "../src/world/route";
-import { fineNeighbours } from "../src/world/spatial";
+import { fineNeighbours, patchId, patchXY } from "../src/world/spatial";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 
 /**
@@ -56,29 +56,35 @@ export function requireCamp(region: RegionDef): number {
   return region.campCell;
 }
 
+/** The three terrains that stand timber: what "in the forest" means to the stock rules. */
+const TIMBER: Terrain[] = ["spruce", "pine", "birch"];
+
 /**
- * A run whose survivor stands in spruce: the nearest spruce patch of the
+ * A run whose survivor stands in timber: the nearest forest patch of the
  * starting region that a route actually reaches, walked to rather than
  * painted, so the ground under the test is ground the world generated.
+ * Which of the three conifers or birches it is belongs to the seed - a
+ * landing region may hold birch and no spruce - and the stock rules a caller
+ * tests read the patch's own potential either way.
  */
 export function forestGame(seed: number): { state: GameState; world: World } {
   const { state, world } = newGame(seed);
   const from = cellOf(state, world);
   const origin = cellAt(world, from);
-  const spruce = regionAt(world, state.player.region).cells
-    .filter((cell) => cellAt(world, cell).terrain === "spruce")
+  const forest = regionAt(world, state.player.region).cells
+    .filter((cell) => TIMBER.includes(cellAt(world, cell).terrain))
     .map((cell) => {
       const c = cellAt(world, cell);
       return { cell, distance: (c.x - origin.x) ** 2 + (c.y - origin.y) ** 2 };
     })
     .sort((a, b) => a.distance - b.distance || a.cell - b.cell);
-  for (const { cell } of spruce.slice(0, 24)) {
+  for (const { cell } of forest.slice(0, 24)) {
     if (cell === from || findRoute(world, from, cell)) {
       placeAtPatch(state, world, cell);
       return { state, world };
     }
   }
-  throw new Error(`seed ${seed} starts nowhere near reachable spruce`);
+  throw new Error(`seed ${seed} starts nowhere near reachable forest`);
 }
 
 /** The first passable neighbour of a patch: the ground one step off, 50 m away. */
@@ -86,4 +92,32 @@ export function passableNeighbor(world: World, patch: number): number {
   const n = fineNeighbours(world, patch).find((f) => passable(cellAt(world, f.patch).terrain));
   if (!n) throw new Error(`patch ${patch} has no passable neighbour`);
   return n.patch;
+}
+
+/**
+ * Two patches 50 m apart with no water beside either: the ground on which a
+ * dug seep is the only water there is. Open water beside a patch answers any
+ * question about water with "as much as you like", and a shore camp's own
+ * neighbours are waterside too, so a case about what one patch holds has to be
+ * asked where the ground is dry. Found by ringing out from `from` rather than
+ * named, because which ground is dry belongs to the seed.
+ */
+export function dryPair(world: World, from: number): { here: number; there: number } {
+  const dry = (patch: number) => passable(cellAt(world, patch).terrain) && !watersideCell(world, patch);
+  const origin = patchXY(from);
+  for (let ring = 0; ring <= 60; ring++) {
+    for (let dy = -ring; dy <= ring; dy++) {
+      const edge = Math.abs(dy) === ring;
+      for (let dx = -ring; dx <= ring; dx += edge || ring === 0 ? 1 : 2 * ring) {
+        const x = origin.x + dx;
+        const y = origin.y + dy;
+        if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
+        const here = patchId(x, y);
+        if (!dry(here)) continue;
+        const there = fineNeighbours(world, here).find((f) => dry(f.patch));
+        if (there) return { here, there: there.patch };
+      }
+    }
+  }
+  throw new Error(`no dry pair of patches within reach of ${from}`);
 }
