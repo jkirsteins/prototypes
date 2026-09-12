@@ -18,6 +18,7 @@ import { FINE_CHUNK } from "../src/world/cells";
 import { parentSummary } from "../src/world/aggregate";
 import { CANOPY_HEIGHT_M, TERRAIN_INDEX } from "../src/world/terrain";
 import * as cells from "../src/world/cells";
+import * as gen from "../src/world/gen";
 import { testAtmosphere } from "./weather-helpers";
 import { solvedWorld } from "./world-fixture";
 import { regionsOutward } from "./world-facts";
@@ -112,6 +113,16 @@ function openWorld(): { state: GameState; world: World; vantage: number } {
 /** One elevation over the whole world, at the one reader the ray and the summaries share. */
 function flatFields(elevationM: number): void {
   vi.spyOn(cells, "fineSurfaceAt").mockReturnValue(elevationM);
+}
+
+/**
+ * The relief the vantage stands in. Prominence reads the solve's own heights
+ * rather than the refined surface a ray marches, so a flat field of one
+ * elevation is a vantage of no prominence at all: this says the vantage patch
+ * rises `metres` over ground that is at sea level everywhere else.
+ */
+function standsAbove(x: number, y: number, metres: number): void {
+  vi.spyOn(gen, "heightAt").mockImplementation((_world, px, py) => (px === x && py === y ? metres : 0));
 }
 
 function at(world: World, vantage: number, dx: number, dy: number): number {
@@ -213,6 +224,7 @@ describe("sight", () => {
     const { state, world, vantage } = openWorld();
     world.fineChunks.get(0)!.terrain.fill(TERRAIN_INDEX.fell);
     flatFields(1_200);
+    standsAbove(48, 48, 1_200);
     testAtmosphere({ cloud: 0, precipMmPerHour: 0, extinctionPerKm: 0.06 });
     current(state).person.axes.eyes = 2;
     setSkillLevel(state, "wayfinding", 20);

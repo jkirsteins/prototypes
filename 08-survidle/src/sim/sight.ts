@@ -4,7 +4,6 @@
  * cuts short, side by side; the dark takes it away. Marks cells, never
  * regions.
  */
-import { CELL_KM } from "../units";
 import { parentSummary } from "../world/aggregate";
 import { FINE_CHUNK, fineSurfaceAt } from "../world/cells";
 import { heightAt, regionPeek, terrainOf, type World } from "../world/gen";
@@ -133,9 +132,9 @@ export function clearObstacleReadCount(): void { obstacleReads = 0; }
 /** Open ground and water: the plain standing-eye horizon. */
 const OPEN_RANGE_CELLS = horizonCells(EYE_HEIGHT_M);
 
-/** A vantage is as high as it stands above the lowest ground within this many km, sampled every five cells. */
+/** A vantage is as high as it stands above the lowest ground within this many km, sampled this far apart. */
 const PROMINENCE_KM = 20;
-const PROMINENCE_STEP = 5;
+const PROMINENCE_SAMPLE_KM = 1.5;
 
 /**
  * Height above the lowest ground within 20 km: what the horizon formula
@@ -143,10 +142,14 @@ const PROMINENCE_STEP = 5;
  * have; a fell above a fjord earns its view from the fjord's surface.
  */
 export function prominenceM(world: World, x: number, y: number): number {
-  const reach = Math.round(PROMINENCE_KM / CELL_KM);
+  // x and y are patches, so both the reach and the sample spacing are read in
+  // patches; the height under each one is its parent's, which is where the
+  // solve put the landscape this measures.
+  const reach = Math.round(PROMINENCE_KM / PATCH_KM);
+  const step = Math.round(PROMINENCE_SAMPLE_KM / PATCH_KM);
   let lowest = heightAt(world, x, y);
-  for (let dy = -reach; dy <= reach; dy += PROMINENCE_STEP) {
-    for (let dx = -reach; dx <= reach; dx += PROMINENCE_STEP) {
+  for (let dy = -reach; dy <= reach; dy += step) {
+    for (let dx = -reach; dx <= reach; dx += step) {
       const xx = x + dx;
       const yy = y + dy;
       if (xx < 0 || yy < 0 || xx >= world.w || yy >= world.h) continue;

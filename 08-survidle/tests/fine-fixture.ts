@@ -16,6 +16,8 @@ export interface FineFixture {
   /** The chunk's own arrays, painted by the case. */
   terrain: Uint8Array;
   height: Float32Array;
+  /** What a ray is blocked by and a lake or the sea reads its level from. */
+  surface: Float32Array;
   kind: Uint8Array;
   channel: Uint8Array;
   /** The chunk-local index of a patch, which is its patch id inside the first chunk. */
@@ -39,5 +41,5 @@ export function fineFixture(opts: { terrain: Terrain; seed?: number; heightM?: n
     cx: 0, cy: 0, fine, terrain, region: new Int32Array(FINE_CHUNK * FINE_CHUNK),
     samples: terrain.length, parentSummaries: new Map(),
   });
-  return { world, terrain, height: fine.height, kind: fine.kind, channel: fine.channel, at: (x, y) => y * FINE_CHUNK + x };
+  return { world, terrain, height: fine.height, surface: fine.surface, kind: fine.kind, channel: fine.channel, at: (x, y) => y * FINE_CHUNK + x };
 }
