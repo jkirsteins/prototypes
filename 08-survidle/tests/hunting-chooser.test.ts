@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { bestHuntCell, HUNT_SHORTLIST, huntEstimate } from "../src/sim/hunting";
+import { bestHuntCell, huntCandidates, HUNT_SHORTLIST, huntEstimate } from "../src/sim/hunting";
 import { markKnown, mapRegion } from "../src/sim/mapped";
 import { isKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { setSkillLevel } from "../src/sim/horizon";
-import { cellOf, kmBetween } from "../src/sim/position";
+import { campCellOf, cellOf, kmBetween } from "../src/sim/position";
 import * as routing from "../src/sim/routing";
 import { skillLevel } from "../src/sim/skills";
 import { visibleCells } from "../src/sim/sight";
@@ -52,7 +52,10 @@ describe("the hunting chooser", () => {
   // from the region to the shortlist. Level 10 mixes the two terms and is the
   // case that can. The expert's choice is not the cell underfoot, so the
   // agreement has teeth there too.
-  it.each([1, 10, 20])("picks the cell the whole-region sweep picks at hunting level %i", (level) => {
+  // A sweep of all the candidate ground is exactly the assertion that the
+  // shortlist cuts no winner: if the twenty-four it keeps had lost the best
+  // cell, the sweep would name it here and the chooser would not.
+  it.each([1, 10, 20])("picks the cell a sweep of every candidate cell picks at hunting level %i", (level) => {
     const { state, world } = newGame(42);
     mapRegion(state, world, state.player.region);
     setSkillLevel(state, "hunting", level);
@@ -62,20 +65,32 @@ describe("the hunting chooser", () => {
 });
 
 /**
- * The chooser as it scored before the shortlist: an estimate and a route for
- * every mapped cell of the region. It is here so the shortlist is measured
- * against the scoring it replaced rather than against a remembered cell.
+ * The chooser as it scored before the shortlist: an estimate and a real route
+ * for every cell the chooser is willing to consider, rather than for the
+ * twenty-four it keeps. It is here so the shortlist is measured against the
+ * scoring it replaced rather than against a remembered cell.
+ *
+ * Two things it must share with the chooser or it measures something else.
+ * The ground: `huntCandidates` represents each parent and terrain by the
+ * nearest patch of it, which is a narrowing of its own with its own reason,
+ * and not what the shortlist does. The travel: `huntEstimate` divides by the
+ * walk, so an estimate told nothing about the walk is a different quantity.
  */
 function sweepHuntCell(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"], cal: ReturnType<typeof calendar>): number {
   const here = cellOf(state, world);
+  const camp = campCellOf(state, world);
   const observable = visibleCells(state, world, cal, here);
-  const choices = regionAt(world, state.player.region).cells
+  const choices = huntCandidates(state, world, [regionAt(world, state.player.region)])
     .filter((cell) => isKnown(state, cell))
     .map((cell) => {
-      const estimate = huntEstimate(state, world, cal, cell, observable);
-      if (!estimate.species.length) return null;
       const km = kmBetween(state, world, here, cell, "none");
       if (km === null) return null;
+      // The same quantity the chooser scores: an estimate that has been told
+      // what the walk to the cell and back to camp costs. Scoring without it
+      // measures a different thing and the two paths cannot be compared.
+      const travel = { toCell: km, toCamp: camp === null ? 0 : (kmBetween(state, world, cell, camp, "none") ?? 0) };
+      const estimate = huntEstimate(state, world, cal, cell, observable, travel);
+      if (!estimate.species.length) return null;
       return { cell, km, estimate };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);

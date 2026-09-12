@@ -268,6 +268,25 @@ export function fineWaterAt(world: World, patch: PatchId): WaterKind | null {
 }
 
 /**
+ * The water at the patch where the chunk is already resident, and null where it
+ * is not: for the map, which draws a block of ground per glyph and must not
+ * generate a chunk to mark a brook. A brook the ground has not been built for
+ * goes unmarked rather than being drawn across a whole parent.
+ */
+export function fineWaterPeek(world: World, x: number, y: number): WaterKind | null {
+  if (!inWorld(world, x, y)) return "sea";
+  const chunk = residentChunk(world, x, y);
+  if (!chunk) return null;
+  const i = chunkIndexOf(x, y);
+  const kind = chunk.fine.kind[i];
+  if (kind === KIND.sea) return "sea";
+  if (kind === KIND.lake) return "lake";
+  if (kind === KIND.river) return "river";
+  const channel = chunk.fine.channel[i];
+  return channel === CHANNEL_RIVER ? "river" : channel === CHANNEL_STREAM ? "stream" : null;
+}
+
+/**
  * Water a survivor standing on this patch can reach: a channel under the feet
  * counts, since a stream or a river is one patch wide and being on it is being
  * at it, and any water on the four neighbouring patches counts as beside.

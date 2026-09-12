@@ -13,6 +13,9 @@ import { activateWildlife } from "../src/sim/wildlife-agents";
 import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml, WATER_RIPPLES, waterRipplePeak, waterRipplePhases } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState } from "../src/ui/render";
 import { cellAt, neighbours, regionPeek } from "../src/world/gen";
+import { cellIdx, chunkIndexOf, residentChunk } from "../src/world/cells";
+import { CHANNEL_STREAM } from "../src/world/refine";
+import { FINE_PER_PARENT, patchXY } from "../src/world/spatial";
 import { passable } from "../src/world/route";
 import { css, rule } from "./css";
 import { neighbourLandCell } from "./siting-helpers";
@@ -22,6 +25,41 @@ import { testAtmosphere } from "./weather-helpers";
 afterEach(() => vi.restoreAllMocks());
 
 describe("the map's compositing layers", () => {
+  it("marks a brook where the channel runs, not across its whole parent", () => {
+    const { state, world } = newGame(79);
+    mapRegion(state, world, state.player.region);
+    const here = cellOf(state, world);
+    const { x, y } = patchXY(here);
+    const chunk = residentChunk(world, x, y)!;
+    // The brook is the chunk's own channel, so the case paints one: the patches
+    // of one 300 m parent, one with the channel through it and the rest dry.
+    chunk.fine.channel.fill(0);
+    const px0 = Math.floor(x / FINE_PER_PARENT) * FINE_PER_PARENT;
+    const py0 = Math.floor(y / FINE_PER_PARENT) * FINE_PER_PARENT;
+    const parent: number[] = [];
+    for (let fy = py0; fy < py0 + FINE_PER_PARENT; fy++) {
+      for (let fx = px0; fx < px0 + FINE_PER_PARENT; fx++) parent.push(cellIdx(world, fx, fy));
+    }
+    // A glyph already carrying the player or the camp draws no brook, so the
+    // channel goes on ground with nothing else on it.
+    const plain = parent.filter((cell) => cell !== here && cell !== state.regions[state.player.region]?.campCell);
+    const wet = plain[0];
+    chunk.fine.channel[chunkIndexOf(wet % world.w, Math.floor(wet / world.w))] = CHANNEL_STREAM;
+    const ui = newUiState();
+    // The closest rung: one glyph is one patch, which is the only rung that marks a brook.
+    ui.zoom = 0;
+    const map = document.createElement("div");
+    map.id = "mapdyn";
+    map.innerHTML = mapHtml(world, state, ui, calendar(state.minute, state.startDoy));
+    document.body.append(map);
+    try {
+      const marked = parent.filter((cell) => map.querySelector(`[data-map-cell="${cell}"]`)?.classList.contains("mk-stream"));
+      expect(marked).toEqual([wet]);
+    } finally {
+      map.remove();
+    }
+  });
+
   it("turns frozen water from liquid blue into distinct thin and safe ice surfaces", () => {
     const sheet = document.createElement("style");
     sheet.textContent = css;

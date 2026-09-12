@@ -22,7 +22,7 @@ import { visitedCamps } from "../sim/light";
 import { discovery, siteAt, VISITED } from "../sim/regionstate";
 import type { AgentSpecies, AtmosphereSample, GameState, LocalGroundWeather, RegionState, Terrain, WildlifeSubject } from "../sim/types";
 import { atmosphereAt, conditionsAt, conditionsWithGround, DEEP_SNOW_CM, groundAt, iceMode } from "../sim/weather";
-import { cellIdx, fineHeightAt, fineHeightPeek, neighbours, regionPeek, streamAt, terrainPeek, waterKindOf, type World } from "../world/gen";
+import { cellIdx, fineHeightAt, fineHeightPeek, fineWaterPeek, neighbours, regionPeek, terrainPeek, waterKindOf, type World } from "../world/gen";
 import { WORLD_H, WORLD_W } from "../world/terrain";
 import { emptyTerrainCounts, parentSummary } from "../world/aggregate";
 import { FINE_PER_PARENT, PATCH_KM, PATCH_M, type PatchId } from "../world/spatial";
@@ -1324,7 +1324,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       // worth marking, but only where a glyph is one patch. At the block rungs
       // the terrain's own glyph fills the glyph and a stream mark there would
       // cover ground the player has not actually seen.
-      if (z === 1 && !markerAt.has(i) && streamAt(world, mechanicalCell)) {
+      //
+      // The mark is the chunk's channel, not the parent's flag: a brook is one
+      // patch wide, and drinking from it is granted at the channel and the
+      // patches beside it, so marking all thirty-six children of a stream
+      // parent would show water where a drink is refused.
+      if (z === 1 && !markerAt.has(i) && fineWaterPeek(world, x0 + gx * z, y0 + gy * z) === "stream") {
         markerAt.set(i, STREAM);
         addFeature(i, STREAM.label);
       }

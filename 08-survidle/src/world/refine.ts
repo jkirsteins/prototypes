@@ -394,10 +394,18 @@ function carveChannels(solved: SolvedWorld, win: FineWindow, cx: number, cy: num
     }
     const dir = solved.flowDir[parent];
     const side = dir === NO_FLOW ? [] : edgePatches(win, wx0, wy0, DX8[dir], DY8[dir]);
+    // Which patch of that side the water leaves by. Inside the chunk it is the
+    // lowest filled surface, the flood's own answer. Toward another chunk it is
+    // the lowest ground: the flood is chunk-local and two chunks fill their
+    // shared edge to different levels, while the refined height at a patch is
+    // the same in both windows, so this is the reading the neighbour will
+    // agree with and the channel joins across the seam.
+    const across = dir !== NO_FLOW && !insideChunk(solved, cx, cy, receiverOf(parent, dir, solved.w));
+    const level = across ? height : filled;
     let exit = -1;
-    for (const i of side) if (exit < 0 || filled[i] < filled[exit]) exit = i;
+    for (const i of side) if (exit < 0 || level[i] < level[exit]) exit = i;
     const mark = solved.kind[parent] === KIND.river ? CHANNEL_RIVER : CHANNEL_STREAM;
-    for (const entry of entriesOf(solved, win, parent, stepOut, filled)) {
+    for (const entry of entriesOf(solved, win, parent, stepOut, height, filled)) {
       const patches = trace(win, entry, exit, parentPatches, height, filled, kind);
       const last = patches[patches.length - 1];
       const standing = kind[last] === KIND.sea || kind[last] === KIND.lake;
@@ -456,11 +464,19 @@ function edgePatches(win: FineWindow, wx0: number, wy0: number, dx: number, dy: 
 
 /**
  * Where a parent's channel starts: one entry per parent above it, each the
- * patch that parent's channel stepped into, or the middle of the shared edge
- * when it lies outside the chunk. A parent with nothing above it starts at
- * its highest patch, where the water first gathers.
+ * patch that parent's channel stepped into. A parent with nothing above it
+ * starts at its highest patch, where the water first gathers.
+ *
+ * An upstream parent in another chunk is not traced here, and its own chunk's
+ * trace is not in hand, so where its channel leaves is recomputed the way that
+ * chunk computes it: the lowest patch of its edge toward this parent, and the
+ * step across. Both chunks read that edge out of the window they share, so they
+ * agree and the channel joins across the seam instead of restarting at the
+ * middle of the edge with a patch of dry ground between - which a route would
+ * cross for free. The middle of the edge is left as the fallback for an
+ * upstream parent the window does not reach.
  */
-function entriesOf(solved: SolvedWorld, win: FineWindow, parent: number, stepOut: Map<number, number>, filled: Float32Array): number[] {
+function entriesOf(solved: SolvedWorld, win: FineWindow, parent: number, stepOut: Map<number, number>, height: Float32Array, filled: Float32Array): number[] {
   const px = parent % solved.w;
   const py = (parent - px) / solved.w;
   const wx0 = (px - win.px0) * FINE_PER_PARENT;
@@ -473,7 +489,7 @@ function entriesOf(solved: SolvedWorld, win: FineWindow, parent: number, stepOut
     const q = qy * solved.w + qx;
     const flowing = solved.kind[q] === KIND.river || (solved.flags[q] & FLAG_STREAM) !== 0;
     if (!flowing || solved.flowDir[q] === NO_FLOW || receiverOf(q, solved.flowDir[q], solved.w) !== parent) continue;
-    const passed = stepOut.get(q);
+    const passed = stepOut.get(q) ?? exitOfUpstream(solved, win, q, height);
     const side = edgePatches(win, wx0, wy0, DX8[k], DY8[k]);
     const entry = passed !== undefined && parentOfWindowPatch(solved, win, passed) === parent ? passed : side[Math.floor((side.length - 1) / 2)];
     if (!out.includes(entry)) out.push(entry);
@@ -487,6 +503,35 @@ function entriesOf(solved: SolvedWorld, win: FineWindow, parent: number, stepOut
     }
   }
   return [head];
+}
+
+/** Whether a parent cell belongs to this chunk's own sixteen by sixteen block. */
+function insideChunk(solved: SolvedWorld, cx: number, cy: number, parent: number): boolean {
+  const px = parent % solved.w;
+  const py = (parent - px) / solved.w;
+  return Math.floor(px / CHUNK_PARENTS) === cx && Math.floor(py / CHUNK_PARENTS) === cy;
+}
+
+/**
+ * The patch an upstream parent's channel steps into, computed from the window
+ * both chunks can see: the lowest patch of that parent's edge toward its
+ * receiver, then one step across. Undefined where the window does not hold the
+ * parent, which is where a chunk sits against the world's edge.
+ */
+function exitOfUpstream(solved: SolvedWorld, win: FineWindow, q: number, height: Float32Array): number | undefined {
+  const qx = q % solved.w;
+  const qy = (q - qx) / solved.w;
+  const i = qx - win.px0;
+  const j = qy - win.py0;
+  if (i < 0 || j < 0 || i >= win.pw || j >= win.ph) return undefined;
+  const dir = solved.flowDir[q];
+  if (dir === NO_FLOW) return undefined;
+  const side = edgePatches(win, i * FINE_PER_PARENT, j * FINE_PER_PARENT, DX8[dir], DY8[dir]);
+  let exit = -1;
+  for (const k of side) if (exit < 0 || height[k] < height[exit]) exit = k;
+  if (exit < 0) return undefined;
+  const across = stepBeyond(win, exit, dir);
+  return across < 0 ? undefined : across;
 }
 
 /**

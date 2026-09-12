@@ -24,7 +24,12 @@ import { expectChildrenAverageToParent, expectOutcomes, expectShoresAreReal, exp
 import { rimEntersWindow } from "../src/world/fine-class";
 import { DX8, DY8, NO_FLOW } from "../src/world/hydro";
 import { fineWindowOf, type FineRefinement, POOL_MIN_DEPTH_M, refineChunk, rimAt } from "../src/world/refine";
-import { KIND, solveWorld } from "../src/world/solve";
+import { FLAG_STREAM, KIND, solveWorld } from "../src/world/solve";
+import { fordAt, newWorld, terrainOf } from "../src/world/cells";
+import { receiverOf } from "../src/world/hydro";
+import { findRoute, passable } from "../src/world/route";
+import { FINE_PER_PARENT, patchId } from "../src/world/spatial";
+import { FINE_CHUNK } from "../src/world/refine";
 import { upslopeCellsOf } from "../src/world/classify";
 
 const W = 240;
@@ -216,5 +221,82 @@ describe("the fine chunk's determinism", () => {
       expect(src, file).not.toMatch(/Math\.(exp|pow|sin|cos|tan|log|atan2|atan|asin|acos|cbrt|hypot|expm1|log1p|log2|log10)\b/);
       expect(src, file).not.toMatch(/\*\*/);
     }
+  });
+});
+
+describe("the fine chunk's channels across a seam", () => {
+  /**
+   * A channel that leaves a chunk must be picked up by the chunk it leaves
+   * into. Nothing in the two builds is shared - each chunk floods its own
+   * window - so where the water crosses has to be a reading both windows agree
+   * on. Where they do not, the channel restarts a patch or two away and the
+   * ground between reads as dry land, which is a river a route crosses for
+   * free.
+   */
+  const SEAM_CHUNKS: [number, number][] = [[14, 4], [14, 3], [13, 3], [13, 4], [14, 13], [11, 17]];
+
+  it("resumes every handover into a flowing parent in the chunk it hands to", () => {
+    let handovers = 0;
+    let resumed = 0;
+    const dry: string[] = [];
+    for (const [cx, cy] of SEAM_CHUNKS) {
+      const a = refineChunk(SEED, solved, cx, cy);
+      for (const path of a.channels) {
+        if (path.outcome !== "leftChunk") continue;
+        const dir = solved.flowDir[path.parent];
+        if (dir === NO_FLOW) continue;
+        const receiver = receiverOf(path.parent, dir, solved.w);
+        // Water arriving in standing water has no channel to resume: the
+        // solve's sea or lake is where this path ends.
+        if (solved.kind[receiver] !== KIND.river && (solved.flags[receiver] & FLAG_STREAM) === 0) continue;
+        handovers++;
+        const ex = a.x0 + (path.exit % a.stride);
+        const ey = a.y0 + Math.floor(path.exit / a.stride);
+        const rx = receiver % solved.w;
+        const b = refineChunk(SEED, solved, Math.floor(rx * FINE_PER_PARENT / FINE_CHUNK), Math.floor(Math.floor(receiver / solved.w) * FINE_PER_PARENT / FINE_CHUNK));
+        let joined = false;
+        for (let dy = -1; dy <= 1 && !joined; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const lx = ex + dx - b.x0;
+            const ly = ey + dy - b.y0;
+            if (lx < 0 || ly < 0 || lx >= b.w || ly >= b.h) continue;
+            if (b.channel[ly * b.stride + lx]) { joined = true; break; }
+          }
+        }
+        if (joined) resumed++;
+        else dry.push(`${cx},${cy} at ${ex},${ey}`);
+      }
+    }
+    // The sample must contain crossings, or the case proves nothing.
+    expect(handovers).toBeGreaterThan(5);
+    expect(dry).toEqual([]);
+    expect(resumed).toBe(handovers);
+  });
+
+  it("lets no route cross a river at a seam except on a ford parent's channel", () => {
+    const world = newWorld(SEED, solved);
+    let crossings = 0;
+    for (const [cx, cy] of SEAM_CHUNKS) {
+      const a = refineChunk(SEED, solved, cx, cy);
+      for (const path of a.channels) {
+        if (solved.kind[path.parent] !== KIND.river) continue;
+        const ex = a.x0 + (path.exit % a.stride);
+        const ey = a.y0 + Math.floor(path.exit / a.stride);
+        // The two patches either side of the channel patch, across its own row.
+        const west = patchId(ex - 1, ey);
+        const east = patchId(ex + 1, ey);
+        if (terrainOf(world, ex - 1, ey) === "river" || terrainOf(world, ex + 1, ey) === "river") continue;
+        if (!passable(terrainOf(world, ex - 1, ey)) || !passable(terrainOf(world, ex + 1, ey))) continue;
+        crossings++;
+        const route = findRoute(world, west, east);
+        if (route === null) continue;
+        // A route that does exist may only touch the channel where a ford is.
+        for (const patch of route) {
+          if (terrainOf(world, patch % world.w, Math.floor(patch / world.w)) !== "river") continue;
+          expect(fordAt(world, patch), `crossing at ${patch}`).toBe(true);
+        }
+      }
+    }
+    expect(crossings).toBeGreaterThan(0);
   });
 });
