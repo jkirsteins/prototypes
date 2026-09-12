@@ -11,7 +11,8 @@
  * keeps these cases in the fast suite where the gate is.
  */
 import { describe, expect, it } from "vitest";
-import { FINE_CHUNK, refineChunk } from "../src/world/refine";
+import { DX8, DY8 } from "../src/world/hydro";
+import { FINE_CHUNK, type FineRefinement, POND_MIN_DEPTH_M, POOL_MIN_DEPTH_M, refineChunk, rimAt } from "../src/world/refine";
 import { KIND, solveWorld } from "../src/world/solve";
 import { FINE_PER_PARENT } from "../src/world/spatial";
 
@@ -61,5 +62,125 @@ describe("the fine chunk over the solved world", () => {
       land++;
     }
     expect(land).toBeGreaterThan(100);
+  });
+});
+
+/** The solved cell a chunk-local patch belongs to. */
+function parentOf(chunkOf: { x0: number; y0: number; stride: number }, i: number): number {
+  const x = chunkOf.x0 + (i % chunkOf.stride);
+  const y = chunkOf.y0 + Math.floor(i / chunkOf.stride);
+  return Math.floor(y / FINE_PER_PARENT) * solved.w + Math.floor(x / FINE_PER_PARENT);
+}
+
+/** Patches of the chunk 8-connected to a patch whose parent has one of the given kinds, through patches passing `through`. */
+function reachesParentKind(chunkOf: FineRefinement, kinds: number[], through: (i: number) => boolean): Uint8Array {
+  const seen = new Uint8Array(chunkOf.stride * chunkOf.stride);
+  const queue: number[] = [];
+  for (let y = 0; y < chunkOf.h; y++) {
+    for (let x = 0; x < chunkOf.w; x++) {
+      const i = y * chunkOf.stride + x;
+      if (!through(i) || !kinds.includes(solved.kind[parentOf(chunkOf, i)])) continue;
+      seen[i] = 1;
+      queue.push(i);
+    }
+  }
+  for (let head = 0; head < queue.length; head++) {
+    const c = queue[head];
+    const cx = c % chunkOf.stride;
+    const cy = (c - cx) / chunkOf.stride;
+    for (let k = 0; k < 8; k++) {
+      const nx = cx + DX8[k];
+      const ny = cy + DY8[k];
+      if (nx < 0 || ny < 0 || nx >= chunkOf.w || ny >= chunkOf.h) continue;
+      const nb = ny * chunkOf.stride + nx;
+      if (seen[nb] || !through(nb)) continue;
+      seen[nb] = 1;
+      queue.push(nb);
+    }
+  }
+  return seen;
+}
+
+describe("the fine chunk's shores", () => {
+  it("keeps every lake patch at or below its lake's surface and connected to it", () => {
+    let lakePatches = 0;
+    const connected = reachesParentKind(chunk, [KIND.lake], (i) => chunk.kind[i] === KIND.lake);
+    for (let y = 0; y < chunk.h; y++) {
+      for (let x = 0; x < chunk.w; x++) {
+        const i = y * chunk.stride + x;
+        if (chunk.kind[i] !== KIND.lake) continue;
+        const parent = parentOf(chunk, i);
+        if (solved.kind[parent] !== KIND.lake) continue;
+        lakePatches++;
+        expect(chunk.height[i], `patch ${x},${y}`).toBeLessThanOrEqual(solved.height[parent]);
+        expect(connected[i], `patch ${x},${y}`).toBe(1);
+      }
+    }
+    expect(lakePatches).toBeGreaterThan(100);
+  });
+
+  it("makes a water patch in a land parent a lake's shore or a pond of two metres or more, never one isolated patch", () => {
+    const lakeShore = reachesParentKind(chunk, [KIND.lake, KIND.sea], (i) => chunk.kind[i] !== KIND.land);
+    const sizes = new Map<number, number>();
+    const deepest = new Map<number, number>();
+    for (let i = 0; i < chunk.stride * chunk.stride; i++) {
+      const id = chunk.depression[i];
+      if (id < 0) continue;
+      sizes.set(id, (sizes.get(id) ?? 0) + 1);
+      deepest.set(id, Math.max(deepest.get(id) ?? 0, rimAt(chunk, i) - chunk.height[i]));
+    }
+    let ponds = 0;
+    for (let y = 0; y < chunk.h; y++) {
+      for (let x = 0; x < chunk.w; x++) {
+        const i = y * chunk.stride + x;
+        if (chunk.kind[i] !== KIND.lake) continue;
+        const parent = parentOf(chunk, i);
+        if (solved.kind[parent] === KIND.lake || lakeShore[i]) continue;
+        ponds++;
+        const id = chunk.depression[i];
+        expect(id, `patch ${x},${y}`).toBeGreaterThanOrEqual(0);
+        expect(deepest.get(id) ?? 0, `pond depth at ${x},${y}`).toBeGreaterThanOrEqual(POND_MIN_DEPTH_M);
+        expect(sizes.get(id) ?? 0, `pond size at ${x},${y}`).toBeGreaterThan(1);
+      }
+    }
+    expect(ponds).toBeGreaterThan(0);
+  });
+
+  it("makes a sea patch one at or below sea level connected to a sea parent", () => {
+    const shore = refineChunk(SEED, solved, 14, 13);
+    const connected = reachesParentKind(shore, [KIND.sea], (i) => shore.height[i] <= 0);
+    let sea = 0;
+    let beach = 0;
+    for (let y = 0; y < shore.h; y++) {
+      for (let x = 0; x < shore.w; x++) {
+        const i = y * shore.stride + x;
+        const inSeaParent = solved.kind[parentOf(shore, i)] === KIND.sea;
+        if (shore.kind[i] === KIND.sea) {
+          sea++;
+          expect(shore.height[i], `patch ${x},${y}`).toBeLessThanOrEqual(0);
+          expect(connected[i], `patch ${x},${y}`).toBe(1);
+        } else if (inSeaParent) beach++;
+      }
+    }
+    expect(sea).toBeGreaterThan(1000);
+    // The coarse kind is not copied down: a sea parent may carry dry patches.
+    expect(beach).toBeGreaterThan(0);
+  });
+
+  it("fills every depression of a third of a metre or more and names its rim", () => {
+    let pools = 0;
+    let deep = 0;
+    for (let y = 0; y < chunk.h; y++) {
+      for (let x = 0; x < chunk.w; x++) {
+        const i = y * chunk.stride + x;
+        expect(chunk.filled[i], `patch ${x},${y}`).toBeGreaterThanOrEqual(chunk.height[i]);
+        if (chunk.depression[i] < 0) continue;
+        pools++;
+        if (rimAt(chunk, i) - chunk.height[i] >= POOL_MIN_DEPTH_M) deep++;
+        expect(rimAt(chunk, i), `patch ${x},${y}`).toBeGreaterThanOrEqual(chunk.filled[i]);
+      }
+    }
+    expect(pools).toBeGreaterThan(0);
+    expect(deep).toBeGreaterThan(0);
   });
 });
