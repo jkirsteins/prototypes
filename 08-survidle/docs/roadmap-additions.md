@@ -966,3 +966,57 @@ round, a camp across several cells, the catchment overlay).
   what those minutes are for. Whether sleep can be interrupted at all is
   still the open half of the 09-10 record's proposed improvement 2 and
   stays a control-contract question.
+
+## The solved world: principles to keep, and the order of what is next
+
+The terrain landed 2026-09-12 (PR 13, then the glacial basins). The
+principle to preserve above every item below: generate a plausible world
+first, then adapt the game to living in it. The danger from here is seeing
+hard survival readings and turning geography back into a convenience
+generator. Model limitations are roadmap items, not reasons to bend a
+parameter; a wrong number is corrected on its real anchor, never tuned to a
+gate.
+
+Priority order:
+
+1. **Drainage basin partitioning.** Seed 42's largest mouth reads 1,639
+   cubic metres a second into the Bothnian bay where the Lule carries 500:
+   the basins spill across low divides and the interior finds one spill
+   path. Fix it structurally in the sill and basin rule (basins bounded by
+   the divide they sit under, sills that hold), not by capping discharge.
+   Large rivers must emerge because a genuinely large catchment feeds them.
+2. **Lee stability at survival timescales.** Lee is relative obstruction in
+   the current upwind direction, not a terrain label, and that stays. What
+   to inspect is flapping: a 20 degree wind swing must not flip a hillside
+   from full shelter to none every few minutes. Give the effect inertia
+   rather than falsifying the terrain: the shelter calculation reads a wind
+   direction averaged over a recent period, or protection changes gradually.
+   Then re-read every survival rule that consumes galeProtection.
+3. **The broader seed sweep and the full slow suite.** Every realism
+   target is read on seeds 42, 1 and 7 only. Make the sweep a standing
+   report over ten seeds; run the slow suite whole once, on ask.
+4. **Judge the moved gates on their merits.** The heir reaches the old camp
+   on day 14 (was 3), the manual stage freezes on day 7, the lineage gate
+   reads 3 of 5. Do not restore old numbers because the world moved them:
+   each may be a real pacing problem or the old world's convenience.
+5. **Bog as ecology, not slope.** Peatland follows permeability,
+   groundwater, flatness, drainage convergence, lake margins and climate.
+   A later ecology pass; only pull it forward if bog scarcity changes
+   survival materially.
+6. **Seasonal hydrology.** Split into parts: snowmelt discharge (eventually
+   important); river ice thinner and later than lake ice (eventually
+   important); spring rivers as hazardous barriers that change routes, not
+   scenery (a strong survival mechanic later); glaciers (optional, scope
+   dependent).
+7. Everything else as detail: the report's lowland rock bucket includes the
+   treeline band (fix the measure, not the rule); the template is a window
+   with a straight coast trend and a Bothnian notch, and erosion runs at
+   1.2 km, so no Lofoten geometry and no sub-kilometre landforms; both are
+   believable at this game's scale and stay limitations, not defects.
+
+Two readings that are not concerns: rivers as chains of lakes joined by
+short reaches are Fennoscandian and stay; do not force a continuous line
+where the terrain does not draw one. Scarce visible rivers are a consequence
+of explicit thresholds, so the game must distinguish surface drainage, tiny
+stream, perennial brook (20 litres a second) and river (5 cubic metres a
+second) rather than reading everything below river as no flowing water.
