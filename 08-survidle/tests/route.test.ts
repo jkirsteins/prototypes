@@ -3,6 +3,7 @@ import { FINE_CHUNK, newWorld } from "../src/world/cells";
 import { flatWorld } from "./world-fixture";
 import { fineRouteCacheStats } from "../src/world/fine-route";
 import { findRoute, knownRoute, remainingWalkMinutes, routeKm, routeMinutes, type RouteConditions } from "../src/world/route";
+import { refineChunk } from "../src/world/refine";
 import { patchId } from "../src/world/spatial";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 
@@ -13,7 +14,7 @@ function fixture() {
   const world = newWorld(21, flatWorld({ w: 16, h: 16, terrain: "pine", seed: 21 }).solved);
   const terrain = new Uint8Array(FINE_CHUNK * FINE_CHUNK).fill(TERRAIN_INDEX.pine);
   const region = new Int32Array(FINE_CHUNK * FINE_CHUNK);
-  world.fineChunks.set(0, { cx: 0, cy: 0, terrain, region, samples: terrain.length, parentSummaries: new Map() });
+  world.fineChunks.set(0, { cx: 0, cy: 0, fine: refineChunk(21, world.solved, 0, 0), terrain, region, samples: terrain.length, parentSummaries: new Map() });
   const conditions: RouteConditions = {
     key: "fixture",
     iceAt: () => "none",

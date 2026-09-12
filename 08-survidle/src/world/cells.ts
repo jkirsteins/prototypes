@@ -9,17 +9,19 @@ import type { Terrain } from "../sim/types";
 import type { ParentSummary } from "./aggregate";
 import type { FineGrid } from "./fine-route";
 import { regionAtPatch, terrainAtPatch } from "./fine-terrain";
+import { FINE_CHUNK, type FineRefinement, refineChunk } from "./refine";
 import { type PatchId, parentXY, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
 import { FLAG_FORD, FLAG_STREAM, KIND, type SolvedWorld } from "./solve";
 import { latitudeAt, TERRAIN_INDEX, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
 import type { RegionDef } from "./gen";
 
-export const FINE_CHUNK = 96;
 export const FINE_CHUNK_LIMIT = 64;
 
 export interface FineChunk {
   cx: number;
   cy: number;
+  /** The refinement of the solved world under this chunk: fine height, water, the flood and the channels. */
+  fine: FineRefinement;
   terrain: Uint8Array;
   region: Int32Array;
   samples: number;
@@ -107,6 +109,7 @@ function fineChunkFor(world: World, id: PatchId): { chunk: FineChunk; i: number 
     chunk = {
       cx,
       cy,
+      fine: refineChunk(world.seed, world.solved, cx, cy),
       terrain,
       region,
       samples: (x1 - x0) * (y1 - y0),
@@ -242,4 +245,4 @@ export function neighbours(world: World, idx: number): number[] {
   return out;
 }
 
-export { WORLD_H, WORLD_W };
+export { FINE_CHUNK, WORLD_H, WORLD_W };

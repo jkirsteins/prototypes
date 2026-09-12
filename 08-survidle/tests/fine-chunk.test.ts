@@ -10,6 +10,7 @@
  * the solved arrays and does not know how large they are, and a fast fixture
  * keeps these cases in the fast suite where the gate is.
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { DX8, DY8, NO_FLOW, receiverOf } from "../src/world/hydro";
 import { CHANNEL_RIVER, CHANNEL_STREAM, channelDischargeAt, FINE_CHUNK, type FineRefinement, POND_MIN_DEPTH_M, POOL_MIN_DEPTH_M, refineChunk, rimAt } from "../src/world/refine";
@@ -265,5 +266,34 @@ describe("the fine chunk's channels", () => {
       handovers++;
     }
     expect(handovers).toBeGreaterThan(10);
+  });
+});
+
+/** A hash of one chunk's arrays, for byte-for-byte comparison. */
+function fingerprint(of: FineRefinement): number {
+  let h = 2166136261;
+  for (const array of [of.height, of.filled, of.surface, of.rims] as Float32Array[]) {
+    for (let i = 0; i < array.length; i++) h = Math.imul(h ^ Math.round(array[i] * 1000), 16777619);
+  }
+  for (const array of [of.kind, of.channel, of.depression] as ArrayLike<number>[]) {
+    for (let i = 0; i < array.length; i++) h = Math.imul(h ^ array[i], 16777619);
+  }
+  return h >>> 0;
+}
+
+describe("the fine chunk's determinism", () => {
+  it("builds the same chunk twice byte for byte, whatever was built before it", () => {
+    expect(fingerprint(refineChunk(SEED, solved, CX, CY))).toBe(fingerprint(chunk));
+    for (const [nx, ny] of [[CX - 1, CY], [CX, CY - 1], [CX + 1, CY], [CX, CY + 1]]) refineChunk(SEED, solved, nx, ny);
+    expect(fingerprint(refineChunk(SEED, solved, CX, CY))).toBe(fingerprint(chunk));
+    expect(fingerprint(refineChunk(SEED + 1, solved, CX, CY))).not.toBe(fingerprint(chunk));
+  });
+
+  it("uses no function whose last bit differs between engines", () => {
+    for (const file of ["src/world/refine.ts", "src/world/upsample.ts"]) {
+      const src = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+      expect(src, file).not.toMatch(/Math\.(exp|pow|sin|cos|tan|log|atan2|atan|asin|acos|cbrt|hypot|expm1|log1p|log2|log10)\b/);
+      expect(src, file).not.toMatch(/\*\*/);
+    }
   });
 });

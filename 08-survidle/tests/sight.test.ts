@@ -21,6 +21,7 @@ import * as fineTerrain from "../src/world/fine-terrain";
 import { testAtmosphere } from "./weather-helpers";
 import { solvedWorld } from "./world-fixture";
 import { regionsOutward } from "./world-facts";
+import { refineChunk } from "../src/world/refine";
 
 const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const FOREST = new Set(["spruce", "pine", "birch"]);
@@ -94,7 +95,7 @@ function openWorld(): { state: GameState; world: World; vantage: number } {
   terrain.fill(7); // TERRAINS[7] is meadow.
   const region = new Int32Array(FINE_CHUNK * FINE_CHUNK);
   const world = solvedWorld(1);
-  world.fineChunks.set(0, { cx: 0, cy: 0, terrain, region,
+  world.fineChunks.set(0, { cx: 0, cy: 0, fine: refineChunk(1, world.solved, 0, 0), terrain, region,
     samples: terrain.length, parentSummaries: new Map() });
   // The middle of the chunk, so a ray has the same room in every direction.
   const vantage = 48 * world.w + 48;
@@ -174,7 +175,7 @@ function fineSightFixture(rows: string[], heights: Record<string, number> = {}):
   const terrain = new Uint8Array(FINE_CHUNK * FINE_CHUNK);
   terrain.fill(TERRAIN_INDEX.meadow);
   const region = new Int32Array(FINE_CHUNK * FINE_CHUNK);
-  world.fineChunks.set(0, { cx: 0, cy: 0, terrain, region, samples: terrain.length, parentSummaries: new Map() });
+  world.fineChunks.set(0, { cx: 0, cy: 0, fine: refineChunk(1, world.solved, 0, 0), terrain, region, samples: terrain.length, parentSummaries: new Map() });
   const id = (x: number, y: number) => (SCENE_ORIGIN + y) * world.w + SCENE_ORIGIN + x;
   let vantage = -1;
   rows.forEach((row, y) => {

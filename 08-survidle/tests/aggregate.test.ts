@@ -10,6 +10,7 @@ import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, terrainOfPatch } from "..
 import { patchId, WORLD_FINE_W } from "../src/world/spatial";
 import type { Terrain } from "../src/sim/types";
 import { solvedWorld } from "./world-fixture";
+import { refineChunk } from "../src/world/refine";
 
 const TERRAIN_BY_CHAR: Record<string, Terrain> = { S: "spruce", M: "meadow", R: "rock" };
 
@@ -80,6 +81,7 @@ describe("fine terrain aggregates", () => {
     terrainOfPatch(world, patchId(0, 0));
     const emptyChunk: Omit<FineChunk, "cx"> = {
       cy: 0,
+      fine: refineChunk(21, world.solved, 0, 0),
       terrain: new Uint8Array(FINE_CHUNK * FINE_CHUNK),
       region: new Int32Array(FINE_CHUNK * FINE_CHUNK),
       samples: FINE_CHUNK * FINE_CHUNK,

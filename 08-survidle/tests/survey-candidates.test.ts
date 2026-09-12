@@ -16,6 +16,7 @@ import { PATCH_M, patchId } from "../src/world/spatial";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 import { testAtmosphere } from "./weather-helpers";
 import { solvedWorld } from "./world-fixture";
+import { refineChunk } from "../src/world/refine";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -35,7 +36,7 @@ function fixture(blocked: boolean) {
   region.campCell = patchId(14, 14);
   region.spots = [];
   world.regions.set(region.id, region);
-  world.fineChunks.set(0, { cx: 0, cy: 0, terrain, region: ownership, samples: terrain.length, parentSummaries: new Map() });
+  world.fineChunks.set(0, { cx: 0, cy: 0, fine: refineChunk(world.seed, world.solved, 0, 0), terrain, region: ownership, samples: terrain.length, parentSummaries: new Map() });
   const state = game.state;
   state.player.xM = 14.5 * PATCH_M;
   state.player.yM = 14.5 * PATCH_M;
