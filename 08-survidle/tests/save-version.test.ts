@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { newGame } from "../src/sim/newgame";
 import { deserialize, serialize } from "../src/sim/save";
-import { inspectSave, SAVE_VERSION, WORLD_VERSION } from "../src/sim/world-version";
+import { canPersist, inspectSave, SAVE_VERSION, WORLD_VERSION } from "../src/sim/world-version";
 
 describe("the fine world's version boundary", () => {
   it("rejects a version 9 world before interpreting old cell ids", () => {
@@ -35,5 +35,16 @@ describe("the fine world's version boundary", () => {
     const envelope = JSON.parse(serialize(state, 1000)) as { version: number; worldVersion: number };
     expect(envelope.version).toBe(SAVE_VERSION);
     expect(envelope.worldVersion).toBe(WORLD_VERSION);
+  });
+
+  it("calls a current schema version with a stale world version old-world", () => {
+    const stale = JSON.stringify({ version: SAVE_VERSION, worldVersion: WORLD_VERSION - 1, savedAt: 1, state: { seed: 21 } });
+    expect(inspectSave(stale)).toBe("old-world");
+    expect(deserialize(stale)).toBeNull();
+  });
+
+  it("never lets a throwaway world persist over the save an old-world message is about", () => {
+    expect(canPersist(true)).toBe(false);
+    expect(canPersist(false)).toBe(true);
   });
 });

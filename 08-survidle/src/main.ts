@@ -29,7 +29,7 @@ import { campCellOf, cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, SAVE_KEY, saveGame } from "./sim/save";
-import { inspectSave } from "./sim/world-version";
+import { canPersist, inspectSave } from "./sim/world-version";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
@@ -111,6 +111,7 @@ let world!: World;
 let startleRestore: (() => void) | null = null;
 let startleStep: (() => void) | null = null;
 function persistGame(): void {
+  if (!canPersist(oldWorldSave)) return;
   if (!(import.meta.env.DEV && startleRestore)) saveGame(state);
 }
 const ui = newUiState();
@@ -155,7 +156,6 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   state = g.state;
   world = g.world;
   wasDead = false;
-  oldWorldSave = false;
   ui.selected = null;
   ui.away = null;
   ui.hurry = newHurry();
@@ -167,7 +167,13 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   ui.confirmCamp = false;
   resetPanels();
   resetForecastAt();
-  if (persist) persistGame();
+  // Only a persisted fresh world is a real commit away from old-world: the
+  // one boot() builds to render behind the message (persist: false) must
+  // leave the flag - and the save on disk it is warning about - alone.
+  if (persist) {
+    oldWorldSave = false;
+    persistGame();
+  }
   awayDial?.refresh();
 }
 
@@ -571,6 +577,15 @@ function onClick(ev: Event) {
       clearSave();
       fresh();
       ui.settings = false;
+      lastReal = performance.now();
+      render();
+      return;
+    // The old-world message is its own confirmation - it already named the
+    // incompatible save - so this skips reset-world's generic confirm()
+    // rather than asking the same question twice.
+    case "old-world-new":
+      clearSave();
+      fresh();
       lastReal = performance.now();
       render();
       return;

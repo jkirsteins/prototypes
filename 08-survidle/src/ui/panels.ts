@@ -1008,12 +1008,16 @@ export function landingHtml(state: GameState, world: World): string {
 </div>`;
 }
 
-/** Shown instead of a save from before the fine lattice: the only way off it is the new-world action. */
+/**
+ * Shown instead of a save from before the fine lattice: the only way off it
+ * is the new-world action. Its own text already asks the question reset-world's
+ * generic confirm() would ask again, so this button skips that dialog.
+ */
 export function oldWorldHtml(): string {
   return `<div class="box">
 <h1>Old save</h1>
 <p>This saved world used the old 300 m terrain model. Start a new world to use the 50 m simulation.</p>
-<button class="act" data-act="reset-world">Start a new world</button>
+<button class="act" data-act="old-world-new">Start a new world</button>
 </div>`;
 }
 

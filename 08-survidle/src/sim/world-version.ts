@@ -31,3 +31,15 @@ export function inspectSave(text: string): SaveCompatibility {
   }
   return envelope.version === SAVE_VERSION && envelope.worldVersion === WORLD_VERSION ? "current" : "old-world";
 }
+
+/**
+ * Whether a throwaway or fresh world may be written over the current save.
+ * False only while an old-world save is on display: that world exists so
+ * the page has something to render behind the message, and persisting it
+ * - from the autosave timer, a hidden tab, or pagehide - would silently
+ * discard the incompatible save before the player has chosen to replace it
+ * through the message's own action.
+ */
+export function canPersist(oldWorldSave: boolean): boolean {
+  return !oldWorldSave;
+}
