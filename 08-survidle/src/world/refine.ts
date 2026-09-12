@@ -55,6 +55,23 @@ const CHANNEL_CUT_M = 0.05;
  * over the rim rather than by a cut channel.
  */
 const CHANNEL_SILL_M = 1;
+/**
+ * Where a channel's water goes when it reaches the end of its path. A reader
+ * that has to route across a river or draw one needs the four apart, and -1
+ * for `out` cannot tell them apart.
+ *
+ * - `handed`: into the cell below, at `out`, which is inside this chunk.
+ * - `leftChunk`: into the cell below, which is outside this chunk, so `out`
+ *   has no chunk-local index. The chunk next door carries it on.
+ * - `mouth`: into standing water - the sea, a lake of the solve, or a pond of
+ *   this chunk.
+ * - `held`: nowhere, along this path. The fine ground holds the water in this
+ *   cell, either in the hollow the flood found - the water leaves by spilling
+ *   over the rim rather than down a channel - or where the path ran into a
+ *   channel already drawn in this cell, which carries it on instead.
+ */
+export type ChannelOutcome = "handed" | "leftChunk" | "mouth" | "held";
+
 /** One channel across one parent cell: where the water comes in, where it leaves, and the patches between. */
 export interface ChannelPath {
   /** The solved cell the channel crosses. */
@@ -65,7 +82,9 @@ export interface ChannelPath {
   exit: number;
   /** Entry to exit inclusive, chunk-local, one patch wide. */
   patches: number[];
-  /** The patch in the cell below that the water steps into, chunk-local; -1 where it stopped in this cell or left the chunk. */
+  /** Where the water goes from the end of the path. */
+  outcome: ChannelOutcome;
+  /** The patch in the cell below that the water steps into, chunk-local; -1 unless the outcome is `handed`. */
   out: number;
 }
 
@@ -130,7 +149,8 @@ export interface FineWindow {
   wh: number;
 }
 
-function windowOf(solved: SolvedWorld, cx: number, cy: number): FineWindow {
+/** The window a chunk is built from: its own parents plus the apron. */
+export function fineWindowOf(solved: SolvedWorld, cx: number, cy: number): FineWindow {
   // A chunk beyond the solved arrays has no ground to refine, so the window
   // collapses to one parent rather than going negative.
   const px0 = Math.min(solved.w - 1, Math.max(0, cx * CHUNK_PARENTS - APRON_PARENTS));
@@ -374,18 +394,36 @@ function carveChannels(solved: SolvedWorld, win: FineWindow, cx: number, cy: num
     for (const entry of entriesOf(solved, win, parent, stepOut, filled)) {
       const patches = trace(win, entry, exit, parentPatches, height, filled, kind);
       const last = patches[patches.length - 1];
-      const beyond = last === exit && dir !== NO_FLOW ? receiverOf(last, dir, win.ww) : -1;
-      const out = beyond >= 0 && beyond < win.ww * win.wh ? beyond : -1;
+      const standing = kind[last] === KIND.sea || kind[last] === KIND.lake;
+      const out = !standing && last === exit && dir !== NO_FLOW ? stepBeyond(win, last, dir) : -1;
+      const outcome: ChannelOutcome = standing ? "mouth"
+        : out >= 0 ? "handed"
+        : last === exit && dir !== NO_FLOW ? "leftChunk"
+        : "held";
       for (const i of patches) {
         channel[i] = mark;
         if (mark === CHANNEL_RIVER && kind[i] === KIND.land) kind[i] = KIND.river;
       }
-      paths.push({ parent, entry, exit: patches[patches.length - 1], patches, out });
+      paths.push({ parent, entry, exit: last, patches, outcome, out });
       // The water arrives in the parent below at the patch it stepped into.
       if (out >= 0) stepOut.set(parent, out);
     }
   }
   return { paths, stepOut };
+}
+
+/**
+ * The patch one step beyond `i` in the direction `dir`, or -1 where that step
+ * leaves the window. Stepping by index alone would wrap a row, so the column
+ * is checked as well as the index.
+ */
+function stepBeyond(win: FineWindow, i: number, dir: number): number {
+  const x = i % win.ww;
+  const y = (i - x) / win.ww;
+  const nx = x + DX8[dir];
+  const ny = y + DY8[dir];
+  if (nx < 0 || ny < 0 || nx >= win.ww || ny >= win.wh) return -1;
+  return ny * win.ww + nx;
 }
 
 /** The solved cell a window patch belongs to. */
@@ -552,7 +590,7 @@ function cutOut<T extends { [index: number]: number; length: number }>(out: T, s
 const PATCHES = FINE_CHUNK * FINE_CHUNK;
 
 export function refineChunk(seed: number, solved: SolvedWorld, cx: number, cy: number): FineRefinement {
-  const win = windowOf(solved, cx, cy);
+  const win = fineWindowOf(solved, cx, cy);
   const x0 = cx * FINE_CHUNK;
   const y0 = cy * FINE_CHUNK;
   const w = Math.max(0, Math.min(FINE_CHUNK, solved.w * FINE_PER_PARENT - x0));
@@ -580,12 +618,18 @@ export function refineChunk(seed: number, solved: SolvedWorld, cx: number, cy: n
     rims: depressions.rims,
     channel: cutOut(new Uint8Array(PATCHES), channel, win, x0, y0, w, h),
     terrain,
-    channels: paths.map((path) => ({
-      parent: path.parent,
-      entry: local(path.entry),
-      exit: local(path.exit),
-      patches: path.patches.map(local),
-      out: path.out < 0 ? -1 : local(path.out),
-    })),
+    channels: paths.map((path) => {
+      // A handover into a cell of the apron is a handover out of this chunk:
+      // the water is the neighbour's from there on.
+      const out = path.out < 0 ? -1 : local(path.out);
+      return {
+        parent: path.parent,
+        entry: local(path.entry),
+        exit: local(path.exit),
+        patches: path.patches.map(local),
+        outcome: path.outcome === "handed" && out < 0 ? "leftChunk" as const : path.outcome,
+        out,
+      };
+    }),
   };
 }

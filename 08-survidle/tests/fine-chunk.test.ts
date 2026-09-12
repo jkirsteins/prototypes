@@ -3,19 +3,29 @@
  * section 6. The chunk is a refinement of the 300 m solve, not a second
  * world: its heights average back to the parents, its water is the solve's
  * water at 50 m, and its channels run downhill from an entry to the exit the
- * solve's flow direction chose.
+ * solve's flow direction chose. The four checks themselves live in
+ * `fine-chunk-contract.ts`, so the slow case can run the same ones at the real
+ * scale.
  *
- * The fixture is a miniature solve (240 by 320 cells, about 120 ms) rather
- * than the real 1800 by 2224 world: the refinement is pure in the seed and
- * the solved arrays and does not know how large they are, and a fast fixture
- * keeps these cases in the fast suite where the gate is.
+ * **What this fixture cannot check.** It is a miniature solve, 240 by 320 cells
+ * in about 120 ms, which keeps the cases in the fast suite where the gate is.
+ * But the template is 540 by 667 km whatever the cell count, so a fixture cell
+ * is 2.25 km wide while `refine.ts` works in a fixed 300 m parent: every metre
+ * constant here - the detail amplitudes, the 1 m sill a channel cuts, the
+ * 0.3 m pool and 2 m pond, a slope over 50 m - is exercised at seven and a
+ * half times the spacing it was chosen for, and so is every field sampled in
+ * template km, the thin-soil noise among them. What this fixture proves is
+ * that the contract holds over arbitrary solved arrays; that it holds at the
+ * scale the game runs at is `tests/slow/fine-chunk-scale.test.ts`.
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DX8, DY8, NO_FLOW, receiverOf } from "../src/world/hydro";
-import { CHANNEL_RIVER, CHANNEL_STREAM, channelDischargeAt, FINE_CHUNK, type FineRefinement, POND_MIN_DEPTH_M, POOL_MIN_DEPTH_M, refineChunk, rimAt } from "../src/world/refine";
-import { FLAG_STREAM, KIND, solveWorld } from "../src/world/solve";
-import { FINE_PER_PARENT } from "../src/world/spatial";
+import { expectChildrenAverageToParent, expectOutcomes, expectShoresAreReal, expectWaterRunsDownhill, parentOf, upstreamOf } from "./fine-chunk-contract";
+import { rimEntersWindow } from "../src/world/fine-class";
+import { DX8, DY8, NO_FLOW } from "../src/world/hydro";
+import { fineWindowOf, type FineRefinement, POOL_MIN_DEPTH_M, refineChunk, rimAt } from "../src/world/refine";
+import { KIND, solveWorld } from "../src/world/solve";
+import { upslopeCellsOf } from "../src/world/classify";
 
 const W = 240;
 const H = 320;
@@ -25,137 +35,29 @@ const solved = solveWorld(SEED, W, H);
 const CX = 14;
 const CY = 3;
 const chunk = refineChunk(SEED, solved, CX, CY);
-const PARENTS = FINE_CHUNK / FINE_PER_PARENT;
-
-/** The chunk-local indices of a parent's 36 children, for a parent inside the chunk. */
-function children(px: number, py: number): number[] {
-  const out: number[] = [];
-  const x0 = px * FINE_PER_PARENT - chunk.x0;
-  const y0 = py * FINE_PER_PARENT - chunk.y0;
-  for (let dy = 0; dy < FINE_PER_PARENT; dy++) {
-    for (let dx = 0; dx < FINE_PER_PARENT; dx++) out.push((y0 + dy) * chunk.stride + x0 + dx);
-  }
-  return out;
-}
-
-function parentsOfChunk(): number[] {
-  const out: number[] = [];
-  for (let j = 0; j < PARENTS; j++) {
-    for (let i = 0; i < PARENTS; i++) {
-      const px = CX * PARENTS + i;
-      const py = CY * PARENTS + j;
-      if (px < solved.w && py < solved.h) out.push(py * solved.w + px);
-    }
-  }
-  return out;
-}
 
 describe("the fine chunk over the solved world", () => {
   it("averages its children back to the parent's height", () => {
-    let land = 0;
-    for (const parent of parentsOfChunk()) {
-      if (solved.kind[parent] === KIND.sea) continue;
-      const px = parent % solved.w;
-      const py = (parent - px) / solved.w;
-      let sum = 0;
-      for (const i of children(px, py)) sum += chunk.height[i];
-      expect(Math.abs(sum / 36 - solved.height[parent]), `parent ${px},${py}`).toBeLessThan(0.5);
-      land++;
-    }
-    expect(land).toBeGreaterThan(100);
+    expect(expectChildrenAverageToParent(solved, chunk)).toBeGreaterThan(100);
   });
 });
 
-/** The solved cell a chunk-local patch belongs to. */
-function parentOf(chunkOf: { x0: number; y0: number; stride: number }, i: number): number {
-  const x = chunkOf.x0 + (i % chunkOf.stride);
-  const y = chunkOf.y0 + Math.floor(i / chunkOf.stride);
-  return Math.floor(y / FINE_PER_PARENT) * solved.w + Math.floor(x / FINE_PER_PARENT);
-}
-
-/** Patches of the chunk 8-connected to a patch whose parent has one of the given kinds, through patches passing `through`. */
-function reachesParentKind(chunkOf: FineRefinement, kinds: number[], through: (i: number) => boolean): Uint8Array {
-  const seen = new Uint8Array(chunkOf.stride * chunkOf.stride);
-  const queue: number[] = [];
-  for (let y = 0; y < chunkOf.h; y++) {
-    for (let x = 0; x < chunkOf.w; x++) {
-      const i = y * chunkOf.stride + x;
-      if (!through(i) || !kinds.includes(solved.kind[parentOf(chunkOf, i)])) continue;
-      seen[i] = 1;
-      queue.push(i);
-    }
-  }
-  for (let head = 0; head < queue.length; head++) {
-    const c = queue[head];
-    const cx = c % chunkOf.stride;
-    const cy = (c - cx) / chunkOf.stride;
-    for (let k = 0; k < 8; k++) {
-      const nx = cx + DX8[k];
-      const ny = cy + DY8[k];
-      if (nx < 0 || ny < 0 || nx >= chunkOf.w || ny >= chunkOf.h) continue;
-      const nb = ny * chunkOf.stride + nx;
-      if (seen[nb] || !through(nb)) continue;
-      seen[nb] = 1;
-      queue.push(nb);
-    }
-  }
-  return seen;
-}
-
 describe("the fine chunk's shores", () => {
-  it("keeps every lake patch at or below its lake's surface and connected to it", () => {
-    let lakePatches = 0;
-    const connected = reachesParentKind(chunk, [KIND.lake], (i) => chunk.kind[i] === KIND.lake);
-    for (let y = 0; y < chunk.h; y++) {
-      for (let x = 0; x < chunk.w; x++) {
-        const i = y * chunk.stride + x;
-        if (chunk.kind[i] !== KIND.lake) continue;
-        const parent = parentOf(chunk, i);
-        if (solved.kind[parent] !== KIND.lake) continue;
-        lakePatches++;
-        expect(chunk.height[i], `patch ${x},${y}`).toBeLessThanOrEqual(solved.height[parent]);
-        expect(connected[i], `patch ${x},${y}`).toBe(1);
-      }
-    }
+  it("keeps lake patches at their lake's surface and makes a water patch in a land parent a pond", () => {
+    const { lakePatches, ponds } = expectShoresAreReal(solved, chunk);
     expect(lakePatches).toBeGreaterThan(100);
-  });
-
-  it("makes a water patch in a land parent a lake's shore or a pond of two metres or more, never one isolated patch", () => {
-    const lakeShore = reachesParentKind(chunk, [KIND.lake, KIND.sea], (i) => chunk.kind[i] !== KIND.land);
-    const sizes = new Map<number, number>();
-    const deepest = new Map<number, number>();
-    for (let i = 0; i < chunk.stride * chunk.stride; i++) {
-      const id = chunk.depression[i];
-      if (id < 0) continue;
-      sizes.set(id, (sizes.get(id) ?? 0) + 1);
-      deepest.set(id, Math.max(deepest.get(id) ?? 0, rimAt(chunk, i) - chunk.height[i]));
-    }
-    let ponds = 0;
-    for (let y = 0; y < chunk.h; y++) {
-      for (let x = 0; x < chunk.w; x++) {
-        const i = y * chunk.stride + x;
-        if (chunk.kind[i] !== KIND.lake) continue;
-        const parent = parentOf(chunk, i);
-        if (solved.kind[parent] === KIND.lake || lakeShore[i]) continue;
-        ponds++;
-        const id = chunk.depression[i];
-        expect(id, `patch ${x},${y}`).toBeGreaterThanOrEqual(0);
-        expect(deepest.get(id) ?? 0, `pond depth at ${x},${y}`).toBeGreaterThanOrEqual(POND_MIN_DEPTH_M);
-        expect(sizes.get(id) ?? 0, `pond size at ${x},${y}`).toBeGreaterThan(1);
-      }
-    }
     expect(ponds).toBeGreaterThan(0);
   });
 
   it("makes a sea patch one at or below sea level connected to a sea parent", () => {
     const shore = refineChunk(SEED, solved, 14, 13);
-    const connected = reachesParentKind(shore, [KIND.sea], (i) => shore.height[i] <= 0);
+    const connected = reachesSea(shore);
     let sea = 0;
     let beach = 0;
     for (let y = 0; y < shore.h; y++) {
       for (let x = 0; x < shore.w; x++) {
         const i = y * shore.stride + x;
-        const inSeaParent = solved.kind[parentOf(shore, i)] === KIND.sea;
+        const inSeaParent = solved.kind[parentOf(solved, shore, i)] === KIND.sea;
         if (shore.kind[i] === KIND.sea) {
           sea++;
           expect(shore.height[i], `patch ${x},${y}`).toBeLessThanOrEqual(0);
@@ -186,71 +88,77 @@ describe("the fine chunk's shores", () => {
   });
 });
 
-/** The solved cells of the chunk the solve gave running water. */
-function flowingParents(): number[] {
-  return parentsOfChunk().filter((p) => solved.kind[p] === KIND.river || (solved.flags[p] & FLAG_STREAM) !== 0);
-}
-
-/** The parents whose channel drains into this one. */
-function upstreamOf(parent: number): number[] {
-  const px = parent % solved.w;
-  const py = (parent - px) / solved.w;
-  const out: number[] = [];
-  for (let k = 0; k < 8; k++) {
-    const qx = px + DX8[k];
-    const qy = py + DY8[k];
-    if (qx < 0 || qy < 0 || qx >= solved.w || qy >= solved.h) continue;
-    const q = qy * solved.w + qx;
-    const flowing = solved.kind[q] === KIND.river || (solved.flags[q] & FLAG_STREAM) !== 0;
-    if (flowing && solved.flowDir[q] !== NO_FLOW && receiverOf(q, solved.flowDir[q], solved.w) === parent) out.push(q);
+/** Sea reached from a sea parent through patches at or below sea level. */
+function reachesSea(of: FineRefinement): Uint8Array {
+  // Local to this case, which is about the sea rule rather than the contract.
+  const through = (i: number) => of.height[i] <= 0;
+  const seen = new Uint8Array(of.stride * of.stride);
+  const queue: number[] = [];
+  for (let y = 0; y < of.h; y++) {
+    for (let x = 0; x < of.w; x++) {
+      const i = y * of.stride + x;
+      if (!through(i) || solved.kind[parentOf(solved, of, i)] !== KIND.sea) continue;
+      seen[i] = 1;
+      queue.push(i);
+    }
   }
-  return out;
+  for (let head = 0; head < queue.length; head++) {
+    const c = queue[head];
+    const cx = c % of.stride;
+    const cy = (c - cx) / of.stride;
+    for (let k = 0; k < 8; k++) {
+      const nx = cx + DX8[k];
+      const ny = cy + DY8[k];
+      if (nx < 0 || ny < 0 || nx >= of.w || ny >= of.h) continue;
+      const nb = ny * of.stride + nx;
+      if (seen[nb] || !through(nb)) continue;
+      seen[nb] = 1;
+      queue.push(nb);
+    }
+  }
+  return seen;
 }
 
 describe("the fine chunk's channels", () => {
   it("runs water downhill from every entry to every exit", () => {
-    expect(chunk.channels.length).toBeGreaterThan(20);
-    for (const path of chunk.channels) {
-      expect(path.patches[0]).toBe(path.entry);
-      expect(path.patches[path.patches.length - 1]).toBe(path.exit);
-      expect(path.patches.length).toBeGreaterThan(1);
-      for (let k = 1; k < path.patches.length; k++) {
-        expect(chunk.filled[path.patches[k]], `step ${k} of parent ${path.parent}`).toBeLessThan(chunk.filled[path.patches[k - 1]]);
-      }
-    }
+    expect(expectWaterRunsDownhill(chunk)).toBeGreaterThan(20);
   });
 
-  it("gives every river and stream parent one path per entry, out of the cell and downhill", () => {
-    const byParent = new Map<number, typeof chunk.channels>();
-    for (const path of chunk.channels) byParent.set(path.parent, [...(byParent.get(path.parent) ?? []), path]);
-    let handed = 0;
-    let mouths = 0;
-    let held = 0;
-    for (const parent of flowingParents()) {
-      const paths = byParent.get(parent) ?? [];
-      const upstream = upstreamOf(parent);
-      expect(paths.length, `parent ${parent}`).toBeGreaterThan(0);
-      expect(paths.length, `parent ${parent}`).toBeLessThanOrEqual(Math.max(1, upstream.length));
-      for (const path of paths) {
-        for (const i of path.patches) expect(channelDischargeAt(chunk, solved, i)).toBe(solved.discharge[parent]);
-        expect(chunk.channel[path.entry]).toBe(solved.kind[parent] === KIND.river ? CHANNEL_RIVER : CHANNEL_STREAM);
-        const dir = solved.flowDir[parent];
-        if (path.out >= 0) {
-          // The water left on the side the solve's flow direction points at.
-          const ex = chunk.x0 + (path.exit % chunk.stride);
-          const ey = chunk.y0 + Math.floor(path.exit / chunk.stride);
-          expect(DX8[dir] > 0 ? ex % FINE_PER_PARENT === FINE_PER_PARENT - 1 : DX8[dir] < 0 ? ex % FINE_PER_PARENT === 0 : true, `exit of ${parent}`).toBe(true);
-          expect(DY8[dir] > 0 ? ey % FINE_PER_PARENT === FINE_PER_PARENT - 1 : DY8[dir] < 0 ? ey % FINE_PER_PARENT === 0 : true, `exit of ${parent}`).toBe(true);
-          handed++;
-        } else if (chunk.kind[path.exit] === KIND.lake || chunk.kind[path.exit] === KIND.sea) mouths++;
-        else held++;
+  it("gives every river and stream parent one path per entry, each saying where its water went", () => {
+    const tally = expectOutcomes(solved, chunk);
+    expect(tally.handed + tally.leftChunk + tally.mouth).toBeGreaterThan(tally.paths * 0.9);
+    expect(tally.held).toBeLessThan(tally.paths * 0.1);
+  });
+
+  it("hands no catchment to the river the chunk drains into", () => {
+    const win = fineWindowOf(solved, CX, CY);
+    const rim: number[] = [];
+    // The rim cell with the largest catchment that the window's own ground
+    // drains into: the river below the chunk, whose implied catchment is the
+    // chunk and everything above it. Handing that to it would draw a wet line
+    // back into the ground that drained into it.
+    let below = -1;
+    let belowCells = 0;
+    for (let j = 0; j < win.ph; j++) {
+      for (let i = 0; i < win.pw; i++) {
+        if (i > 0 && j > 0 && i < win.pw - 1 && j < win.ph - 1) continue;
+        const px = win.px0 + i;
+        const py = win.py0 + j;
+        rim.push(py * solved.w + px);
+        if (!fedFromInside(px, py, win.px0, win.py0, win.pw, win.ph)) continue;
+        const cells = upslopeCellsOf(solved.discharge[py * solved.w + px], px, py, solved.w, solved.h);
+        if (cells > belowCells) {
+          belowCells = cells;
+          below = py * solved.w + px;
+        }
       }
     }
-    // Every path either hands its water to the cell below, ends in water, or
-    // is held by ground the solve could not see: a hollow whose sill is too
-    // high to cut through, which the flood filled instead.
-    expect(handed + mouths).toBeGreaterThan(chunk.channels.length * 0.9);
-    expect(held).toBeLessThan(chunk.channels.length * 0.1);
+    expect(belowCells, "the window drains into a rim cell with a catchment").toBeGreaterThan(1_000);
+    expect(rimEntersWindow(solved, win, below % solved.w, Math.floor(below / solved.w)), `cell ${below}`).toBe(false);
+    // And the rule is not simply "never": the rim cells above the chunk do hand over.
+    const handing = rim.filter((parent) => rimEntersWindow(solved, win, parent % solved.w, Math.floor(parent / solved.w)));
+    expect(handing.length).toBeGreaterThan(rim.length / 2);
+    expect(handing.length).toBeLessThan(rim.length);
   });
 
   it("brings each parent's water in where the parent above it took it out", () => {
@@ -258,16 +166,29 @@ describe("the fine chunk's channels", () => {
     for (const path of chunk.channels) entries.set(path.parent, [...(entries.get(path.parent) ?? []), path.entry]);
     let handovers = 0;
     for (const path of chunk.channels) {
-      if (path.out < 0) continue;
-      const below = parentOf(chunk, path.out);
+      if (path.outcome !== "handed") continue;
+      const below = parentOf(solved, chunk, path.out);
       if (!entries.has(below)) continue;
-      expect(upstreamOf(below), `parent ${below}`).toContain(path.parent);
+      expect(upstreamOf(solved, below), `parent ${below}`).toContain(path.parent);
       expect(entries.get(below), `parent ${below} from ${path.parent}`).toContain(path.out);
       handovers++;
     }
     expect(handovers).toBeGreaterThan(10);
   });
 });
+
+/** Whether any cell inside the window drains into this one. */
+function fedFromInside(px: number, py: number, px0: number, py0: number, pw: number, ph: number): boolean {
+  for (let k = 0; k < 8; k++) {
+    const qx = px + DX8[k];
+    const qy = py + DY8[k];
+    if (qx < px0 || qy < py0 || qx >= px0 + pw || qy >= py0 + ph) continue;
+    const d = solved.flowDir[qy * solved.w + qx];
+    if (d === NO_FLOW) continue;
+    if (qx + DX8[d] === px && qy + DY8[d] === py) return true;
+  }
+  return false;
+}
 
 /** A hash of one chunk's arrays, for byte-for-byte comparison. */
 function fingerprint(of: FineRefinement): number {

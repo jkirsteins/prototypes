@@ -16,7 +16,7 @@
  */
 import { derive } from "../rng";
 import { KIND, landTerrainIndex, moistureIndex, precipitationIndex, soilNoiseAtKm, solvedSoilScale, uniformAt, upslopeCellsOf, wetnessIndex } from "./classify";
-import { accumulate, DIST8, DY8, flowDirections, NO_FLOW, receiverOf } from "./hydro";
+import { accumulate, DIST8, DX8, DY8, flowDirections, NO_FLOW, receiverOf } from "./hydro";
 import { valueNoiseMetres } from "./noise";
 import type { FineWindow } from "./refine";
 import { FINE_PER_PARENT, PATCH_M } from "./spatial";
@@ -50,10 +50,36 @@ function fineNoise(xM: number, yM: number, seed: number): number {
 }
 
 /**
+ * Whether a parent on the window's rim sends its water into the window, which
+ * is what makes its catchment the chunk's business. Follow the solve's flow
+ * from it: if it reaches a parent inside the rim it has entered, and if it
+ * leaves the window or stops first it has not. The cells the chunk drains
+ * *into* also sit on the rim, and their catchment is mostly the chunk itself,
+ * so handing it to them would draw a wet line back into the ground they
+ * drained.
+ */
+export function rimEntersWindow(solved: SolvedWorld, win: FineWindow, px: number, py: number): boolean {
+  let x = px;
+  let y = py;
+  for (let step = 0; step < win.pw + win.ph; step++) {
+    const d = solved.flowDir[y * solved.w + x];
+    if (d === NO_FLOW) return false;
+    x += DX8[d];
+    y += DY8[d];
+    if (x < win.px0 || y < win.py0 || x >= win.px0 + win.pw || y >= win.py0 + win.ph) return false;
+    const i = x - win.px0;
+    const j = y - win.py0;
+    if (i > 0 && j > 0 && i < win.pw - 1 && j < win.ph - 1) return true;
+  }
+  return false;
+}
+
+/**
  * The upslope area of every patch of the window in solved cells: each patch
  * carries its own thirty-sixth of a cell down the fine flow directions, and
- * each parent on the window's rim hands over the catchment its discharge
- * implies, since everything above the rim is outside what the chunk can see.
+ * each parent on the window's rim whose water enters the window hands over the
+ * catchment its discharge implies, since everything above the rim is outside
+ * what the chunk can see.
  */
 function upslopeCells(solved: SolvedWorld, win: FineWindow, dir: Uint8Array, filled: Float32Array): Float32Array {
   const n = win.ww * win.wh;
@@ -63,6 +89,11 @@ function upslopeCells(solved: SolvedWorld, win: FineWindow, dir: Uint8Array, fil
       if (i > 0 && j > 0 && i < win.pw - 1 && j < win.ph - 1) continue;
       const px = win.px0 + i;
       const py = win.py0 + j;
+      // A rim cell that also takes water from inside the window hands over a
+      // catchment that counts the window's own ground twice. Losing its real
+      // area from outside would be the larger error of the two, so it hands
+      // over anyway.
+      if (!rimEntersWindow(solved, win, px, py)) continue;
       const inherited = upslopeCellsOf(solved.discharge[py * solved.w + px], px, py, solved.w, solved.h) - 1;
       if (inherited <= 0) continue;
       // Where the rim cell's water gathers, which for a channel cell is its channel.
@@ -122,6 +153,11 @@ export function classifyFine(
       const v = (fy + 0.5) / fineH;
       const coastKm = coastKmAt(u, v);
       const lat = latitudeAt(fy + 0.5, fineH);
+      // The index is a specific area - catchment per unit width of contour -
+      // and the contour a patch presents is a sixth of the one a cell
+      // presents, so the same drainage area counts six times over at this
+      // rung. Without the factor the same ground would read drier here than
+      // at 300 m for no reason but the lattice.
       const wetness = wetnessIndex(area[i] * FINE_PER_PARENT, slope);
       const p = precipitationIndex(coastKm);
       const m = moistureIndex(p, wetness, northFacing);
