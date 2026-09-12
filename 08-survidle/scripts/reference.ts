@@ -35,6 +35,23 @@
  * a year within six lives" line. Like --kitted, it is a diagnostic and
  * never touches the exit code - the from-scratch run from scratch is still
  * the gate.
+ *
+ * DO NOT RUN --heir until one life is measured under two minutes.
+ *
+ * The lineage is 24 lives, so it costs whatever a life costs times 24. On
+ * 2026-09-11 that was about 80 minutes, and the sign-table fix below it took
+ * a life from 131 to 125 seconds, which is still about 50. Time one life
+ * first - `npx vite-node scripts/reference.ts 17` prints its own seconds -
+ * and only run the lineage when that reads under 120 s, ideally under 20.
+ *
+ * What is left is not a slow function but the shape of the chooser:
+ * `bestHuntCell` scores every mapped cell of the region, and of the
+ * neighbouring regions above hunting 8, through `huntSpeciesWeights` and
+ * `habitatPrior` for each species. That sweep is about a third of a run.
+ * Cutting it means scoring fewer cells, which moves the cell the chooser
+ * picks, which `tests/hunting-chooser.test.ts` pins against the whole-region
+ * sweep on purpose. So it is a design call about how far a survivor looks,
+ * not an optimisation, and it belongs to whoever owns the hunting model.
  */
 import { calendar, fmtDate } from "../src/sim/calendar";
 import { fmtWorldDate } from "../src/sim/epitaph";
@@ -43,6 +60,15 @@ import { REFERENCE_SEEDS, type ReferenceReport, runLineage, runReference, weekLi
 const rawArgs = process.argv.slice(2);
 const kitted = rawArgs.includes("--kitted");
 const heir = rawArgs.includes("--heir");
+// The lineage is 24 lives and a life costs about two minutes, so it is an
+// hour that nobody meant to start. It stays behind an acknowledgement until
+// a life is cheap enough that the lineage is not a morning; see the header.
+if (heir && !rawArgs.includes("--i-have-timed-a-life")) {
+  console.error("--heir runs 24 lives. At the last reading a life cost about 125 s, so the lineage is about 50 minutes.");
+  console.error("Time one life first: npx vite-node scripts/reference.ts 17");
+  console.error("If it reads under 120 s, or you mean to wait, pass --i-have-timed-a-life.");
+  process.exit(2);
+}
 const startArg = rawArgs.find((a) => a.startsWith("--start="));
 const startDoy = startArg ? Number(startArg.slice("--start=".length)) : undefined;
 if (startArg && !(Number.isInteger(startDoy) && startDoy! >= 0 && startDoy! < 365)) {

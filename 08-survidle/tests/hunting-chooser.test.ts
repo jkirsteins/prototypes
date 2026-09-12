@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { bestHuntCell, HUNT_SHORTLIST, huntEstimate } from "../src/sim/hunting";
+import { bestHuntCell, HUNT_SHORTLIST, huntEstimate, noteHuntSign } from "../src/sim/hunting";
 import { markKnown, mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { setSkillLevel } from "../src/sim/horizon";
@@ -92,3 +92,69 @@ function sweepHuntCell(state: ReturnType<typeof newGame>["state"], world: Return
   });
   return choices[0].cell;
 }
+
+/**
+ * The sign table's budget.
+ *
+ * Choosing where to hunt scores every mapped cell of the region, and two of
+ * the terms it scores with - the region's latest sign of a species, and
+ * whether that species has been learned absent - are facts about a region
+ * and a species, not about a cell. Read per cell, each one walks the whole
+ * sign table, and that table grows all run, so the cost of a single decision
+ * climbs with every sign the survivor has ever noted. The same walk is paid
+ * again by the Ahead forecast and by the catch-up on return.
+ *
+ * The budget is a claim about shape rather than a number of milliseconds:
+ * the table is walked a fixed few times per decision, and the entries it
+ * visits stay in proportion to what the table holds. Raising either number
+ * is not the fix; reading the table once per region and species is.
+ *
+ * This ran red when it was written. One decision on seed 42 with 200 signed
+ * cells walked the table 1,962 times and read 394,086 entries out of it, for
+ * a table 200 entries long.
+ */
+const SIGN_TABLE_WALK_BUDGET = 8;
+const SIGN_TABLE_READS_PER_FURTHER_SIGN = 4;
+
+describe("the sign table's budget", () => {
+  function signTableWork(signs: number): { walks: number; visits: number } {
+    const { state, world } = newGame(42);
+    mapRegion(state, world, state.player.region);
+    const cal = calendar(state.minute);
+    for (const cell of regionAt(world, state.player.region).cells.slice(0, signs)) {
+      noteHuntSign(state, cell, "hare");
+      noteHuntSign(state, cell, "deer");
+    }
+    let walks = 0;
+    let visits = 0;
+    const table = state.player.huntSigns;
+    state.player.huntSigns = new Proxy(table, {
+      ownKeys(target) {
+        walks++;
+        return Reflect.ownKeys(target);
+      },
+      get(target, key, receiver) {
+        if (key !== Symbol.toStringTag) visits++;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    bestHuntCell(state, world, cal);
+    state.player.huntSigns = table;
+    return { walks, visits };
+  }
+
+  it("walks the table a handful of times, not once per cell and species", () => {
+    expect(signTableWork(200).walks).toBeLessThanOrEqual(SIGN_TABLE_WALK_BUDGET);
+  });
+
+  // Point lookups of the cell underfoot are reads of the table too, and they
+  // scale with the ground scored, which is proper. What must not scale is the
+  // product: a sign the survivor noted in April costing a read on every cell
+  // scored in September. So the claim is made on the growth - each further
+  // sign costs a few reads per decision, not a read per cell and species.
+  it("costs a few reads per further sign, not a read per cell scored", () => {
+    const lean = signTableWork(50).visits;
+    const full = signTableWork(200).visits;
+    expect(full - lean).toBeLessThanOrEqual((200 - 50) * SIGN_TABLE_READS_PER_FURTHER_SIGN);
+  });
+});
