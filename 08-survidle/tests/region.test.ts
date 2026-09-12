@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { worldCacheStats } from "../src/world/aggregate";
-import { cellAt, cellIdx, neighbours, regionOf, regionPeek, terrainOf, terrainPeek, patchAt } from "../src/world/cells";
-import { regionAtPatch, terrainAtPatch } from "../src/world/fine-terrain";
+import { cellAt, cellIdx, neighbours, regionOf, regionPeek, solvedTerrainAt, terrainOf, terrainOfPatch, terrainPeek, patchAt } from "../src/world/cells";
+import { regionAtPatch } from "../src/world/fine-terrain";
 import { latticeOf, regionAt } from "../src/world/gen";
 import { PATCH_KM, patchId } from "../src/world/spatial";
 import { LATTICE } from "../src/world/terrain";
@@ -26,12 +26,12 @@ describe("fine world and regions", () => {
     const world = solvedWorld(21);
     const id = patchId(6411, 1875);
     expect(cellIdx(world, 6411, 1875)).toBe(id);
-    expect(terrainPeek(world, 6411, 1875)).toBe(terrainAtPatch(21, id));
+    expect(terrainPeek(world, 6411, 1875)).toBe(solvedTerrainAt(world, 6411, 1875));
     expect(regionPeek(world, 6411, 1875)).toBe(regionAtPatch(21, id));
     expect(worldCacheStats(world).generatedPatches).toBe(0);
     const { x, y, terrain, region } = patchAt(world, id);
     expect(cellAt(world, id)).toEqual({ x, y, terrain, region });
-    expect(terrainOf(world, 6411, 1875)).toBe(terrainAtPatch(21, id));
+    expect(terrainOf(world, 6411, 1875)).toBe(terrain);
     expect(regionOf(world, 6411, 1875)).toBe(regionAtPatch(21, id));
     expect(neighbours(world, id)).toEqual([id - 1, id + 1, id - 10800, id + 10800]);
   });
@@ -53,7 +53,7 @@ describe("fine world and regions", () => {
     expect(region.area).toBeCloseTo(expected.length * 0.0025, 8);
     const counts: Record<string, number> = {};
     for (const patch of expected) {
-      const terrain = terrainAtPatch(21, patch);
+      const terrain = terrainOfPatch(world, patch);
       counts[terrain] = (counts[terrain] ?? 0) + 1;
     }
     for (const [terrain, fraction] of Object.entries(region.frac)) {

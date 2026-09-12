@@ -23,7 +23,7 @@ import { discovery, siteAt, VISITED } from "../sim/regionstate";
 import type { AgentSpecies, AtmosphereSample, GameState, LocalGroundWeather, RegionState, Terrain, WildlifeSubject } from "../sim/types";
 import { atmosphereAt, conditionsAt, conditionsWithGround, DEEP_SNOW_CM, groundAt, iceMode } from "../sim/weather";
 import { cellIdx, neighbours, regionPeek, streamAt, terrainPeek, waterKindOf, type World } from "../world/gen";
-import { fieldsAtPatch } from "../world/fine-terrain";
+import { temporaryElevationM } from "../world/fine-fields";
 import { WORLD_H, WORLD_W } from "../world/terrain";
 import { emptyTerrainCounts, parentSummary } from "../world/aggregate";
 import { FINE_PER_PARENT, PATCH_KM, PATCH_M, type PatchId } from "../world/spatial";
@@ -481,7 +481,7 @@ function addKnownPatch(state: GameState, world: World, out: GlyphSummary, x: num
   if (!isKnown(state, patch)) return;
   out.samples++;
   out.terrainCounts[terrainPeek(world, x, y)]++;
-  const elevationM = fieldsAtPatch(world.seed, patch).elevationM;
+  const elevationM = temporaryElevationM(world, patch);
   out.minElevationM = Math.min(out.minElevationM, elevationM);
   out.maxElevationM = Math.max(out.maxElevationM, elevationM);
 }

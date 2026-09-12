@@ -8,9 +8,8 @@
  */
 import { derive } from "../rng";
 import type { Terrain } from "../sim/types";
-import { fieldsAtMetric, regionAtPatch, terrainAtPatch } from "./fine-terrain";
 import { fbm } from "./noise";
-import { PATCH_M, patchId, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
+import { WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
 
 /** The solved world in 300 m cells: 540 by 667 km. */
 export const WORLD_CELL_W = 1800;
@@ -149,19 +148,3 @@ export function templateHeightM(seed: number, u: number, v: number): number {
   return h;
 }
 
-/** Fields by patch coordinate, for callers that hold patch x and y rather
- * than a metre point. Elevation is normalized against the 1,200 m scale the
- * ground palette and the shelter rules read. */
-export function fieldsAt(seed: number, x: number, y: number): { e: number; m: number; sea: boolean; coast: number } {
-  const fields = fieldsAtMetric(seed, { xM: (x + 0.5) * PATCH_M, yM: (y + 0.5) * PATCH_M });
-  return { e: fields.elevationM / 1200, m: fields.moisture, sea: fields.sea, coast: fields.coast };
-}
-
-export function terrainAt(seed: number, x: number, y: number): Terrain {
-  return terrainAtPatch(seed, patchId(x, y));
-}
-
-/** The region of a patch, by the metric lattice: the region a patch belongs to and the region its parent cell belongs to are the same place. */
-export function regionOfCell(seed: number, x: number, y: number): number {
-  return regionAtPatch(seed, patchId(x, y));
-}

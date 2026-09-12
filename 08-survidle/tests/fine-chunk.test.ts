@@ -275,7 +275,7 @@ function fingerprint(of: FineRefinement): number {
   for (const array of [of.height, of.filled, of.surface, of.rims] as Float32Array[]) {
     for (let i = 0; i < array.length; i++) h = Math.imul(h ^ Math.round(array[i] * 1000), 16777619);
   }
-  for (const array of [of.kind, of.channel, of.depression] as ArrayLike<number>[]) {
+  for (const array of [of.kind, of.channel, of.depression, of.terrain] as ArrayLike<number>[]) {
     for (let i = 0; i < array.length; i++) h = Math.imul(h ^ array[i], 16777619);
   }
   return h >>> 0;
@@ -290,7 +290,7 @@ describe("the fine chunk's determinism", () => {
   });
 
   it("uses no function whose last bit differs between engines", () => {
-    for (const file of ["src/world/refine.ts", "src/world/upsample.ts"]) {
+    for (const file of ["src/world/refine.ts", "src/world/upsample.ts", "src/world/fine-class.ts", "src/world/fine-terrain.ts"]) {
       const src = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
       expect(src, file).not.toMatch(/Math\.(exp|pow|sin|cos|tan|log|atan2|atan|asin|acos|cbrt|hypot|expm1|log1p|log2|log10)\b/);
       expect(src, file).not.toMatch(/\*\*/);

@@ -1,7 +1,7 @@
 import type { Rng } from "../rng";
 import { clamp, fmtDuration } from "../units";
 import { regionPeek, terrainOf, type World } from "../world/gen";
-import { fieldsAtPatch } from "../world/fine-terrain";
+import { TEMPORARY_DRAINAGE, TEMPORARY_EXPOSURE } from "../world/fine-fields";
 import { LATTICE, LATTICE_W } from "../world/terrain";
 import { patchAtMetric, type PatchId } from "../world/spatial";
 import { calendar, START_MINUTE_OF_DAY, type Calendar } from "./calendar";
@@ -144,12 +144,11 @@ export function patchGroundModifiers(world: World, cell: PatchId): PatchGroundMo
   if (cached) return cached;
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
-  const fields = fieldsAtPatch(world.seed, cell);
   const canopy = 1 - (CANOPY_SNOW_INTERCEPTION[terrainOf(world, x, y)] ?? 0);
-  const scour = clamp(1 - SNOW_SCOUR_SPAN * (fields.exposure * 2 - 1), 0.4, 1.6);
+  const scour = clamp(1 - SNOW_SCOUR_SPAN * (TEMPORARY_EXPOSURE * 2 - 1), 0.4, 1.6);
   const modifiers: PatchGroundModifiers = {
     snow: canopy * scour,
-    water: clamp(1 + PONDING_SPAN * (0.5 - fields.drainage) * 2, 0.5, 1.5),
+    water: clamp(1 + PONDING_SPAN * (0.5 - TEMPORARY_DRAINAGE) * 2, 0.5, 1.5),
   };
   if (modifiersFor.size >= PATCH_MODIFIER_LIMIT) modifiersFor.clear();
   modifiersFor.set(cell, modifiers);

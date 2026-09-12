@@ -8,11 +8,11 @@
 import type { Terrain } from "../sim/types";
 import type { ParentSummary } from "./aggregate";
 import type { FineGrid } from "./fine-route";
-import { regionAtPatch, terrainAtPatch } from "./fine-terrain";
+import { regionAtPatch } from "./fine-terrain";
 import { FINE_CHUNK, type FineRefinement, refineChunk } from "./refine";
 import { type PatchId, parentXY, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
 import { FLAG_FORD, FLAG_STREAM, KIND, type SolvedWorld } from "./solve";
-import { latitudeAt, TERRAIN_INDEX, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
+import { latitudeAt, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
 import type { RegionDef } from "./gen";
 
 export const FINE_CHUNK_LIMIT = 64;
@@ -91,7 +91,6 @@ function fineChunkFor(world: World, id: PatchId): { chunk: FineChunk; i: number 
     world.fineChunks.delete(key);
     world.fineChunks.set(key, chunk);
   } else {
-    const terrain = new Uint8Array(FINE_CHUNK * FINE_CHUNK);
     const region = new Int32Array(FINE_CHUNK * FINE_CHUNK);
     region.fill(-1);
     const x0 = cx * FINE_CHUNK;
@@ -100,17 +99,16 @@ function fineChunkFor(world: World, id: PatchId): { chunk: FineChunk; i: number 
     const y1 = Math.min(y0 + FINE_CHUNK, WORLD_FINE_H);
     for (let py = y0; py < y1; py++) {
       for (let px = x0; px < x1; px++) {
-        const i = (py - y0) * FINE_CHUNK + px - x0;
-        const patch = py * WORLD_FINE_W + px;
-        terrain[i] = TERRAIN_INDEX[terrainAtPatch(world.seed, patch)];
-        region[i] = regionAtPatch(world.seed, patch);
+        region[(py - y0) * FINE_CHUNK + px - x0] = regionAtPatch(world.seed, py * WORLD_FINE_W + px);
       }
     }
+    const fine = refineChunk(world.seed, world.solved, cx, cy);
     chunk = {
       cx,
       cy,
-      fine: refineChunk(world.seed, world.solved, cx, cy),
-      terrain,
+      fine,
+      // The chunk's ground is the refinement's: one array, classified where it was measured.
+      terrain: fine.terrain,
       region,
       samples: (x1 - x0) * (y1 - y0),
       parentSummaries: new Map(),
@@ -162,16 +160,26 @@ export function terrainPeek(world: World, x: number, y: number): Terrain;
 export function terrainPeek(world: World, x: number, y?: number): Terrain {
   if (y === undefined) { const xy = patchXY(x); return terrainPeek(world, xy.x, xy.y); }
   if (!inWorld(world, x, y)) return "water";
-  const chunk = world.fineChunks.get(fineChunkKey(Math.floor(x / FINE_CHUNK), Math.floor(y / FINE_CHUNK)));
-  if (chunk) return TERRAINS[chunk.terrain[(y % FINE_CHUNK) * FINE_CHUNK + x % FINE_CHUNK]];
-  return terrainAtPatch(world.seed, patchId(x, y));
+  const chunk = residentChunk(world, x, y);
+  if (chunk) return TERRAINS[chunk.terrain[chunkIndexOf(x, y)]];
+  return solvedTerrainAt(world, x, y);
 }
 
 export function regionPeek(world: World, x: number, y: number): number {
   if (!inWorld(world, x, y)) return -1;
-  const chunk = world.fineChunks.get(fineChunkKey(Math.floor(x / FINE_CHUNK), Math.floor(y / FINE_CHUNK)));
-  if (chunk) return chunk.region[(y % FINE_CHUNK) * FINE_CHUNK + x % FINE_CHUNK];
+  const chunk = residentChunk(world, x, y);
+  if (chunk) return chunk.region[chunkIndexOf(x, y)];
   return regionAtPatch(world.seed, patchId(x, y));
+}
+
+/** The chunk a patch sits in if it is already resident, without building one. */
+export function residentChunk(world: World, x: number, y: number): FineChunk | undefined {
+  return world.fineChunks.get(fineChunkKey(Math.floor(x / FINE_CHUNK), Math.floor(y / FINE_CHUNK)));
+}
+
+/** A patch's index inside its own chunk's arrays. */
+export function chunkIndexOf(x: number, y: number): number {
+  return (y % FINE_CHUNK) * FINE_CHUNK + x % FINE_CHUNK;
 }
 
 export function cellAt(world: World, idx: number): Cell {

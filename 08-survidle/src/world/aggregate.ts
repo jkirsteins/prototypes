@@ -1,6 +1,7 @@
 import type { Terrain } from "../sim/types";
 import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, patchAt, type World } from "./cells";
-import { fieldsAtPatch, regionAtPatch } from "./fine-terrain";
+import { temporaryElevationM } from "./fine-fields";
+import { regionAtPatch } from "./fine-terrain";
 import { type FineGrid, fineRouteCacheStats } from "./fine-route";
 import { routeCacheStats } from "./route";
 import { FINE_PER_PARENT, PATCH_KM, type PatchId, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
@@ -103,8 +104,13 @@ function terrainAt(source: World | AggregateSource, patch: PatchId): Terrain {
   return isWorld(source) ? patchAt(source, patch).terrain : source.terrainAt(patch);
 }
 
+/**
+ * The height a summary bounds: the same reader the sight march uses, so a
+ * bound bounds what a ray measures. Both go to the chunk's refined height in
+ * section 3 of the close-zoom plan, together.
+ */
 function elevationAt(source: World | AggregateSource, patch: PatchId): number {
-  return isWorld(source) ? fieldsAtPatch(source.seed, patch).elevationM : source.elevationAt?.(patch) ?? 0;
+  return isWorld(source) ? temporaryElevationM(source, patch) : source.elevationAt?.(patch) ?? 0;
 }
 
 function regionAt(source: World | AggregateSource, patch: PatchId): number {

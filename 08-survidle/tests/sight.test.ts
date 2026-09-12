@@ -17,7 +17,7 @@ import { cellAt, heightAt, regionAt, type World } from "../src/world/gen";
 import { FINE_CHUNK } from "../src/world/cells";
 import { parentSummary } from "../src/world/aggregate";
 import { CANOPY_HEIGHT_M, TERRAIN_INDEX } from "../src/world/terrain";
-import * as fineTerrain from "../src/world/fine-terrain";
+import * as fineFields from "../src/world/fine-fields";
 import { testAtmosphere } from "./weather-helpers";
 import { solvedWorld } from "./world-fixture";
 import { regionsOutward } from "./world-facts";
@@ -107,13 +107,9 @@ function openWorld(): { state: GameState; world: World; vantage: number } {
   return { state, world, vantage };
 }
 
-/** One elevation over the whole world, at the physical field every consumer reads. */
+/** One elevation over the whole world, at the one reader the ray and the summaries share. */
 function flatFields(elevationM: number): void {
-  const fields = { elevationM, moisture: 0.3, exposure: 0.4, drainage: 0.5, sea: false, inlandWater: false, coast: 1 };
-  // Both entry points: the ray reads patches and the parent summaries its
-  // bounds come from read patches, while generated terrain reads metres.
-  vi.spyOn(fineTerrain, "fieldsAtPatch").mockReturnValue(fields);
-  vi.spyOn(fineTerrain, "fieldsAtMetric").mockReturnValue(fields);
+  vi.spyOn(fineFields, "temporaryElevationM").mockReturnValue(elevationM);
 }
 
 function at(world: World, vantage: number, dx: number, dy: number): number {
@@ -190,13 +186,7 @@ function fineSightFixture(rows: string[], heights: Record<string, number> = {}):
     });
   });
   if (vantage < 0) throw new Error("the scene has no observer");
-  const fields = (patch: number) => ({
-    elevationM: elevations.get(patch) ?? 0,
-    moisture: 0.3, exposure: 0.4, drainage: 0.5, sea: false, inlandWater: false, coast: 1,
-  });
-  vi.spyOn(fineTerrain, "fieldsAtPatch").mockImplementation((_seed, patch) => fields(patch));
-  vi.spyOn(fineTerrain, "fieldsAtMetric").mockImplementation((_seed, point) =>
-    fields(Math.floor(point.yM / PATCH_M) * world.w + Math.floor(point.xM / PATCH_M)));
+  vi.spyOn(fineFields, "temporaryElevationM").mockImplementation((_world, patch) => elevations.get(patch) ?? 0);
   state.player.xM = (vantage % world.w + 0.5) * PATCH_M;
   state.player.yM = (Math.floor(vantage / world.w) + 0.5) * PATCH_M;
   state.player.region = 0;

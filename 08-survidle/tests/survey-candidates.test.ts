@@ -11,7 +11,7 @@ import { localWeather } from "../src/sim/weather";
 import { FINE_CHUNK } from "../src/world/cells";
 import * as cells from "../src/world/cells";
 import { regionAt } from "../src/world/gen";
-import * as fineTerrain from "../src/world/fine-terrain";
+import * as fineFields from "../src/world/fine-fields";
 import { PATCH_M, patchId } from "../src/world/spatial";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 import { testAtmosphere } from "./weather-helpers";
@@ -41,8 +41,7 @@ function fixture(blocked: boolean) {
   state.player.xM = 14.5 * PATCH_M;
   state.player.yM = 14.5 * PATCH_M;
   state.knowledge = newKnowledge();
-  const fields = fineTerrain.fieldsAtPatch(world.seed, region.campCell);
-  vi.spyOn(fineTerrain, "fieldsAtPatch").mockReturnValue({ ...fields, elevationM: 0 });
+  vi.spyOn(fineFields, "temporaryElevationM").mockReturnValue(0);
   vi.spyOn(sight, "sightReachCells").mockImplementation((_state, _world, _cal, cell) => blocked && cell % world.w === 16 ? 5 : 2);
   testAtmosphere();
   return { state, world, region, cal: calendar(state.minute, state.startDoy) };

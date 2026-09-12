@@ -1,11 +1,10 @@
 import { requireCamp } from "./siting-helpers";
 import { describe, expect, it } from "vitest";
 import { fishSpecies } from "../src/sim/species";
-import { terrainOfPatch, terrainPeek } from "../src/world/cells";
-import { terrainAtPatch } from "../src/world/fine-terrain";
+import { solvedTerrainAt, terrainOfPatch, terrainPeek } from "../src/world/cells";
 import { cellAt, generateWorld, hasSpot, heightAt, neighbours, regionAt, regionPeek, speciesHere, WORLD_H, WORLD_W } from "../src/world/gen";
 import { FINE_PER_PARENT, PATCH_KM, patchId } from "../src/world/spatial";
-import { LATTICE_W } from "../src/world/terrain";
+import { LATTICE_W, TERRAINS } from "../src/world/terrain";
 import { findRoute, routeKm } from "../src/world/route";
 import { KIND } from "../src/world/solve";
 import { solvedWorld } from "./world-fixture";
@@ -26,17 +25,19 @@ describe("world generation", () => {
     const fine = solvedWorld(21);
     const patch = patchId(6411, 1875);
     expect(fine.fineChunks.size).toBe(0);
-    expect(terrainPeek(fine, patch)).toBe(terrainAtPatch(21, patch));
+    // A peek with no chunk resident is the solved ground at the parent; the
+    // patch's own ground is the chunk's, and asking for it builds one.
+    expect(terrainPeek(fine, patch)).toBe(solvedTerrainAt(fine, 6411, 1875));
     expect(fine.fineChunks.size).toBe(0);
-    expect(terrainOfPatch(fine, patch)).toBe(terrainAtPatch(21, patch));
+    expect(TERRAINS).toContain(terrainOfPatch(fine, patch));
     expect(fine.fineChunks.size).toBe(1);
   });
 
   it("is the size of the far north", () => {
     expect(world.w).toBe(10800);
-    expect(world.h).toBe(7800);
+    expect(world.h).toBe(13344);
     expect(WORLD_W * PATCH_KM).toBe(540);
-    expect(WORLD_H * PATCH_KM).toBe(390);
+    expect(WORLD_H * PATCH_KM).toBeCloseTo(667.2, 6);
   });
 
   it("has sea to the north and land inland", () => {
@@ -77,9 +78,8 @@ describe("world generation", () => {
       const cy = (i - cx) / cells.w;
       const x = cx * FINE_PER_PARENT;
       const y = cy * FINE_PER_PARENT;
-      // The fine lattice is shorter than the solved world until its height
-      // constant follows the solve; rows past its end have no patch to read.
-      if (y >= world.h) continue;
+      // The fine lattice covers the solve exactly, so every solved cell has a patch.
+      expect(y).toBeLessThan(world.h);
       if (cells.kind[i] === KIND.sea) { expect(heightAt(world, x, y)).toBeLessThanOrEqual(0); seaChecked++; }
       else expect(heightAt(world, x, y)).toBeGreaterThanOrEqual(0);
     }

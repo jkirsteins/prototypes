@@ -11,6 +11,7 @@
  * noise, and nothing else.
  */
 import { derive } from "../rng";
+import { classifyFine } from "./fine-class";
 import { CELL_KM } from "../units";
 import { DIST8, DX8, DY8, lakeComponents, NO_FLOW, priorityFlood, receiverOf } from "./hydro";
 import { valueNoiseMetres } from "./noise";
@@ -91,6 +92,8 @@ export interface FineRefinement {
   rims: Float32Array;
   /** CHANNEL_RIVER or CHANNEL_STREAM on a channel patch, 0 elsewhere. */
   channel: Uint8Array;
+  /** What the ground is per patch, as a TERRAIN_INDEX: the fine classifier's, not the parent's. */
+  terrain: Uint8Array;
   /** One path per entry, the parents in the order they were walked. */
   channels: ChannelPath[];
 }
@@ -113,7 +116,8 @@ function seedsFor(seed: number): { detail: number } {
   return { detail: derive(seed, 27) };
 }
 
-interface Window {
+/** The parent and fine bounds of the context a chunk is built from: the chunk plus its apron. */
+export interface FineWindow {
   /** Parent bounds of the window, px1 and py1 exclusive. */
   px0: number;
   py0: number;
@@ -126,7 +130,7 @@ interface Window {
   wh: number;
 }
 
-function windowOf(solved: SolvedWorld, cx: number, cy: number): Window {
+function windowOf(solved: SolvedWorld, cx: number, cy: number): FineWindow {
   // A chunk beyond the solved arrays has no ground to refine, so the window
   // collapses to one parent rather than going negative.
   const px0 = Math.min(solved.w - 1, Math.max(0, cx * CHUNK_PARENTS - APRON_PARENTS));
@@ -150,7 +154,7 @@ function windowOf(solved: SolvedWorld, cx: number, cy: number): Window {
  * crosses the water level between a shore parent and the water beside it
  * and the shore takes its shape from the heights.
  */
-function controlPoints(solved: SolvedWorld, win: Window): Float32Array {
+function controlPoints(solved: SolvedWorld, win: FineWindow): Float32Array {
   const ctrl = new Float32Array(win.pw * win.ph);
   for (let j = 0; j < win.ph; j++) {
     for (let i = 0; i < win.pw; i++) {
@@ -167,7 +171,7 @@ function controlPoints(solved: SolvedWorld, win: Window): Float32Array {
  * children shifted so their mean is the parent's own height. The coarse
  * height is the truth; the fine surface is a refinement of it.
  */
-function fineHeights(seed: number, solved: SolvedWorld, win: Window): Float32Array {
+function fineHeights(seed: number, solved: SolvedWorld, win: FineWindow): Float32Array {
   const s = seedsFor(seed);
   const ctrl = controlPoints(solved, win);
   const fine = upsampleGrid({
@@ -204,7 +208,7 @@ function fineHeights(seed: number, solved: SolvedWorld, win: Window): Float32Arr
  * what lies at or below an adjacent lake parent's surface and reaches it. So
  * a lake parent may have dry children on its rim and a shore parent wet ones.
  */
-function waterKinds(solved: SolvedWorld, win: Window, height: Float32Array): { kind: Uint8Array; surface: Float32Array } {
+function waterKinds(solved: SolvedWorld, win: FineWindow, height: Float32Array): { kind: Uint8Array; surface: Float32Array } {
   const n = win.ww * win.wh;
   const kind = new Uint8Array(n).fill(KIND.land);
   const surface = new Float32Array(height);
@@ -279,7 +283,7 @@ interface Depressions {
  * and one of POND_MIN_DEPTH_M or more over more than a single patch becomes
  * a pond: water with its own surface.
  */
-function floodChunk(win: Window, height: Float32Array, kind: Uint8Array, surface: Float32Array): { filled: Float32Array; depressions: Depressions } {
+function floodChunk(win: FineWindow, height: Float32Array, kind: Uint8Array, surface: Float32Array): { filled: Float32Array; depressions: Depressions } {
   const n = win.ww * win.wh;
   const outlet = new Uint8Array(n);
   for (let i = 0; i < n; i++) if (kind[i] !== KIND.land) outlet[i] = 1;
@@ -338,7 +342,7 @@ function floodChunk(win: Window, height: Float32Array, kind: Uint8Array, surface
  * fine surface does not fall it is cut, by centimetres: a channel is a
  * channel because the water got through.
  */
-function carveChannels(solved: SolvedWorld, win: Window, cx: number, cy: number, height: Float32Array, filled: Float32Array, kind: Uint8Array, channel: Uint8Array): { paths: ChannelPath[]; stepOut: Map<number, number> } {
+function carveChannels(solved: SolvedWorld, win: FineWindow, cx: number, cy: number, height: Float32Array, filled: Float32Array, kind: Uint8Array, channel: Uint8Array): { paths: ChannelPath[]; stepOut: Map<number, number> } {
   const flowing: number[] = [];
   for (let j = 0; j < CHUNK_PARENTS; j++) {
     for (let i = 0; i < CHUNK_PARENTS; i++) {
@@ -385,14 +389,14 @@ function carveChannels(solved: SolvedWorld, win: Window, cx: number, cy: number,
 }
 
 /** The solved cell a window patch belongs to. */
-function parentOfWindowPatch(solved: SolvedWorld, win: Window, i: number): number {
+function parentOfWindowPatch(solved: SolvedWorld, win: FineWindow, i: number): number {
   const x = i % win.ww;
   const y = (i - x) / win.ww;
   return (win.py0 + Math.floor(y / FINE_PER_PARENT)) * solved.w + win.px0 + Math.floor(x / FINE_PER_PARENT);
 }
 
 /** The parent's patches along the side facing (dx, dy): six along an edge, one at a corner. */
-function edgePatches(win: Window, wx0: number, wy0: number, dx: number, dy: number): number[] {
+function edgePatches(win: FineWindow, wx0: number, wy0: number, dx: number, dy: number): number[] {
   const out: number[] = [];
   if (dx !== 0 && dy !== 0) {
     out.push((wy0 + (dy > 0 ? FINE_PER_PARENT - 1 : 0)) * win.ww + wx0 + (dx > 0 ? FINE_PER_PARENT - 1 : 0));
@@ -412,7 +416,7 @@ function edgePatches(win: Window, wx0: number, wy0: number, dx: number, dy: numb
  * when it lies outside the chunk. A parent with nothing above it starts at
  * its highest patch, where the water first gathers.
  */
-function entriesOf(solved: SolvedWorld, win: Window, parent: number, stepOut: Map<number, number>, filled: Float32Array): number[] {
+function entriesOf(solved: SolvedWorld, win: FineWindow, parent: number, stepOut: Map<number, number>, filled: Float32Array): number[] {
   const px = parent % solved.w;
   const py = (parent - px) / solved.w;
   const wx0 = (px - win.px0) * FINE_PER_PARENT;
@@ -449,7 +453,7 @@ function entriesOf(solved: SolvedWorld, win: Window, parent: number, stepOut: Ma
  * centimetres to keep the water running downhill: a channel is a channel
  * because the water got through.
  */
-function trace(win: Window, entry: number, exit: number, parentPatches: number[], height: Float32Array, filled: Float32Array, kind: Uint8Array): number[] {
+function trace(win: FineWindow, entry: number, exit: number, parentPatches: number[], height: Float32Array, filled: Float32Array, kind: Uint8Array): number[] {
   const patches = [entry];
   const seen = new Set<number>([entry]);
   let cur = entry;
@@ -495,7 +499,7 @@ function trace(win: Window, entry: number, exit: number, parentPatches: number[]
  * when the cell holds it back. Label-correcting over the parent's 36
  * patches, so the cost is nothing.
  */
-function overTheSill(win: Window, from: number, exit: number, parentPatches: number[], seen: Set<number>, filled: Float32Array): number[] {
+function overTheSill(win: FineWindow, from: number, exit: number, parentPatches: number[], seen: Set<number>, filled: Float32Array): number[] {
   const open = parentPatches.filter((i) => !seen.has(i));
   if (!open.includes(exit)) open.push(exit);
   const cost = new Map<number, number>([[from, filled[from]]]);
@@ -537,7 +541,7 @@ function overTheSill(win: Window, from: number, exit: number, parentPatches: num
 }
 
 /** The chunk's 96 by 96 patch out of a window array. */
-function cutOut<T extends { [index: number]: number; length: number }>(out: T, source: T, win: Window, x0: number, y0: number, w: number, h: number): T {
+function cutOut<T extends { [index: number]: number; length: number }>(out: T, source: T, win: FineWindow, x0: number, y0: number, w: number, h: number): T {
   for (let y = 0; y < h; y++) {
     const from = (y0 - win.fy0 + y) * win.ww + x0 - win.fx0;
     for (let x = 0; x < w; x++) out[y * FINE_CHUNK + x] = source[from + x];
@@ -558,6 +562,7 @@ export function refineChunk(seed: number, solved: SolvedWorld, cx: number, cy: n
   const { filled, depressions } = floodChunk(win, height, kind, surface);
   const channel = new Uint8Array(win.ww * win.wh);
   const { paths } = carveChannels(solved, win, cx, cy, height, filled, kind, channel);
+  const terrain = classifyFine(seed, solved, win, x0, y0, w, h, FINE_CHUNK, height, filled, kind);
   const local = (i: number) => {
     const x = i % win.ww;
     const lx = win.fx0 + x - x0;
@@ -574,6 +579,7 @@ export function refineChunk(seed: number, solved: SolvedWorld, cx: number, cy: n
     depression: cutOut(new Int32Array(PATCHES).fill(-1), depressions.id, win, x0, y0, w, h),
     rims: depressions.rims,
     channel: cutOut(new Uint8Array(PATCHES), channel, win, x0, y0, w, h),
+    terrain,
     channels: paths.map((path) => ({
       parent: path.parent,
       entry: local(path.entry),
