@@ -16,7 +16,7 @@ import type { Calendar } from "../sim/calendar";
 import { fuelTotal, hasEmbers, roofed } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
 import { knowledgeAt } from "../sim/fineknowledge";
-import { coarseKnowledgeGen, coarseKnown, isKnown, knowledgeGen } from "../sim/mapped";
+import { coarseKnowledgeGen, isKnown, knowledgeAtLevel, knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
 import { discovery, siteAt, VISITED } from "../sim/regionstate";
@@ -28,6 +28,7 @@ import { emptyTerrainCounts, parentSummary } from "../world/aggregate";
 import { FINE_PER_PARENT, PATCH_KM, PATCH_M, type PatchId } from "../world/spatial";
 import { passable, type RouteConditions } from "../world/route";
 import { routeConditions, survivorRoute, survivorRouteCandidates } from "../sim/routing";
+import { aggregateTerrain } from "../sim/sight";
 import { activeWildlifeStartles, esc, type UiState } from "./render";
 import { elevationAt, GROUND_CHANGE_GLYPH, offshoreAt, STREAM_MARK, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
@@ -779,10 +780,14 @@ function glyphGround(state: GameState, world: World, visible: Set<number> | null
       if (k === 0) {
         knowledge.unknown++;
         // The solved terrain, read through the peek that never builds a chunk:
-        // far country is exactly the ground no chunk has been made for.
-        if (coarseKnown(state, cellIdx(world, x, y))) {
+        // far country is exactly the ground no chunk has been made for. Which
+        // terrain that is depends on the grain the claim was made at: a patch
+        // proved only as part of a 900 m aggregate draws that aggregate's one
+        // ground, so the picture is never finer than what was seen.
+        const level = knowledgeAtLevel(state, cellIdx(world, x, y));
+        if (level === "farParent" || level === "farAggregate") {
           knowledge.far++;
-          farTerrain[terrainPeek(world, x, y)]++;
+          farTerrain[level === "farAggregate" ? aggregateTerrain(world, x, y) : terrainPeek(world, x, y)]++;
         }
         continue;
       }

@@ -5,7 +5,7 @@
  * regions.
  */
 import { parentSummary } from "../world/aggregate";
-import { canopyHeightAt, FINE_CHUNK, fineSurfaceAt } from "../world/cells";
+import { canopyHeightAt, FINE_CHUNK, fineSurfaceAt, terrainPeek } from "../world/cells";
 import { heightAt, regionPeek, solvedTerrainAt, terrainOf, type World } from "../world/gen";
 import { FINE_PER_PARENT, PATCH_KM, PATCH_M, patchId } from "../world/spatial";
 import { CANOPY_HEIGHT_M } from "../world/terrain";
@@ -679,6 +679,19 @@ function coarseSurfaceM(world: World, px: number, py: number): number {
   const x = px * FINE_PER_PARENT;
   const y = py * FINE_PER_PARENT;
   return Math.max(0, heightAt(world, x, y)) + (CANOPY_HEIGHT_M[solvedTerrainAt(world, x, y)] ?? 0);
+}
+
+/**
+ * The ground a 900 m aggregate reads as: the terrain of its middle parent,
+ * one answer for all nine. A ray that only proved the aggregate never told
+ * its parents apart, so nothing may draw them apart either.
+ */
+export function aggregateTerrain(world: World, x: number, y: number): Terrain {
+  const middle = (p: number) => Math.floor(Math.floor(p / FINE_PER_PARENT) / COARSE_AGGREGATE_PARENTS) * COARSE_AGGREGATE_PARENTS + (COARSE_AGGREGATE_PARENTS >> 1);
+  const px = middle(x);
+  const py = middle(y);
+  if (!solvedParent(world, px, py)) return terrainPeek(world, x, y);
+  return terrainPeek(world, px * FINE_PER_PARENT, py * FINE_PER_PARENT);
 }
 
 /** Every parent of the 900 m aggregate this one belongs to, as the first patch of each. */

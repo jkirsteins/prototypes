@@ -12,11 +12,11 @@ import { coarseKnown, markCoarseKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { deserialize, serialize } from "../src/sim/save";
 import {
-  clearCoarseReadCount, COARSE_WORK_BUDGET, coarseReadCount, markCoarseSeen,
+  aggregateTerrain, clearCoarseReadCount, COARSE_WORK_BUDGET, coarseReadCount, markCoarseSeen,
   SIGHT_HORIZON_M, sightReachCells, vantageRevealCells,
 } from "../src/sim/sight";
 import type { GameState } from "../src/sim/types";
-import { FINE_CHUNK } from "../src/world/cells";
+import { FINE_CHUNK, terrainPeek } from "../src/world/cells";
 import type { World } from "../src/world/gen";
 import { refineChunk } from "../src/world/refine";
 import { FINE_PER_PARENT, PATCH_M, WORLD_FINE_W } from "../src/world/spatial";
@@ -172,5 +172,42 @@ describe("far country", () => {
     expect(knowledgeCounts(loaded.state.knowledge)).toEqual(before);
     expect(coarseKnown(loaded.state, far)).toBe(true);
     expect(coarseAt(loaded.state.knowledge, far)).toBe("parent");
+  });
+});
+
+describe("far country at its own grain", () => {
+  it("draws a 900 m aggregate as one ground, and a parent as its own", () => {
+    const { state, world } = newGame(1);
+    const ui = newUiState();
+    const cal = calendar(state.minute, state.startDoy);
+    const classesOf = (html: string, cell: number): string => {
+      const match = new RegExp(`<span class="([^"]*)"[^>]*data-map-cell="${cell}"`).exec(html);
+      if (!match) throw new Error(`cell ${cell} is not on the board`);
+      return match[1];
+    };
+    const fogged = [...mapHtml(world, state, ui, cal).matchAll(/<span class="c fog[^"]*"[^>]*data-map-cell="(\d+)"/g)].map((m) => Number(m[1]));
+    // A parent whose own ground disagrees with its aggregate's, everywhere in
+    // it: only there do the two grains draw a different glyph.
+    const disagrees = (cell: number): boolean => {
+      const x0 = (cell % world.w) - ((cell % world.w) % FINE_PER_PARENT);
+      const y0 = Math.floor(cell / world.w) - (Math.floor(cell / world.w) % FINE_PER_PARENT);
+      const far = aggregateTerrain(world, x0, y0);
+      for (let y = y0; y < y0 + FINE_PER_PARENT; y++) {
+        for (let x = x0; x < x0 + FINE_PER_PARENT; x++) if (terrainPeek(world, x, y) === far) return false;
+      }
+      return true;
+    };
+    const cell = fogged.find(disagrees);
+    if (cell === undefined) throw new Error("no fogged parent disagrees with its aggregate");
+
+    markCoarseKnown(state, cell, "aggregate");
+    const coarse = classesOf(mapHtml(world, state, ui, cal), cell);
+    markCoarseKnown(state, cell, "parent");
+    const parent = classesOf(mapHtml(world, state, ui, cal), cell);
+
+    expect(coarse).toContain("far");
+    expect(parent).toContain("far");
+    expect(coarse).toContain(`t-${aggregateTerrain(world, cell % world.w, Math.floor(cell / world.w))}`);
+    expect(coarse).not.toBe(parent);
   });
 });
