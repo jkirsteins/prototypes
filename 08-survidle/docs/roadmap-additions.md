@@ -1016,11 +1016,18 @@ Priority order:
    groundwater, flatness, drainage convergence, lake margins and climate.
    A later ecology pass; only pull it forward if bog scarcity changes
    survival materially.
-6. **Seasonal hydrology.** Split into parts: snowmelt discharge (eventually
-   important); river ice thinner and later than lake ice (eventually
-   important); spring rivers as hazardous barriers that change routes, not
-   scenery (a strong survival mechanic later); glaciers (optional, scope
-   dependent).
+6. **Seasonal hydrology, and the river a survivor stands in.** The design is
+   written and unbuilt: `docs/superpowers/specs/2026-09-11-survidle-rivers-
+   design.md` already carries stage (width, depth and velocity at a station
+   from discharge), flow through the season including snowmelt, the
+   depth-velocity wading limit, fording, bridging a narrow stream, swimming,
+   drift, cold-water incapacitation, overbank flood surfaces, and river ice
+   thinner and later than lake ice. Nothing here needs a second design; what
+   it needs is building, and the parts are separable in that order. Glaciers
+   stay optional and scope dependent. What would look wrong: a river read as
+   one uniform barrier the way it is today, a ford that is a 300 m gradient
+   flag rather than today's hydraulics, or a crossing whose cost does not
+   change between June and the melt.
 7. Everything else as detail: the report's lowland rock bucket includes the
    treeline band (fix the measure, not the rule); the template is a window
    with a straight coast trend and a Bothnian notch, and erosion runs at
@@ -1092,3 +1099,224 @@ asleep, and answers the same cell it answered three minutes ago.
 The gate comes off when a life is measured under two minutes, and the
 `--i-have-timed-a-life` flag with it. Under twenty seconds is the target
 worth having: a lineage read in two minutes is a reading that gets run.
+
+## Rhizome as a patch-to-patch winter loop
+
+**Raised** 2026-09-13, after the 50 m patch became the simulation's unit.
+
+A root dig takes its kilos from the patch underfoot, and a patch is a
+thirty-sixth of what a cell used to hold: the seed 17 start region went from
+30,240 kg of diggable rhizome to 840, and a shore patch carries about 22.5 kg.
+The same `ROOT_KG_PER_HOUR` therefore thins a patch thirty-six times faster,
+so `rootDigFactor`'s "dug over here" line arrives within an afternoon. Roots
+are no longer a stand-still food; they are a walk-between-patches food, and
+nothing in the orders, the opportunities or the pace words says so.
+
+Design the loop rather than re-inflating the patch: what a reedbed or a shore
+run of patches holds, how fast a dug patch recovers over a winter, whether a
+standing order may work a run of patches without a fresh once order each time,
+and what the player is told about a patch that is spent. Winter is the case
+that matters, because rhizome is the food that is there when nothing else is.
+
+What would look wrong: a survivor standing on one patch for a day and lifting
+a cell's worth of roots off it; or an order list that makes the player retype
+the same dig thirty-six times to eat what one order used to feed them.
+
+## Work spots and named places at 50 m
+
+**Raised** 2026-09-13, from the step 5b measurement.
+
+`nearestCell` sorts a region's cells by straight line, and a region is now
+6,069 to 7,941 patches rather than a couple of hundred cells. Two things
+follow, and both are measured: the nearest matching patch is essentially
+adjacent (a `chop` spot is 0.00, 0.00 and 0.05 km away on seeds 17, 39 and 79,
+where the region's named `forest` spot is 0.58, 0.99 and 2.31 km), and the
+chosen patch is essentially never the named spot's own patch, so `whereIs`
+reads "a spot 0.1 km north" where it read "the forest". Fifteen fixtures are
+pinned to the old walks and must not be fixed one at a time before this is
+decided.
+
+Three options, none costed as obviously right:
+
+1. **Keep it.** The nearest patch is the physically honest answer - you fell
+   the nearest tree. Re-bake the fifteen fixtures, accept short early walks and
+   the anonymous wording, and re-read the balance gates before concluding
+   anything from them.
+2. **A minimum spot distance.** `nearestCell` skips patches inside a radius.
+   Cheap, one constant - and that constant needs a real-north reason, not a
+   number picked to restore the old fixtures.
+3. **Nearest distinct stand.** Choose the parent, or a contiguous run of
+   matching patches above some size, or the named spot whenever the nearest
+   match lies in the same stand as it. This is the only option that also
+   restores the naming, and it needs a definition of "stand" the 50 m lattice
+   can answer cheaply.
+
+What would look wrong: a day's grind that never leaves the camp patch; or the
+player reading a grid reference where they used to read a place.
+
+## Overlay-cache pressure at the 20 MB cap
+
+**Raised** 2026-09-13, from the step 7 performance gate.
+
+Every fine cache together reads 17.73 MB against a 20 MB budget, with the
+chunk LRU at its cap (16.75 MB of the ceiling, 2.88 MB resident) and overlays
+at 0.90 MB for the 77 a day of play holds. The overlay cache's own cap is
+1,024 entries: at the size a day's play gives them that would be 12.0 MB,
+which with the chunks at their cap is over the line. The gate measures the
+overlays play actually holds, so it would stay green while a longer or more
+travelled session walked past the budget.
+
+Decide whether the overlay cap is a byte budget rather than an entry count,
+and gate on the ceiling instead of the day. Look at the overlay cap first if
+the 20 MB line is ever tightened.
+
+What would look wrong: a long session where the map gets slower the more
+ground the survivor has seen, with every cache still reporting itself inside
+its own cap.
+
+## The long-horizon gates have not been read since the fine world
+
+**Raised** 2026-09-13, at the end of the authoritative-close-zoom branch.
+
+The April, winter, year and lineage gates and the balance sweep were all last
+read against the 300 m world. Four things moved under them and none of the
+readings has been retaken:
+
+- **Standing timber is 50 to 75 times what it was.** A forest patch carries
+  62.5 to 125 stems where the old abstraction gave 1.67, so `wood0` and every
+  fuel-planning number move by that factor. Felling is now effectively
+  unlimited on one patch for a whole winter. That is realistic for a quarter
+  hectare and may still be too generous as a game.
+- **Movement, snow and sight are all patch-local now**, so a day's walking,
+  hauling and surveying costs what the ground between two points really costs
+  rather than what six cells averaged to.
+- **Resources are patch-local**, which is the rhizome item above and the same
+  story for wood, water and forage.
+- **`pickVantage` values a far view three to four times its near one** on a
+  high fell (1e6/36 against 96 squared), so sweeps may climb more than they
+  did.
+
+Read the gates before anything is concluded from them, and per "gates measure
+the sim" do not restore an old number because the world moved it. Each moved
+gate is either a real pacing problem or the old world's convenience, and which
+one it is has to be decided per gate.
+
+What would look wrong: a balance decision taken on a gate reading that
+predates the merge; or a correct physical number bent to make an old gate
+green.
+
+## Bog under-shows at the 300 m rung
+
+**Raised** 2026-09-13, left open by the wetness calibration (phase 3 A2).
+
+The two rungs agree to 97.6 to 97.9 percent overall, but bog does not: 0.49
+percent of land at 300 m against 1.34 at 50 m on seed 42. The fine rung is
+authoritative and unchanged, so nothing a survivor walks on has moved; what
+under-shows is the far map. A cell whose typical patch is hillslope is not
+bog even when a tenth of it is, and bog at 50 m is often exactly that tenth,
+the thread along a hollow's floor.
+
+The obvious cheap fix - let the coarse class read bog when enough of the 36
+modelled points are bog - was probed and does not work. The 36 points are one
+thread column and five hillslope columns, so the histogram of bog points per
+eligible cell is empty between 1 and 5: every fraction at or below a sixth is
+the same rule, and that rule reads 4.13, 2.86 and 5.05 percent bog on seeds
+42, 7 and 1984 - three times the fine rung rather than equal to it. The
+fraction that does agree is about a third (1.46, 0.99, 1.97 percent), and a
+third has no derivation from either rung; it is a number chosen to match a
+number. It would also make bog the one class that wins a cell it is a minority
+of, against the majority rule the rest of the classifier states.
+
+So this is a presentation question, not a calibration one, and it should not
+be answered by wetting the coarse rung again. The shape it probably wants is a
+"some of this is bog" cue the far map can carry alongside the cell's class -
+which needs the cell to keep a second number, not a different class.
+
+What would look wrong: bog appearing on the far map in places a walk finds dry;
+or the fine rung retuned so the far map's arithmetic comes out.
+
+## The terrain report's figures predate the classifier
+
+**Raised** 2026-09-13.
+
+`docs/superpowers/reports/2026-09-11-terrain-hydrology-report.md` was written
+at `GENERATOR_VERSION` 3 and the generator is at 7. Its class shares,
+bog-by-latitude and mean-slope-by-class tables are all pre-calibration. It is
+marked stale in the doc with a pointer, and deliberately not rewritten: it is
+a dated report of a past round and its numbers are the evidence for the
+decisions that round took.
+
+Re-measure into a new dated report when the next terrain question needs a
+baseline. What would look wrong: a decision argued from that report's tables
+as if they described today's world.
+
+## Clearings are invisible to the region and to cached routes
+
+**Raised** 2026-09-13, from the forest-succession work.
+
+A felled-out patch becomes saved clearing ground, and the patch-level readers
+see it. Two readers do not:
+
+- **Region wildlife capacity.** `RegionDef.frac` / `capacity` / `wood0` are
+  computed once when a region is built, so a region whose forest has been cut
+  to clearings still carries a forest's capacity. Habitat reads at the patch
+  see the clearing; the region's own number does not.
+- **Route and topology caches.** A clearing changes terrain speed (spruce to
+  meadow) but not passability, and `succeedGround` clears only the parent
+  summaries. A cached fine route over a freshly cleared patch keeps its old
+  cost until it expires.
+
+Both are correctness gaps rather than balance ones, and both need the same
+decision: what a saved ground change is allowed to invalidate, and at what
+cost. Note that on today's stem densities a clearing takes 112 felled trees
+off one 50 m square, so neither gap is reachable in ordinary play yet - which
+is a reason to fix them before the density question above moves.
+
+What would look wrong: a region logged flat that still feeds as much game as
+an untouched one; or a walk that takes the old time across ground that is now
+open.
+
+## Far country is not dimmed on inheritance
+
+**Raised** 2026-09-13, from the coarse far-country work.
+
+`inheritKnowledge` dims what the ancestor walked but keeps far country whole,
+on the argument that a coarse mark was never a claim about ground anyone stood
+on: it is the shape of the country, and the heir grew up hearing it. That may
+be right and it may read as the heir inheriting a survey. It is a one-line
+change either way, and the call wants a playtest rather than an argument.
+
+What would look wrong: an heir opening the map to a far view the ancestor
+earned from a fell the heir has never climbed, with nothing saying where it
+came from.
+
+## `DEFAULT_ZOOM` opens on the 300 m rung
+
+**Raised** 2026-09-13, carried from the close-zoom migration.
+
+`DEFAULT_ZOOM` is 2, the spec's 300 m rung, so a fresh survivor's opening
+board is mostly fog: the rung shows six patches per glyph and a survivor who
+has seen one valley has read very little of it. Opening at rung 1 (100 m) or
+rung 0 would show a smaller world more fully. This is a first-minutes design
+call, not a bug, and it is the first thing a new tester sees.
+
+What would look wrong: an opening screen that reads as an empty map rather
+than as a small clearing in a large country.
+
+## The coarse pass runs inside every `seeFrom`
+
+**Raised** 2026-09-13, from the coarse far-country work.
+
+A survivor standing on a high fell pays about 47,000 parent reads on the first
+look of each ten-minute bucket, because `markCoarseSeen` runs inside `seeFrom`
+and `seeFrom` is called on every survey step. That is under the fine
+viewshed's own budget, so nothing is slow today, but it is the largest thing
+a vantage costs and it is paid again at every step of a sweep.
+
+If a profile shows it, the lever is a vantage-keyed cache of the marked set
+rather than a narrower fan: the same vantage sees the same far country, and
+recomputing it is what costs. Do not shrink the horizon to buy the time back -
+the horizon is derived from the physics.
+
+What would look wrong: a sweep from a fell that stutters where a sweep across
+a bog does not.
