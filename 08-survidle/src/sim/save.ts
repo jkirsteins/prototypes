@@ -461,6 +461,13 @@ export function migrate(state: GameState): void {
  * they existed. Named on its own, rather than left inline in migrate, so a
  * test can drive it directly: a camp from before the yard keeps everything
  * it built, so its yard is raised to at least what already stands on it.
+ *
+ * The yard line is not a `??=`: a site freshly rebuilt from an older flat
+ * format (below) already carries `newSite()`'s default yardM2, so a missing
+ * field is not the only way a save can arrive under what it has built. This
+ * is the one place that enforces "a camp's yard is at least what stands on
+ * it", for every path that can hand this function a Site, known or not -
+ * a second Math.max at each such call site would drift out of step with it.
  */
 export function migrateSites(state: GameState): void {
   for (const st of Object.values(state.regions)) {
@@ -471,7 +478,7 @@ export function migrateSites(state: GameState): void {
       site.emergencyMinutes ??= 0;
       site.emergencyAge ??= 0;
       site.woodsheds ??= 0;
-      site.yardM2 ??= Math.max(YARD_START_M2, yardUsed(site));
+      site.yardM2 = Math.max(site.yardM2 ?? YARD_START_M2, yardUsed(site));
     }
   }
 }

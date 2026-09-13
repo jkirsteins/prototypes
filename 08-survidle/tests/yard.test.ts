@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { newGame } from "../src/sim/newgame";
-import { regionState, siteFor } from "../src/sim/regionstate";
+import { regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { calendar } from "../src/sim/calendar";
-import { migrateSites } from "../src/sim/save";
+import { migrate, migrateSites } from "../src/sim/save";
 import { clearM2PerHour, FOOTPRINT_M2, YARD_START_M2, yardFree, yardUsed } from "../src/sim/yard";
 import { siteCamp } from "./siting-helpers";
 
@@ -56,5 +56,24 @@ describe("a camp from before the yard", () => {
     migrateSites(revived);
     const after = revived.regions[state.player.region].sites[st.campCell!];
     expect(after.yardM2).toBeGreaterThanOrEqual(yardUsed(after));
+  });
+
+  it("keeps a heavily built camp possible when lifted from the older flat-structures format", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region) as unknown as Record<string, unknown>;
+    // The shape a save had before sites existed: one camp's structures flat on the region.
+    delete st.sites;
+    delete st.snares;
+    st.structures = { firePit: true, leanTo: true, cabin: true, dryingRack: true, snares: 0, boughBed: false, hearth: false, turfHut: false, waterStore: false, snowShelter: false };
+    st.racks = 2;
+    st.boughBedAge = 0;
+    st.meltDays = 0;
+    st.structureAge = {};
+    st.build = {};
+    migrate(state);
+    const live = regionState(state, world, state.player.region);
+    const site = siteAt(live, live.campCell!)!;
+    expect(site.yardM2).toBeGreaterThanOrEqual(yardUsed(site));
   });
 });
