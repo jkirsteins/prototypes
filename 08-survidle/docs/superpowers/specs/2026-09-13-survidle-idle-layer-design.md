@@ -234,8 +234,8 @@ That yields a clearing rate with no constant invented:
 | ground | fire site minutes for its 4 m2 | implied rate |
 | --- | ---: | ---: |
 | dry meadow | 20 | 12 m2 an hour |
-| spruce, duff scraped back | 30 | 6 m2 an hour |
-| peat, a platform instead | 60 | 3 m2 an hour |
+| spruce, duff scraped back | 30 | 8 m2 an hour |
+| peat, a platform instead | 60 | 4 m2 an hour |
 
 Footprints:
 
@@ -255,7 +255,7 @@ A landing camp has about 30 m2, which holds a fire site, a lean-to, a rack
 and a trough with a little spare. Past that, ground is widened by a task
 whose minutes the terrain under the camp sets. A cabin at 25 m2 forces a
 widening; five vedbods are 30 m2, which is two and a half hours on meadow
-and ten on peat.
+and seven and a half on peat.
 
 **Naming.** This is the **yard**, and the task is "widen the yard". The
 word clearing is taken: since PR 14 a clearing is a felled-out patch of
