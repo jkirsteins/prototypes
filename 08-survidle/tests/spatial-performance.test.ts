@@ -34,9 +34,9 @@ import { LEVELS, mapHtml } from "../src/ui/map";
 import { newUiState, type UiState } from "../src/ui/render";
 import { worldCacheStats } from "../src/world/aggregate";
 import { knownRoute } from "../src/world/route";
-import { patchId } from "../src/world/spatial";
+import { patchId, patchXY } from "../src/world/spatial";
 import type { GameState } from "../src/sim/types";
-import type { World } from "../src/world/cells";
+import { FINE_CHUNK, patchAt, residentChunk, type World } from "../src/world/cells";
 import { siteCamp } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
 
@@ -202,6 +202,12 @@ describe("an extended headless run", () => {
       expect(day.summaries).toBe(0);
       expect(day.topologies).toBe(0);
     }
+    // The same reading as one number, because "a 20-day life builds no chunks
+    // from the scheduler" is the claim and a per-day zero states it a day at a
+    // time. Day zero's chunks are the ground the life opens on; the rest of the
+    // run refines nothing.
+    const laterChunks = days.slice(1).reduce((n, day) => n + day.chunks, 0);
+    expect(laterChunks, `day 0 built ${days[0].chunks} chunks; every day after must build none`).toBe(0);
     // Routing does go on, because the survivor keeps being sent somewhere, but
     // its cost is a day's work rather than the run's length: no later day may
     // cost more than twice the first ordinary day.
@@ -209,6 +215,85 @@ describe("an extended headless run", () => {
     for (const day of days.slice(1)) expect(day.routes).toBeLessThanOrEqual(ordinary * 2);
     // Wall time is vitest's own per-test figure rather than an assertion here:
     // the run's length is a host reading and the counts above are not.
+  });
+});
+
+describe("the cost of the close ground", () => {
+  it("refines a cold chunk in under 50 ms", () => {
+    const { state, world } = newGame(21);
+    const home = patchXY(patchOf(state, world));
+    // Five chunks nobody has touched, so every reading is a cold refinement of
+    // ground beside the landing rather than a cache the start left behind.
+    const cold: number[] = [];
+    for (let n = 1; cold.length < 5 && n <= 20; n++) {
+      const x = home.x + n * FINE_CHUNK;
+      const y = home.y + n * FINE_CHUNK;
+      if (!residentChunk(world, x, y)) cold.push(patchId(x, y));
+    }
+    expect(cold.length).toBe(5);
+    const worst: number[] = [];
+    for (const patch of cold) {
+      const before = worldCacheStats(world);
+      const started = performance.now();
+      patchAt(world, patch);
+      const ms = performance.now() - started;
+      const after = worldCacheStats(world);
+      // The deterministic half of the reading: one chunk built, its whole
+      // 96 by 96 of patches classified, and nothing else refined to do it.
+      expect(after.fineChunkBuilds - before.fineChunkBuilds).toBe(1);
+      expect(after.generatedPatches - before.generatedPatches).toBe(FINE_CHUNK * FINE_CHUNK);
+      worst.push(ms);
+    }
+    const slowest = Math.max(...worst);
+    expect(slowest, `cold chunk ms: ${worst.map((ms) => ms.toFixed(1)).join(", ")}`).toBeLessThan(50);
+  });
+
+  it("draws the closest rung from cached chunks in under 16 ms", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    mapRegion(state, world, state.player.region);
+    const ui = open(0);
+    // The cold draw pays for the chunks and the summaries; the frame gate is
+    // what a redraw of the same rung costs once they are in hand.
+    mapHtml(world, state, ui, CAL);
+    const before = worldCacheStats(world);
+    const started = performance.now();
+    const html = mapHtml(world, state, ui, CAL);
+    const ms = performance.now() - started;
+    const after = worldCacheStats(world);
+    expect(html.length).toBeGreaterThan(0);
+    // 1 patch per glyph at this rung, so the board is patches and no
+    // aggregate: a cached draw refines nothing and summarises nothing.
+    expect(LEVELS[0].finePerGlyph).toBe(1);
+    expect(after.fineChunkBuilds - before.fineChunkBuilds).toBe(0);
+    expect(after.parentSummaryBuilds - before.parentSummaryBuilds).toBe(0);
+    expect(ms, `${LEVELS[0].w * LEVELS[0].h} glyphs redrawn in ${ms.toFixed(1)} ms`).toBeLessThan(16);
+  });
+
+  it("keeps every fine cache inside 20 MB", () => {
+    const scene = schedulerRouteScene(21);
+    const { state, world } = scene;
+    for (let zoom = 0; zoom < LEVELS.length; zoom++) render(world, state, zoom);
+    for (let hour = 0; hour < 24; hour++) advance(state, world, 60);
+    const stats = worldCacheStats(world);
+    // The chunk figure is the cap's, not the moment's: the LRU is allowed to
+    // fill, so the gate is what a full cache would hold.
+    const perChunk = stats.fineChunkBytes / stats.fineChunks;
+    const chunksAtCap = perChunk * stats.fineChunkLimit;
+    let knowledgeBytes = 0;
+    for (const chunk of state.knowledge.chunks.values()) knowledgeBytes += chunk.byteLength;
+    const total = chunksAtCap + stats.topologyBytes + stats.overlayBytes + stats.routeBytes + knowledgeBytes;
+    const mb = (bytes: number) => (bytes / 1048576).toFixed(2);
+    // The breakdown rides on the assertion, so a gate that goes red says which
+    // cache grew rather than only that something did.
+    const where = [
+      `chunks at the cap ${mb(chunksAtCap)} (${Math.round(perChunk / 1024)} kB each, ${stats.fineChunks} resident)`,
+      `topologies ${mb(stats.topologyBytes)}`,
+      `overlays ${mb(stats.overlayBytes)} (${stats.localTrees} trees)`,
+      `routes ${mb(stats.routeBytes)}`,
+      `knowledge ${mb(knowledgeBytes)}`,
+    ].join(", ");
+    expect(total, `${mb(total)} MB: ${where}`).toBeLessThan(20 * 1048576);
   });
 });
 
