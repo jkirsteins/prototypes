@@ -70,7 +70,14 @@ describe("roots and rhizomes", () => {
     // Nothing dug: the region's ground and what is left in it read the same.
     const st = regionState(state, world, region);
     expect(rootKgLeft(st, world, region)).toBeCloseTo(rootStockFor(world, region), 6);
-    expect(rootStockFor(world, region)).toBeGreaterThan(1000);
+    // No absolute figure: what a region holds is its own root-bearing patches
+    // at their stands' rates, and a 50 m patch grows a fortieth of what a
+    // 300 m cell did. The bound is the constants above - no patch beats bog's
+    // 37.5 kg and none of the bearing ones falls under meadow's 2.5.
+    const bearing = regionAt(world, region).cells.filter((cell) => rootCellFullKg(world, cell) > 0);
+    expect(bearing.length).toBeGreaterThan(0);
+    expect(rootStockFor(world, region)).toBeGreaterThanOrEqual(bearing.length * 2.5);
+    expect(rootStockFor(world, region)).toBeLessThanOrEqual(bearing.length * 37.5);
   });
 
   it("a dig draws from the cell it stands on and leaves its neighbours alone, at 0.3 kg an hour and half kept under Foraging 3", () => {

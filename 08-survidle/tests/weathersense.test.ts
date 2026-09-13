@@ -20,7 +20,7 @@ import { patchCenter } from "../src/world/spatial";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { cellAt, regionAt } from "../src/world/gen";
 import { coverCeiling, protectionOf } from "../src/sim/shelter";
-import type { OpportunityKey, WeatherOpportunityContext } from "../src/sim/types";
+import type { OpportunityKey, Terrain, WeatherOpportunityContext } from "../src/sim/types";
 import { testRain } from "./weather-helpers";
 import { terrainCellNear, terrainRunNear } from "./world-facts";
 import { mapRegion } from "../src/sim/mapped";
@@ -254,31 +254,45 @@ describe("weather sense", () => {
   });
 });
 
+/**
+ * Seven patches of spruce: six steps of 50 m, which frosted feet cross in ten
+ * minutes. Both cases below walk on a frostbitten foot, and that is what sets
+ * the pace - the distance is the ground, the ten minutes are the body.
+ */
+const TEN_MINUTES_OF_SPRUCE = Array(7).fill("spruce") as Terrain[];
+
 describe("the storm choice", () => {
   /**
-   * Two steps home over a terrain boundary: the walker stands on rock and the
-   * camp is on meadow one cell beyond the first meadow cell. The two terrains, not the two
-   * cell numbers, are what sets the ten and a half minutes the walk takes.
+   * A walk home over a terrain boundary: the walker stands on rock, crosses
+   * nine patches of it and two of meadow to the camp. A patch is 50 m and
+   * under a minute, so the distance is said in patches and the terrains still
+   * set the pace - twelve and a half minutes, against a warning of fifteen.
    */
+  const ROCK_RETURN = [...Array(9).fill("rock"), "meadow", "meadow"] as Terrain[];
+
   function rockReturn() {
     const g = game();
     testRain(8, 5, 40);
     const { state, world } = g;
-    const [from, mid, camp] = terrainRunNear(world, state.player.region, ["rock", "meadow", "meadow"]);
+    const run = terrainRunNear(world, state.player.region, ROCK_RETURN);
+    const from = run[0];
+    const mid = run[run.length - 2];
+    const camp = run[run.length - 1];
     placeAt(state, world, from);
     // The walker knows the ground they are standing in; without that there is no
     // route home to weigh against the warning.
     mapRegion(state, world, state.player.region);
     regionState(state, world, state.player.region).campCell = camp;
-    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 13.25, until: 373.25, warned: false };
+    state.weather.storm = { id: 1, source: "natural", kind: "rain", from: 15, until: 375, warned: false };
     return { ...g, from, mid, camp };
   }
 
   it("keeps the feasible rock-to-meadow return across the terrain boundary", () => {
     const control = rockReturn();
     expect(startTask(control.state, control.world, calendar(0), "walk", `cell:${control.camp}`)).toBe(true);
-    expect(control.state.route?.path).toEqual([control.mid, control.camp]);
-    advance(control.state, control.world, 9);
+    expect(control.state.route?.path.at(-1)).toBe(control.camp);
+    expect(control.state.route?.path).toContain(control.mid);
+    advance(control.state, control.world, 12);
     expect(cellOf(control.state, control.world)).not.toBe(control.camp);
     advance(control.state, control.world, 1);
     expect(cellOf(control.state, control.world)).toBe(control.camp);
@@ -287,10 +301,11 @@ describe("the storm choice", () => {
     expect(control.state.player.xM).toBe(patchCenter(control.camp).xM);
 
     const { state, world, mid, camp } = rockReturn();
-    expect(minutesToCamp(state, world, calendar(0))).toBeCloseTo(10.909);
+    expect(minutesToCamp(state, world, calendar(0))).toBeCloseTo(12.485, 3);
     runOrders(state, world, calendar(0), new Rng(1));
-    expect(state.route?.path).toEqual([mid, camp]);
-    for (let minute = 1; minute < 10; minute++) {
+    expect(state.route?.path.at(-1)).toBe(camp);
+    expect(state.route?.path).toContain(mid);
+    for (let minute = 1; minute < 13; minute++) {
       advance(state, world, 1);
       expect(state.task?.id, `minute ${minute}`).toBe("walk");
     }
@@ -311,7 +326,12 @@ describe("the storm choice", () => {
   it("keeps an achievable return while the warning counts down mid-walk", () => {
     const { state, world } = game();
     testRain(8, 5, 40);
-    const [from, camp] = terrainRunNear(world, state.player.region, ["spruce", "spruce"]);
+    // The walker has to know the ground between: an unmapped camp is no return.
+    const spruce = terrainRunNear(world, state.player.region, TEN_MINUTES_OF_SPRUCE);
+    const from = spruce[0];
+    const camp = spruce[spruce.length - 1];
+    placeAt(state, world, from);
+    mapRegion(state, world, state.player.region);
     const r = regionAt(world, cellAt(world, camp).region);
     regionState(state, world, r.id).campCell = camp;
     siteFor(regionState(state, world, r.id), camp).structures.leanTo = true;
@@ -331,7 +351,10 @@ describe("the storm choice", () => {
 
   it("walks to a camp ten minutes away while the warning still allows it", () => {
     const { state, world } = game();
-    const [, camp] = terrainRunNear(world, state.player.region, ["spruce", "spruce"]);
+    const spruce = terrainRunNear(world, state.player.region, TEN_MINUTES_OF_SPRUCE);
+    const camp = spruce[spruce.length - 1];
+    placeAt(state, world, spruce[0]);
+    mapRegion(state, world, state.player.region);
     const r = regionAt(world, cellAt(world, camp).region);
     regionState(state, world, r.id).campCell = camp;
     siteFor(regionState(state, world, r.id), camp).structures.leanTo = true;
@@ -348,7 +371,7 @@ describe("the storm choice", () => {
     // The far corner of the region, through deep snow: which cell that is the
     // world decides, and the case is that the walk outlasts the warning. Ground
     // that can hold no cover at all is a different case, an emergency shelter.
-    let far = r.campCell;
+    let far = r.campCell!;
     let longest = 0;
     for (const cell of r.cells) {
       if (!passable(cellAt(world, cell).terrain)) continue;
