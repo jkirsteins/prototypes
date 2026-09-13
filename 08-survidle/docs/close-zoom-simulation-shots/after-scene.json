@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-09-12T02:33:50.515Z",
-  "sourceCommit": "d9ed2087",
+  "capturedAt": "2026-09-13T01:09:42.851Z",
+  "sourceCommit": "c342e7b0",
   "viewport": {
     "width": 1440,
     "height": 900,
@@ -12,9 +12,9 @@
       "minute": 10,
       "startDoy": 90,
       "player": {
-        "xM": 373075,
-        "yM": 140175,
-        "region": 4345
+        "xM": 63325,
+        "yM": 613775,
+        "region": 18849
       },
       "zoom": "100 m per glyph, 7.2 by 3.6 km",
       "renderedCells": 2592,
@@ -22,21 +22,25 @@
       "playerMarks": 1,
       "overlayHidden": true,
       "cacheStats": {
-        "fineChunks": 15,
+        "fineChunks": 11,
         "fineChunkLimit": 64,
-        "fineChunkBuilds": 15,
-        "generatedPatches": 138240,
-        "parentSummaries": 2028,
-        "parentSummaryBuilds": 2028,
-        "topologies": 50,
+        "fineChunkBuilds": 11,
+        "generatedPatches": 101376,
+        "parentSummaries": 1327,
+        "parentSummaryBuilds": 1327,
+        "fineChunkBytes": 2991504,
+        "topologies": 68,
         "topologyLimit": 4096,
-        "topologyBuilds": 50,
-        "overlays": 102,
+        "topologyBuilds": 68,
+        "overlays": 99,
         "overlayLimit": 1024,
-        "localTrees": 1294,
-        "routes": 32,
+        "localTrees": 1126,
+        "topologyBytes": 54368,
+        "overlayBytes": 1205280,
+        "routes": 46,
         "routeLimit": 512,
-        "routeBuilds": 32
+        "routeBuilds": 46,
+        "routeBytes": 11790
       },
       "box": {
         "x": 320,
@@ -50,9 +54,9 @@
       "minute": 10,
       "startDoy": 90,
       "player": {
-        "xM": 373075,
-        "yM": 140175,
-        "region": 4345
+        "xM": 63325,
+        "yM": 613775,
+        "region": 18849
       },
       "zoom": "50 m per glyph, 3.6 by 1.8 km",
       "renderedCells": 2592,
@@ -60,21 +64,25 @@
       "playerMarks": 1,
       "overlayHidden": true,
       "cacheStats": {
-        "fineChunks": 15,
+        "fineChunks": 11,
         "fineChunkLimit": 64,
-        "fineChunkBuilds": 15,
-        "generatedPatches": 138240,
-        "parentSummaries": 2028,
-        "parentSummaryBuilds": 2028,
-        "topologies": 50,
+        "fineChunkBuilds": 11,
+        "generatedPatches": 101376,
+        "parentSummaries": 1327,
+        "parentSummaryBuilds": 1327,
+        "fineChunkBytes": 2991504,
+        "topologies": 68,
         "topologyLimit": 4096,
-        "topologyBuilds": 50,
-        "overlays": 102,
+        "topologyBuilds": 68,
+        "overlays": 99,
         "overlayLimit": 1024,
-        "localTrees": 1294,
-        "routes": 32,
+        "localTrees": 1126,
+        "topologyBytes": 54368,
+        "overlayBytes": 1205280,
+        "routes": 46,
         "routeLimit": 512,
-        "routeBuilds": 32
+        "routeBuilds": 46,
+        "routeBytes": 11790
       },
       "box": {
         "x": 320,

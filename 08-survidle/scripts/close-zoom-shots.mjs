@@ -82,12 +82,32 @@ async function clickAct(evalJs, selector) {
   assert(clicked, `no ${selector} control to press`);
 }
 
+/**
+ * Close whatever the run has put up, the way a player closes it. A modal holds
+ * the clock, so a capture that means to happen at a game minute has to get
+ * through all of them - the welcome, the first opportunity's field note, the
+ * goal card - and there is no guarantee about which a seed raises.
+ */
+async function dismissModals(evalJs) {
+  const doors = ["[data-act=welcome-close]", "[data-act=opportunity-modal-ok]", "[data-act=goal-close]"];
+  for (let round = 0; round < doors.length + 1; round++) {
+    let closed = false;
+    for (const door of doors) {
+      if (await evalJs(`Boolean(document.querySelector(${JSON.stringify(door)}))`)) {
+        await clickAct(evalJs, door);
+        closed = true;
+      }
+    }
+    if (!closed) return;
+  }
+}
+
 async function land(evalJs) {
   await waitFor(evalJs, "window.survidle && document.querySelector('[data-act=pick-candidate]')", "the landing choice");
   await clickAct(evalJs, "[data-act=pick-candidate]");
   await clickAct(evalJs, "[data-act=land]");
   await waitFor(evalJs, "document.querySelector('[data-act=welcome-close]')", "the welcome");
-  await clickAct(evalJs, "[data-act=welcome-close]");
+  await dismissModals(evalJs);
 }
 
 /**
@@ -104,13 +124,30 @@ async function zoomTo(evalJs, wanted) {
   throw new Error(`the zoom ladder never reached ${wanted}`);
 }
 
+/**
+ * Let the run reach the game minute the comparison is fixed at, closing field
+ * notes as they arrive. The notes pause the clock and a fresh landing raises
+ * several, so waiting without answering them waits forever; answering them is
+ * what a player does, and the clock only runs between them.
+ */
+async function runToMinute(evalJs, minute) {
+  for (let i = 0; i < 1200; i++) {
+    await dismissModals(evalJs);
+    const now = await evalJs("Math.floor(window.survidle.state.minute)");
+    if (now === minute) return;
+    assert(now < minute, `the clock reached game minute ${now} before the capture could be taken at ${minute}`);
+    await sleep(50);
+  }
+  throw new Error(`game minute ${minute} did not arrive`);
+}
+
 async function capture(evalJs, send, shot) {
   await land(evalJs);
   // The overlays hold the clock, so the rung is chosen before any game time
   // runs and the capture happens inside game minute 10 itself.
   const zoomLabel = await zoomTo(evalJs, shot.label);
-  if (await evalJs("Boolean(document.querySelector('[data-act=goal-close]'))")) await clickAct(evalJs, "[data-act=goal-close]");
-  await waitFor(evalJs, `Math.floor(window.survidle.state.minute) === ${MINUTE}`, `game minute ${MINUTE}`);
+  await dismissModals(evalJs);
+  await runToMinute(evalJs, MINUTE);
   const facts = await evalJs(`(() => {
     const state = window.survidle.state;
     const cells = [...document.querySelectorAll('#map .c')];
@@ -157,7 +194,11 @@ function sourceCommit() {
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  const profile = mkdtempSync(resolve(tmpdir(), "survidle-close-zoom-shots-"));
+  // A profile of one's own by default, so no run inherits another's state. A
+  // named one is for the solve: the world is cached in that profile's
+  // IndexedDB, and solving 4 million cells in a browser is minutes of work
+  // that a capture should not pay twice.
+  const profile = process.env.SHOTS_PROFILE ?? mkdtempSync(resolve(tmpdir(), "survidle-close-zoom-shots-"));
   const chrome = spawn(CHROME, [
     "--headless=new",
     `--remote-debugging-port=${PORT}`,
@@ -203,7 +244,7 @@ async function main() {
       chrome.kill();
       await exited;
     }
-    rmSync(profile, { recursive: true, force: true });
+    if (!process.env.SHOTS_PROFILE) rmSync(profile, { recursive: true, force: true });
   }
 }
 
