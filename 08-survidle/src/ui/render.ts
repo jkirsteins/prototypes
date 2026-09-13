@@ -5,6 +5,7 @@ import { newSpeedHistory, type SpeedHistory } from "./speed-history";
 import { DEFAULT_ZOOM } from "./map";
 import { DEFAULT_CLOUD_SHADOWS } from "./map-preferences";
 import { defaultPanes, type Panes } from "./panes";
+import { DEFAULT_RATE_DISPLAY, type RateDisplay } from "./rate";
 import { DEFAULT_TRAVEL_DISPLAY, type TravelDisplay } from "./travel";
 import type { AwaySummary } from "../sim/save";
 import type { WildlifeStartleEvent } from "../sim/wildlife-encounter";
@@ -17,6 +18,8 @@ export interface UiState {
   travelDisplay: TravelDisplay;
   /** Clouds either shade their map cells or appear as cosmetic ASCII glyphs. */
   cloudShadows: boolean;
+  /** Which clock a rate reads on: game hours or real seconds. */
+  rateDisplay: RateDisplay;
   /** Which pane is showing, and where in the Do pane the player was; remembered across a reload. */
   panes: Panes;
   /** Region clicked on the map, or null for the one you stand in. */
@@ -158,7 +161,7 @@ export function simulationPaused(state: GameState, ui: UiState): boolean {
 
 export function newUiState(): UiState {
   return {
-    panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, cloudShadows: DEFAULT_CLOUD_SHADOWS, selected: null, hover: null, destination: null, away: null, confirmAbandon: false, confirmCamp: false,
+    panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, cloudShadows: DEFAULT_CLOUD_SHADOWS, rateDisplay: DEFAULT_RATE_DISPLAY, selected: null, hover: null, destination: null, away: null, confirmAbandon: false, confirmCamp: false,
     cemetery: false, manual: false, teach: null, opportunityCatalog: { open: false, category: "survival", page: 0, detail: null }, opportunityPresentation: null, recognition: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false, regions: false },
     hurry: newHurry(), speedHistory: newSpeedHistory(), wildlifeStartles: [], wildlifeStartleIds: new Set(), mapViewport: null,

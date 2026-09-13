@@ -51,6 +51,7 @@ import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml,
 import type { SubtabId } from "./ui/purpose";
 import { levelAt, LEVELS, legendHtml, mapAggregateAtPoint, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, type TargetResolution, viewOrigin } from "./ui/map";
 import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
+import { loadRateDisplay, saveRateDisplay, type RateDisplay } from "./ui/rate";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
@@ -126,6 +127,7 @@ function persistGame(): void {
 const ui = newUiState();
 ui.travelDisplay = loadTravelDisplay(localStorage);
 ui.cloudShadows = loadCloudShadows(localStorage);
+ui.rateDisplay = loadRateDisplay(localStorage);
 const SPECIFIC_KEY = "survidle.specific";
 try {
   const saved = JSON.parse(localStorage.getItem(SPECIFIC_KEY) ?? "{}") as Partial<UiState["specific"]>;
@@ -357,6 +359,8 @@ function render(nowMs = performance.now()) {
   if (travelSelect && travelSelect.value !== ui.travelDisplay) travelSelect.value = ui.travelDisplay;
   const cloudShadows = document.querySelector<HTMLInputElement>("[data-display=cloud-shadows]");
   if (cloudShadows && cloudShadows.checked !== ui.cloudShadows) cloudShadows.checked = ui.cloudShadows;
+  const rates = document.querySelector<HTMLSelectElement>("[data-display=rates]");
+  if (rates && rates.value !== ui.rateDisplay) rates.value = ui.rateDisplay;
 
   const overlay = document.getElementById("overlay")!;
   if (!oldWorldSave && !ui.opportunityPresentation) ui.opportunityPresentation = nextOpportunityPresentation(state, ui);
@@ -964,6 +968,12 @@ document.addEventListener("change", (ev) => {
   if (el.matches("[data-display=cloud-shadows]")) {
     ui.cloudShadows = el.checked;
     saveCloudShadows(ui.cloudShadows, localStorage);
+    render();
+    return;
+  }
+  if (el.matches("[data-display=rates]")) {
+    ui.rateDisplay = el.value as RateDisplay;
+    saveRateDisplay(ui.rateDisplay, localStorage);
     render();
     return;
   }

@@ -1,8 +1,10 @@
 import { fmtDuration, fmtKm } from "../units";
+import { readDisplay, writeDisplay } from "./display-settings";
 
 export type TravelDisplay = "distance" | "time" | "both";
 export const DEFAULT_TRAVEL_DISPLAY: TravelDisplay = "distance";
-export const DISPLAY_SETTINGS_KEY = "survidle.display";
+
+export { DISPLAY_SETTINGS_KEY } from "./display-settings";
 
 export function formatTravel(km: number, minutes: number, display: TravelDisplay): string {
   const distance = fmtKm(km);
@@ -13,18 +15,10 @@ export function formatTravel(km: number, minutes: number, display: TravelDisplay
 }
 
 export function loadTravelDisplay(storage: Storage = localStorage): TravelDisplay {
-  try {
-    const value = (JSON.parse(storage.getItem(DISPLAY_SETTINGS_KEY) ?? "{}") as { travel?: unknown }).travel;
-    return value === "distance" || value === "time" || value === "both" ? value : DEFAULT_TRAVEL_DISPLAY;
-  } catch {
-    return DEFAULT_TRAVEL_DISPLAY;
-  }
+  const value = readDisplay(storage).travel;
+  return value === "distance" || value === "time" || value === "both" ? value : DEFAULT_TRAVEL_DISPLAY;
 }
 
 export function saveTravelDisplay(display: TravelDisplay, storage: Storage = localStorage): void {
-  try {
-    storage.setItem(DISPLAY_SETTINGS_KEY, JSON.stringify({ travel: display }));
-  } catch {
-    // The selection still lasts for this page when storage is unavailable.
-  }
+  writeDisplay({ travel: display }, storage);
 }
