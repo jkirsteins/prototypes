@@ -392,7 +392,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     growWood(st, world);
     // A cap that costs something has to say so, and the away report reads the
     // log: once a day with the day's total, never once a minute.
-    if (st.wettedKg >= 1) log(state, `${fmtKg(st.wettedKg)} of firewood stood out in the rain and is wet through.`, "bad");
+    if (st.wettedKg >= 1) log(state, `${fmtKg(st.wettedKg)} of firewood stood out in the rain at ${r.name} and is wet through.`, "bad");
     st.wettedKg = 0;
   }
 }
