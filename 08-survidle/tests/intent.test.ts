@@ -11,7 +11,8 @@ import { newGame } from "../src/sim/newgame";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, forestCell, heathCell, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
-import { setWoodPatchLeft } from "../src/sim/stocks";
+import { setWoodPatchLeft, woodPatchFull } from "../src/sim/stocks";
+import { CLEARING_SHARE } from "../src/world/groundchange";
 import { readSave, serialize } from "../src/sim/save";
 import { check, stepTask, stopTask , isShortAtCamp } from "../src/sim/tasks";
 import { setSkillLevel } from "../src/sim/horizon";
@@ -266,13 +267,15 @@ describe("the work tier", () => {
     expect(startIntent(state, world, cal, rng(), req("chop"))).toBe(false);
     expect(state.intent).toBeNull();
     state.player.tools = [{ id: "axe", durability: 100 }];
-    // The forest spot is where the order resolves, and one tree is all that patch has left.
+    // One fell is all this patch has left before felling carries it past the
+    // clearing share, and the order is bound to it, so the work runs out where
+    // it stands rather than moving on to the next stand.
     const felling = spotOf(regionAt(world, state.player.region), "forest")!.cell;
-    setWoodPatchLeft(regionState(state, world, state.player.region), world, felling, 1);
-    startIntent(state, world, cal, rng(), req("chop", { until: { kind: "forever" } }));
+    setWoodPatchLeft(regionState(state, world, state.player.region), world, felling, woodPatchFull(world, felling) * CLEARING_SHARE + 1);
+    startIntent(state, world, cal, rng(), req("chop", { until: { kind: "forever" }, where: { cell: felling } }));
     expect(until(g, () => state.intent === null)).toBe(true);
     expect(state.stats.trees).toBe(1);
-    expect(state.log.some((e) => e.text === "Fell any tree: nothing left worth felling. {You} {stop}.")).toBe(true);
+    expect(state.log.some((e) => e.text === "Fell any tree: stand in the forest; walk to the forest. {You} {stop}.")).toBe(true);
   });
 
   it("N times counts completions of the work only", () => {

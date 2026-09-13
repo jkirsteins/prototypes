@@ -4,7 +4,8 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, freshTool, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAtSpot } from "../src/sim/position";
-import { setWoodPatchLeft, woodPatchLeft } from "../src/sim/stocks";
+import { setWoodPatchLeft, woodPatchFull, woodPatchLeft } from "../src/sim/stocks";
+import { CLEARING_SHARE } from "../src/world/groundchange";
 import { beginTask, check, DEADWOOD_KG, DEADWOOD_TREE_SHARE } from "../src/sim/tasks";
 import { siteCamp } from "./siting-helpers";
 import { testAtmosphere, testRain } from "./weather-helpers";
@@ -30,7 +31,7 @@ describe("dead wood", () => {
     expect(woodPatchLeft(st, world, at)).toBeCloseTo(wood - DEADWOOD_TREE_SHARE);
   });
 
-  it("comes out wet in rain and refuses a picked-clean forest", () => {
+  it("comes out wet in rain and refuses ground felled past the clearing share", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
@@ -39,8 +40,11 @@ describe("dead wood", () => {
     beginTask(state, world, cal, "deadwood");
     advance(state, world, 60);
     expect(qty(state.player.pack, "wetFirewood")).toBeCloseTo(DEADWOOD_KG, 0);
-    setWoodPatchLeft(state.regions[state.player.region], world, cellOf(state, world), 0.1);
-    expect(check(state, world, cal, "deadwood").why).toBe("the forest is picked clean");
+    // The stock door for dead wood sits below the share at which the patch
+    // becomes a clearing, so the clearing is what refuses the work.
+    const patch = cellOf(state, world);
+    setWoodPatchLeft(state.regions[state.player.region], world, patch, woodPatchFull(world, patch) * CLEARING_SHARE);
+    expect(check(state, world, cal, "deadwood").why).toBe("stand in the forest; walk to the forest");
   });
 });
 
