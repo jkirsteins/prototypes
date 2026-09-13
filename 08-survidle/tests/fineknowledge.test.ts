@@ -40,6 +40,22 @@ describe("compact fine knowledge", () => {
     expect(knownPatches(back).sort((a, b) => a - b)).toEqual([seen, visited, inherited].sort((a, b) => a - b));
   });
 
+  it("refuses a corrupted string rather than decoding it as ground", () => {
+    const knowledge = newKnowledge();
+    markVisited(knowledge, patchId(40, 40));
+    const encoded = encodeKnowledge(knowledge);
+    // A character outside the alphabet read as zero is indistinguishable from
+    // unknown ground once it is in the chunks, so decode refuses it instead.
+    for (const bad of ["*", "!", " ", "\u00e9"]) {
+      const damaged = `${encoded.slice(0, -1)}${bad}`;
+      expect(() => decodeKnowledge(damaged)).toThrow();
+      const { state } = newGame(1);
+      const save = serialize(state, 1).replace(/"knowledge":"[^"]*"/, `"knowledge":"${damaged}"`);
+      expect(save).toContain(damaged);
+      expect(readSave(save)).toBeNull();
+    }
+  });
+
   it("raises a level but never lowers one, and the journal dims what is left", () => {
     const knowledge = newKnowledge();
     const patch = patchId(20, 20);

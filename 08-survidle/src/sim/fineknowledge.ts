@@ -166,6 +166,12 @@ function toBase64(bytes: Uint8Array): string {
   return out;
 }
 
+/**
+ * Throws on anything outside the alphabet. A character read as zero would
+ * decode a damaged save into ground the survivor never saw, which is
+ * indistinguishable from knowledge once it is in the chunks; a throw reaches
+ * deserialize, which refuses the save.
+ */
 function fromBase64(text: string): Uint8Array {
   const body = text.replace(/=+$/, "");
   const out = new Uint8Array(Math.floor((body.length * 6) / 8));
@@ -173,7 +179,9 @@ function fromBase64(text: string): Uint8Array {
   let bits = 0;
   let at = 0;
   for (const c of body) {
-    acc = (acc << 6) | (B64_INDEX.get(c) ?? 0);
+    const digit = B64_INDEX.get(c);
+    if (digit === undefined) throw new RangeError(`knowledge is not base64: ${c}`);
+    acc = (acc << 6) | digit;
     bits += 6;
     if (bits < 8) continue;
     bits -= 8;
