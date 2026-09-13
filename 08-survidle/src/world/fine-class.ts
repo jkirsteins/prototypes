@@ -188,8 +188,17 @@ export function classifyFine(
       // The index is a specific area - catchment per unit width of contour -
       // and the contour a patch presents is a sixth of the one a cell
       // presents, so the same drainage area counts six times over at this
-      // rung. Without the factor the same ground would read drier here than
-      // at 300 m for no reason but the lattice.
+      // rung. The factor is what makes the constant inside wetnessIndex a
+      // transmissivity over a recharge, a length in metres, rather than a
+      // number about 300 m cells: the same rule at either rung.
+      //
+      // The wet classes still come out thinner here than the parent's class
+      // says they should, and that is the lattice the parent is on rather
+      // than an error at this one. A 300 m cell carries the wetness measured
+      // at its outlet across all nine hectares of it, and under D8 its own
+      // area alone is worth 300 m of specific catchment where a patch's is
+      // worth 50 - half of what a gentle slope needs to read saturated, at
+      // the coarse rung, against a twelfth of it here.
       const wetness = wetnessIndex(area[i] * FINE_PER_PARENT, slope);
       const p = precipitationIndex(coastKm);
       const m = moistureIndex(p, wetness, northFacing);
