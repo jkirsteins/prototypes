@@ -73,13 +73,37 @@ describe("bounded exact survey ranking", () => {
       const path = routing.exploreRoute(state, world, here, cell, region.id);
       if (!path) return null;
       const minutes = routing.survivorRouteMinutes(state, world, path, speed);
-      return { cell, path, score: sight.sightReachCells(state, world, cal, cell) ** 2 / minutes };
+      return { cell, path, score: sight.opticalCandidateRangeCells(sight.sightReachCells(state, world, cal, cell)) ** 2 / minutes };
     }).filter(row => row !== null).sort((a, b) => b.score - a.score || a.path.length - b.path.length || a.cell - b.cell);
     const routes = vi.spyOn(routing, "exploreRoute");
     const selected = tasks.pickVantage(state, world, cal, region.id, [here]);
     expect(selected?.cell).toBe(exhaustive[0].cell);
     expect(selected?.path).toEqual(exhaustive[0].path);
     expect(routes.mock.calls.length).toBeLessThan(region.cells.length / 2);
+  });
+
+  it("gives a high fell no more reveal than the viewshed will enumerate", () => {
+    // A 300 m fell reaches about 1236 patches by terrain, but a viewshed
+    // enumerates at most opticalCandidateRangeCells of them, so the fell and a
+    // patch that already reaches the cap open exactly the same ground. Scored
+    // by the raw reach the fell won every comparison and a sweep walked to it.
+    const cap = sight.opticalCandidateRangeCells(1236);
+    expect(cap).toBeLessThan(1236);
+    const near = patchId(15, 14);
+    const far = patchId(12, 12);
+    for (const fell of [far, near]) {
+      const { state, world, region, cal } = fixture(false);
+      const terrain = world.fineChunks.get(0)!.terrain;
+      const { x, y } = { x: fell % world.w, y: Math.floor(fell / world.w) };
+      terrain[y * FINE_CHUNK + x] = TERRAIN_INDEX.fell;
+      // The reach the ground gives, standing in for vantageBaseCells so the
+      // case is about the cap and not about a fixture's height field.
+      vi.spyOn(sight, "sightReachCells").mockImplementation((_state, _world, _cal, cell) =>
+        cell === fell ? 1236 : cell === (fell === far ? near : far) ? cap : 0);
+      // The nearer of the two wins either way: equal reveal, fewer minutes.
+      expect(tasks.pickVantage(state, world, cal, region.id, [cellOf(state, world)])?.cell).toBe(near);
+      vi.restoreAllMocks();
+    }
   });
 
   it("answers frontier legality after the first exact reachable route", () => {

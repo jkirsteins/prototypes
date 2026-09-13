@@ -44,7 +44,7 @@ import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare, markWalked } from "./mapped";
 import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
-import { seeFrom, sightReachCells } from "./sight";
+import { opticalCandidateRangeCells, seeFrom, sightReachCells } from "./sight";
 import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg, takeWood, woodPatchLeft } from "./stocks";
 import { anAnimal, fatSeason, fishItem, fishSpecies, inSpawn, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
@@ -1825,10 +1825,16 @@ function hasReachableFrontier(state: GameState, world: World, region: number, vi
 /**
  * The best of the candidates the survivor could walk to: not the vantage
  * with the best view alone, but the one worth the walk to reach - unknown
- * ground opened (sightRangeCells there, squared, stands in for that well
- * enough without ray-marching every one of them) per minute the route
- * there costs. A candidate already underfoot costs no minutes and is
- * free, so it always wins. Every reachable candidate is weighed, not a
+ * ground opened per minute the route there costs. What a stop opens stands
+ * in as the square of the reach the viewshed will actually enumerate from
+ * it, so no ray-marching is needed to compare two stops. The reach is put
+ * through opticalCandidateRangeCells for that, the same cap visibleCells
+ * applies: past it the extra reach a high fell gives buys no further patch,
+ * and scoring it uncapped sent a sweep across the region for a reveal a
+ * meadow at hand gives just as fully.
+ *
+ * A candidate already underfoot costs no minutes and is free, so it always
+ * wins. Every reachable candidate is weighed, not a
  * narrower slice by level: wayfinding buys a wider eye instead (see
  * sightRangeCells), so a level-10 sweep opens more from the same stop
  * rather than gambling on a farther one for a marginally better ratio -
@@ -1845,7 +1851,7 @@ export function pickVantage(state: GameState, world: World, cal: Calendar, regio
   // this conservative for both current terrain minutes and slope-weighted cost.
   const fastest = Math.max(0.05, speed * Math.max(ICE_SPEED, ...Object.values(TERRAIN_SPEED)));
   const candidates = exploreRouteCandidates(state, world, from, frontierCells(state, world, region, visited), region, ice).map(cell => {
-    const opened = sightReachCells(state, world, cal, cell) ** 2;
+    const opened = opticalCandidateRangeCells(sightReachCells(state, world, cal, cell)) ** 2;
     const lowerMinutes = straightKm(world, from, cell) / fastest * 60 * Math.exp(-0.175);
     return { cell, opened, upperScore: lowerMinutes <= 0 ? Infinity : opened / lowerMinutes };
   }).sort((a, b) => b.upperScore - a.upperScore || a.cell - b.cell);
