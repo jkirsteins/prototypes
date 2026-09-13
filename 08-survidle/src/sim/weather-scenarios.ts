@@ -14,7 +14,7 @@ export const WEATHER_SHOTS = {
   clear: { seed: 17, minute: 1440, x: 10179, y: 5283, zoom: 2, note: "clear air above the comparison rock" },
   "sunny-clouds": { seed: 17, minute: 170160, x: 4203, y: 5703, zoom: 2, note: "dry midsummer sun with a broken cloud field" },
   "approaching-rain": { seed: 17, minute: 86760, x: 6243, y: 903, zoom: 2, note: "edge of a rain band approaching from the west" },
-  "local-rain": { seed: 17, minute: 108720, x: 6675, y: 2403, zoom: 2, note: "the dense part of a local rain band" },
+  "local-rain": { seed: 17, minute: 108720, x: 7968, y: 792, zoom: 2, note: "the dense part of a local rain band" },
   "persisted-snow": { seed: 17, minute: 480480, x: 5235, y: 5187, zoom: 2, note: "falling snow above snow retained by stationary ground state" },
   "frozen-water": { seed: 17, minute: 481200, x: 1053, y: 303, zoom: 2, note: "safe winter ice over naturally frozen coastal water" },
   "valley-fog": { seed: 17, minute: 19560, x: 8595, y: 6219, zoom: 2, note: "dry fog pooled over bog ground" },

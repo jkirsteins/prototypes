@@ -97,14 +97,14 @@ export function profileOf(site: Site | null): "low" | "high" {
  * a hundred metres upwind is exactly the shelter this looks for, and counting
  * steps instead of metres reached five patches and priced them as five cells.
  */
-const LEE_REACH_M = 1_500;
+export const LEE_REACH_M = 1_500;
 /**
  * A barrier shelters the ground within about ten of its own heights downwind;
  * shelterbelt measurements halve the wind out to ten to fifteen heights. So a
  * barrier standing a tenth as high as it is distant is full shelter, and the
  * half score the gale rule asks for falls at a twentieth, a ratio of 0.05.
  */
-const LEE_FULL_RATIO = 0.1;
+export const LEE_FULL_RATIO = 0.1;
 /** One cell toward where the wind comes from: 0 is north, they run clockwise, and the map's north is negative y. */
 export const UPWIND_STEP: readonly (readonly [number, number])[] = [
   [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1],

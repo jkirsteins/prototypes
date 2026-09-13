@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { WORLD_H, WORLD_W } from "../src/world/gen";
+import { WORLD_H, WORLD_W, type World } from "../src/world/gen";
+import { PATCH_KM } from "../src/world/spatial";
 import { flatWorld } from "./world-fixture";
 import { cachedAtmosphereFieldNodes, cachedAtmosphereFieldWaves, extinctionComponents, fieldTransport, MAX_ATMOSPHERE_FIELD_NODES, meteorologicalRangeKm, precipitationPhase, sampleAtmosphere, terrainModifiers } from "../src/sim/climate";
 
@@ -16,6 +17,21 @@ function climateWorld(seed: number) {
 
 
 const weather = { startDoy: 180, snowCm: 0 };
+
+/**
+ * A place whose winter wind clears `kmh`, found by walking the broad field's
+ * own 12 km nodes. What the wind does where is the field's, so a fixture that
+ * needs a gale asks for one.
+ */
+function windyWinterPlace(world: World, kmh: number): { x: number; y: number } {
+  const step = Math.round(12 / PATCH_KM);
+  for (let y = step; y < 40 * step; y += step) {
+    for (let x = step; x < 40 * step; x += step) {
+      if (sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, x, y).windKmh > kmh + 2) return { x, y };
+    }
+  }
+  throw new Error(`no place in the world blows over ${kmh} km/h in winter`);
+}
 
 describe("deterministic local atmosphere", () => {
   it("keeps a high inland site within an annual precipitation envelope while retaining heavy bands", () => {
@@ -53,15 +69,15 @@ describe("deterministic local atmosphere", () => {
 
     for (let i = 0; i < 2_000; i++) sampleAtmosphere(weather, world, 1234, i * 30, i * 17);
     expect(cachedAtmosphereFieldNodes(world)).toBeLessThanOrEqual(MAX_ATMOSPHERE_FIELD_NODES);
-    expect(sampleAtmosphere(weather, world, 1234, -650, -720)).toEqual(negative);
+    expect(sampleAtmosphere(weather, world, 1234, -3900, -4320)).toEqual(negative);
     // The field is keyed by the seed, not by the world object: the same world
     // under another seed answers as that seed's world does. The fixture is shared
     // with the rest of the file, so its own seed goes back before leaving.
     world.seed = 19;
     try {
-      const changedSeed = sampleAtmosphere(weather, world, 1234, -650, -720);
+      const changedSeed = sampleAtmosphere(weather, world, 1234, -3900, -4320);
       expect(changedSeed).not.toEqual(negative);
-      expect(changedSeed).toEqual(sampleAtmosphere(weather, climateWorld(19), 1234, -650, -720));
+      expect(changedSeed).toEqual(sampleAtmosphere(weather, climateWorld(19), 1234, -3900, -4320));
     } finally {
       world.seed = 17;
     }
@@ -120,7 +136,10 @@ describe("deterministic local atmosphere", () => {
     const a = sampleAtmosphere(weather, world, 0, 100, 100);
     const later = sampleAtmosphere(weather, world, 20, 100, 100);
     const transport = fieldTransport(world.seed);
-    const transported = sampleAtmosphere(weather, world, 20, 100 + transport.xKmh / 0.9, 100 + transport.yKmh / 0.9);
+    // Twenty minutes of transport, in patches: the air moves xKmh/3 km, and a
+    // patch is PATCH_KM of it.
+    const transported = sampleAtmosphere(weather, world, 20,
+      100 + transport.xKmh / 3 / PATCH_KM, 100 + transport.yKmh / 3 / PATCH_KM);
     expect(later.pressureHpa).not.toBeCloseTo(a.pressureHpa, 3);
     expect(transported.pressureHpa).toBeCloseTo(a.pressureHpa, 9);
     const left = sampleAtmosphere(weather, world, 0, 240 - 0.00001, 0);
@@ -185,9 +204,13 @@ describe("deterministic local atmosphere", () => {
 
   it("uses the requested season and only develops blowing snow over cold snow cover", () => {
     const world = climateWorld(17);
-    const summer = sampleAtmosphere(weather, world, 0, 500, 600);
-    const winter = sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, 500, 600);
-    const bare = sampleAtmosphere({ startDoy: 15 }, world, 0, 500, 600);
+    // Snow blows only over 18 km/h, and where the winter wind reaches that is
+    // the field's own business: the case finds such a place rather than naming
+    // one, since a patch is 50 m and the field's nodes are 12 km apart.
+    const gale = windyWinterPlace(world, 18);
+    const summer = sampleAtmosphere(weather, world, 0, gale.x, gale.y);
+    const winter = sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, gale.x, gale.y);
+    const bare = sampleAtmosphere({ startDoy: 15 }, world, 0, gale.x, gale.y);
     expect(winter.temperatureC).toBeLessThan(summer.temperatureC - 15);
     expect(winter.windKmh).toBeGreaterThan(18);
     expect(winter.blowingSnow).toBeGreaterThan(0);

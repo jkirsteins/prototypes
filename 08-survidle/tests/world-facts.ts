@@ -11,10 +11,10 @@
  * Every finder is pure geometry over the solved arrays, so it costs a flood of
  * a region or two and never a route search.
  */
-import { cellAt, fordAt, hasSpot, heightAt, neighbours, regionAt, regionOf, solvedTerrainAt, streamAt, terrainOf, waterKindOf, type World } from "../src/world/gen";
-import { FINE_PER_PARENT } from "../src/world/spatial";
+import { cellAt, fineSurfaceAt, fordAt, hasSpot, heightAt, neighbours, regionAt, regionOf, solvedTerrainAt, streamAt, terrainOf, waterKindOf, type World } from "../src/world/gen";
+import { FINE_PER_PARENT, PATCH_M } from "../src/world/spatial";
 import { CANOPY_HEIGHT_M } from "../src/world/terrain";
-import { UPWIND_STEP } from "../src/sim/shelter";
+import { LEE_FULL_RATIO, LEE_REACH_M, UPWIND_STEP } from "../src/sim/shelter";
 import { passable } from "../src/world/route";
 import type { SpotId, Terrain } from "../src/sim/types";
 
@@ -235,6 +235,39 @@ export function regionsOutward(world: World, home: number, limit = 120): number[
  * search is geometry only and ignores which terrains the rule refuses lee to,
  * so a rock or a fell standing behind a ridge can be found and asked about.
  */
+/**
+ * How much of the wind the ground upwind of a patch takes out, measured the way
+ * the shelter rule measures it: a patch at a time over 1.5 km of refined ground,
+ * each sample priced at the distance it really stands at. The coarse 300 m walk
+ * below is a filter, not an answer - over a kilometre and a half of 50 m ground
+ * there is nearly always a bank the solve's own heights cannot see, and a cell
+ * the filter calls open is often sheltered in fact. Terrain refusal is
+ * deliberately left out, so a rock or a fell behind a ridge can be found and
+ * asked whether the rule shelters it.
+ */
+function fineBlocking(world: World, cell: number, dx: number, dy: number): number {
+  const x = xOf(world, cell);
+  const y = yOf(world, cell);
+  const here = fineSurfaceAt(world, cell);
+  const stepM = PATCH_M * Math.hypot(dx, dy);
+  let blocking = 0;
+  for (let d = 1; d * stepM <= LEE_REACH_M; d++) {
+    const sx = x + dx * d;
+    const sy = y + dy * d;
+    if (sx < 0 || sy < 0 || sx >= world.w || sy >= world.h) break;
+    const ground = fineSurfaceAt(world, sy * world.w + sx) - here;
+    const ratio = (ground + (CANOPY_HEIGHT_M[terrainOf(world, sx, sy)] ?? 0)) / (d * stepM);
+    if (ratio > blocking) blocking = ratio;
+  }
+  return blocking;
+}
+
+/** Clear of half shelter either way, never on the line: half shelter is half of LEE_FULL_RATIO. */
+function decided(blocking: number, blocked: boolean): boolean {
+  const half = LEE_FULL_RATIO / 2;
+  return blocked ? blocking > half * 1.2 : blocking < half * 0.8;
+}
+
 export function leeCellNear(world: World, home: number, terrain: Terrain, windBearingDeg: number, blocked = true): number {
   // Five steps upwind, the reach the shelter rule uses, each measured at the
   // true distance it stands at rather than at a flat 300 m. A step is a 300 m
@@ -259,8 +292,8 @@ export function leeCellNear(world: World, home: number, terrain: Terrain, windBe
         over = Math.max(over, top / (d * 300 * Math.hypot(dx, dy)));
       }
       if (samples < 5) continue;
-      // Half shelter is a ratio of 0.05; clear of it either way, never on the line.
-      if (blocked ? over > 0.06 : over < 0.04) return cell;
+      if (!decided(over, blocked)) continue;
+      if (decided(fineBlocking(world, cell, dx, dy), blocked)) return cell;
     }
   }
   // Fell is the ground above the treeline, so it sits on the tops and has
@@ -286,7 +319,9 @@ function leeCellAnywhere(world: World, terrain: Terrain, dx: number, dy: number,
         const top = heightAt(world, sx, sy) + (CANOPY_HEIGHT_M[solvedTerrainAt(world, sx, sy)] ?? 0) - h;
         over = Math.max(over, top / (d * 300 * Math.hypot(dx, dy)));
       }
-      if (blocked ? over > 0.06 : over < 0.04) return y * world.w + x;
+      if (!decided(over, blocked)) continue;
+      const cell = y * world.w + x;
+      if (decided(fineBlocking(world, cell, dx, dy), blocked)) return cell;
     }
   }
   throw new Error(`this world holds no ${terrain} that is ${blocked ? "" : "un"}blocked upwind`);
