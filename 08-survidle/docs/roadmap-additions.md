@@ -81,10 +81,10 @@ still has several prerequisites beyond predator reach:
   cell scale, not by running one journey against two interchangeable grid
   scales. Add injectable grid geometry or an equivalent adapter fixture before
   claiming that a changed simulation grid has been exercised end to end.
-- Saves written before exact positions store only a cell. Their migration uses
-  today's `WORLD_W`, `WORLD_H`, and `CELL_KM`, so a later grid change would
-  reinterpret an old cell under the new geometry. Version the saved world
-  geometry or migrate those saves before changing any of the three constants.
+- Closed. Saves written before exact positions stored only a cell, and their
+  migration read the world geometry of the day, so a grid change would have
+  reinterpreted an old cell under the new one. The saved world carries its
+  version now and a save from the 300 m world is refused rather than read.
 - Animal visibility and occlusion still use the containing terrain cell even
   though disturbance geometry is exact. Define how exact sight rays sample
   cover on a finer grid and test an animal crossing into and out of cover.
@@ -94,10 +94,11 @@ still has several prerequisites beyond predator reach:
 - A subject uses one stable seeded point per cell as its waypoint. If finer
   cells expose repetitive paths, replace this with a metric path vocabulary
   whose outcome is stable across save/load and independent of render detail.
-- Audit map labels, test fixtures, and documentation for literal assumptions
-  about the old cell size. Production map distance labels and the disturbance
-  tests now read `CELL_KM`; descriptive references to today's 300 m world are
-  not conversion logic.
+- Closed. Map labels, test fixtures and documentation were audited for literal
+  assumptions about the cell size; the map's distance labels and the
+  disturbance tests read the grid constant rather than a literal, and that
+  constant is `PATCH_KM`. Prose describing the old 300 m world is not
+  conversion logic and was left as history.
 
 The implemented authoritative fine terrain item below covers the larger routing
 and resource consequences. This item is the compatibility gate that must be
