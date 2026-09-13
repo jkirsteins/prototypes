@@ -318,7 +318,13 @@ export const STACKED_KG_PER_M3 = 350;
 export const COVER_M3: Partial<Record<StructureId, number>> = { leanTo: 0.5, turfHut: 1, cabin: 2, vedbod: 3 };
 ```
 
-Add `vedbod` to `STRUCTURE_LIFE_DAYS` at the turf hut's 540 days, to `DECAYING`, to `MEND` as `{ needs: [{ item: "bark", qty: 20 }], minutes: 120 }`, and extend `DecayingId` in `types.ts` with `"vedbod"`.
+**Do not** add `vedbod` to `DECAYING`, `DecayingId`, `MEND` or
+`STRUCTURE_LIFE_DAYS`. The decay loop in `dailyCamp` collapses a structure by
+writing `site.structures[sid] = false`, and a vedbod is a count with no
+boolean to write; giving it an upkeep clock needs a per-shed age that `Site`
+does not have. A shed therefore stands until the yard is what limits it,
+which is the cap this plan ships. Per-shed upkeep is a follow-up in Task 12's
+roadmap edit.
 
 - [ ] **Step 5: Write the readings in `src/sim/camp.ts`**
 
@@ -887,11 +893,14 @@ export function stockCauses(state: GameState, world: World, cal: Calendar): Reco
   const site = campSite(st);
   const wood: StockCause[] = [];
 
-  const it = state.intent;
-  const yielder = it ? TASK_YIELD[it.task] : undefined;
-  if (it && yielder) {
-    const minutes = Math.max(1, it.total);
-    wood.push({ label: TASK_WORDS[it.task] ?? it.task, perHour: (yielder(state, world).kg / minutes) * 60 });
+  // state.task, not state.intent: the intent is the order being served and
+  // counts completions, while the task is the work in hand and carries the
+  // minutes. Work a player starts by hand has a task and no intent at all,
+  // and that is exactly the click this whole strip is for.
+  const t = state.task;
+  const yielder = t ? TASK_YIELD[t.id] : undefined;
+  if (t && yielder) {
+    wood.push({ label: TASK_WORDS[t.id] ?? t.id, perHour: (yielder(state, world).kg / Math.max(1, t.duration)) * 60 });
   }
 
   if (st.fire.lit) {
@@ -1292,9 +1301,9 @@ export function stockPanelHtml(state: GameState, world: World, cal: Calendar, ui
   // What the work in hand will bank when it ends: the task's own yield less
   // the share of it already run. Felling banks four logs at the end of an
   // hour, so this is the task bar read in kilograms.
-  const it = state.intent;
-  const yielder = it && id === "wood" ? TASK_YIELD[it.task] : undefined;
-  const left = it && yielder ? yielder(state, world).kg * (1 - Math.min(1, it.done / Math.max(1, it.total))) : 0;
+  const t = state.task;
+  const yielder = t && id === "wood" ? TASK_YIELD[t.id] : undefined;
+  const left = t && yielder ? yielder(state, world).kg * (1 - Math.min(1, t.progress / Math.max(1, t.duration))) : 0;
   const coming = left > TRACE_KG ? `<div class="dim">${esc(fmtKg(left))} coming from the work in hand</div>` : "";
 
   // Felling draws one patch down and succeeds the ground to a clearing when
@@ -1317,9 +1326,8 @@ ${coming}${stand}
 }
 ```
 
-`it.done` and `it.total` are the intent's own progress fields; use whatever
-the activity strip in `panels.ts` already reads for the task bar rather than
-new ones.
+`state.task.progress` and `state.task.duration` are the fields the task bar
+in `src/ui/bars.ts` already reads; use those and add none.
 
 - [ ] **Step 4: Open and close it**
 
