@@ -20,12 +20,13 @@ import { log } from "./sim/log";
 import { startIntent, type Where } from "./sim/intent";
 import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
-import { isKnown, knowledgeGen } from "./sim/mapped";
+import { isKnown, knowledgeGen, markKnown } from "./sim/mapped";
+import { patchId, patchXY } from "./world/spatial";
 import { frontierRoute } from "./sim/routing";
 import { newWorld } from "./sim/newgame";
 import { moveOrderByHand, pinOrderByHand, removeOrderByHand } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
-import { campCellOf, cellOf } from "./sim/position";
+import { campCellOf, cellOf, placeAtPatch } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, knowLoadedGround, loadGame, SAVE_KEY, saveGame } from "./sim/save";
@@ -1164,6 +1165,8 @@ declare global {
     startleAdvance?(minutes: number): void;
     startleEnd?(): void;
     opportunityEvent?(event: OpportunityEvent): void;
+    placeAtPatch?(patch: number): void;
+    reveal?(patch: number, radiusPatches: number): void;
   } }
 }
 window.survidle = {
@@ -1212,6 +1215,24 @@ if (import.meta.env.DEV) {
   // uses, so discovery, credit and the notice queue behave as they do in play.
   window.survidle.opportunityEvent = (event) => {
     recordOpportunityEvent(state, event, world);
+    render();
+  };
+  // Standing somewhere the run has not walked to, and reading ground the
+  // survivor has not seen: what a browser check of distant terrain needs. Both
+  // go through the sim's own doors - the placement runs the ordinary region
+  // change and viewshed, the reveal is the same mark the sight pass makes.
+  window.survidle.placeAtPatch = (patch) => {
+    placeAtPatch(state, world, patch);
+    render();
+  };
+  window.survidle.reveal = (patch, radiusPatches) => {
+    const { x, y } = patchXY(patch);
+    for (let dy = -radiusPatches; dy <= radiusPatches; dy++) {
+      for (let dx = -radiusPatches; dx <= radiusPatches; dx++) {
+        if (x + dx < 0 || y + dy < 0 || x + dx >= world.w || y + dy >= world.h) continue;
+        markKnown(state, patchId(x + dx, y + dy));
+      }
+    }
     render();
   };
 }
