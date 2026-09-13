@@ -167,21 +167,37 @@ describe("fine wildlife movement", () => {
     const scene = wildlifeBarrierFixture();
     const active = scene.animal.active!;
     const start = active.cell;
+    const trail: number[] = [active.cell];
     const run = (minutes: number): void => {
       const last = scene.state.minute + minutes;
       for (let minute = scene.state.minute + 1; minute <= last; minute++) {
         scene.state.minute = minute;
         stepWildlife(scene.state, scene.world, calendar(minute, scene.state.startDoy), new Rng(minute), 1, "detailed");
+        if (active.cell !== trail[trail.length - 1]) trail.push(active.cell);
       }
     };
 
-    // The pen's own side is walkable and the herd follows a route across it,
-    // so the far side being unreached below is the water band and not an
-    // animal that never moves at all.
+    // The pen's own side is walkable and the herd walks a route across it, so
+    // the far side being unreached below is the water band and not an animal
+    // that only ever wandered. The walk in is read patch by patch: it arrives,
+    // each step is to a touching patch, and every step closes on the target,
+    // which a wander does not do.
     active.target = scene.nearTarget;
     run(60);
+    const arrival = trail.indexOf(scene.nearTarget);
+    expect(arrival).toBeGreaterThan(0);
+    const away = (cell: number): number => {
+      const a = patchXY(cell);
+      const b = patchXY(scene.nearTarget);
+      return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+    };
+    for (let i = 1; i <= arrival; i++) {
+      const from = patchXY(trail[i - 1]);
+      const to = patchXY(trail[i]);
+      expect(Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y))).toBe(1);
+      expect(away(trail[i])).toBeLessThan(away(trail[i - 1]));
+    }
     expect(active.cell).not.toBe(start);
-    expect(patchXY(active.cell).x).toBeGreaterThan(patchXY(start).x);
 
     active.target = scene.destination;
     active.route = [];
