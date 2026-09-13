@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { addItem, pile } from "../src/sim/inventory";
+import { ITEM_KG } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { stockCauses } from "../src/sim/rates";
 import { regionState, siteFor } from "../src/sim/regionstate";
+import { chopSticks } from "../src/sim/skills";
 import { startTask } from "../src/sim/tasks";
 import { siteCamp } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
@@ -26,15 +28,34 @@ describe("the causes behind a rate", () => {
     expect(fire!.perHour).toBeLessThan(0);
   });
 
-  it("splitting is a rise in the wood group, at the yield its own task declares", () => {
+  it("splitting is a rise in the wood group, at the exact yield its own task declares over its own duration", () => {
     testAtmosphere();
     const { state, world } = newGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     addItem(pile(state, st.campCell!), "log", 2);
     startTask(state, world, calendar(state.minute, state.startDoy), "split");
+    const t = state.task!;
+    expect(t.id).toBe("split");
     const causes = stockCauses(state, world, calendar(state.minute, state.startDoy)).wood;
-    expect(sum(causes)).toBeGreaterThan(0);
+    const splitting = causes.find((c) => c.label === "splitting");
+    expect(splitting).toBeDefined();
+    expect(splitting!.perHour).toBeCloseTo((ITEM_KG.log / t.duration) * 60);
+  });
+
+  it("felling's cause equals four logs plus its own sticks, over its own duration", () => {
+    testAtmosphere();
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    // Set directly rather than through startTask: chop's own preconditions
+    // (forest ground, an axe in reach) are not what this test is about, and
+    // stockCauses reads state.task exactly as set, regardless of how it got there.
+    state.task = { id: "chop", progress: 0, duration: 40, repeat: false };
+    const causes = stockCauses(state, world, calendar(state.minute, state.startDoy)).wood;
+    const felling = causes.find((c) => c.label === "felling");
+    expect(felling).toBeDefined();
+    const expectedKg = 4 * ITEM_KG.log + chopSticks(state, world) * ITEM_KG.stick;
+    expect(felling!.perHour).toBeCloseTo((expectedKg / 40) * 60);
   });
 
   it("counts nothing for a task that declares no yield", () => {

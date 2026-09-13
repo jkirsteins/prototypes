@@ -25,7 +25,14 @@ import { localWeather } from "./weather";
 
 export interface StockCause {
   label: string;
-  /** Signed, in the group's own unit, per game hour. */
+  /**
+   * Signed, per game hour, in the group's own RATE unit: kg for wood and
+   * pack, litres for water, kcal for food. Food is the one group whose rate
+   * and held figure are in different units on purpose - the held figure is
+   * person-days (see kcalPerPersonDay), but the rate stays kcal/hour so a
+   * cold snap or a hard day of work is visible here as itself, rather than
+   * being pre-divided into a constant that has already thrown that away.
+   */
   perHour: number;
   /** The reading behind it, where one makes the number legible. */
   note?: string;
@@ -50,16 +57,25 @@ const TASK_WORDS: Partial<Record<TaskId, string>> = {
 };
 
 /**
+ * Today's booked burn, per hour of it so far. The ledger is the one place
+ * this number lives, so reading it here cannot disagree with what the year
+ * run and the journal print. Shared by kcalPerPersonDay and the food cause
+ * in stockCauses so the two can never quietly drift apart.
+ */
+function kcalPerHourToday(state: GameState): number {
+  const led = today(state);
+  const hoursToday = Math.max(1 / 60, (state.minute % 1440) / 60);
+  const burnedToday = led.burn.base + led.burn.activity + led.burn.walk + led.burn.cold + led.burn.sick;
+  return burnedToday / hoursToday;
+}
+
+/**
  * The survivor's own daily burn, floored at a sane day so a still-mostly-asleep
  * survivor does not make the larder read as a year. The floor is the body's own
  * base rate held over a full day, not an invented number.
  */
 export function kcalPerPersonDay(state: GameState): number {
-  const led = today(state);
-  const hoursToday = Math.max(1 / 60, (state.minute % 1440) / 60);
-  const burnedToday = led.burn.base + led.burn.activity + led.burn.walk + led.burn.cold + led.burn.sick;
-  const kcalPerHour = burnedToday / hoursToday;
-  return Math.max(BASE_KCAL_PER_HOUR * 24, kcalPerHour * 24);
+  return Math.max(BASE_KCAL_PER_HOUR * 24, kcalPerHourToday(state) * 24);
 }
 
 // cal is unused for now: every cause here reads its own moment straight off
@@ -91,14 +107,8 @@ export function stockCauses(state: GameState, world: World, _cal: Calendar): Rec
     wood.push({ label: "rain on the open stack", perHour: -RAIN_WET_KG_PER_HOUR, note: `${Math.round(exposed)} kg stands out` });
   }
 
-  // The burn the body has actually booked today, per hour of it. The ledger
-  // is the one place that number lives, so reading it here cannot disagree
-  // with what the year run and the journal print.
-  const led = today(state);
-  const hoursToday = Math.max(1 / 60, (state.minute % 1440) / 60);
-  const burnedToday = led.burn.base + led.burn.activity + led.burn.walk + led.burn.cold + led.burn.sick;
-  const kcalPerHour = burnedToday / hoursToday;
-  const food: StockCause[] = [{ label: "the body", perHour: -kcalPerHour / kcalPerPersonDay(state), note: `${Math.round(kcalPerHour * 24)} kcal a day` }];
+  const kcalPerHour = kcalPerHourToday(state);
+  const food: StockCause[] = [{ label: "the body", perHour: -kcalPerHour, note: `${Math.round(kcalPerHour * 24)} kcal a day` }];
 
   const felt = feltTemperature(state, world, localWeather(state, world, cellOf(state, world)).temperatureC);
   const water: StockCause[] = [{ label: "the body", perHour: -waterLossPerHour(state, felt) }];
