@@ -18,6 +18,7 @@ import { cellOf, placeAt, placeAtSpot, straightKm } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, DEADWOOD_KG, startTask, stepTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
+import { landNeighbour } from "./world-facts";
 import { drink } from "../src/sim/water";
 import { ensureGround } from "../src/sim/weather";
 import { siteCamp, requireCamp } from "./siting-helpers";
@@ -529,7 +530,7 @@ describe("Chapter 3 field deeds", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     const home = state.player.region;
-    const remote = regionAt(world, home).neighbours[0].id;
+    const remote = landNeighbour(world, home);
     const refuge = requireCamp(regionAt(world, remote));
     openRemoteChapter(state);
 
@@ -550,7 +551,7 @@ describe("Chapter 3 field deeds", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     const home = state.player.region;
-    const remote = regionAt(world, home).neighbours[0].id;
+    const remote = landNeighbour(world, home);
     state.regions[remote] = structuredClone(state.regions[home]);
     state.regions[remote].campCell = requireCamp(regionAt(world, remote));
     openRemoteChapter(state);
@@ -569,7 +570,7 @@ describe("Chapter 3 field deeds", () => {
     siteCamp(state, world);
     openRemoteChapter(state);
     const home = state.player.region;
-    const remote = regionAt(world, home).neighbours[0].id;
+    const remote = landNeighbour(world, home);
     const refuge = regionAt(world, remote).campCell!;
     recordOpportunityEvent(state, { kind: "protectionChanged", minute: state.minute, region: remote, cell: refuge, from: 1, to: 2, source: "improved" }, world);
     const opportunity = state.opportunities.context.weather!;
@@ -617,7 +618,7 @@ describe("Chapter 3 field deeds", () => {
       state.opportunities.completedAt.fieldFire = 0;
       state.opportunities.completedAt.fieldMeal = 0;
       reveal(state, ["remoteStorm"]);
-      const remote = regionAt(world, regionAt(world, state.player.region).neighbours[0].id);
+      const remote = regionAt(world, landNeighbour(world, state.player.region));
       state.opportunities.context.weather = {
         opportunity: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
         stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell!, radiusKm: 1 },
@@ -632,7 +633,7 @@ describe("Chapter 3 field deeds", () => {
     openRemoteChapter(state);
     for (const id of ["remoteRefuge", "fieldFire", "fieldMeal"] as const) state.opportunities.completedAt[id] = 0;
     reveal(state, ["remoteStorm"]);
-    const remote = regionAt(world, regionAt(world, state.player.region).neighbours[0].id);
+    const remote = regionAt(world, landNeighbour(world, state.player.region));
     state.opportunities.context.weather = {
       opportunity: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
       stormId: 70, source: "natural", area: { region: remote.id, centre: remote.campCell!, radiusKm: 1 },

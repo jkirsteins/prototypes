@@ -504,7 +504,9 @@ describe("opportunities are the world's, not a life's", () => {
       expect(loaded.opportunities.context.chapter3HomeRegion).toBe(home);
     }
     expect(loaded.opportunities.completedAt.remoteRefuge).toBeUndefined();
-    const remote = regionAt(world, home).neighbours[0].id;
+    // A neighbour with land in it: a coast's neighbours include regions that
+    // are nothing but sea, and a region of sea names no camp to take refuge in.
+    const remote = regionAt(world, home).neighbours.map((n) => n.id).find((id) => regionAt(world, id).campCell !== null)!;
     const refuge = regionAt(world, remote).campCell!;
     placeAt(loaded, world, refuge);
     expect(recordOpportunityEvent(loaded, {

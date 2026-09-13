@@ -24,7 +24,7 @@ import { findRoute, passable, routeMinutes } from "../src/world/route";
 import { requireCamp, siteCamp } from "./siting-helpers";
 import { testAtmosphere, testRain } from "./weather-helpers";
 import { isLee } from "../src/sim/shelter";
-import { regionNear, terrainCellNear, walkableNeighbour } from "./world-facts";
+import { landNeighbour, regionNear, terrainCellNear, walkableNeighbour } from "./world-facts";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -778,7 +778,7 @@ describe("natural-first weather", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     activateRemoteRefuge(state);
-    const remote = regionAt(world, state.player.region).neighbours[0].id;
+    const remote = landNeighbour(world, state.player.region);
     const refuge = requireCamp(regionAt(world, remote));
     placeAt(state, world, refuge);
     recordOpportunityEvent(state, {
@@ -809,6 +809,7 @@ describe("Chapter 3 refuge storm evidence", () => {
     const remote = regionAt(world, regionNear(world, home, (id) => {
       if (id === home) return false;
       const region = regionAt(world, id);
+      if (region.campCell === null) return false;
       const land = region.cells.filter((cell) => passable(cellAt(world, cell).terrain));
       return land.some((cell) => straightKm(world, region.campCell!, cell) > 1)
         && land.some((cell) => cellAt(world, cell).terrain === "meadow" && !isLee(world, cell, atmosphereAt(state, world, cell).windBearingDeg))
@@ -931,7 +932,7 @@ describe("Chapter 3 refuge storm evidence", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     activateRemoteRefuge(state);
-    const remote = regionAt(world, state.player.region).neighbours[0].id;
+    const remote = landNeighbour(world, state.player.region);
     const refuge = requireCamp(regionAt(world, remote));
     placeAt(state, world, refuge);
     recordOpportunityEvent(state, {

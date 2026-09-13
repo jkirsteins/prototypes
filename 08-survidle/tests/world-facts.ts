@@ -581,6 +581,17 @@ export function forestCampOnWater(world: World, home: number): number {
   return regionAt(world, id).campCell!;
 }
 
+/**
+ * The first neighbouring region that holds land. A coast's neighbours include
+ * regions that are nothing but sea, and a region of sea names no camp and no
+ * spot, so a case about somewhere else to be must ask for ground.
+ */
+export function landNeighbour(world: World, home: number): number {
+  const id = regionAt(world, home).neighbours.map((n) => n.id).find((n) => regionAt(world, n).campCell !== null);
+  if (id === undefined) throw new Error(`every region beside ${home} is open water`);
+  return id;
+}
+
 /** The nearest region to `home`, itself included, that satisfies a rule. */
 export function regionNear(world: World, home: number, wants: (id: number) => boolean): number {
   for (const id of regionsOutward(world, home, 600)) if (wants(id)) return id;
