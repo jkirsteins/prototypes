@@ -393,6 +393,7 @@ export function migrate(state: GameState): void {
       site.coverAge ??= 0;
       site.emergencyMinutes ??= 0;
       site.emergencyAge ??= 0;
+      site.woodsheds ??= 0;
     }
     st.snares ??= 0;
     st.fire.wetKg ??= 0;

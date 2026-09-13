@@ -288,6 +288,7 @@ export const STRUCTURES: Record<StructureId, StructureDef> = {
   seep: { name: "seep", needs: [{ item: "stick", qty: 4 }], minutes: 240, desc: "A knee-deep hole to groundwater on wet ground. Fills on its own; freezes without a fire beside it." },
   waterStore: { name: "water trough", needs: [{ item: "log", qty: 1 }, { item: "bark", qty: 8 }, { item: "cordage", qty: 2 }], minutes: 180, desc: "A hollowed log lined with bark. Holds 20 litres at camp." },
   snowShelter: { name: "snow shelter", needs: [], minutes: 300, desc: "A heaped and hollowed drift. Walls of snow hold -3 C whatever the night does; no fire inside." },
+  vedbod: { name: "vedbod", needs: [{ item: "log", qty: 6 }, { item: "stick", qty: 12 }, { item: "bark", qty: 20 }, { item: "cordage", qty: 3 }], minutes: 300, desc: "A roof on posts over an open stack. Holds 1,050 kg of firewood dry, and dries wet wood under it in any weather." },
 };
 export const STRUCTURE_IDS = Object.keys(STRUCTURES) as StructureId[];
 /**
@@ -333,6 +334,15 @@ export const FIRE_LOW_KG = 3;
 export const RACK_MAX_KG = 40;
 /** Racks a camp can stand; a third is a smokehouse's job. */
 export const MAX_RACKS = 2;
+
+/** Air-dry birch, stacked: a stacked cubic metre weighs this much. */
+export const STACKED_KG_PER_M3 = 350;
+/**
+ * Dry space each roof gives a woodstack, in stacked cubic metres. A lean-to
+ * spares the strip beside the sleeper, a hut the wall behind the hearth, a
+ * cabin a corner of the floor; a vedbod is nothing but the stack.
+ */
+export const COVER_M3: Partial<Record<StructureId, number>> = { leanTo: 0.5, turfHut: 1, cabin: 2, vedbod: 3 };
 /** Thin strips in dry moving air are hard in about two days; damp air roughly doubles that because the surface never dries. */
 export const RACK_DRY_MINUTES = 48 * 60;
 export const RACK_DRY_RAIN_MINUTES = 96 * 60;

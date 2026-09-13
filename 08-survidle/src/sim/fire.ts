@@ -207,15 +207,16 @@ export function splitIsWet(state: GameState, world: World, cell = cellOf(state, 
 }
 
 /**
- * True when `at` is the camp cell of its own region, with a lean-to or
- * cabin built: the roof keeps the rain off the block, so a split there is
- * never wet. Takes the cell being judged rather than reading the player's
- * own position, since checkFresh judges a task at a cell the player has
- * not necessarily walked to yet.
+ * True when `at` is the camp cell of its own region, with a roof over it or
+ * a vedbod standing: either keeps the rain off the block, so a split there
+ * is never wet. Takes the cell being judged rather than reading the
+ * player's own position, since checkFresh judges a task at a cell the
+ * player has not necessarily walked to yet.
  */
 export function splitSheltered(state: GameState, world: World, at: number): boolean {
   const st = regionState(state, world, cellAt(world, at).region);
-  return at === st.campCell && roofed(campSite(st));
+  const site = campSite(st);
+  return at === st.campCell && (roofed(site) || (site?.woodsheds ?? 0) > 0);
 }
 
 /**
@@ -253,7 +254,7 @@ export function dryWood(state: GameState, dt: number, who: Presence | null, worl
     if (st.campCell === null) continue;
     const dry = dryAt(st.campCell);
     const site = campSite(st);
-    const sheltered = st.fire.lit || site?.structures.cabin || site?.structures.turfHut;
+    const sheltered = st.fire.lit || site?.structures.cabin || site?.structures.turfHut || (site?.woodsheds ?? 0) > 0;
     const perHour = sheltered ? 2 : site?.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
     if (perHour <= 0) continue;
     const campPile = state.piles[st.campCell];

@@ -7,8 +7,8 @@ import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty } from "
 import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepFieldFire, stepSmoke } from "./fire";
 import { recordOpportunityEvent, KEPT_DAYS } from "./opportunities";
 import {
-  BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
-  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
+  BOUGH_BED_DAYS, COVER_M3, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_MAX_KG, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
+  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STACKED_KG_PER_M3, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { noteLarder } from "./ledger";
 import { log } from "./log";
@@ -17,7 +17,7 @@ import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { fishItem, SPECIES_DEFS } from "./species";
 import { growRoots, growWood, nestsFor, rootStockFor } from "./stocks";
-import { type DecayingId, type GameState, type Site, PERISHABLES } from "./types";
+import { type DecayingId, type GameState, type Inventory, type Site, type StructureId, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { localWeather } from "./weather";
 import { noteHuntFoodLost, noteHuntFoodTransformed } from "./hunt-audit";
@@ -205,6 +205,26 @@ export function firewoodAt(state: GameState, world: World, region: number): numb
 /** Raw meat the camp's racks hold together. */
 export function rackCapacity(site: Site | null): number {
   return RACK_MAX_KG * Math.max(1, site?.racks ?? 0);
+}
+
+/** Firewood this camp can keep out of the rain: every roof that stands, and every vedbod, added up. */
+export function coveredWoodKg(site: Site | null): number {
+  if (!site) return 0;
+  let m3 = 0;
+  for (const id of Object.keys(COVER_M3) as StructureId[]) {
+    if (id === "vedbod") m3 += COVER_M3.vedbod! * site.woodsheds;
+    else if (site.structures[id as keyof Site["structures"]]) m3 += COVER_M3[id]!;
+  }
+  return m3 * STACKED_KG_PER_M3;
+}
+
+/**
+ * Wood a stack holds, in kilos. Sticks count at their weight because they
+ * stack and burn; logs do not, because a shed holds split wood and round
+ * timber lies in the yard.
+ */
+export function woodOnHandKg(inv: Inventory): number {
+  return qty(inv, "firewood") + qty(inv, "wetFirewood") + qty(inv, "stick") * ITEM_KG.stick;
 }
 
 /** Draws a basket trap gets at dawn: four at the start, one more every five levels of fishing past five, capped at eight. */

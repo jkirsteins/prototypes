@@ -147,7 +147,7 @@ export interface Carcass {
   yields: CarcassYields;
 }
 
-export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore" | "seep" | "snowShelter";
+export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore" | "seep" | "snowShelter" | "vedbod";
 /** Structures the weather takes down unless they are mended. */
 export type DecayingId = "leanTo" | "dryingRack" | "turfHut";
 
@@ -509,6 +509,8 @@ export interface Site {
   emergencyAge: number;
   /** Drying racks standing here, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
   racks: number;
+  /** Woodsheds standing here. Nothing caps the count: materials, labour, upkeep and the yard do. */
+  woodsheds: number;
   /** Minutes since the bough bed was laid; boughs go flat and brown after four days. */
   boughBedAge: number;
   /** Days in a row with a mean above freezing; a snow shelter slumps at SNOW_MELT_DAYS. */

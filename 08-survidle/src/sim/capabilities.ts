@@ -184,6 +184,14 @@ export const CAPABILITIES: CapabilityRow[] = [
     limits: "the walk to fill it",
   },
   {
+    id: "vedbod",
+    keys: ["build:vedbod"],
+    tier: "structure",
+    receives: ["woodcraft"],
+    gives: "1,050 kg of firewood kept dry, and wet wood dried under it in any weather",
+    limits: "the yard it stands on, and re-roofing in a year and a half",
+  },
+  {
     id: "seep",
     keys: ["build:seep"],
     tier: "structure",

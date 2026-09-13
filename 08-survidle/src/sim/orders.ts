@@ -71,7 +71,7 @@ import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
 import { campSite, regionState } from "./regionstate";
 import { check, setAside } from "./tasks";
-import { isWorkIntent, type GameState, type IntentRequest, type ItemId, type Order, type OrderKind, type StructureId, type TaskId, type Verdict, type WorkOrder } from "./types";
+import { isWorkIntent, type GameState, type IntentRequest, type ItemId, type Order, type OrderKind, type Site, type StructureId, type TaskId, type Verdict, type WorkOrder } from "./types";
 import { campWaterCapacity } from "./water";
 
 /** The list of the region under foot. */
@@ -340,6 +340,12 @@ export function keepBand(have: number, target: number, restart: number, held: bo
  * camp. A keep with a restart line reads its band instead, off the mark
  * the scheduler last left on the order.
  */
+/** Whether a built-once structure stands: a flag for most, a woodshed by its count since it keeps no flag of its own. */
+function structureStands(site: Site | null, sid: Exclude<StructureId, "snare" | "seep">): boolean {
+  if (sid === "vedbod") return (site?.woodsheds ?? 0) > 0;
+  return site?.structures[sid] === true;
+}
+
 export function orderMet(state: GameState, world: World, cal: Calendar, o: Order, live: boolean): boolean {
   if (isCareRow(o)) return false;
   const st = regionState(state, world, state.player.region);
@@ -356,13 +362,13 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
       const want = o.req.until.kind === "campHas" ? o.req.until.qty : 1;
       return live ? st.snares >= want : st.snares >= want / 2;
     }
-    return campSite(st)?.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
+    return structureStands(campSite(st), o.req.arg as Exclude<StructureId, "snare" | "seep">);
   }
   if (o.kind === "grind") return false;
   // A seep stands on a cell, not at the camp: its dig is a job done once.
   if (o.req.task === "build" && o.req.arg === "seep") return o.done >= 1;
   if (o.req.task === "build" && o.req.arg !== "snare") {
-    return campSite(st)?.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
+    return structureStands(campSite(st), o.req.arg as Exclude<StructureId, "snare" | "seep">);
   }
   // A fire kept is read off the camp's own fire. A fire asked for once or a
   // few times is read off the tally, because a field fire lives on the

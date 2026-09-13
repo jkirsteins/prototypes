@@ -123,6 +123,7 @@ const HOME: Record<string, [SubtabId, string]> = {
   // and not among Camp's cooking and mending.
   makeCamp: ["Build", "Site"],
   "build:firePit": ["Build", "Fire"],
+  "build:vedbod": ["Build", "Fire"],
   "build:leanTo": ["Build", "Shelter"],
   "build:cabin": ["Build", "Shelter"],
   "build:turfHut": ["Build", "Shelter"],

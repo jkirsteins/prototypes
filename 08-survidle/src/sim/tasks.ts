@@ -830,7 +830,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       }
       if (sid === "dryingRack") {
         if ((site?.racks ?? 0) >= MAX_RACKS) return { ...o, ok: false, why: "two racks stand here already" };
-      } else if (site?.structures[sid]) return { ...o, ok: false, why: "already built here" };
+      } else if (sid !== "vedbod" && site?.structures[sid]) return { ...o, ok: false, why: "already built here" };
       if ((sid === "cabin" || sid === "turfHut") && !site?.structures.firePit) return { ...o, ok: false, why: "clear the fire site first" };
       if (done > 0) return { ...o, detail: `${Math.round((done / total) * 100)}% ${def.needs.length ? "built; materials already laid out" : "done"}` };
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: shortList(invs, def.needs) };
@@ -2619,9 +2619,11 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
           state.seeps[here] = { class: seepGround(world, here)!, litres: 0, ice: 0, dug: state.minute };
           delete site.build[sid];
         } else {
-          site.structures[sid] = true;
+          // A vedbod has no boolean of its own: only the count, added below.
+          if (sid !== "vedbod") site.structures[sid] = true;
           delete site.build[sid];
           if (sid === "dryingRack") site.racks = Math.min(MAX_RACKS, site.racks + 1);
+          if (sid === "vedbod") site.woodsheds++;
           if (sid === "boughBed") site.boughBedAge = 0;
           if (sid === "leanTo" || sid === "dryingRack" || sid === "turfHut") site.structureAge[sid] = 0;
         }

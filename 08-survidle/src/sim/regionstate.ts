@@ -59,6 +59,7 @@ export function newSite(): Site {
     emergencyMinutes: 0,
     emergencyAge: 0,
     racks: 0,
+    woodsheds: 0,
     boughBedAge: 0,
     meltDays: 0,
     structureAge: {},
