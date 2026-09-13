@@ -1,0 +1,60 @@
+import { describe, expect, it } from "vitest";
+import { newGame } from "../src/sim/newgame";
+import { regionState, siteFor } from "../src/sim/regionstate";
+import { check } from "../src/sim/tasks";
+import { calendar } from "../src/sim/calendar";
+import { migrateSites } from "../src/sim/save";
+import { clearM2PerHour, FOOTPRINT_M2, YARD_START_M2, yardFree, yardUsed } from "../src/sim/yard";
+import { siteCamp } from "./siting-helpers";
+
+describe("the yard", () => {
+  it("counts what stands on the ground and nothing that does not", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    const site = siteFor(st, st.campCell!);
+    site.structures.firePit = true;      // 4
+    site.structures.leanTo = true;       // 6
+    site.structures.boughBed = true;     // inside the lean-to, no ground of its own
+    site.racks = 2;                      // 4 each
+    site.woodsheds = 1;                  // 6
+    expect(yardUsed(site)).toBe(24);
+    expect(yardFree(site)).toBe(YARD_START_M2 - 24);
+  });
+
+  it("reads its clearing rate off the fire site's own minutes", () => {
+    // The fire site is 4 m2: 20 minutes on meadow, 30 under spruce, 60 on peat.
+    expect(clearM2PerHour("meadow", 0)).toBe(12);
+    expect(clearM2PerHour("spruce", 0)).toBe(8);
+    expect(clearM2PerHour("bog", 0)).toBe(4);
+  });
+
+  it("blocks a build that does not fit and says how much ground it wants", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    const site = siteFor(st, st.campCell!);
+    site.yardM2 = FOOTPRINT_M2.cabin! - 1;
+    const o = check(state, world, calendar(state.minute, state.startDoy), "build", "cabin");
+    expect(o.ok).toBe(false);
+    expect(o.why).toContain("yard");
+  });
+});
+
+describe("a camp from before the yard", () => {
+  it("keeps everything it built, because its yard is at least what stands on it", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    const site = siteFor(st, st.campCell!);
+    site.structures.cabin = true;
+    site.structures.firePit = true;
+    site.racks = 2;
+    // What a save written before the field carries.
+    delete (site as Partial<typeof site>).yardM2;
+    const revived = JSON.parse(JSON.stringify({ ...state })) as typeof state;
+    migrateSites(revived);
+    const after = revived.regions[state.player.region].sites[st.campCell!];
+    expect(after.yardM2).toBeGreaterThanOrEqual(yardUsed(after));
+  });
+});

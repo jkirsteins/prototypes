@@ -54,6 +54,7 @@ import {
 } from "./types";
 import { isWorkIntent } from "./types";
 import { owningOrder } from "./orderowner";
+import { clearM2PerHour, FOOTPRINT_M2, yardFree } from "./yard";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, forecastKnowledge, forecastText, ICE_SAFE_CM, sameForecastKnowledge, skyReadDay, stormNow, walkableIce } from "./weather";
 import { plain } from "./voice";
@@ -186,6 +187,9 @@ export function buildMinutes(state: GameState, world: World, sid: StructureId, a
   if (sid !== "firePit") return STRUCTURES[sid].minutes;
   return fireSiteMinutes(cellAt(world, at).terrain, localWeather(state, world, at).snowCm);
 }
+
+/** Ground opened by one widening: fifty minutes on meadow, two and a half hours on peat. */
+export const WIDEN_M2 = 10;
 
 /**
  * What a build still wants, in the words a reader would use: "short 2
@@ -819,6 +823,10 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         if (sticks < def.needs[0].qty) return { ...o2, ok: false, why: "needs 4 sticks" };
         return o2;
       }
+      const wants = FOOTPRINT_M2[sid] ?? 0;
+      if (wants > 0 && site && yardFree(site) < wants) {
+        return { ...o, ok: false, why: `needs ${wants} m2 of yard, ${Math.round(yardFree(site))} free` };
+      }
       const o3 = needCamp(o);
       if (!o3.ok) return o3;
       if (sid === "snowShelter") {
@@ -834,6 +842,14 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if ((sid === "cabin" || sid === "turfHut") && !site?.structures.firePit) return { ...o, ok: false, why: "clear the fire site first" };
       if (done > 0) return { ...o, detail: `${Math.round((done / total) * 100)}% ${def.needs.length ? "built; materials already laid out" : "done"}` };
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: shortList(invs, def.needs) };
+      return o;
+    }
+    case "widenYard": {
+      const st2 = regionState(state, world, state.player.region);
+      const rate = clearM2PerHour(cellAt(world, at).terrain, localWeather(state, world, at).snowCm);
+      const o = opt({ group: "build", label: "Widen the yard", detail: `${WIDEN_M2} m2 of cleared ground, ${Math.round(rate)} m2 an hour on this ground`, duration: (WIDEN_M2 / rate) * 60, repeatable: true });
+      if (st2.campCell === null) return { ...o, ok: false, why: "no camp here" };
+      if (at !== st2.campCell) return { ...o, ok: false, why: "at camp" };
       return o;
     }
     case "mend": {
@@ -2654,6 +2670,11 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       siteFor(st, st.campCell!).structureAge[sid] = 0;
       record(state, { kind: "repaired", structure: sid });
       log(state, `The ${STRUCTURES[sid].name} is mended.`, "good");
+      return;
+    }
+    case "widenYard": {
+      siteFor(st, st.campCell!).yardM2 += WIDEN_M2;
+      log(state, `{You} {clear} another ${WIDEN_M2} square metres of yard.`, "good");
       return;
     }
     case "light":

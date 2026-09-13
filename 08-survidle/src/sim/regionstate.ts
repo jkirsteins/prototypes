@@ -14,6 +14,7 @@ import { watersideCell } from "./position";
 import { record } from "./record";
 import { seedSeasonalStocks } from "./stocks";
 import type { GameState, RegionState, Site, Species } from "./types";
+import { YARD_START_M2 } from "./yard";
 
 /** Starting numbers: seven tenths of what the land can hold. */
 export function startingPop(world: World, id: number): Partial<Record<Species, number>> {
@@ -61,6 +62,7 @@ export function newSite(): Site {
     emergencyAge: 0,
     racks: 0,
     woodsheds: 0,
+    yardM2: YARD_START_M2,
     boughBedAge: 0,
     meltDays: 0,
     structureAge: {},

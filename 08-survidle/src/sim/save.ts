@@ -12,6 +12,7 @@ import { firstRecord } from "./newgame";
 import { sexOfName } from "./names";
 import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
 import { newSite, regionState } from "./regionstate";
+import { YARD_START_M2, yardUsed } from "./yard";
 import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
 import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type Species, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
@@ -387,14 +388,6 @@ export function migrate(state: GameState): void {
       delete flat.structureAge;
       delete flat.build;
     }
-    st.sites ??= {};
-    for (const site of Object.values(st.sites)) {
-      site.cover ??= 0;
-      site.coverAge ??= 0;
-      site.emergencyMinutes ??= 0;
-      site.emergencyAge ??= 0;
-      site.woodsheds ??= 0;
-    }
     st.snares ??= 0;
     st.fire.wetKg ??= 0;
     st.fire.indoors ??= false;
@@ -434,6 +427,7 @@ export function migrate(state: GameState): void {
     // held over the list it could not be seen on.
     ensureCareRows(st);
   }
+  migrateSites(state);
   // A raw map walk used to have no order. Preserve that explicit destination
   // as the one visible Walk at the top. A route owned by work or care remains
   // a step of that owner and needs no migration.
@@ -462,6 +456,25 @@ export function migrate(state: GameState): void {
   }
 }
 
+/**
+ * The fields every site must carry, defaulted for a save written before
+ * they existed. Named on its own, rather than left inline in migrate, so a
+ * test can drive it directly: a camp from before the yard keeps everything
+ * it built, so its yard is raised to at least what already stands on it.
+ */
+export function migrateSites(state: GameState): void {
+  for (const st of Object.values(state.regions)) {
+    st.sites ??= {};
+    for (const site of Object.values(st.sites)) {
+      site.cover ??= 0;
+      site.coverAge ??= 0;
+      site.emergencyMinutes ??= 0;
+      site.emergencyAge ??= 0;
+      site.woodsheds ??= 0;
+      site.yardM2 ??= Math.max(YARD_START_M2, yardUsed(site));
+    }
+  }
+}
 
 interface LegacyProgressState {
   done?: Record<string, true>;

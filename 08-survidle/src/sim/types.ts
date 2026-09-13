@@ -170,7 +170,7 @@ export type TaskId =
   | "hunt" | "findDen" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
-  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome" | "findShelter" | "improveCover" | "emergencyShelter" | "readSky";
+  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "widenYard" | "explore" | "searchHome" | "findShelter" | "improveCover" | "emergencyShelter" | "readSky";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
@@ -178,7 +178,7 @@ export const TASK_IDS: TaskId[] = [
   "hunt", "findDen", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
-  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome", "findShelter", "improveCover", "emergencyShelter", "readSky",
+  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "widenYard", "explore", "searchHome", "findShelter", "improveCover", "emergencyShelter", "readSky",
 ];
 
 export interface Task {
@@ -511,6 +511,8 @@ export interface Site {
   racks: number;
   /** Woodsheds standing here. Nothing caps the count: materials, labour, upkeep and the yard do. */
   woodsheds: number;
+  /** Cleared ground at this camp, in square metres; every structure standing here takes its share. */
+  yardM2: number;
   /** Minutes since the bough bed was laid; boughs go flat and brown after four days. */
   boughBedAge: number;
   /** Days in a row with a mean above freezing; a snow shelter slumps at SNOW_MELT_DAYS. */
