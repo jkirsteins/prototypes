@@ -39,6 +39,36 @@ export const FOREST_VISIBILITY_M = 150;
 const FOREST_RANGE_CELLS = Math.round(FOREST_VISIBILITY_M / PATCH_M);
 /** Mean Earth radius, metres; enough here to stop an elevated view claiming ground below its geometric horizon. */
 const EARTH_RADIUS_M = 6_371_000;
+
+/**
+ * The farthest this game claims the eye reaches, in metres. Two limits bound
+ * a view of the ground and the smaller of them is the honest one.
+ *
+ * Geometry: the curvature horizon is HORIZON_KM_PER_SQRT_M times the root of
+ * the vantage's height, and the solve puts the world's highest ground near
+ * 2900 m above the sea (2966 m, 2827 m and 2894 m on seeds 1, 42 and 79;
+ * fells a survivor actually stands on are a few hundred metres of prominence
+ * above the ground around them). Even the highest summit's line runs about
+ * 190 km, and 600 m of prominence - the plateau PLATEAU_M the terrain model
+ * builds to - about 87 km. A ground target adds nothing: it stands at the
+ * far end's own sea level.
+ *
+ * Air: clear air has itself taken terrain contrast below the threshold the
+ * eye can hold by CLEAR_MOR_KM (climate.ts), so nothing past 50 km is
+ * distinguishable from the sky whatever the geometry allows. Above about
+ * 200 m of vantage the air is always the binding limit, and below it the
+ * geometry already caps the reach on its own.
+ *
+ * So 50 km is the maximum, and every reach in this module is capped by it.
+ * What that leaves to pay for: 50 km is a thousand patches, and reading a
+ * disc of that radius patch by patch is millions of patches from one look.
+ * Only the close ring (FINE_VIEWSHED_PATCHES, 4.8 km) is read at 50 m; the
+ * rest of the horizon is read at 300 m parents and 900 m aggregates, from
+ * the solved arrays, and written as coarse knowledge.
+ */
+export const SIGHT_HORIZON_M = CLEAR_MOR_KM * 1000;
+/** The horizon in patches, floored: claiming a little short is safer than claiming ground the air has already taken. */
+export const SIGHT_HORIZON_CELLS = Math.floor(SIGHT_HORIZON_M / PATCH_M);
 /** A bright point source remains distinguishable at 2% transmitted contrast, below the 5% daylight terrain threshold. */
 export const CAMPFIRE_CONTRAST_LIMIT = 0.02;
 const CAMPFIRE_MAX_OPTICAL_DEPTH = -Math.log(CAMPFIRE_CONTRAST_LIMIT);
@@ -88,7 +118,7 @@ function retainViewshed(key: string, cells: ReadonlySet<number>): ReadonlySet<nu
 
 /** Patches to the horizon for a vantage this many metres up, floored: reaching a little short of the true line is safer than claiming ground unseen. */
 function horizonCells(heightM: number): number {
-  return Math.floor((HORIZON_KM_PER_SQRT_M * Math.sqrt(Math.max(0, heightM))) / PATCH_KM);
+  return Math.min(SIGHT_HORIZON_CELLS, Math.floor((HORIZON_KM_PER_SQRT_M * Math.sqrt(Math.max(0, heightM))) / PATCH_KM));
 }
 
 /**
@@ -253,7 +283,10 @@ function sightReachAtLux(state: GameState, world: World, cell: number, lux: numb
   const base = vantageBaseCells(world, terrainOf(world, x, y), x, y);
   const lf = lightFactor(lux, SPOT_LUX, 0);
   const reach = SIGHT_REACH_MULT[body(state).sightReach];
-  return Math.max(0, Math.floor(base * lf * reach * wayfindingSightMult(state)));
+  // Sharp eyes and a practised one multiply the vantage's own reach, and
+  // neither can carry a view past what the air allows: the cap is the last
+  // word here as it is on the vantage.
+  return Math.max(0, Math.min(SIGHT_HORIZON_CELLS, Math.floor(base * lf * reach * wayfindingSightMult(state))));
 }
 
 /**
@@ -548,12 +581,24 @@ function contrastReaches(cx: number, cy: number, dx: number, dy: number, sampler
   return true;
 }
 
-/** A campfire is self-luminous, but terrain and cumulative local extinction can still hide it. */
+/**
+ * A campfire is self-luminous, but terrain and cumulative local extinction can
+ * still hide it.
+ *
+ * A flame is read against the dark at CAMPFIRE_CONTRAST_LIMIT rather than the
+ * 5% a piece of ground wants, so it survives a longer path through the same
+ * air than terrain does, and its horizon is SIGHT_HORIZON_M stretched by that
+ * ratio. It is the one range in this file that honestly exceeds the terrain
+ * horizon, and it is still a hard stop rather than an open claim.
+ */
+export const CAMPFIRE_HORIZON_M = SIGHT_HORIZON_M * (CAMPFIRE_MAX_OPTICAL_DEPTH / MAX_OPTICAL_DEPTH);
+
 export function campfireVisible(state: GameState, world: World, observerCell: number, fireCell: number): boolean {
   if (!hasLineOfSight(world, observerCell, fireCell, 1.5)) return false;
   if (observerCell === fireCell) return true;
   const cx = observerCell % world.w;
   const cy = Math.floor(observerCell / world.w);
+  if (Math.hypot(fireCell % world.w - cx, Math.floor(fireCell / world.w) - cy) * PATCH_M > CAMPFIRE_HORIZON_M) return false;
   return contrastReaches(
     cx,
     cy,
@@ -565,14 +610,13 @@ export function campfireVisible(state: GameState, world: World, observerCell: nu
 }
 
 /**
- * Candidates a viewshed will actually enumerate, in patches. Clear air itself
- * reaches the contrast threshold at CLEAR_MOR_KM, so nothing farther can be
- * optically visible; the fine viewshed stops sooner still, at FINE_VIEWSHED_PATCHES.
- * The first whole patch beyond the limit is included so the ray test owns the
- * exact boundary.
+ * Candidates a viewshed will actually enumerate, in patches. Nothing past
+ * SIGHT_HORIZON_CELLS can be optically visible at all; the fine viewshed stops
+ * sooner still, at FINE_VIEWSHED_PATCHES, and what lies between the two is
+ * coarse country rather than patches (markCoarseSeen).
  */
 export function opticalCandidateRangeCells(terrainRange: number): number {
-  return Math.min(terrainRange, FINE_VIEWSHED_PATCHES, Math.ceil(CLEAR_MOR_KM / PATCH_KM));
+  return Math.min(terrainRange, FINE_VIEWSHED_PATCHES, SIGHT_HORIZON_CELLS);
 }
 
 /**

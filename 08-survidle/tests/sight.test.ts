@@ -5,7 +5,7 @@ import { calendar } from "../src/sim/calendar";
 import { CLEAR_MOR_KM, extinctionComponents, MAX_OPTICAL_DEPTH } from "../src/sim/climate";
 import { isKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
-import { campfireVisible, clearObstacleReadCount, EXACT_SIGHT_M, FOREST_VISIBILITY_M, obstacleReadCount, opticalCandidateRangeCells, opticalSampler, seeFrom, sightRangeCells, visibleCells } from "../src/sim/sight";
+import { campfireVisible, CAMPFIRE_HORIZON_M, clearObstacleReadCount, EXACT_SIGHT_M, FOREST_VISIBILITY_M, obstacleReadCount, opticalCandidateRangeCells, opticalSampler, seeFrom, sightRangeCells, sightReachCells, SIGHT_HORIZON_CELLS, SIGHT_HORIZON_M, visibleCells } from "../src/sim/sight";
 import { setSkillLevel } from "../src/sim/horizon";
 import { placeAt } from "../src/sim/position";
 import { PATCH_KM, PATCH_M } from "../src/world/spatial";
@@ -220,21 +220,39 @@ describe("sight", () => {
     expect(opticalCandidateRangeCells(away(600))).toBe(away(600));
   });
 
-  it("reads the geometric horizon of the fell it stands on, and no further", () => {
+  it("claims no more than the sight horizon from a thousand-metre fell", () => {
     const { state, world, vantage } = openWorld();
     world.fineChunks.get(0)!.terrain.fill(TERRAIN_INDEX.fell);
-    flatFields(1_200);
-    standsAbove(48, 48, 1_200);
+    flatFields(1_000);
+    standsAbove(48, 48, 1_000);
     testAtmosphere({ cloud: 0, precipMmPerHour: 0, extinctionPerKm: 0.06 });
     current(state).person.axes.eyes = 2;
     setSkillLevel(state, "wayfinding", 20);
-    // The fell spine this world is drawn to rises to 1200 m: a geometric
-    // horizon of 124 km, and no more however sharp the eye (1.5x) and however
-    // practised the wayfinder (1.5x).
-    const spineHorizonKm = 3.57 * Math.sqrt(1_200);
-    const reachKm = sightRangeCells(state, world, NOON, vantage) * PATCH_KM;
-    expect(reachKm).toBeGreaterThan(spineHorizonKm);
-    expect(reachKm).toBeCloseTo(2.25 * spineHorizonKm, 0);
+    // A thousand metres of prominence is a geometric horizon of 113 km, and a
+    // sharp eye (1.5x) on a practised wayfinder (1.5x) would multiply it to
+    // 254 km. The air has taken the ground's contrast long before either: no
+    // reach answers past SIGHT_HORIZON_M.
+    expect(3.57 * Math.sqrt(1_000)).toBeGreaterThan(SIGHT_HORIZON_M / 1000);
+    expect(sightRangeCells(state, world, NOON, vantage)).toBe(SIGHT_HORIZON_CELLS);
+    expect(sightReachCells(state, world, NOON, vantage)).toBe(SIGHT_HORIZON_CELLS);
+    expect(opticalCandidateRangeCells(sightReachCells(state, world, NOON, vantage)))
+      .toBeLessThanOrEqual(SIGHT_HORIZON_CELLS);
+  });
+
+  it("takes its horizon from the air, because the world's own summits stand higher than the air allows", () => {
+    // The honest maximum is the smaller of two limits, so the derivation is
+    // only sound while the geometry is the looser one. The highest ground the
+    // solve produces is near 2900 m: a horizon of about 190 km, far past what
+    // clear air carries terrain contrast through.
+    const solved = solvedWorld(1).solved;
+    let highestM = 0;
+    for (let i = 0; i < solved.height.length; i++) if (solved.height[i] > highestM) highestM = solved.height[i];
+    expect(highestM).toBeGreaterThan(2_000);
+    expect(3.57 * Math.sqrt(highestM)).toBeGreaterThan(CLEAR_MOR_KM);
+    expect(SIGHT_HORIZON_M).toBe(CLEAR_MOR_KM * 1000);
+    // A fire is read against the dark at a lower contrast than ground is, so
+    // its own horizon is the one range that honestly runs further.
+    expect(CAMPFIRE_HORIZON_M).toBeGreaterThan(SIGHT_HORIZON_M);
   });
 
   it("uses one physical radius in cardinal and diagonal directions", () => {
