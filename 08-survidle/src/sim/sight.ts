@@ -5,10 +5,9 @@
  * regions.
  */
 import { parentSummary } from "../world/aggregate";
-import { FINE_CHUNK, fineSurfaceAt } from "../world/cells";
+import { canopyHeightAt, FINE_CHUNK, fineSurfaceAt } from "../world/cells";
 import { heightAt, regionPeek, terrainOf, type World } from "../world/gen";
-import { FINE_PER_PARENT, PATCH_KM, PATCH_M } from "../world/spatial";
-import { CANOPY_HEIGHT_M } from "../world/terrain";
+import { FINE_PER_PARENT, PATCH_KM, PATCH_M, patchId } from "../world/spatial";
 import type { Calendar } from "./calendar";
 import { CLEAR_MOR_KM, MAX_OPTICAL_DEPTH, sampleAtmosphere } from "./climate";
 import { lightFactor, skyLux, SPOT_LUX, WALK_LUX } from "./light";
@@ -307,7 +306,9 @@ function obstacleHeightM(world: World, x: number, y: number, distM: number): num
   obstacleReads++;
   const ground = groundHeightM(world, x, y);
   const terrain = terrainOf(world, x, y);
-  const canopy = terrain === "spruce" || distM > FOREST_VISIBILITY_M ? CANOPY_HEIGHT_M[terrain] ?? 0 : 0;
+  // Canopy from the one door, so a clearing lets a ray through and the young
+  // growth that follows it stops one at its own height.
+  const canopy = terrain === "spruce" || distM > FOREST_VISIBILITY_M ? canopyHeightAt(world, patchId(x, y)) : 0;
   return ground + canopy;
 }
 

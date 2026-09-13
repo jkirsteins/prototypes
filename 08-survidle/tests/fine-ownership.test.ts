@@ -227,7 +227,9 @@ describe("standing timber belongs to its patch", () => {
     const st = regionState(state, world, state.player.region);
     expect(check(state, world, cal, "chop").ok).toBe(true);
     setWoodPatchLeft(st, world, felled, 0);
-    expect(check(state, world, cal, "chop")).toMatchObject({ ok: false, why: "nothing left worth felling" });
+    // Felled out, the patch is a clearing: it refuses as ground, not as an empty stand.
+    expect(check(state, world, cal, "chop").ok).toBe(false);
+    expect(check(state, world, cal, "chop").why).toContain("forest");
     // Fifty metres on is ground nobody has cut, and it answers for itself.
     placeAtPatch(state, world, next);
     expect(woodPatchLeft(st, world, next)).toBe(woodPatchFull(world, next));
@@ -241,7 +243,8 @@ describe("standing timber belongs to its patch", () => {
     const next = forestNeighbour(world, here);
     const st = regionState(state, world, state.player.region);
     setWoodPatchLeft(st, world, here, 0.05);
-    expect(check(state, world, cal, "deadwood")).toMatchObject({ ok: false, why: "the forest is picked clean" });
+    expect(check(state, world, cal, "deadwood").ok).toBe(false);
+    expect(check(state, world, cal, "deadwood").why).toContain("forest");
     placeAtPatch(state, world, next);
     expect(check(state, world, calendar(state.minute, state.startDoy), "deadwood").ok).toBe(true);
   });

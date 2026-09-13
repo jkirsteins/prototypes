@@ -12,9 +12,10 @@ import { regionAtPatch } from "./fine-terrain";
 import { CHANNEL_RIVER, CHANNEL_STREAM, FINE_CHUNK, type FineRefinement, refineChunk } from "./refine";
 import { type PatchId, parentXY, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
 import { fromByte } from "./fine-class";
+import { type GroundChange, type GroundChanges, GROUND_CHANGE_TERRAIN, YOUNG_CANOPY_M } from "./groundchange";
 import { NO_FLOW } from "./hydro";
 import { FLAG_FORD, FLAG_STREAM, KIND, type SolvedWorld } from "./solve";
-import { latitudeAt, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
+import { CANOPY_HEIGHT_M, latitudeAt, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
 import type { RegionDef } from "./gen";
 
 export const FINE_CHUNK_LIMIT = 64;
@@ -30,8 +31,21 @@ export interface FineChunk {
   parentSummaries: Map<number, ParentSummary>;
 }
 
+/**
+ * What a World needs off the run to answer for changed ground: the sparse
+ * override itself and the clock that stamps a change. A World is made from a
+ * seed alone and is never saved, so the run is attached to it (bindGround)
+ * rather than carried in it.
+ */
+export interface GroundRun {
+  groundChanges: GroundChanges;
+  minute: number;
+}
+
 export interface World extends FineGrid {
   seed: number;
+  /** The run whose changed ground this world reads, once bound. */
+  run?: GroundRun;
   /** Size in 50 m patches. */
   w: number;
   h: number;
@@ -129,14 +143,67 @@ function fineChunkFor(world: World, id: PatchId): { chunk: FineChunk; i: number 
   return { chunk, i: (y - cy * FINE_CHUNK) * FINE_CHUNK + x - cx * FINE_CHUNK };
 }
 
+/**
+ * Binds a world to the run whose ground changes it must read. One call per
+ * run: the fresh game, a loaded save, and the top of every advance, so a
+ * world handed round without a run of its own still answers for generated
+ * ground rather than for another run's clearings.
+ */
+export function bindGround(world: World, run: GroundRun): void {
+  if (world.run === run) return;
+  Object.defineProperty(world, "run", { value: run, enumerable: false, writable: true, configurable: true });
+}
+
+/** What the run has done to this patch, or nothing. */
+export function groundChangeAt(world: World, id: PatchId): GroundChange | undefined {
+  return world.run?.groundChanges[id];
+}
+
+function changed(world: World, id: PatchId, generated: Terrain): Terrain {
+  const change = world.run?.groundChanges[id];
+  return change ? GROUND_CHANGE_TERRAIN[change.kind] : generated;
+}
+
 export function patchAt(world: World, id: PatchId): FinePatch {
   const { x, y } = patchXY(id);
   const { chunk, i } = fineChunkFor(world, id);
-  return { id, x, y, terrain: TERRAINS[chunk.terrain[i]], region: chunk.region[i] };
+  return { id, x, y, terrain: changed(world, id, TERRAINS[chunk.terrain[i]]), region: chunk.region[i] };
 }
 
 export function terrainOfPatch(world: World, id: PatchId): Terrain {
   return patchAt(world, id).terrain;
+}
+
+/**
+ * The ground the seed grew, before anything the run did to it. Two readers
+ * want this rather than the door above, and no mechanic does:
+ *
+ * - the classifier and everything downstream of it (refine.ts, fine-class.ts),
+ *   which is what produces the generated terrain in the first place;
+ * - what a stand can grow (aggregate.ts resourcePotentialAt), as against what
+ *   is standing on it now - a clearing keeps its capacity, which is exactly
+ *   what lets its stock climb back and the clearing lift.
+ *
+ * terrainPeek, which summarises ground nobody has visited for the far map,
+ * reads the override where a chunk is resident and the solved terrain where
+ * it is not: unvisited ground has no changes on it to miss.
+ */
+export function generatedTerrainOf(world: World, id: PatchId): Terrain {
+  const { chunk, i } = fineChunkFor(world, id);
+  return TERRAINS[chunk.terrain[i]];
+}
+
+/**
+ * Metres of canopy above a patch's ground: the mature stand's height on
+ * forest, a young stand's thicket where the run has cleared and regrown one,
+ * and nothing on open ground. The one reader for sight, shelter and the
+ * obstruction bounds a summary carries, so a bound still bounds what a ray
+ * measures over ground the run changed.
+ */
+export function canopyHeightAt(world: World, id: PatchId): number {
+  const change = world.run?.groundChanges[id];
+  if (change) return change.kind === "young" ? YOUNG_CANOPY_M : 0;
+  return CANOPY_HEIGHT_M[generatedTerrainOf(world, id)] ?? 0;
 }
 
 export function inWorld(world: World, x: number, y: number): boolean {
@@ -145,8 +212,9 @@ export function inWorld(world: World, x: number, y: number): boolean {
 
 export function terrainOf(world: World, x: number, y: number): Terrain {
   if (!inWorld(world, x, y)) return "water";
-  const { chunk, i } = fineChunkFor(world, patchId(x, y));
-  return TERRAINS[chunk.terrain[i]];
+  const id = patchId(x, y);
+  const { chunk, i } = fineChunkFor(world, id);
+  return changed(world, id, TERRAINS[chunk.terrain[i]]);
 }
 
 export function regionOf(world: World, x: number, y: number): number {
@@ -166,7 +234,7 @@ export function terrainPeek(world: World, x: number, y?: number): Terrain {
   if (y === undefined) { const xy = patchXY(x); return terrainPeek(world, xy.x, xy.y); }
   if (!inWorld(world, x, y)) return "water";
   const chunk = residentChunk(world, x, y);
-  if (chunk) return TERRAINS[chunk.terrain[chunkIndexOf(x, y)]];
+  if (chunk) return changed(world, patchId(x, y), TERRAINS[chunk.terrain[chunkIndexOf(x, y)]]);
   return solvedTerrainAt(world, x, y);
 }
 

@@ -3,6 +3,7 @@
  * kilocalories, degrees Celsius, kilometres. The only unreal thing in the
  * game is how fast the clock runs, and that lives in units.ts.
  */
+import type { GroundChanges } from "../world/groundchange";
 import type { KnowledgeChunks } from "./fineknowledge";
 import type { FoodId } from "./items";
 import type { DayLedger } from "./ledger";
@@ -1012,6 +1013,13 @@ export interface GameState {
   discovered: Record<number, 1 | 2 | 3>;
   /** Ground whose walking is known, two bits a patch: unknown, the journal's, seen, walked. */
   knowledge: KnowledgeChunks;
+  /**
+   * Ground this world's survivors changed, by the patch it happened on.
+   * Sparse: generated terrain is never written to, so a felled-out stand is
+   * a clearing here and nowhere else. World-owned, like the knowledge and
+   * the deeds: an heir lands on the clearings the ancestor cut.
+   */
+  groundChanges: GroundChanges;
   weather: WeatherWorld;
   task: Task | null;
   log: LogEntry[];

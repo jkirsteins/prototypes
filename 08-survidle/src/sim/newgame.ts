@@ -1,4 +1,5 @@
 import { derive, Rng } from "../rng";
+import { bindGround } from "../world/cells";
 import { generateWorld, regionAt, type World } from "../world/gen";
 import { calendar, fmtDate, START_DOY } from "./calendar";
 import { newOpportunities } from "./opportunities";
@@ -139,6 +140,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person, giv
     regions: {},
     discovered: {},
     knowledge: newKnowledge(),
+    groundChanges: {},
     weather: newWeather(startDoy),
     task: null,
     log: [],
@@ -167,6 +169,8 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person, giv
     teachQueue: [],
     wildlife: emptyWildlife(),
   };
+  // The world must read this run's changed ground before anything asks it for terrain.
+  bindGround(world, state);
   // The same fresh slate a landing gives, from the one door that gives it.
   resetTeaching(state);
   creditYield(state, "kit", ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg);

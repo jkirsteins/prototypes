@@ -11,7 +11,9 @@
  * mixed ground and has no single value to report.
  */
 import type { Terrain } from "../sim/types";
-import { fordAt, heightAt, moistureAt, waterKindOf, type World } from "../world/cells";
+import { fordAt, groundChangeAt, heightAt, moistureAt, waterKindOf, type World } from "../world/cells";
+import type { GroundChangeKind } from "../world/groundchange";
+import { patchId } from "../world/spatial";
 
 export const TREES: Terrain[] = ["spruce", "pine", "birch"];
 
@@ -41,8 +43,18 @@ export const VARIANTS: Partial<Record<Terrain, { forms: string[]; reads: string 
 /** A stream on a land cell is a mark drawn over the terrain, not a form of it: the terrain's own glyph still names the ground. */
 export const STREAM_MARK = "~";
 
+/**
+ * Ground the run cut and the ground that is growing back over it. Neither is
+ * a terrain - both read as meadow to every mechanic - but both are something
+ * the player did and wants to see, so each gets its own letter rather than
+ * hiding under the meadow's.
+ */
+export const GROUND_CHANGE_GLYPH: Record<GroundChangeKind, string> = { clearing: "c", young: "y" };
+
 /** The glyph for one cell: its terrain's letter, in the form the ground asks for. */
 export function groundGlyph(world: World, x: number, y: number, t: Terrain, base: string): string {
+  const change = groundChangeAt(world, patchId(x, y));
+  if (change) return GROUND_CHANGE_GLYPH[change.kind];
   if (t !== "water" && t !== "river" && t !== "bog" && t !== "meadow") return base;
   if (t === "water") return waterKindOf(world, y * world.w + x) === "sea" ? "~" : "-";
   if (t === "river") return fordAt(world, y * world.w + x) ? "#" : "=";

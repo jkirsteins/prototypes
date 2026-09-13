@@ -1,5 +1,5 @@
 import type { Terrain } from "../sim/types";
-import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, fineSurfaceAt, patchAt, type World } from "./cells";
+import { canopyHeightAt, FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, fineSurfaceAt, generatedTerrainOf, patchAt, type World } from "./cells";
 import { regionAtPatch } from "./fine-terrain";
 import { type FineGrid, fineRouteCacheStats } from "./fine-route";
 import { routeCacheStats } from "./route";
@@ -64,9 +64,13 @@ function potentialOf(terrain: Terrain, areaKm2: number): ResourcePotential {
  * What one 50 m patch grows: its own terrain over its own 0.0025 km2. The
  * only area any resource rule may read, so a stock is never nine hectares
  * of ground standing in for a patch of it.
+ *
+ * Read from the generated ground rather than through the succession door.
+ * This is what the stand can carry; a clearing is what stands there now, and
+ * keeping the capacity is what lets a cleared patch climb back to it.
  */
 export function resourcePotentialAt(source: World | AggregateSource, patch: PatchId): ResourcePotential {
-  return potentialOf(terrainAt(source, patch), PATCH_KM * PATCH_KM);
+  return potentialOf(grownTerrainAt(source, patch), PATCH_KM * PATCH_KM);
 }
 
 function addPotential(target: ResourcePotential, source: ResourcePotential): void {
@@ -124,6 +128,11 @@ function terrainAt(source: World | AggregateSource, patch: PatchId): Terrain {
   return isWorld(source) ? patchAt(source, patch).terrain : source.terrainAt(patch);
 }
 
+/** The ground the seed grew, for the figures that are a stand's capacity rather than its state. */
+function grownTerrainAt(source: World | AggregateSource, patch: PatchId): Terrain {
+  return isWorld(source) ? generatedTerrainOf(source, patch) : source.terrainAt(patch);
+}
+
 /**
  * The height a summary bounds: the chunk's refined surface, the same reader the
  * sight march uses, so a bound bounds what a ray measures. On land it is the
@@ -150,8 +159,8 @@ function dominantTerrain(counts: Record<Terrain, number>): Terrain {
   return dominant;
 }
 
-function obstructionM(terrain: Terrain, elevationM: number): number {
-  return elevationM + (CANOPY_HEIGHT_M[terrain] ?? 0);
+function obstructionM(source: World | AggregateSource, patch: PatchId, terrain: Terrain, elevationM: number): number {
+  return elevationM + (isWorld(source) ? canopyHeightAt(source, patch) : CANOPY_HEIGHT_M[terrain] ?? 0);
 }
 
 function fineChunkKeyForPatch(patch: PatchId): number {
@@ -205,10 +214,10 @@ export function parentSummary(source: World | AggregateSource, px: number, py: n
       const elevationM = elevationAt(source, patch);
       const region = regionAt(source, patch);
       terrainCounts[terrain]++;
-      addPotential(resourcePotential, potentialOf(terrain, PATCH_KM * PATCH_KM));
+      addPotential(resourcePotential, potentialOf(grownTerrainAt(source, patch), PATCH_KM * PATCH_KM));
       minElevationM = Math.min(minElevationM, elevationM);
       maxElevationM = Math.max(maxElevationM, elevationM);
-      maxObstructionM = Math.max(maxObstructionM, obstructionM(terrain, elevationM));
+      maxObstructionM = Math.max(maxObstructionM, obstructionM(source, patch, terrain, elevationM));
       if (region >= 0) regionCounts.set(region, (regionCounts.get(region) ?? 0) + 1);
     }
   }
@@ -288,10 +297,10 @@ export function aggregateSummary(source: World | AggregateSource, x0: number, y0
         const region = regionAt(source, patch);
         summary.samples++;
         summary.terrainCounts[terrain]++;
-        addPotential(summary.resourcePotential, potentialOf(terrain, PATCH_KM * PATCH_KM));
+        addPotential(summary.resourcePotential, potentialOf(grownTerrainAt(source, patch), PATCH_KM * PATCH_KM));
         summary.minElevationM = Math.min(summary.minElevationM, elevationM);
         summary.maxElevationM = Math.max(summary.maxElevationM, elevationM);
-        summary.maxObstructionM = Math.max(summary.maxObstructionM, obstructionM(terrain, elevationM));
+        summary.maxObstructionM = Math.max(summary.maxObstructionM, obstructionM(source, patch, terrain, elevationM));
         if (region >= 0) summary.regionCounts.set(region, (summary.regionCounts.get(region) ?? 0) + 1);
       }
     }

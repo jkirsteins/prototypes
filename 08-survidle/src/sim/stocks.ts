@@ -28,6 +28,7 @@
  * re-exported from camp.ts, the way dailyCamp's own callers reach it.
  */
 import { resourcePotentialAt } from "../world/aggregate";
+import { succeedGround } from "../world/succession";
 import { PATCH_M, patchId, patchXY } from "../world/spatial";
 import { cellAt, neighbours, regionAt, type World } from "../world/gen";
 import { passable } from "../world/route";
@@ -158,7 +159,9 @@ export function seedSeasonalStocks(state: GameState, world: World, st: RegionSta
 
 /**
  * Stems worth felling on a patch nobody has cut: what its own 0.0025 km2 of
- * ground grows, and nothing of its neighbours'. Open ground grows none.
+ * ground grows, and nothing of its neighbours'. Open ground grows none. This
+ * is the stand's capacity, read off the generated ground, so a patch cleared
+ * by felling still has a full figure to climb back to.
  */
 export function woodPatchFull(world: World, idx: number): number {
   return resourcePotentialAt(world, idx).trees;
@@ -169,11 +172,18 @@ export function woodPatchLeft(st: RegionState, world: World, idx: number): numbe
   return st.woodCells[idx] ?? woodPatchFull(world, idx);
 }
 
-/** Writes a patch's standing trees, dropping the entry when the patch is back at full: an absent patch is an uncut one. */
+/**
+ * Writes a patch's standing trees, dropping the entry when the patch is back
+ * at full: an absent patch is an uncut one. The one writer, so it is also
+ * where the ground itself catches up with the stock - felled out, it becomes
+ * a clearing; grown back, it is a wood again.
+ */
 export function setWoodPatchLeft(st: RegionState, world: World, idx: number, trees: number): void {
   const full = woodPatchFull(world, idx);
+  const left = Math.max(0, trees);
   if (trees >= full - TRACE_KG) delete st.woodCells[idx];
-  else st.woodCells[idx] = Math.max(0, trees);
+  else st.woodCells[idx] = left;
+  if (full > 0) succeedGround(world, idx, Math.min(1, left / full));
 }
 
 /** Takes trees off one patch and no other: felling, dead wood and bark all draw on the ground they stand on. */

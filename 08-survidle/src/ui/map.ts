@@ -29,13 +29,14 @@ import { FINE_PER_PARENT, PATCH_KM, PATCH_M, type PatchId } from "../world/spati
 import { passable, type RouteConditions } from "../world/route";
 import { routeConditions, survivorRoute, survivorRouteCandidates } from "../sim/routing";
 import { activeWildlifeStartles, esc, type UiState } from "./render";
-import { elevationAt, offshoreAt, STREAM_MARK, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
+import { elevationAt, GROUND_CHANGE_GLYPH, offshoreAt, STREAM_MARK, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
 import { lighting } from "./sky";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
 import { metricPointForWildlife } from "../sim/wildlife-space";
 import { campfireVisible, hasLineOfSight, sightRangeCells, visibleCells } from "../sim/sight";
-import { SNOW_SHOWN_CM, terrainHeading } from "../sim/cellstatus";
+import { GROUND_CHANGE_HEADING, SNOW_SHOWN_CM, terrainHeading } from "../sim/cellstatus";
+import type { GroundChangeKind } from "../world/groundchange";
 import { aggregatePresentation, cellKnowledge as presentationKnowledge, cellPresentation, TERRAIN_GLYPH } from "./cellpresentation";
 
 /** A small open camp fire remains a distinct light out to about five kilometres on a clear night. */
@@ -107,6 +108,10 @@ export function legendHtml(): string {
       return `<span>${forms} ${terrainHeading(t)}${v ? `: ${v.reads}` : ""}</span>`;
     })
     .join("");
+  // Ground the run cut: not a terrain, but a letter the map draws, so the key owes it a line.
+  const changes = (Object.keys(GROUND_CHANGE_GLYPH) as GroundChangeKind[])
+    .map((kind) => `<span><b>${GROUND_CHANGE_GLYPH[kind]}</b> ${GROUND_CHANGE_HEADING[kind]}</span>`)
+    .join("");
   const markSpan = (m: Mark) => `<span><b class="${m.cls}">${m.glyph}</b> ${m.label}</span>`;
   // The stream is not in MARKS - it is ground, not a built or found feature - but the
   // legend still owes it a line, put beside the seep's since both read as water underfoot.
@@ -115,7 +120,7 @@ export function legendHtml(): string {
     .join("");
   const animals = `<span><b class="mk-animal">d r E w v B</b> large wildlife</span>`;
   return (
-    `${terrain}<span><b class="ice-thin">~</b> thin ice</span><span><b class="ice-safe">~</b> safe ice</span>${marks}${animals}` +
+    `${terrain}${changes}<span><b class="ice-thin">~</b> thin ice</span><span><b class="ice-safe">~</b> safe ice</span>${marks}${animals}` +
     `<span class="tone-key">brighter ground stands higher; paler water is shallower</span>` +
     `<span class="pl-key">underlined: something lies there</span>` +
     `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +

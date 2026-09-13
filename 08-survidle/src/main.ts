@@ -67,6 +67,7 @@ import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
 import { hideLoading, showLoading } from "./ui/loading";
 import { recognitionHtml } from "./ui/wildlife-panel";
 import { type WorldCacheStats, worldCacheStats } from "./world/aggregate";
+import { bindGround } from "./world/cells";
 import { regionAt, type World } from "./world/gen";
 import { loadWorld } from "./world/worldloader";
 
@@ -229,6 +230,8 @@ async function boot() {
       hideLoading();
       solving = false;
     }
+    // Before anything reads terrain: the loaded run's clearings are part of it.
+    bindGround(world, state);
     fillPopulations(state, world);
     knowLoadedGround(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);

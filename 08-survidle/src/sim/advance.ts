@@ -1,4 +1,5 @@
 import { Rng } from "../rng";
+import { bindGround } from "../world/cells";
 import { regionAt, type World } from "../world/gen";
 import { dailyAnimals } from "./animals";
 import { stormOptions } from "./body";
@@ -59,6 +60,11 @@ function nobodySpineCell(state: GameState, world: World): number {
  * weather, camp and animal rules a lived-in world uses.
  */
 export function advance(state: GameState, world: World, dtMinutes: number, opts: { nobody?: boolean; wildlife?: WildlifeMode; live?: boolean } = {}): void {
+  // A world is made from a seed and knows nothing of a run until it is told:
+  // every tick begins by pointing it at this run's changed ground, so a world
+  // shared with a forecast or a fresh landing never answers with another
+  // run's clearings.
+  bindGround(world, state);
   const nobody = opts.nobody ?? false;
   const wildlife = nobody ? "aggregate" : (opts.wildlife ?? "aggregate");
   if (state.dead && !nobody) return;

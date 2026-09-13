@@ -1,8 +1,9 @@
 import { knowledgeAt } from "../sim/fineknowledge";
-import { surfaceHeading, surfaceLocation, surfaceOf, terrainHeading, type CellSurface } from "../sim/cellstatus";
+import { GROUND_CHANGE_HEADING, surfaceHeading, surfaceLocation, surfaceOf, terrainHeading, type CellSurface } from "../sim/cellstatus";
 import type { GameState, LocalGroundWeather, Terrain } from "../sim/types";
 import { groundAt } from "../sim/weather";
 import { cellAt, waterKindOf, type World } from "../world/gen";
+import { groundChangeAt } from "../world/cells";
 import { groundGlyph } from "./ground";
 
 export const TERRAIN_GLYPH: Record<Terrain, string> = {
@@ -91,18 +92,19 @@ export function cellPresentation(
   const groundCell = cellAt(world, cell);
   const base = TERRAIN_GLYPH[groundCell.terrain];
   const glyph = groundGlyph(world, groundCell.x, groundCell.y, groundCell.terrain, base);
+  const change = groundChangeAt(world, cell);
   if (knowledge !== "current") {
     return {
       knowledge,
       terrain: groundCell.terrain,
-      heading: terrainHeading(groundCell.terrain),
+      heading: change ? GROUND_CHANGE_HEADING[change.kind] : terrainHeading(groundCell.terrain),
       glyph,
       classes: [`t-${groundCell.terrain}`, knowledge === "remembered" ? "memory" : "dim"],
     };
   }
   const ground = resolveGround?.() ?? groundAt(state, world, groundCell.region);
   const water = waterKindOf(world, groundCell.y * world.w + groundCell.x) ?? "lake";
-  const surface = surfaceOf(groundCell.terrain, water, ground);
+  const surface = surfaceOf(groundCell.terrain, water, ground, change?.kind);
   const classes = [`t-${groundCell.terrain}`];
   if (surface.kind === "water" && surface.ice !== "none") classes.push(surface.ice === "safe" ? "ice-safe" : "ice-thin");
   if (surface.kind === "land" && surface.snow !== "none") {

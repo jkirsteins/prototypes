@@ -4,9 +4,9 @@
  * so every reader asks one question: how much is over this survivor.
  */
 import { clamp } from "../units";
-import { cellAt, fineSurfaceAt, terrainOf, type World } from "../world/gen";
-import { PATCH_M } from "../world/spatial";
-import { CANOPY_HEIGHT_M } from "../world/terrain";
+import { cellAt, fineSurfaceAt, type World } from "../world/gen";
+import { canopyHeightAt } from "../world/cells";
+import { PATCH_M, patchId } from "../world/spatial";
 import type { GameState, Protection, Site, Terrain } from "./types";
 import { atmosphereAt } from "./weather";
 
@@ -174,7 +174,7 @@ function readLee(world: World, cell: number, eighth: number): Lee {
     // True distance, so a diagonal step is the 71 m it really is, not 50.
     const distanceM = d * stepM;
     const ground = fineSurfaceAt(world, sy * world.w + sx) - here;
-    const ratio = (ground + (CANOPY_HEIGHT_M[terrainOf(world, sx, sy)] ?? 0)) / distanceM;
+    const ratio = (ground + canopyHeightAt(world, patchId(sx, sy))) / distanceM;
     if (ratio > blocking) {
       blocking = ratio;
       bare = ground / distanceM;
