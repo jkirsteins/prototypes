@@ -79,7 +79,9 @@ describe("the purposes and the filter", () => {
     // until it was struck off by hand. A storm or a missing tool still queues.
     const { state, world } = newGame(1);
     const home = regionAt(world, state.player.region);
-    const bare = home.neighbours.map((n) => regionAt(world, n.id)).find((r) => !hasSpot(r, "outcrop"));
+    // A neighbour with no outcrop and somewhere to stand: a region that is
+    // all water has no camp cell and cannot host a survivor to tell about it.
+    const bare = home.neighbours.map((n) => regionAt(world, n.id)).find((r) => !hasSpot(r, "outcrop") && r.campCell !== null);
     expect(bare).toBeDefined();
     state.player.region = bare!.id;
     placeAt(state, world, requireCamp(bare!));

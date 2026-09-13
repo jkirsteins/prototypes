@@ -19,7 +19,7 @@ export const STAGES = ["raising the land", "wearing the valleys", "filling the l
  * number even though the solved arrays themselves are untouched - two clients
  * that disagree about the ground under a patch do not share a world.
  */
-export const GENERATOR_VERSION = 6;
+export const GENERATOR_VERSION = 7;
 /** A depression must be this deep somewhere to be a lake rather than damp ground. */
 export const LAKE_MIN_DEPTH_M = 2;
 

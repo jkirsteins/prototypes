@@ -27,7 +27,9 @@ import { regionState, siteFor } from "../src/sim/regionstate";
 import { levelAt, mapTargetAtClient, mapTargetAtPoint, viewOrigin } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { mapInventoryHtml, tipHtml, tipKey } from "../src/ui/tip";
-import { cellAt, regionAt } from "../src/world/gen";
+import { cellAt, regionAt, type World } from "../src/world/gen";
+import { passable } from "../src/world/route";
+import type { GameState } from "../src/sim/types";
 import { atmosphereAt, ensureGround } from "../src/sim/weather";
 import { testAtmosphere } from "./weather-helpers";
 
@@ -38,6 +40,22 @@ function pointOf(world: ReturnType<typeof newGame>["world"], state: ReturnType<t
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
   return { x: ((x - x0) / l.finePerGlyph) * l.px + l.px / 2, y: ((y - y0) / l.finePerGlyph) * l.line + l.line / 2 };
+}
+
+/**
+ * A patch a few steps from the survivor that is walkable ground. A landing
+ * is on a shore, so which side of it is water belongs to the seed; what the
+ * cases below are about is the button over ground, not where the water is.
+ */
+function nearbyLand(state: GameState, world: World): number {
+  const here = cellOf(state, world);
+  for (const step of [2, 3, 4]) {
+    for (const d of [1, -1, world.w, -world.w]) {
+      const c = here + d * step;
+      if (passable(cellAt(world, c).terrain)) return c;
+    }
+  }
+  throw new Error("the survivor is standing on an island of one patch");
 }
 
 describe("finding the patch under the pointer", () => {
@@ -142,7 +160,7 @@ describe("what the tooltip says", () => {
     // A walk is only offered over ground the survivor knows, so the whole
     // region is known here: what is under test is the button, not the fog.
     mapRegion(state, world, state.player.region);
-    const near = cellOf(state, world) + 2;
+    const near = nearbyLand(state, world);
     expect(tipHtml(state, world, cal, near)).toContain('data-act="task"');
   });
 
@@ -150,7 +168,7 @@ describe("what the tooltip says", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
     mapRegion(state, world, state.player.region);
-    const near = cellOf(state, world) + 2;
+    const near = nearbyLand(state, world);
     const distance = tipHtml(state, world, cal, near, "distance");
     const time = tipHtml(state, world, cal, near, "time");
     const both = tipHtml(state, world, cal, near, "both");

@@ -22,7 +22,8 @@ import { tipHtml } from "../src/ui/tip";
 import { worldCacheStats } from "../src/world/aggregate";
 import { frontierRoute, survivorRoute } from "../src/sim/routing";
 import { PATCH_M } from "../src/world/spatial";
-import { neighbours, type World } from "../src/world/gen";
+import { cellAt, neighbours, type World } from "../src/world/gen";
+import { passable } from "../src/world/route";
 import type { GameState } from "../src/sim/types";
 
 const CAL = calendar(10);
@@ -42,6 +43,22 @@ function pointOf(world: World, state: GameState, ui: UiState, patch: number) {
 
 function draw(world: World, state: GameState, ui: UiState): void {
   document.body.innerHTML = `<div id="map">${mapHtml(world, state, ui, CAL)}</div>`;
+}
+
+/**
+ * A block two glyphs from the survivor that holds ground, in whichever
+ * cardinal direction has some. A landing is on a shore, so which side of it
+ * is open water belongs to the seed, and a block of nothing but water names
+ * no patch to walk to.
+ */
+function blockNear(world: World, state: GameState, ui: UiState) {
+  const l = levelAt(ui.zoom);
+  const p = pointOf(world, state, ui, cellOf(state, world));
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const target = mapTargetAtPoint(world, state, ui, p.x + l.px * 2 * dx, p.y + l.line * 2 * dy);
+    if (target?.patch != null) return target;
+  }
+  throw new Error("the survivor has open water on every side");
 }
 
 describe("the zoom ladder", () => {
@@ -102,15 +119,14 @@ describe("a click on a block", () => {
     mapRegion(state, world, state.player.region);
     const ui = open(1);
     const here = cellOf(state, world);
-    // A block two glyphs east of the survivor, so the answer is not simply
-    // the patch they already stand on.
-    const p = pointOf(world, state, ui, here);
-    const target = mapTargetAtPoint(world, state, ui, p.x + levelAt(1).px * 2, p.y);
-    expect(target?.aggregate.size).toBe(2);
-    expect(target?.patch).not.toBeNull();
+    // A block two glyphs off, so the answer is not simply the patch they
+    // already stand on.
+    const target = blockNear(world, state, ui);
+    expect(target.aggregate.size).toBe(2);
+    expect(target.patch).not.toBeNull();
     // Asked of the sim's own door, which is the one the walk will be planned
     // through: known ground only, under the survivor's ice and fears.
-    expect(survivorRoute(state, world, here, target!.patch!)).not.toBeNull();
+    expect(survivorRoute(state, world, here, target.patch!)).not.toBeNull();
   });
 
   it("gives a block holding an exact mark that mark's own patch", () => {
@@ -189,9 +205,7 @@ describe("the resolved destination", () => {
     const { state, world } = newGame(21);
     mapRegion(state, world, state.player.region);
     const ui = open(1);
-    const here = cellOf(state, world);
-    const p = pointOf(world, state, ui, here);
-    const target = mapTargetAtPoint(world, state, ui, p.x + levelAt(1).px * 2, p.y)!;
+    const target = blockNear(world, state, ui);
     expect(target.patch).not.toBeNull();
     ui.destination = target.patch;
     draw(world, state, ui);
@@ -265,7 +279,15 @@ describe("clicking fog", () => {
       for (const way of ways) {
         const candidate = mapTargetAtPoint(world, state, ui,
           p.x + levelAt(1).px * step * way.dx, p.y + levelAt(1).px * step * way.dy);
-        if (candidate?.patch !== null && candidate !== null && !isKnown(state, candidate.patch)) { target = candidate; break; }
+        // A frontier is unknown ground a survivor could stand on with known
+        // ground they can reach beside it. A block of open water is fog too,
+        // and a shore leaves fog on the far side of water that no walk
+        // reaches; neither is the step into the dark this case is about.
+        if (candidate?.patch == null || isKnown(state, candidate.patch)) continue;
+        if (!passable(cellAt(world, candidate.patch).terrain)) continue;
+        if (!neighbours(world, candidate.patch).some((cell) => isKnown(state, cell) && survivorRoute(state, world, here, cell) !== null)) continue;
+        target = candidate;
+        break;
       }
     }
     expect(target).not.toBeNull();

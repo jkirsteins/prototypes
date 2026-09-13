@@ -237,10 +237,42 @@ downstream to a lake or the sea without a gap.
 Land classes keep today's names, so the tables, species habitats, orders
 and spots stay valid. The rules change. Inputs per cell: height, slope
 `s` (rise over run to the receiver), latitude, `coastKm` (distance to
-the western sea), upslope area `a` in cells, a wetness index
-`W = a / (a + 200 * s)` with `s` floored at 0.001, a precipitation index
-`p = (runoff - 12) / 38` in 0..1, and a thin-soil noise `n` in 0..1 with
-two octaves at 2 km.
+the western sea), upslope area `a` in cells, a wetness index `W`, a
+precipitation index `p = (runoff - 12) / 38` in 0..1, and a thin-soil
+noise `n` in 0..1 with two octaves at 2 km.
+
+**The wetness index is an area quantity, defined once and read at two
+spacings.** It is `W = a_m / (a_m + 60000 * s)` with `s` floored at
+0.001, where `a_m` is the specific catchment area in metres - drainage
+area over the width of contour it crosses - and 60,000 m is a
+transmissivity over a recharge, about 90 m2/day of till at 500 mm a
+year. A 50 m patch crosses 50 m of contour and a 300 m cell 300 m, so
+the same drainage counts six times over at the finer rung; that factor
+is what keeps the constant a length rather than a statement about 300 m
+cells.
+
+A patch measures itself. A cell is nine hectares and cannot: its value
+at the outlet is one point's, and applying it to the whole cell was what
+made the solve read wetter than its own patches. So the cell's index is
+the **mean of the index over the cell's area**, evaluated at 36 sample
+points - six depths across six columns, the same 36 the fine rung
+classifies one by one. The cell's D8 catchment crosses as a thread no
+wider than the ground resolves it (50 m), so it wets one column at six
+times the specific area; the other five columns are wet only by their
+own hillslope, and a point L metres down a flow path has L metres of
+specific catchment. The hillslope's own contribution averages 450 m,
+which is the median specific catchment of a 50 m patch off the drainage
+network on the refined surface - the detail octaves dissect a cell into
+hollows that gather, and a plane's 150 m is not what the ground does.
+That an index reads higher on a finer lattice is the ordinary scale
+dependence of a topographic index (Wolock and Price 1994).
+
+The cell's **class**, though, is not the class of the mean. A cell must
+name one ground for nine hectares, and the honest name is the one most
+of it would carry at 50 m. Five sixths of the 36 points are hillslope,
+so their middle is a hillslope point at the middle of its path: the
+class reads `W` at 450 m of specific catchment. The mean is what the
+cell's stored moisture carries; the majority is what its terrain does.
 
 - **fell**: height above `treelineM(lat, coastKm)`.
 - **rock**: exposure at real rates rather than a collar around fells.
@@ -257,11 +289,30 @@ two octaves at 2 km.
   plateau hollow under steady rain cannot satisfy is not describing it.
 - **moisture** `m = 0.5 * p + 0.4 * W + 0.1 * northFacing`, where
   `northFacing` is 1 for a receiver to the north, 0 to the south, 0.5
-  otherwise. Moisture is no longer a separate noise.
-- **spruce**: `m` above 0.55, and only where spruce grows: `coastKm`
-  above 30 and latitude under 66.
+  otherwise, and `W` is the cell's mean. Moisture is no longer a
+  separate noise, and no land class reads it: it is the stored ground
+  moisture the glyph forms and the climate read.
+- **spruce**: `n` above 0.5, and only where spruce grows: `coastKm`
+  above 30 and latitude under 66. Spruce and pine divide this forest by
+  soil texture: spruce holds the fine-textured till, which is the ground
+  that holds water, pine the sand, the gravel and the stony ground,
+  which sheds it. They divide it almost evenly - the Swedish inventory
+  puts spruce at about 40 percent of standing volume against pine's 39
+  and birch's 12 - and `n` is rank-uniform, so 0.5 is its median: the
+  till half against the sand and stone half. The rule this replaces,
+  `m` above 0.55, was a rainfall line wearing a moisture name: `m` is
+  half a precipitation index, the runoff gradient holds that index near
+  0.16 over the interior, and the rest of `m` cannot make up 0.55 short
+  of saturation - so only ground near the Atlantic could pass it, and
+  spruce is barred from the 30 km nearest the Atlantic. It left spruce
+  under one percent of the land at either rung. The topographic half of
+  a site's moisture is deliberately out of the split: the saturated flat
+  ground is already bog and the thin ground already rock, and texture is
+  a field both rungs sample the same way where a wetness line drawn
+  through the middle of the population is one neither rung can place to
+  the other's satisfaction.
 - **birch**: the 150 m under the treeline everywhere, and the outer
-  coast within 10 km of the sea, and moist ground where spruce is not
+  coast within 10 km of the sea, and spruce's ground where spruce is not
   allowed.
 - **pine**: the remaining forest ground.
 - **meadow**: open heath in the 60 m under the treeline that is not

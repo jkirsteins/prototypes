@@ -8,6 +8,15 @@ measures, each one named in spec section 3 as that measure's owner; a
 review round (below, "Fix report") corrected two of those adjustments and
 found a real modelling bug behind a third. `GENERATOR_VERSION` is 3.
 
+> **Stale.** Every figure below was measured at `GENERATOR_VERSION` 3.
+> The wetness index has since been redefined as an area quantity averaged
+> over a cell rather than taken at its outlet, and the spruce rule now reads
+> soil texture rather than a moisture index, so the class shares, the
+> bog-by-latitude rows and the mean slope by class no longer describe the
+> generator. The current readings are in the phase 3 A2 branch report. The
+> numbers are kept as they were because they are the evidence this round's
+> decisions were taken on.
+
 ## The solve budget
 
 `tests/slow/terrain-budget.test.ts` solves one full-size world (no cache)

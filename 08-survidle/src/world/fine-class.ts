@@ -15,7 +15,7 @@
  * and the integer-hash noise, and nothing else.
  */
 import { derive } from "../rng";
-import { KIND, landTerrainIndex, moistureIndex, precipitationIndex, soilNoiseAtKm, solvedSoilScale, uniformAt, upslopeCellsOf, wetnessIndex } from "./classify";
+import { KIND, landTerrainIndex, precipitationIndex, soilNoiseAtKm, solvedSoilScale, specificAreaM, uniformAt, upslopeCellsOf, wetnessOfSpecificArea } from "./classify";
 import { accumulate, DIST8, DX8, DY8, flowDirections, NO_FLOW, receiverOf } from "./hydro";
 import { valueNoiseMetres } from "./noise";
 import type { FineWindow } from "./refine";
@@ -171,13 +171,10 @@ export function classifyFine(
       if (standing[i]) { out[local] = TERRAIN_INDEX.water; wetnessOut[local] = 255; continue; }
       if (kind[i] === KIND.river) { out[local] = TERRAIN_INDEX.river; wetnessOut[local] = 255; continue; }
       let slope = 0;
-      let northFacing = 0.5;
       if (dir[i] !== NO_FLOW) {
         const r = receiverOf(i, dir[i], win.ww);
         slope = (filled[i] - filled[r]) / (DIST8[dir[i]] * PATCH_M);
         if (slope < 0) slope = 0;
-        const dy = DY8[dir[i]];
-        northFacing = dy < 0 ? 1 : dy > 0 ? 0 : 0.5;
         aspectOut[local] = dir[i];
       }
       slopeOut[local] = byte(slope);
@@ -185,29 +182,19 @@ export function classifyFine(
       const v = (fy + 0.5) / fineH;
       const coastKm = coastKmAt(u, v);
       const lat = latitudeAt(fy + 0.5, fineH);
-      // The index is a specific area - catchment per unit width of contour -
-      // and the contour a patch presents is a sixth of the one a cell
-      // presents, so the same drainage area counts six times over at this
-      // rung. The factor is what makes the constant inside wetnessIndex a
-      // transmissivity over a recharge, a length in metres, rather than a
-      // number about 300 m cells: the same rule at either rung.
-      //
-      // The wet classes still come out thinner here than the parent's class
-      // says they should, and that is the lattice the parent is on rather
-      // than an error at this one. A 300 m cell carries the wetness measured
-      // at its outlet across all nine hectares of it, and under D8 its own
-      // area alone is worth 300 m of specific catchment where a patch's is
-      // worth 50 - half of what a gentle slope needs to read saturated, at
-      // the coarse rung, against a twelfth of it here.
-      const wetness = wetnessIndex(area[i] * FINE_PER_PARENT, slope);
+      // The patch's own specific catchment area: its upslope area, still
+      // counted in solved cells, over the 50 m of contour a patch presents
+      // rather than the 300 m a cell presents. The coarse rung averages the
+      // same index over a cell's 36 points (classify.ts's cellWetness), so
+      // the two rungs are one definition measured at two spacings.
+      const wetness = wetnessOfSpecificArea(specificAreaM(area[i], PATCH_M), slope);
       const p = precipitationIndex(coastKm);
-      const m = moistureIndex(p, wetness, northFacing);
       const raw = soilNoiseAtKm(seed, u * TEMPLATE_W_KM, v * TEMPLATE_H_KM);
       let soil = uniformAt(soilScale, raw) + SOIL_BREAKUP * (fineNoise((fx + 0.5) * PATCH_M, (fy + 0.5) * PATCH_M, breakupSeed) - 0.5);
       if (soil < 0) soil = 0;
       if (soil > 1) soil = 1;
       wetnessOut[local] = byte(wetness);
-      out[local] = landTerrainIndex(height[i], slope, lat, coastKm, wetness, p, m, soil);
+      out[local] = landTerrainIndex(height[i], slope, lat, coastKm, wetness, p, soil);
     }
   }
   return { terrain: out, slope: slopeOut, wetness: wetnessOut, aspect: aspectOut };

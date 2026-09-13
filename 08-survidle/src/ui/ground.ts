@@ -24,9 +24,9 @@ export const TREES: Terrain[] = ["spruce", "pine", "birch"];
  * quantiles hold across worlds - `ground.test.ts` re-measures them and fails if
  * a change to the classifier moves a band out from under these.
  */
-export const BOG_WET = 0.529;
-export const MEADOW_DAMP = 0.392;
-export const MEADOW_DRY = 0.302;
+export const BOG_WET = 0.443;
+export const MEADOW_DAMP = 0.333;
+export const MEADOW_DRY = 0.267;
 
 /**
  * Every variant form, in the order the field runs. The legend is built from

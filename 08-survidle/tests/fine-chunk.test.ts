@@ -21,16 +21,18 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { expectChildrenAverageToParent, expectOutcomes, expectShoresAreReal, expectWaterRunsDownhill, parentOf, upstreamOf } from "./fine-chunk-contract";
-import { rimEntersWindow } from "../src/world/fine-class";
-import { DX8, DY8, NO_FLOW } from "../src/world/hydro";
+import { fromByte, rimEntersWindow } from "../src/world/fine-class";
+import { accumulate, DIST8, DX8, DY8, NO_FLOW } from "../src/world/hydro";
 import { fineWindowOf, type FineRefinement, POOL_MIN_DEPTH_M, refineChunk, rimAt } from "../src/world/refine";
 import { FLAG_STREAM, KIND, solveWorld } from "../src/world/solve";
+import { CELL_KM } from "../src/units";
+import { TERRAIN_INDEX } from "../src/world/terrain";
 import { fordAt, newWorld, terrainOf } from "../src/world/cells";
 import { receiverOf } from "../src/world/hydro";
 import { findRoute, passable } from "../src/world/route";
 import { FINE_PER_PARENT, patchId } from "../src/world/spatial";
 import { FINE_CHUNK } from "../src/world/refine";
-import { upslopeCellsOf } from "../src/world/classify";
+import { cellWetness, upslopeCellsOf } from "../src/world/classify";
 
 const W = 240;
 const H = 320;
@@ -298,5 +300,60 @@ describe("the fine chunk's channels across a seam", () => {
       }
     }
     expect(crossings).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The two rungs are one wetness index at two spacings, so a cell's index must
+ * be what its own patches average to. The cell's is a mean over 36 modelled
+ * points (`cellWetness`); the chunk measures 36 real ones. Over a chunk the
+ * two agree in the mean to a few hundredths of index.
+ *
+ * The case asks for the bias and not for a per-cell agreement: a cell cannot
+ * know where inside itself the refinement put a hollow, only how much water
+ * the cell as a whole holds. The bias is printed because it is the number
+ * that says which rung is wetter. A fixture cell is 2.25 km rather than
+ * 300 m, so the figure here is the contract and not the calibration - the
+ * real-scale reading lives in the branch report.
+ */
+describe("the fine wetness against the cell's own", () => {
+  it("averages its patches back to the parent's wetness index", () => {
+    const { count } = accumulate(solved.flowDir, solved.w, solved.h, null);
+    let sum = 0;
+    let n = 0;
+    for (let j = 0; j < FINE_CHUNK / FINE_PER_PARENT; j++) {
+      for (let i = 0; i < FINE_CHUNK / FINE_PER_PARENT; i++) {
+        const px = CX * (FINE_CHUNK / FINE_PER_PARENT) + i;
+        const py = CY * (FINE_CHUNK / FINE_PER_PARENT) + j;
+        const c = py * solved.w + px;
+        if (solved.kind[c] !== KIND.land) continue;
+        let slope = 0;
+        if (solved.flowDir[c] !== NO_FLOW) {
+          const r = receiverOf(c, solved.flowDir[c], solved.w);
+          slope = (solved.height[c] - solved.height[r]) / (DIST8[solved.flowDir[c]] * CELL_KM * 1000);
+          if (slope < 0) slope = 0;
+        }
+        let fine = 0;
+        let land = 0;
+        for (let dy = 0; dy < FINE_PER_PARENT; dy++) {
+          for (let dx = 0; dx < FINE_PER_PARENT; dx++) {
+            const k = (j * FINE_PER_PARENT + dy) * chunk.stride + i * FINE_PER_PARENT + dx;
+            const t = chunk.terrain[k];
+            if (t === TERRAIN_INDEX.water || t === TERRAIN_INDEX.river) continue;
+            fine += fromByte(chunk.wetness[k]);
+            land++;
+          }
+        }
+        // Only parents whose ground is all land: a shore parent's water
+        // patches are soaked by definition and say nothing about its ground.
+        if (land !== FINE_PER_PARENT * FINE_PER_PARENT) continue;
+        sum += cellWetness(count[c], slope) - fine / land;
+        n++;
+      }
+    }
+    expect(n).toBeGreaterThan(100);
+    const bias = sum / n;
+    console.log(`fine wetness against the cell's: bias ${bias.toFixed(4)} over ${n} parents`);
+    expect(Math.abs(bias)).toBeLessThan(0.05);
   });
 });

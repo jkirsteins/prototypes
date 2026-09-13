@@ -71,10 +71,14 @@ describe("what walking knows", () => {
     const from = patchOf(state, world);
     // A target several patches off, so the route has ground still ahead after a few minutes.
     const xy = patchXY(from);
+    // Six to twelve patches off, in whichever cardinal direction has ground:
+    // a landing is on a shore, so the water is on one side of it.
     let target: number | null = null;
     for (let step = 6; step <= 12 && target === null; step++) {
-      const candidate = patchId(xy.x + step, xy.y);
-      if (passable(cellAt(world, candidate).terrain)) target = candidate;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const candidate = patchId(xy.x + dx * step, xy.y + dy * step);
+        if (passable(cellAt(world, candidate).terrain)) { target = candidate; break; }
+      }
     }
     expect(target).not.toBeNull();
     expect(beginWalkToPatch(state, world, target!)).toBe(true);
