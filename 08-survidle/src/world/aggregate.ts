@@ -13,30 +13,51 @@ export interface AggregateSource extends FineGrid {
   regionAt?(patch: PatchId): number;
 }
 
+export const HA_PER_KM2 = 100;
+
 /**
- * What a square kilometre of closed forest carries: sixty trees worth
- * felling, and half a tree a year put back on the same ground. Both figures
- * are the stand's, not a cell's, so the ground a patch owns decides its
- * share of them and no patch is handed a fraction of a parent's total.
+ * Stems worth felling in a hectare of mature stand: trees at least 15 cm
+ * through at chest height, which is the size an axe takes down for logs
+ * rather than for sticks and poles. A boreal stand carries 500 to 1500 stems
+ * a hectare counting everything down to saplings, of which roughly 200 to 600
+ * have reached that size - the standing-stock band the Swedish and Finnish
+ * national forest inventories report for Norway spruce, Scots pine and birch.
+ *
+ * The three differ because their stands do. Spruce is shade tolerant and
+ * holds a closed stand on the moister ground, so it carries the most stems of
+ * felling size. Pine is light demanding on dry poor ground and thins itself
+ * out as it grows. Birch is a pioneer: it comes up thickest of the three and
+ * ends with the fewest stems of that size, because most of them stay small
+ * and multi-stemmed.
  */
-export const TREES_PER_FOREST_KM2 = 60 / 0.09;
-export const TREE_GROWTH_PER_FOREST_KM2_YEAR = 0.5 / 0.09;
+export const FELLABLE_STEMS_PER_HA: Partial<Record<Terrain, number>> = { spruce: 500, pine: 350, birch: 250 };
+
+/**
+ * Years for felled ground to carry a full stand of that size again. Boreal
+ * rotation ages run 60 to 120 years; spruce is the slowest to reach felling
+ * size, pine a little quicker on the same ground, and birch fastest of the
+ * three, which is why it is the tree that takes a clearing first.
+ *
+ * A year puts back the stand's full stocking divided by its rotation, which
+ * is what makes a cut patch take the whole rotation to come back.
+ */
+export const STAND_ROTATION_YEARS: Partial<Record<Terrain, number>> = { spruce: 100, pine: 90, birch: 60 };
 
 /** What a piece of ground grows, for the area it actually covers. */
 export interface ResourcePotential {
   /** The ground these figures are for, km2. */
   areaKm2: number;
-  /** Trees on it worth felling. */
+  /** Stems on it worth felling: trees at least 15 cm through at chest height. */
   trees: number;
-  /** Trees it puts back in a year. */
+  /** Stems of that size it puts back in a year. */
   treesPerYear: number;
 }
 
-const FOREST: Partial<Record<Terrain, true>> = { spruce: true, pine: true, birch: true };
-
 function potentialOf(terrain: Terrain, areaKm2: number): ResourcePotential {
-  const forest = FOREST[terrain] ? areaKm2 : 0;
-  return { areaKm2, trees: forest * TREES_PER_FOREST_KM2, treesPerYear: forest * TREE_GROWTH_PER_FOREST_KM2_YEAR };
+  const stems = FELLABLE_STEMS_PER_HA[terrain] ?? 0;
+  const rotation = STAND_ROTATION_YEARS[terrain] ?? 0;
+  const trees = stems * areaKm2 * HA_PER_KM2;
+  return { areaKm2, trees, treesPerYear: rotation > 0 ? trees / rotation : 0 };
 }
 
 /**

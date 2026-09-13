@@ -17,8 +17,8 @@ import { growWood, rootCellFullKg, setWoodPatchLeft, woodLeft, woodPatchFull, wo
 import { check, pausedList, startTask, stopTask } from "../src/sim/tasks";
 import { iceHoleOpen, sourceLitres } from "../src/sim/water";
 import { forgetHeardGround, surroundings } from "../src/sim/soundscape";
-import { parentSummary, resourcePotentialAt, TREES_PER_FOREST_KM2 } from "../src/world/aggregate";
-import { regionAt, terrainPeek, type World } from "../src/world/gen";
+import { type AggregateSource, FELLABLE_STEMS_PER_HA, HA_PER_KM2, parentSummary, resourcePotentialAt, STAND_ROTATION_YEARS } from "../src/world/aggregate";
+import { cellAt, regionAt, terrainPeek, type World } from "../src/world/gen";
 import { FINE_PER_PARENT, fineNeighbours, PATCH_KM, patchId, patchXY } from "../src/world/spatial";
 import { paintPatch } from "./siting-helpers";
 import type { Terrain } from "../src/sim/types";
@@ -144,14 +144,35 @@ describe("fine ownership of local state", () => {
 });
 
 describe("resources a fine patch grows", () => {
-  it("derives forest stock from 0.0025 square kilometres", () => {
+  it("derives forest stock from 0.0025 square kilometres at the stand's own density", () => {
     const { state, world } = forestGame(21);
     // The patch underfoot is timber, whichever of the three the seed grows there.
     const patch = cellOf(state, world);
+    const terrain = cellAt(world, patch).terrain;
+    const stems = FELLABLE_STEMS_PER_HA[terrain]!;
     const potential = resourcePotentialAt(world, patch);
     expect(potential.areaKm2).toBeCloseTo(0.0025, 8);
-    expect(potential.trees).toBeGreaterThan(0);
-    expect(potential.trees).toBeCloseTo(PATCH_KM * PATCH_KM * TREES_PER_FOREST_KM2, 8);
+    expect(potential.trees).toBeCloseTo(stems * PATCH_KM * PATCH_KM * HA_PER_KM2, 8);
+    // A quarter hectare of stand, so tens of stems worth felling, not a fraction of one.
+    expect(potential.trees).toBeGreaterThan(10);
+    expect(potential.treesPerYear).toBeCloseTo(potential.trees / STAND_ROTATION_YEARS[terrain]!, 8);
+  });
+
+  it("gives spruce, pine and birch each their own stem density and rotation", () => {
+    const patchHa = PATCH_KM * PATCH_KM * HA_PER_KM2;
+    // One patch of each stand, without hunting the map for ground a seed may not grow nearby.
+    const stand = (terrain: Terrain): AggregateSource => ({ w: 1, h: 1, terrainAt: () => terrain });
+    for (const terrain of ["spruce", "pine", "birch"] as const) {
+      const potential = resourcePotentialAt(stand(terrain), 0);
+      expect(potential.trees).toBeCloseTo(FELLABLE_STEMS_PER_HA[terrain]! * patchHa, 8);
+      // Tens of stems on a quarter hectare, not a fraction of one tree.
+      expect(potential.trees).toBeGreaterThan(10);
+      expect(potential.treesPerYear).toBeCloseTo(potential.trees / STAND_ROTATION_YEARS[terrain]!, 8);
+    }
+    expect(FELLABLE_STEMS_PER_HA.spruce!).toBeGreaterThan(FELLABLE_STEMS_PER_HA.pine!);
+    expect(FELLABLE_STEMS_PER_HA.pine!).toBeGreaterThan(FELLABLE_STEMS_PER_HA.birch!);
+    expect(STAND_ROTATION_YEARS.spruce!).toBeGreaterThan(STAND_ROTATION_YEARS.birch!);
+    expect(resourcePotentialAt(stand("meadow"), 0).trees).toBe(0);
   });
 
   it("gives open ground no trees to fell", () => {

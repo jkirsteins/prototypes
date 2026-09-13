@@ -13,7 +13,7 @@ import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "..
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
 import { campSite, regionState } from "../src/sim/regionstate";
-import { woodPatchLeft } from "../src/sim/stocks";
+import { setWoodPatchLeft, woodPatchLeft } from "../src/sim/stocks";
 import { cellAt, hasSpot, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 import { lakeShoreNear, regionNear, seaShoreBesideLake, walkableNeighbour } from "./world-facts";
@@ -61,11 +61,12 @@ describe("tasks", () => {
     siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
+    // Leave the patch one stem, so the repeat runs out of this ground rather
+    // than out of minutes: a quarter hectare of stand carries tens of them.
+    setWoodPatchLeft(regionState(state, world, state.player.region), world, cellOf(state, world), 1);
     startTask(state, world, cal, "chop", undefined, true);
     run(g, 200);
     expect(state.task).toBeNull();
-    // One patch of forest holds one tree worth felling, so the repeat stops
-    // when this ground is felled out rather than when the region is.
     expect(qty(herePile(state, world), "log")).toBe(4);
     expect(state.log.some((e) => e.text.includes("{You} {stop}"))).toBe(true);
   });

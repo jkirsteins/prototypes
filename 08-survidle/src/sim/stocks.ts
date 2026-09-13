@@ -157,8 +157,8 @@ export function seedSeasonalStocks(state: GameState, world: World, st: RegionSta
 }
 
 /**
- * Trees worth felling on a patch nobody has cut: what its own 0.0025 km2
- * of ground grows, and nothing of its neighbours'. Open ground grows none.
+ * Stems worth felling on a patch nobody has cut: what its own 0.0025 km2 of
+ * ground grows, and nothing of its neighbours'. Open ground grows none.
  */
 export function woodPatchFull(world: World, idx: number): number {
   return resourcePotentialAt(world, idx).trees;
