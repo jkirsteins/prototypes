@@ -96,6 +96,9 @@ export type KgItem =
   | "water" | "ice";
 export type ItemId = CountItem | KgItem;
 
+/** The stocks toolbar's four groups. Every item a group names belongs to exactly one. */
+export type StockGroupId = "wood" | "food" | "water" | "pack";
+
 /** Food that goes off. Each stack remembers how long it has been warm. */
 export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "rawFat" | "eggs" | "cookedRoots" | "seaweed";
 export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "oilyFish", "cookedOilyFish", "roe", "berries", "rawFat", "eggs", "cookedRoots", "seaweed"];
