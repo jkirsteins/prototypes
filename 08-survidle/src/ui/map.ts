@@ -16,7 +16,7 @@ import type { Calendar } from "../sim/calendar";
 import { fuelTotal, hasEmbers, roofed } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
 import { knowledgeAt } from "../sim/fineknowledge";
-import { isKnown, knowledgeGen } from "../sim/mapped";
+import { coarseKnowledgeGen, coarseKnown, isKnown, knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
 import { discovery, siteAt, VISITED } from "../sim/regionstate";
@@ -125,6 +125,7 @@ export function legendHtml(): string {
     `<span class="pl-key">underlined: something lies there</span>` +
     `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +
     `<span class="memory-key">muted: remembered, faint: inherited</span>` +
+    `<span class="far-key">flat and pale: seen from afar, never walked</span>` +
     `<span class="fog-key">dark: never been there</span>`
   );
 }
@@ -701,6 +702,8 @@ export interface KnowledgeComposition {
   remembered: number;
   inherited: number;
   unknown: number;
+  /** Sampled patches nobody has read, whose country has been seen from a distance. */
+  far: number;
 }
 
 /** What a glyph draws for the block of patches it stands over. */
@@ -711,6 +714,12 @@ export interface GlyphGround {
   knowledge: KnowledgeComposition;
   /** The block's real terrain and relief, computed only where the block reads as known. */
   summary: GlyphSummary | null;
+  /**
+   * Ground nobody has read patch by patch, whose country was seen from a
+   * vantage. It draws the solved terrain rather than fog, and never the detail
+   * or the weather that only a read patch earns.
+   */
+  far: boolean;
 }
 
 /** A patch's own knowledge: 0 unknown, 1 dim (only the journal has it), 2 known this life. */
@@ -756,9 +765,10 @@ export function dominantByPriority(counts: Record<Terrain, number>): Terrain {
  */
 function glyphGround(state: GameState, world: World, visible: Set<number> | null, x0: number, y0: number, z: number): GlyphGround {
   const step = Math.max(1, Math.floor(z / 3));
-  const knowledge: KnowledgeComposition = { samples: 0, visible: 0, remembered: 0, inherited: 0, unknown: 0 };
+  const knowledge: KnowledgeComposition = { samples: 0, visible: 0, remembered: 0, inherited: 0, unknown: 0, far: 0 };
   let knownAny = 0;
   let knownBright = 0;
+  const farTerrain = emptyTerrainCounts();
   for (let j = step >> 1; j < z; j += step) {
     for (let i = step >> 1; i < z; i += step) {
       const x = x0 + i;
@@ -768,6 +778,12 @@ function glyphGround(state: GameState, world: World, visible: Set<number> | null
       const k = cellKnowledge(state, world, x, y);
       if (k === 0) {
         knowledge.unknown++;
+        // The solved terrain, read through the peek that never builds a chunk:
+        // far country is exactly the ground no chunk has been made for.
+        if (coarseKnown(state, cellIdx(world, x, y))) {
+          knowledge.far++;
+          farTerrain[terrainPeek(world, x, y)]++;
+        }
         continue;
       }
       knownAny++;
@@ -781,10 +797,16 @@ function glyphGround(state: GameState, world: World, visible: Set<number> | null
   const region = regionPeek(world, Math.min(world.w - 1, Math.max(0, x0 + (z >> 1))), Math.min(world.h - 1, Math.max(0, y0 + (z >> 1))));
   const seen: 0 | 1 | 2 = !knowledge.samples || knownAny / knowledge.samples <= BLOCK_MAJORITY ? 0
     : knownBright / knownAny > BLOCK_MAJORITY ? 2 : 1;
-  if (seen === 0) return { terrain: "water", region, seen, knowledge, summary: null };
-  if (z === 1) return { terrain: terrainPeek(world, x0, y0), region, seen, knowledge, summary: null };
+  if (seen === 0) {
+    // A block reads as far country on the same majority a block reads as known
+    // on, and it draws the solve's own terrain: no summary, since summarising
+    // is reading the patches, which is the one thing this ground has not had.
+    const far = knowledge.far / Math.max(1, knowledge.samples) > BLOCK_MAJORITY;
+    return { terrain: far ? dominantByPriority(farTerrain) : "water", region, seen, knowledge, summary: null, far };
+  }
+  if (z === 1) return { terrain: terrainPeek(world, x0, y0), region, seen, knowledge, summary: null, far: false };
   const summary = glyphSummary(state, world, x0, y0, z);
-  return { terrain: dominantByPriority(summary.terrainCounts), region, seen, knowledge, summary };
+  return { terrain: dominantByPriority(summary.terrainCounts), region, seen, knowledge, summary, far: false };
 }
 
 export interface LightSource { cell: number; reach: number }
@@ -952,7 +974,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const viewshed = projectedViewshed(currentViewshed(state, world, cal, cell), x0, y0, z, level.w, level.h);
   const startles = activeWildlifeStartles(ui, nowMs).map((cue) => cue.key).join(",");
   const viewport = startles && ui.mapViewport ? Object.values(ui.mapViewport).join(",") : "";
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${ui.destination}|cs${ui.cloudShadows ? 1 : 0}|wx${weatherMinute}:${localWeather}|${cal.isNight}|${marks}|${route}|${piles}|${carcasses}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|vis${viewshed}|${animals}|${startles}|${viewport}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${ui.destination}|cs${ui.cloudShadows ? 1 : 0}|wx${weatherMinute}:${localWeather}|${cal.isNight}|${marks}|${route}|${piles}|${carcasses}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${coarseKnowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|vis${viewshed}|${animals}|${startles}|${viewport}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs = performance.now()): string {
@@ -1238,6 +1260,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const mechanicalCell = cellIdx(world, x0 + gx * z, y0 + gy * z);
     const reg = regions[i];
     const seen = reg >= 0 ? seenAt[i] : 0;
+    const far = reg >= 0 && (groundAtGlyph[i]?.far ?? false);
     const named = reg >= 0 && discovery(state, reg) > 0;
     const cls = ["c"];
     let glyph = " ";
@@ -1259,7 +1282,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     }
     if (reg < 0) {
       cls.push("void");
-    } else if (seen === 0) {
+    } else if (seen === 0 && !far) {
       cls.push("fog");
       // The outline still shows through: where the country you are in ends and
       // what adjoins it, on ground nobody has walked. The class says which of
@@ -1272,6 +1295,16 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         if (gy < l.h - 1 && ownsEdge(reg, regions[i + l.w])) cls.push("bb");
         cls.push(reg === cur ? "edge-cur" : discovery(state, reg) === VISITED ? "edge-known" : "edge-unknown");
       }
+    } else if (far) {
+      // Country seen from a vantage and never walked into: the solve's own
+      // ground, in its own tone. It carries none of what reading a patch
+      // earns - no weather, no stream, no lying goods - and no border, since
+      // the shape of a region is not what a distant look tells you.
+      const t = terrains[i];
+      const presentation = aggregatePresentation(t, "lake", "inherited", null);
+      cls.push(`t-${t}`, "far");
+      glyph = presentation.glyph;
+      terrainLabel = `${presentation.heading}, seen from afar`;
     } else {
       const t = terrains[i];
       cls.push(`t-${t}`);
@@ -1380,7 +1413,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // flicker on the @ and the camp's x: they are the cells whose names
     // differ enough to be found and moved.
     const act = named ? ` data-act="select" data-i="${i}" data-r="${reg}"` : "";
-    const terrain = reg < 0 ? "beyond the mapped world" : seen === 0 ? "unknown ground" : `${terrainLabel}${z > 1 ? `, ${glyphScale(z)} block` : ""}`;
+    const terrain = reg < 0 ? "beyond the mapped world" : seen === 0 && !far ? "unknown ground" : `${terrainLabel}${z > 1 ? `, ${glyphScale(z)} block` : ""}`;
     const place = reg >= 0 && named ? world.regions.get(reg)?.name : undefined;
     const info = [terrain, place, ...featuresAt.get(i) ?? []].filter(Boolean).join("; ");
     const cx = x0 + gx * z;

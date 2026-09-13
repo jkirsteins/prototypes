@@ -73,7 +73,7 @@ describe("bounded exact survey ranking", () => {
       const path = routing.exploreRoute(state, world, here, cell, region.id);
       if (!path) return null;
       const minutes = routing.survivorRouteMinutes(state, world, path, speed);
-      return { cell, path, score: sight.opticalCandidateRangeCells(sight.sightReachCells(state, world, cal, cell)) ** 2 / minutes };
+      return { cell, path, score: sight.vantageRevealCells(state, world, cal, cell) / minutes };
     }).filter(row => row !== null).sort((a, b) => b.score - a.score || a.path.length - b.path.length || a.cell - b.cell);
     const routes = vi.spyOn(routing, "exploreRoute");
     const selected = tasks.pickVantage(state, world, cal, region.id, [here]);
@@ -82,25 +82,26 @@ describe("bounded exact survey ranking", () => {
     expect(routes.mock.calls.length).toBeLessThan(region.cells.length / 2);
   });
 
-  it("gives a high fell no more reveal than the viewshed will enumerate", () => {
-    // A 300 m fell reaches about 1236 patches by terrain, but a viewshed
-    // enumerates at most opticalCandidateRangeCells of them, so the fell and a
-    // patch that already reaches the cap open exactly the same ground. Scored
-    // by the raw reach the fell won every comparison and a sweep walked to it.
+  it("gives a high fell its enumerated patches and no more than a discount on the rest", () => {
+    // A 300 m fell reaches about 1236 patches by terrain, and a viewshed
+    // enumerates at most opticalCandidateRangeCells of them. The reach past
+    // that is not nothing - it is the far country the same look reads at 300 m
+    // - and it is not the whole square either: scored by the raw reach the
+    // fell won every comparison and a sweep walked across the region to it.
     const cap = sight.opticalCandidateRangeCells(1236);
     expect(cap).toBeLessThan(1236);
+    const reveal = cap ** 2 + sight.COARSE_REVEAL_WEIGHT * (1236 ** 2 - cap ** 2);
+    expect(reveal).toBeGreaterThan(cap ** 2);
+    expect(reveal).toBeLessThan(1236 ** 2);
+
     const near = patchId(15, 14);
     const far = patchId(12, 12);
-    for (const fell of [far, near]) {
+    for (const first of [far, near]) {
       const { state, world, region, cal } = fixture(false);
-      const terrain = world.fineChunks.get(0)!.terrain;
-      const { x, y } = { x: fell % world.w, y: Math.floor(fell / world.w) };
-      terrain[y * FINE_CHUNK + x] = TERRAIN_INDEX.fell;
-      // The reach the ground gives, standing in for vantageBaseCells so the
-      // case is about the cap and not about a fixture's height field.
-      vi.spyOn(sight, "sightReachCells").mockImplementation((_state, _world, _cal, cell) =>
-        cell === fell ? 1236 : cell === (fell === far ? near : far) ? cap : 0);
-      // The nearer of the two wins either way: equal reveal, fewer minutes.
+      // Two stops that open the same ground: the nearer wins on minutes, and
+      // the order they are considered in cannot change that.
+      vi.spyOn(sight, "vantageRevealCells").mockImplementation((_state, _world, _cal, cell) =>
+        cell === first || cell === (first === far ? near : far) ? cap ** 2 : 0);
       expect(tasks.pickVantage(state, world, cal, region.id, [cellOf(state, world)])?.cell).toBe(near);
       vi.restoreAllMocks();
     }

@@ -52,7 +52,13 @@ interface LegacyKnowledge {
 function loadKnowledge(state: LegacyKnowledge): KnowledgeChunks {
   const carried = state.knowledge;
   if (typeof carried === "string") return decodeKnowledge(carried);
-  if (carried && carried.chunks instanceof Map) return carried;
+  // A structured clone rather than an encoded string, and possibly written
+  // before there was far country: the fine chunks are its own, the coarse map
+  // is simply empty.
+  if (carried && carried.chunks instanceof Map) {
+    if (!(carried.coarse instanceof Map)) carried.coarse = new Map();
+    return carried;
+  }
   const knowledge = newKnowledge();
   // A save written while knowledge was a property per cell: the same ground,
   // dim where the journal held it. Ground nobody had is simply absent.

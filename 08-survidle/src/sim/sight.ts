@@ -6,12 +6,13 @@
  */
 import { parentSummary } from "../world/aggregate";
 import { canopyHeightAt, FINE_CHUNK, fineSurfaceAt } from "../world/cells";
-import { heightAt, regionPeek, terrainOf, type World } from "../world/gen";
+import { heightAt, regionPeek, solvedTerrainAt, terrainOf, type World } from "../world/gen";
 import { FINE_PER_PARENT, PATCH_KM, PATCH_M, patchId } from "../world/spatial";
+import { CANOPY_HEIGHT_M } from "../world/terrain";
 import type { Calendar } from "./calendar";
 import { CLEAR_MOR_KM, MAX_OPTICAL_DEPTH, sampleAtmosphere } from "./climate";
 import { lightFactor, skyLux, SPOT_LUX, WALK_LUX } from "./light";
-import { markKnown } from "./mapped";
+import { markCoarseKnown, markKnown } from "./mapped";
 import { discoverAvailableOpportunities } from "./opportunity-catalog";
 import { body } from "./person";
 import { RUNG_LEVEL, skillLevel } from "./skills";
@@ -619,13 +620,186 @@ export function opticalCandidateRangeCells(terrainRange: number): number {
   return Math.min(terrainRange, FINE_VIEWSHED_PATCHES, SIGHT_HORIZON_CELLS);
 }
 
+// The far country, read at the grain the solve itself holds.
+//
+// Past FINE_VIEWSHED_PATCHES a look cannot honestly claim 50 m patches: the
+// world does not hold them there until a chunk is built, and building chunks
+// to the horizon is the cost this whole design exists to avoid. What it can
+// claim is the solved world the patches are refined from - a 300 m parent's
+// height and the crowns its terrain carries - so the coarse pass marches the
+// same kind of ray over the solved arrays and writes coarse knowledge, never
+// patch knowledge and never a chunk.
+
+/** One solved parent, in metres: the step the coarse ray takes and the grain it can claim. */
+const COARSE_STEP_M = FINE_PER_PARENT * PATCH_M;
+const COARSE_STEP_KM = COARSE_STEP_M / 1000;
+/** The sight horizon in parents. */
+const COARSE_HORIZON_PARENTS = Math.floor(SIGHT_HORIZON_M / COARSE_STEP_M);
+/** The fine viewshed in parents: nearer than this the patches themselves are read and a coarse claim would say less than is already known. */
+const COARSE_INNER_PARENTS = Math.ceil((FINE_VIEWSHED_PATCHES * PATCH_M) / COARSE_STEP_M);
+/**
+ * How wide the fan is, and so how far out a ray is one parent from its
+ * neighbours.
+ *
+ * Rays are cast to every parent on a square perimeter at this radius, which
+ * is 8R of them, and each runs to the horizon. The pass must cost no more
+ * than the fine viewshed it follows, whose worst case is 8 * 96 rays of 96
+ * patch reads - 73728. At 67 parents the fan is 536 rays reading 67 parents
+ * out to 20.1 km and a third as many over the 44 parents beyond it, which is
+ * 53600 reads, inside that budget.
+ *
+ * 20 km is therefore where the claim has to get coarser, and the geometry
+ * says the same thing: rays one parent apart at 67 parents are 2.5 parents
+ * apart at the horizon, so out there a ray no longer crosses every parent it
+ * passes between and only the 900 m aggregate it lands in is provably seen.
+ */
+const COARSE_FAN_PARENTS = 67;
+/** Three parents: the smallest aggregate wider than the fan's own spacing at the horizon (2.5 parents, 743 m). */
+const COARSE_AGGREGATE_PARENTS = 3;
+/** The fine viewshed's own worst case, which the coarse fan must not exceed. */
+export const COARSE_WORK_BUDGET = 8 * FINE_VIEWSHED_PATCHES * FINE_VIEWSHED_PATCHES;
+
+/** Solved parents read by the coarse pass since the counter was last cleared: its work count. */
+let coarseReads = 0;
+export function coarseReadCount(): number { return coarseReads; }
+export function clearCoarseReadCount(): void { coarseReads = 0; }
+
+/**
+ * Whether one parent exists in the solved arrays. The fine world is the solve
+ * refined, so this is the world's own edge; a fixture solved smaller than the
+ * lattice stops its rays here rather than reading past its arrays.
+ */
+function solvedParent(world: World, px: number, py: number): boolean {
+  return px >= 0 && py >= 0 && px < world.solved.w && py < world.solved.h;
+}
+
+/** The surface a coarse ray is stopped by: the parent's solved ground and whatever its solved terrain stands up. */
+function coarseSurfaceM(world: World, px: number, py: number): number {
+  coarseReads++;
+  const x = px * FINE_PER_PARENT;
+  const y = py * FINE_PER_PARENT;
+  return Math.max(0, heightAt(world, x, y)) + (CANOPY_HEIGHT_M[solvedTerrainAt(world, x, y)] ?? 0);
+}
+
+/** Every parent of the 900 m aggregate this one belongs to, as the first patch of each. */
+function aggregatePatches(world: World, px: number, py: number): number[] {
+  const x0 = Math.floor(px / COARSE_AGGREGATE_PARENTS) * COARSE_AGGREGATE_PARENTS;
+  const y0 = Math.floor(py / COARSE_AGGREGATE_PARENTS) * COARSE_AGGREGATE_PARENTS;
+  const out: number[] = [];
+  for (let y = y0; y < y0 + COARSE_AGGREGATE_PARENTS; y++) {
+    for (let x = x0; x < x0 + COARSE_AGGREGATE_PARENTS; x++) {
+      if (solvedParent(world, x, y)) out.push(patchId(x * FINE_PER_PARENT, y * FINE_PER_PARENT));
+    }
+  }
+  return out;
+}
+
+/**
+ * One coarse sightline. It carries the highest apparent angle met, exactly as
+ * the fine march does, so a ridge at 6 km still hides the country behind it;
+ * it also carries the optical depth it has crossed, and stops where the air
+ * has taken the ground's contrast, which is what makes a foggy day's far view
+ * short without a second rule for it.
+ */
+function marchCoarseRay(state: GameState, world: World, pcx: number, pcy: number, dx: number, dy: number, fan: number, maxParents: number, observerM: number, sampler: OpticalSampler): void {
+  let horizonSlope = -Infinity;
+  let opticalDepth = 0;
+  let previousDistance = 0;
+  for (let i = 1; i <= maxParents;) {
+    const px = pcx + Math.round((dx * i) / fan);
+    const py = pcy + Math.round((dy * i) / fan);
+    if (!solvedParent(world, px, py)) return;
+    const distance = Math.hypot(px - pcx, py - pcy);
+    if (distance > maxParents) return;
+    const step = distance > COARSE_FAN_PARENTS ? COARSE_AGGREGATE_PARENTS : 1;
+
+    opticalDepth += sampler.extinction((px + 0.5) * FINE_PER_PARENT, (py + 0.5) * FINE_PER_PARENT)
+      * (distance - previousDistance) * COARSE_STEP_KM;
+    previousDistance = distance;
+    if (opticalDepth > MAX_OPTICAL_DEPTH) return;
+
+    const distM = distance * COARSE_STEP_M;
+    const slope = (coarseSurfaceM(world, px, py) - curvatureDropM(distM) - observerM) / distM;
+    if (slope >= horizonSlope - 1e-9) {
+      if (distance > COARSE_FAN_PARENTS) {
+        for (const patch of aggregatePatches(world, px, py)) markCoarseKnown(state, patch, "aggregate");
+      } else if (distance > COARSE_INNER_PARENTS) {
+        markCoarseKnown(state, patchId(px * FINE_PER_PARENT, py * FINE_PER_PARENT), "parent");
+      }
+    }
+    horizonSlope = Math.max(horizonSlope, slope);
+    i += step;
+  }
+}
+
+/**
+ * A look repeated from the same stop inside the same ten minutes writes bits
+ * it has already written: the country does not move and coarse knowledge only
+ * ever rises. Standing on a fell for an hour would otherwise pay the whole fan
+ * every minute of it.
+ */
+const COARSE_LOOK_ENTRIES = 32;
+const coarseLooks = new Set<string>();
+
+/**
+ * What the country beyond the fine viewshed shows from `cell`, as coarsely as
+ * it can honestly be claimed. Nothing here reads or builds a fine chunk.
+ */
+export function markCoarseSeen(state: GameState, world: World, cal: Calendar, cell: number): void {
+  const reachPatches = sightReachCells(state, world, cal, cell);
+  if (reachPatches <= FINE_VIEWSHED_PATCHES) return;
+  const maxParents = Math.min(COARSE_HORIZON_PARENTS, Math.floor(reachPatches / FINE_PER_PARENT));
+  if (maxParents <= COARSE_INNER_PARENTS) return;
+  const key = `${viewshedWorldId(world)}:${cell}:${maxParents}:${Math.floor((state.minute + state.weather.elapsedMinutes) / 10)}`;
+  if (coarseLooks.has(key)) return;
+  if (coarseLooks.size >= COARSE_LOOK_ENTRIES) coarseLooks.clear();
+  coarseLooks.add(key);
+
+  const cx = cell % world.w;
+  const cy = Math.floor(cell / world.w);
+  const pcx = Math.floor(cx / FINE_PER_PARENT);
+  const pcy = Math.floor(cy / FINE_PER_PARENT);
+  const observerM = groundHeightM(world, cx, cy) + EYE_HEIGHT_M;
+  const sampler = opticalSampler(state, world);
+  const fan = Math.min(COARSE_FAN_PARENTS, maxParents);
+  for (let d = -fan; d <= fan; d++) {
+    marchCoarseRay(state, world, pcx, pcy, d, -fan, fan, maxParents, observerM, sampler);
+    marchCoarseRay(state, world, pcx, pcy, d, fan, fan, maxParents, observerM, sampler);
+  }
+  for (let d = -fan + 1; d <= fan - 1; d++) {
+    marchCoarseRay(state, world, pcx, pcy, -fan, d, fan, maxParents, observerM, sampler);
+    marchCoarseRay(state, world, pcx, pcy, fan, d, fan, maxParents, observerM, sampler);
+  }
+}
+
+/**
+ * How much a chooser should value a look from `cell`, in patches worth of
+ * ground opened, without marching a single ray.
+ *
+ * The near part is the square of the reach the fine viewshed will actually
+ * enumerate. Past that a look still opens country - it writes coarse
+ * knowledge out to the horizon - and that is worth something without being
+ * worth the same: one coarse reading covers a parent's thirty-six patches at
+ * once, and none of it is ground a route may cross. So far country counts at
+ * a thirty-sixth, which is one patch of certainty per parent claimed.
+ */
+export const COARSE_REVEAL_WEIGHT = 1 / (FINE_PER_PARENT * FINE_PER_PARENT);
+
+export function vantageRevealCells(state: GameState, world: World, cal: Calendar, cell: number): number {
+  const reach = sightReachCells(state, world, cal, cell);
+  const near = opticalCandidateRangeCells(reach);
+  return near ** 2 + COARSE_REVEAL_WEIGHT * Math.max(0, reach ** 2 - near ** 2);
+}
+
 /**
  * What the eye reaches from `cell` becomes known ground: the cell
  * underfoot always, then a ray to every cell on the vantage's own range,
- * each one marked until it runs into a canopy that closes the view.
+ * each one marked until it runs into a canopy that closes the view. Past the
+ * patches, the far country the vantage opens is written coarsely.
  */
 export function seeFrom(state: GameState, world: World, cal: Calendar, cell: number, announce = true): void {
   for (const visible of visibleCells(state, world, cal, cell)) markKnown(state, visible);
+  markCoarseSeen(state, world, cal, cell);
   discoverAvailableOpportunities(state, world, cal, announce);
 }
 

@@ -64,7 +64,7 @@ describe("compact fine knowledge", () => {
     expect(knowledgeAt(knowledge, patch)).toBe("visited");
     inheritKnowledge(knowledge);
     expect(knowledgeAt(knowledge, patch)).toBe("inherited");
-    expect(knowledgeCounts(knowledge)).toEqual({ inherited: 1, seen: 0, visited: 0, known: 1 });
+    expect(knowledgeCounts(knowledge)).toEqual({ inherited: 1, seen: 0, visited: 0, known: 1, coarseParent: 0, coarseAggregate: 0 });
     expect(markSeen(knowledge, patch)).toBe(true);
     expect(knowledgeAt(knowledge, patch)).toBe("seen");
   });

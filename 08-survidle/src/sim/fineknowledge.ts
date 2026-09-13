@@ -11,14 +11,30 @@
  * the fine lattice's own knowledge and keeps its own name.
  */
 import { FINE_CHUNK } from "../world/cells";
-import { type PatchId, WORLD_FINE_H, WORLD_FINE_W } from "../world/spatial";
+import { FINE_PER_PARENT, type PatchId, WORLD_FINE_H, WORLD_FINE_W } from "../world/spatial";
 
 /** 0 unknown, 1 the journal's, 2 seen this life, 3 walked this life. */
 export type KnowledgeLevel = "unknown" | "inherited" | "seen" | "visited";
 
+/**
+ * How coarsely the far country is known. Past the fine viewshed a look does
+ * not read 50 m patches at all - it reads the solved world the patches are
+ * refined from - so what it can honestly write is a whole 300 m parent, or,
+ * further out where the ray fan is wider than a parent, only the 900 m
+ * aggregate a ray landed somewhere inside. 0 unknown, 1 the aggregate, 2 the
+ * parent itself.
+ */
+export type CoarseLevel = "unknown" | "aggregate" | "parent";
+
 export interface KnowledgeChunks {
   /** Touched chunks only, by chunk index; each array packs four patches per byte. */
   chunks: Map<number, Uint8Array>;
+  /**
+   * Far country, in the same chunks: one two-bit level per 300 m parent, so a
+   * chunk's 256 parents cost 64 bytes against the patches' 2304. Allocated
+   * only where something has been seen from a distance.
+   */
+  coarse: Map<number, Uint8Array>;
 }
 
 export interface KnowledgeCounts {
@@ -27,15 +43,23 @@ export interface KnowledgeCounts {
   visited: number;
   /** Every patch above unknown: what routing may cross. */
   known: number;
+  /** Parents read whole from a distance. Not patches, and not ground a route may cross. */
+  coarseParent: number;
+  /** Parents claimed only as part of a 900 m aggregate a ray crossed. */
+  coarseAggregate: number;
 }
 
 const LEVELS: readonly KnowledgeLevel[] = ["unknown", "inherited", "seen", "visited"];
+const COARSE_LEVELS: readonly CoarseLevel[] = ["unknown", "aggregate", "parent"];
 const CHUNKS_W = Math.ceil(WORLD_FINE_W / FINE_CHUNK);
 const PATCHES = WORLD_FINE_W * WORLD_FINE_H;
 const BYTES_PER_CHUNK = (FINE_CHUNK * FINE_CHUNK) / 4;
+/** Parents to a side of one knowledge chunk: 96 patches of 50 m are 16 cells of 300 m. */
+const PARENTS_PER_CHUNK = FINE_CHUNK / FINE_PER_PARENT;
+const COARSE_BYTES_PER_CHUNK = (PARENTS_PER_CHUNK * PARENTS_PER_CHUNK) / 4;
 
 export function newKnowledge(): KnowledgeChunks {
-  return { chunks: new Map() };
+  return { chunks: new Map(), coarse: new Map() };
 }
 
 function inWorld(patch: PatchId): boolean {
@@ -98,7 +122,50 @@ export function markVisited(knowledge: KnowledgeChunks, patch: PatchId): boolean
   return raise(knowledge, patch, 3);
 }
 
-/** The journal: what a dead survivor knew, the heir has read rather than walked. */
+/** Which chunk a patch's parent sits in, and where inside that chunk's packed parent bytes. */
+function coarseSlotOf(patch: PatchId): { key: number; byte: number; shift: number } {
+  const x = patch % WORLD_FINE_W;
+  const y = (patch - x) / WORLD_FINE_W;
+  const key = Math.floor(y / FINE_CHUNK) * CHUNKS_W + Math.floor(x / FINE_CHUNK);
+  const px = Math.floor((x % FINE_CHUNK) / FINE_PER_PARENT);
+  const py = Math.floor((y % FINE_CHUNK) / FINE_PER_PARENT);
+  const i = py * PARENTS_PER_CHUNK + px;
+  return { key, byte: i >> 2, shift: (i & 3) * 2 };
+}
+
+/** How coarsely the parent this patch sits in has been read from a distance. */
+export function coarseAt(knowledge: KnowledgeChunks, patch: PatchId): CoarseLevel {
+  if (!inWorld(patch)) return "unknown";
+  const { key, byte, shift } = coarseSlotOf(patch);
+  const chunk = knowledge.coarse.get(key);
+  return COARSE_LEVELS[chunk ? (chunk[byte] >> shift) & 3 : 0] ?? "unknown";
+}
+
+/**
+ * Reading a parent better never unreads it, and a nearer look that resolves
+ * the parent itself overwrites the aggregate claim that stood there.
+ * Returns whether anything changed.
+ */
+export function markCoarse(knowledge: KnowledgeChunks, patch: PatchId, level: Exclude<CoarseLevel, "unknown">): boolean {
+  if (!inWorld(patch)) return false;
+  const bits = COARSE_LEVELS.indexOf(level);
+  const { key, byte, shift } = coarseSlotOf(patch);
+  let chunk = knowledge.coarse.get(key);
+  if (!chunk) {
+    chunk = new Uint8Array(COARSE_BYTES_PER_CHUNK);
+    knowledge.coarse.set(key, chunk);
+  }
+  if (((chunk[byte] >> shift) & 3) >= bits) return false;
+  chunk[byte] = (chunk[byte] & ~(3 << shift)) | (bits << shift);
+  return true;
+}
+
+/**
+ * The journal: what a dead survivor knew, the heir has read rather than
+ * walked. The far country is not dimmed with it. It was never a claim about
+ * ground anyone stood on - it is the shape of the country, which is exactly
+ * what a journal carries whole.
+ */
 export function inheritKnowledge(knowledge: KnowledgeChunks): void {
   for (const chunk of knowledge.chunks.values()) {
     for (let i = 0; i < chunk.length; i++) {
@@ -113,7 +180,18 @@ export function inheritKnowledge(knowledge: KnowledgeChunks): void {
 
 /** Walks the touched chunks, never the world. */
 export function knowledgeCounts(knowledge: KnowledgeChunks): KnowledgeCounts {
-  const counts: KnowledgeCounts = { inherited: 0, seen: 0, visited: 0, known: 0 };
+  const counts: KnowledgeCounts = { inherited: 0, seen: 0, visited: 0, known: 0, coarseParent: 0, coarseAggregate: 0 };
+  for (const chunk of knowledge.coarse.values()) {
+    for (let i = 0; i < chunk.length; i++) {
+      const byte = chunk[i];
+      if (byte === 0) continue;
+      for (let shift = 0; shift < 8; shift += 2) {
+        const bits = (byte >> shift) & 3;
+        if (bits === 1) counts.coarseAggregate++;
+        else if (bits === 2) counts.coarseParent++;
+      }
+    }
+  }
   for (const chunk of knowledge.chunks.values()) {
     for (let i = 0; i < chunk.length; i++) {
       const byte = chunk[i];
@@ -190,14 +268,9 @@ function fromBase64(text: string): Uint8Array {
   return out;
 }
 
-/**
- * A save-shaped string: `chunk:base64` per touched chunk, comma separated.
- * Trailing zero bytes are dropped because a chunk is nearly always known in
- * a band rather than whole, and decode pads them back.
- */
-export function encodeKnowledge(knowledge: KnowledgeChunks): string {
+function encodeChunks(chunks: Map<number, Uint8Array>): string {
   const parts: string[] = [];
-  for (const [key, chunk] of knowledge.chunks) {
+  for (const [key, chunk] of chunks) {
     let end = chunk.length;
     while (end > 0 && chunk[end - 1] === 0) end--;
     if (end === 0) continue;
@@ -206,18 +279,38 @@ export function encodeKnowledge(knowledge: KnowledgeChunks): string {
   return parts.join(",");
 }
 
-export function decodeKnowledge(text: string): KnowledgeChunks {
-  const knowledge = newKnowledge();
-  if (!text) return knowledge;
+function decodeChunks(text: string, bytesPerChunk: number, into: Map<number, Uint8Array>): void {
+  if (!text) return;
   for (const part of text.split(",")) {
     const at = part.indexOf(":");
     if (at < 0) continue;
     const key = Number(part.slice(0, at));
     if (!Number.isInteger(key)) continue;
     const bytes = fromBase64(part.slice(at + 1));
-    const chunk = new Uint8Array(BYTES_PER_CHUNK);
-    chunk.set(bytes.subarray(0, BYTES_PER_CHUNK));
-    knowledge.chunks.set(key, chunk);
+    const chunk = new Uint8Array(bytesPerChunk);
+    chunk.set(bytes.subarray(0, bytesPerChunk));
+    into.set(key, chunk);
   }
+}
+
+/**
+ * A save-shaped string: `chunk:base64` per touched chunk, comma separated,
+ * with the far country's own parent chunks after a bar. Trailing zero bytes
+ * are dropped because a chunk is nearly always known in a band rather than
+ * whole, and decode pads them back. A save written before there was far
+ * country has no bar and reads as none.
+ */
+export function encodeKnowledge(knowledge: KnowledgeChunks): string {
+  const fine = encodeChunks(knowledge.chunks);
+  const coarse = encodeChunks(knowledge.coarse);
+  return coarse ? `${fine}|${coarse}` : fine;
+}
+
+export function decodeKnowledge(text: string): KnowledgeChunks {
+  const knowledge = newKnowledge();
+  if (!text) return knowledge;
+  const bar = text.indexOf("|");
+  decodeChunks(bar < 0 ? text : text.slice(0, bar), BYTES_PER_CHUNK, knowledge.chunks);
+  if (bar >= 0) decodeChunks(text.slice(bar + 1), COARSE_BYTES_PER_CHUNK, knowledge.coarse);
   return knowledge;
 }

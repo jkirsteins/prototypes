@@ -530,6 +530,12 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
    treatment carries one fact only - remembered, not partly visible. */
 .grid .c.memory > .cell-ground, .grid .c.memory > .cell-signal { filter: brightness(0.58) saturate(0.45); }
 .grid .c.dim > .cell-ground, .grid .c.dim > .cell-signal { opacity: 0.45; }
+/* Country seen from a vantage and never walked into. It is ground, not fog, so
+   it keeps its terrain's own colour - washed toward the sky and left flat,
+   because what a distant look gives is the shape of the country and not a
+   patch of it. Dimmer than remembered ground, brighter than fog. */
+.grid .c.far > .cell-ground { opacity: 0.3; filter: saturate(0.3) brightness(0.85); }
+.grid .c.far { background-color: #0c111b; }
 /* Set and forget: the zoom sits in the map's corner as a note rather than a
    panel of its own. It is nice to have and it is not what anybody came to
    the map to read, so it takes no border and no full-sized type. */
@@ -557,6 +563,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 }
 .legend .fog-key { color: #4a5160; }
 .legend .memory-key { color: #777d86; }
+.legend .far-key { color: #5b6270; }
 /* Your walk: a line through the glyph centres, solid ahead, dashed behind. Its
    named layer keeps it over weather and night, under the @ and fire glow. */
 .grid .walk { position: absolute; inset: 0; z-index: var(--map-route); width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
