@@ -4,7 +4,7 @@ import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty } from "./inventory";
-import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepFieldFire, stepSmoke } from "./fire";
+import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepFieldFire, stepSmoke, wetWood } from "./fire";
 import { recordOpportunityEvent, KEPT_DAYS } from "./opportunities";
 import {
   BOUGH_BED_DAYS, COVER_M3, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_MAX_KG, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
@@ -18,6 +18,7 @@ import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { fishItem, SPECIES_DEFS } from "./species";
 import { growRoots, growWood, nestsFor, rootStockFor } from "./stocks";
 import { type DecayingId, type GameState, type Inventory, type Site, type StructureId, PERISHABLES } from "./types";
+import { fmtKg } from "../units";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { localWeather } from "./weather";
 import { noteHuntFoodLost, noteHuntFoodTransformed } from "./hunt-audit";
@@ -148,6 +149,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
 
   }
   dryWood(state, dt, who, world);
+  wetWood(state, world, dt);
   for (const k of Object.keys(state.piles)) {
     const cell = Number(k);
     const inv = state.piles[cell];
@@ -388,6 +390,10 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     growRoots(st, world, cal.dayOfYear);
     // What grows back grows on the patch that was cut, at its own ground's rate.
     growWood(st, world);
+    // A cap that costs something has to say so, and the away report reads the
+    // log: once a day with the day's total, never once a minute.
+    if (st.wettedKg >= 1) log(state, `${fmtKg(st.wettedKg)} of firewood stood out in the rain and is wet through.`, "bad");
+    st.wettedKg = 0;
   }
 }
 

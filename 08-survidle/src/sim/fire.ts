@@ -5,6 +5,7 @@
  */
 import { cellAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
+import { coveredWoodKg, woodOnHandKg } from "./camp";
 import type { Calendar } from "./calendar";
 import { addItem, pile, qty, removeItem, TRACE_KG } from "./inventory";
 import { BARK_DRY_RATIO, STRUCTURES } from "./items";
@@ -280,6 +281,32 @@ export function dryWood(state: GameState, dt: number, who: Presence | null, worl
   if (who && !who.atCamp && !state.player.fieldFire && dryAt()) {
     dryBudget([state.player.pack], 0.5, dt);
     dryBudget([state.player.pack], 0.5, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
+  }
+}
+
+/**
+ * Rain reaches the outer layer of a stack, and the outer layer is much the
+ * same size whatever the stack, so this does not grow with the pile. What
+ * it is bounded by is the wood standing out in the weather: cover keeps its
+ * own share dry, and a pile out in the field has no cover to have.
+ */
+export const RAIN_WET_KG_PER_HOUR = 1;
+
+export function wetWood(state: GameState, world: World, dt: number): void {
+  for (const key of Object.keys(state.piles)) {
+    const cell = Number(key);
+    const inv = state.piles[cell];
+    if (!inv || qty(inv, "firewood") <= TRACE_KG) continue;
+    if (localWeather(state, world, cell).precip === "none") continue;
+    const st = regionState(state, world, cellAt(world, cell).region);
+    const covered = cell === st.campCell ? coveredWoodKg(campSite(st)) : 0;
+    const exposed = Math.max(0, woodOnHandKg(inv) - covered);
+    if (exposed <= TRACE_KG) continue;
+    const wetted = Math.min(qty(inv, "firewood"), exposed, (RAIN_WET_KG_PER_HOUR / 60) * dt);
+    if (wetted <= TRACE_KG) continue;
+    removeItem(inv, "firewood", wetted);
+    addItem(inv, "wetFirewood", wetted);
+    st.wettedKg += wetted;
   }
 }
 

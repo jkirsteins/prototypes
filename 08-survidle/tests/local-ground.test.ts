@@ -277,8 +277,10 @@ describe("persistent regional weather", () => {
     const { state, world } = newGame(42, 196);
     const dryCell = cellOf(state, world) + 10;
     const spoilCell = dryCell + 1;
-    addItem(pile(state, dryCell), "firewood", 1);
-    addItem(pile(state, spoilCell), "firewood", 1);
+    // Sticks alone: joinery, not fuel, so neither the dry-firewood rain check
+    // nor the wet-firewood drying check has a reason to read this cell's weather.
+    addItem(pile(state, dryCell), "stick", 1);
+    addItem(pile(state, spoilCell), "stick", 1);
     ensureGround(state, world, state.player.region);
     const sample = vi.spyOn(climate, "sampleAtmosphere").mockReturnValue(air({ temperatureC: 7 }));
     stepCamp(state, world, 7, 1, null);

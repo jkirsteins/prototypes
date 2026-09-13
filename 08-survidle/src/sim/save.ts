@@ -404,6 +404,7 @@ export function migrate(state: GameState): void {
     st.fire.rainHeld ??= 0;
     st.smoke ??= 0;
     st.logsWet ??= 1440;
+    st.wettedKg ??= 0;
     st.orders ??= [];
     st.nextOrderId ??= 1;
     // Only a direct map click owns a Walk row, and that row always owns the

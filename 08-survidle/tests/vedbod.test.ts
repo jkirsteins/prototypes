@@ -54,3 +54,43 @@ describe("the vedbod as a roof", () => {
     expect(qty(pile(state, st.campCell!), "firewood")).toBeCloseTo(2, 4);
   });
 });
+
+describe("rain on the stack", () => {
+  it("wets only the share over cover, at the outer layer's rate", () => {
+    testAtmosphere();
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    siteFor(st, st.campCell!).structures.leanTo = true;   // covers 175 kg
+    add(pile(state, st.campCell!), "firewood", 178);
+    testRain(1);
+    advance(state, world, 60);
+    // Three kilos stood out in the rain; one hour takes one kilo of it.
+    expect(qty(pile(state, st.campCell!), "wetFirewood")).toBeCloseTo(1, 4);
+  });
+
+  it("leaves a covered stack alone, and leaves sticks alone", () => {
+    testAtmosphere();
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    siteFor(st, st.campCell!).woodsheds = 1;
+    add(pile(state, st.campCell!), "firewood", 40);
+    add(pile(state, st.campCell!), "stick", 20);
+    testRain(1);
+    advance(state, world, 120);
+    expect(qty(pile(state, st.campCell!), "wetFirewood")).toBe(0);
+    expect(qty(pile(state, st.campCell!), "stick")).toBe(20);
+  });
+
+  it("wets a field pile, which can have no cover at all", () => {
+    testAtmosphere();
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    const away = regionState(state, world, state.player.region).campCell! + 1;
+    add(pile(state, away), "firewood", 30);
+    testRain(1);
+    advance(state, world, 60);
+    expect(qty(pile(state, away), "wetFirewood")).toBeCloseTo(1, 4);
+  });
+});

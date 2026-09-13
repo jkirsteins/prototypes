@@ -554,6 +554,8 @@ export interface RegionState {
   smoke: number;
   /** Minutes since it last rained here; wood split while this is low comes out wet. */
   logsWet: number;
+  /** Firewood this region has lost to rain since the log last said so; reported and reset once a day. */
+  wettedKg: number;
   /** This camp's ranked orders, top first. */
   orders: Order[];
   nextOrderId: number;

@@ -35,6 +35,7 @@ export function newRegionState(world: World, id: number): RegionState {
     snareCatch: { count: 0, age: 0 },
     smoke: 0,
     logsWet: 1440,
+    wettedKg: 0,
     orders: [],
     nextOrderId: 1,
     iceHole: null,
