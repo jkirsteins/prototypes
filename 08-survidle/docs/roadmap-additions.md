@@ -1272,6 +1272,17 @@ cost. Note that on today's stem densities a clearing takes 112 felled trees
 off one 50 m square, so neither gap is reachable in ordinary play yet - which
 is a reason to fix them before the density question above moves.
 
+**Amended** 2026-09-13, from the phase 3 fix wave. A third reader disagrees
+with a clearing in the same way: tasks.ts refuses a fell, a dead-wood
+gathering or an inner-bark strip below its own stock guard (tasks.ts:503,
+509, 536), and those guards sit below the clearing share on every forest
+terrain, so they can never fire while the ground is still forest - the
+clearing door always answers first. The wording it answers with is built for
+standing forest ("stand in the forest; walk to the forest"), so a survivor
+who has just cut their own cutover reads a true refusal as a bug. See "Dead
+refusal branches after succession" below for the decision this and the two
+unreachable guards want together.
+
 What would look wrong: a region logged flat that still feeds as much game as
 an untouched one; or a walk that takes the old time across ground that is now
 open.
@@ -1286,9 +1297,19 @@ on: it is the shape of the country, and the heir grew up hearing it. That may
 be right and it may read as the heir inheriting a survey. It is a one-line
 change either way, and the call wants a playtest rather than an argument.
 
+**Amended** 2026-09-13, from the phase 3 fix wave. "A coarse mark" is not one
+thing: `knowledgeAtLevel` names a patch `farParent` or `farAggregate`, and the
+far map now draws each its own ground (a `farAggregate` block reads
+`aggregateTerrain`, its middle parent's terrain, rather than its own parent
+detail). A block at the wider rungs can still hold both grains at once, and
+the tooltip says "seen from afar" either way - true of both, but naming
+neither. Fixing that wants `GlyphGround` to carry the composition, not just
+the winning terrain.
+
 What would look wrong: an heir opening the map to a far view the ancestor
 earned from a fell the heir has never climbed, with nothing saying where it
-came from.
+came from; or a tooltip claiming one grain's precision for ground it drew at
+the other's.
 
 ## `DEFAULT_ZOOM` opens on the 300 m rung
 
@@ -1320,3 +1341,189 @@ the horizon is derived from the physics.
 
 What would look wrong: a sweep from a fell that stutters where a sweep across
 a bog does not.
+
+## Patch ground physics unfinished
+
+**Raised** 2026-09-13, from the pre-merge triage.
+
+`patchGroundModifiers` in `src/sim/weather.ts` gives each patch a snow
+modifier from canopy and wind exposure and a water modifier from its own
+wetness index, but two physical inputs are still missing. Nearby standing
+water is not read as a patch input at all, so a shore patch dries and sheds
+snow exactly like a hilltop of the same wetness class. And `dryHours` only
+counts precipitation and soil moisture (`weather.ts`, the `dryHours` update),
+so ponding after rain never extends it: a patch can read "dry" the moment
+rain stops even where water is still standing on it.
+
+Separately, `PATCH_MODIFIER_LIMIT` (16,384) clears the whole modifier cache
+the instant it fills, rather than evicting the coldest entries, so a survivor
+who has ranged widely pays a full recompute for every patch on the next
+touch.
+
+What would look wrong: a shore patch reading as dry as a hilltop right after
+rain, or a well-travelled world stuttering on ground it has already computed
+once.
+
+## Fast suite is five minutes against the repo's own rule
+
+**Raised** 2026-09-13, from the pre-merge triage.
+
+`npm test` runs the fast suite in about 313 seconds (1182 cases, measured in
+the phase 3 fix wave), against this repo's own rule that a fast suite should
+cost "a few seconds" and a slow part should be split behind its own script.
+The Task 5 ruling that let this happen was explicit and time-boxed: it moved
+`tests/hunting.test.ts` to the slow suite and left seven more files that had
+grown past 20 seconds in the fine world in the fast suite on purpose -
+`goalopportunity` 110 s, `dopanel` 96 s, `thin-ice-panel` 49 s, `shelter`
+46 s, `storms` 29 s, `weathersense` 29 s, `sight` 26 s - "until Task 13
+measures them." Task 13 never did; the ruling lapsed rather than resolved.
+
+What would look wrong: nothing in play, since none of this changes what the
+game does. Every commit against this branch pays close to five minutes for
+it, which is exactly the cost the repo's convention exists to avoid.
+
+## Wildlife at 50 m: three loose ends
+
+**Raised** 2026-09-13, from the pre-merge triage. (Region wildlife capacity
+ignoring clearings is already covered by "Clearings are invisible to the
+region and to cached routes" above; not repeated here.)
+
+- **`localForage` lost its any-passable fallback.** `suitableCells` in
+  `src/sim/wildlife-agents.ts` falls back to any passable patch in the region
+  when none match the species' habitat, so a subject placed on odd ground is
+  never stranded. `localForage` (same file) has no such fallback: it only
+  ever returns a patch that is both passable and in habitat, so a subject
+  whose region's habitat has been cut back or never generated near it can
+  fail to forage at all.
+- **The diagonal corner rule ignores region.** `stepCandidates` requires a
+  step's own patch to share the subject's region but checks the two corner
+  patches a diagonal squeezes between for passability only, not region
+  membership. A diagonal across a region seam can pass a corner check that a
+  straight step at the same seam would fail on the region test alone.
+- **A fleeing animal still stops at a region boundary.** The same
+  region-scoped filter in `stepCandidates` governs `intent === "flee"`
+  travel, so an animal escaping a threat treats the region edge as a wall it
+  cannot cross, the way bookkeeping treats terrain rather than the way a
+  frightened animal would.
+
+What would look wrong: an animal that cannot find food yards from where it
+stands, a diagonal escape route open where the straight one is not, or a
+chase that ends at an invisible line on the map instead of the animal simply
+outrunning it.
+
+## Map code debt
+
+**Raised** 2026-09-13, from the pre-merge triage.
+
+`src/ui/map.ts` is over 1500 lines and carries duplication its own comments
+do not flag:
+
+- **`featuresIn` duplicates the render path's marker logic, with different
+  fire gating.** `featuresIn` (used for the tooltip's "also in this glyph"
+  list) marks a camp's fire lit whenever `st.fire.lit` is true. The main
+  render loop's own marker map, a few hundred lines later, gates the same
+  fire on distance and `campfireVisible` occlusion before drawing it. The two
+  paths can disagree about whether a fire mark is showing.
+- **Two owners of `.target`-shaped state never get cleared together.**
+  Wildlife's own `active.target` (`wildlife-agents.ts`) and the UI's
+  `ui.destination` (`map.ts`) are set and read independently; nothing keeps
+  them in step when one is invalidated without the other.
+- **The aggregate summary is computed twice per tooltip.** `glyphGround`
+  calls `glyphSummary` once to draw a block's terrain (`map.ts:813`); when
+  the same block gets a tooltip, `tip.ts`'s `aggregateLines` calls
+  `glyphSummary` again for the identical box.
+- Target resolution, marker computation and tooltip assembly could each be
+  their own module; today they are read by scrolling.
+
+What would look wrong: a fire mark that shows on the tooltip but not on the
+map (or the reverse), or a hover-driven slowdown that traces back to the same
+summary being rebuilt for ground already drawn this frame.
+
+## Fire spread across a region line
+
+**Raised** 2026-09-13, from the pre-merge triage.
+
+`burnWoodAround` (`src/sim/stocks.ts`) collects every patch within
+`FIRE_SPREAD_REACH_M` (300 m) of a burning camp by raw coordinate distance
+and debits each one's standing wood through the caller's own `RegionState`,
+with no check that a nearby patch actually belongs to that region. A camp
+within 300 m of a region seam burns wood out of the wrong region's stock.
+
+What would look wrong: a neighbouring region's forest thinning from a fire
+its own survivor never lit or saw.
+
+## Dead refusal branches after succession
+
+**Raised** 2026-09-13, from the pre-merge triage and the phase 3 fix wave.
+
+Three refusal guards in `tasks.ts` are unreachable for any generated stand:
+felling refuses under 1 stem (tasks.ts:503), gathering dead wood refuses
+under an eighth of a full patch (tasks.ts:509), and stripping inner bark
+refuses under 1 stem (tasks.ts:536). The clearing door sits above all three -
+a tenth of a full patch, which is 12.5 stems on spruce, 8.75 on pine, 6.25 on
+birch - and no forest terrain's full patch is under 10 stems, so the ground
+turns to meadow and the clearing refusal answers before any of these three
+ever can. Their player-facing strings ("the pines are stripped", "the forest
+is picked clean", and the inner-bark equivalent) are dead text.
+
+The fix wave's two covering tests now pin the clearing's own refusal instead,
+which reads oddly on fresh-cut ground: a survivor standing in the cutover
+they just made is told "stand in the forest; walk to the forest." The
+probable answer is not deletion but a clearing-aware refusal that names what
+actually happened, but that is a decision, not a cleanup - the branches stay
+until it is made.
+
+What would look wrong: a player action refused with wording that assumes
+standing forest while the survivor can see the stumps.
+
+## Forest table review
+
+**Raised** 2026-09-13, from the pre-merge triage.
+
+Three small findings from the stand-density work, none urgent enough to
+block on:
+
+- `STAND_ROTATION_YEARS` (`src/world/aggregate.ts:44`) gives spruce 100
+  years and pine 90. Northern silviculture usually runs the reverse - pine
+  is the slower, longer-rotation species on poor northern ground - so this
+  wants a source check rather than an assumption either way.
+- `GroundChange.since` (`src/world/groundchange.ts:23`) is written on every
+  ground change and read nowhere in `src`. Either something should read it
+  (age-based succession display, a scar that fades) or it should not be
+  carried.
+- `Aggregate.trees` (`src/world/aggregate.ts`) is named for a body count but
+  its comments and `FELLABLE_STEMS_PER_HA` call the same quantity "stems"
+  throughout. One name should win.
+
+What would look wrong: a pine stand felled and regrown twice in the time a
+spruce stand takes once, if the rotation is in fact backwards.
+
+## Channel cut after the flood
+
+**Raised** 2026-09-13, from the pre-merge triage.
+
+`src/world/refine.ts` cuts channel height after `lakeComponents` has already
+solved which patches sit in a filled depression, so a channel can be carved
+through ground the flood-fill just recorded as part of a pool. Measured at 8
+of roughly 2000 channel patches on the sampled seed. Small enough that it may
+be an intentional order (an outlet cut resolves the depression rather than
+disagreeing with it) rather than a bug, but that has not been confirmed
+either way.
+
+What would look wrong: a channel patch that draws as a stream while the same
+ground is recorded as standing water underneath it.
+
+## Hunting chooser test cannot exercise its own shortlist cut
+
+**Raised** 2026-09-13, from the pre-merge triage.
+
+`tests/hunting-chooser.test.ts` asserts a search-count bound
+(`HUNT_SHORTLIST * 2 + 2`) meant to prove the shortlist actually cuts the
+candidate set on seed 42, but the case still passes if `HUNT_SHORTLIST`
+(`src/sim/hunting.ts:28`) is set to 1, which means seed 42 never produces
+enough candidates to test the cut at all. It needs a seed and skill level
+that genuinely produces a shortlist longer than the cut, or it is only
+testing that the code runs.
+
+What would look wrong: a change that breaks the shortlist cut shipping with
+this test green.
