@@ -1032,3 +1032,62 @@ where the terrain does not draw one. Scarce visible rivers are a consequence
 of explicit thresholds, so the game must distinguish surface drainage, tiny
 stream, perennial brook (20 litres a second) and river (5 cubic metres a
 second) rather than reading everything below river as no flowing water.
+
+## The heir probe costs an hour, and one call in one place is why
+
+**Raised** 2026-09-12, after the sign table stopped being walked once per
+cell and species (`tests/hunting-chooser.test.ts` holds the budget) and the
+lineage was put behind `--i-have-timed-a-life`. The fix was real for a player
+and did nothing for the probe, and finding out why is what this item is.
+
+### What was measured
+
+A life on seed 17 costs 125 to 134 s. The lineage is 24 of them, so it is
+about 50 minutes; it read 80 before the sign table was indexed.
+
+`bestHuntCell` is called **21,130 times in the forty-day seed 17 life, 528
+times a game day** - about once every three game minutes. One decision costs
+about 6 ms on a mapped region. That is 127 s, which is the whole life. The
+probe is not a slow simulation with a slow chooser in it; it is the chooser.
+
+The reference runner records six signs in that life and eight in a kitted one
+reaching day 245, all in one region, which is why the sign-table fix moved
+nothing here. Its value is for a player who ranges: one decision took 50 ms
+at 100 signs and 1.1 s at 2,000 before the index, and 6 ms flat after.
+
+### Why it is called so often
+
+`placeFor` in `src/sim/intent.ts` resolves where a task would happen, and for
+`hunt any` that is `anyHuntCell` and so `bestHuntCell`. The order runner asks
+where a task would happen every time it weighs the list, not only when a hunt
+begins. So the sweep runs while the survivor is felling a tree, hauling, or
+asleep, and answers the same cell it answered three minutes ago.
+
+### The order to fix it in
+
+1. **Do not choose again when nothing it reads has changed.** The chosen cell
+   is a function of the survivor's cell, the mapped set, the season and
+   weather, the hunting level, the sign table and the pressure. A tick that
+   moves none of those cannot move the answer. Memoise on those inputs, or
+   hold the chosen cell until the survivor reaches it or it stops being worth
+   hunting. Expect the call count, not the call, to fall by one to two orders
+   of magnitude; this is the item that could take a life under ten seconds and
+   the lineage under five minutes. Behaviour must not move: the reference
+   runs are the check, and seed 17 dying on day 40 with the same unexploited
+   line is what "did not move" means.
+2. **Run the seeds in parallel.** Lives within a seed are a chain - each heir
+   needs its ancestor's death - but the five seeds are independent. A worker
+   per seed is about 5x for no change to the sim at all, and it is worth doing
+   whether or not 1 lands.
+3. **Only then look at the sweep itself.** `bestHuntCell` scores every mapped
+   cell of the region, and of the neighbouring regions above hunting 8,
+   through `huntSpeciesWeights` and `habitatPrior` for each species, and the
+   cell lookups under those are most of what a profile shows. Scoring fewer
+   cells moves the cell the chooser picks, which the chooser's test pins
+   against the whole-region sweep on purpose. So this one is a design call
+   about how far a survivor looks, not an optimisation, and it should not be
+   reached for while 1 and 2 are undone.
+
+The gate comes off when a life is measured under two minutes, and the
+`--i-have-timed-a-life` flag with it. Under twenty seconds is the target
+worth having: a lineage read in two minutes is a reading that gets run.

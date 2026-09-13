@@ -608,7 +608,7 @@ per class and the solve time. `npm run terrain -- <seed>` runs one seed;
 instead of the report.
 
 `npm run reference` runs the day-one order list a competent player would
-write, headless, on five seeds, about ten seconds; the gate is alive and
+write, headless, on five seeds; the gate is alive and
 fed on game day 26 from the arrival kit, in April - a short-term survival
 problem for a beginner with fire, a roof and water at the deficit the yield
 tables allow, with the day derived from that deficit and the food clause
@@ -618,6 +618,23 @@ fire already in hand instead of from scratch, and `npm run reference --
 --start=<doy>` opens the run on that day of year instead of 1 April (200
 is 20 July, 235 is 24 August); a start from July on is measured at the
 first snow rather than at a day. It is not part of `npm test`.
+
+A life costs about two minutes of wall time on the solved world, so the
+five seeds are about ten of them and not the ten seconds this paragraph
+used to claim.
+
+**Do not run the heir lineage (`--heir`) until one life is measured under
+two minutes.** It is 24 lives, so it costs a life times 24: about 80
+minutes when it was last read on 2026-09-11, and about 50 after the sign
+table stopped being walked once per cell and species. Time one life first
+with `npx vite-node scripts/reference.ts 17`, which prints its own
+seconds. The script refuses `--heir` outright until it is passed
+`--i-have-timed-a-life`, so the hour is never started by accident. What is left is the shape of the chooser rather than a slow
+function: `bestHuntCell` scores every mapped cell of the region, and of
+the neighbouring regions above hunting 8, for every species. Cutting that
+sweep moves the cell the chooser picks, which `tests/hunting-chooser.test.ts`
+pins on purpose, so it is a design call about how far a survivor looks and
+not an optimisation.
 
 `npm run horizon` runs a stocked camp with no player forward for up to 30
 days on the same five seeds, at each stage of the delegation ladder in

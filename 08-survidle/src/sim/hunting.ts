@@ -6,7 +6,7 @@ import { isKnown } from "./mapped";
 import { campCellOf, cellOf, forestCell, heathCell, kmBetween, rockCell, straightKm, watersideCell } from "./position";
 import { skillLevel, oddsFactor } from "./skills";
 import { anAnimal, huntedLand, SPECIES_DEFS, type Species } from "./species";
-import type { Carcass, CarcassYields, GameState } from "./types";
+import type { Carcass, CarcassYields, GameState, HuntSign } from "./types";
 import { cellAt, regionAt, type RegionDef, type World } from "../world/gen";
 import { parentKey, parentXY, patchXY } from "../world/spatial";
 import { iceAt, localWeather } from "./weather";
@@ -142,6 +142,7 @@ export function noteHuntSign(state: GameState, cell: number, species: Species): 
     species: { ...previous, [species]: state.minute },
     ...(Object.keys(failures).length ? { failures } : {}),
   };
+  forgetSignIndex();
   return discovered;
 }
 
@@ -157,6 +158,7 @@ export function noteFailedHunt(state: GameState, cell: number, species: Species)
       [species]: { at: state.minute, count: carried + 1 },
     },
   };
+  forgetSignIndex();
 }
 
 function learnedScale(state: GameState): number {
@@ -182,14 +184,74 @@ export function huntAbsenceEvidenceNeeded(state: GameState): number {
     - learnedScale(state) * (LEARNED_ABSENCE_NOVICE_EVIDENCE - LEARNED_ABSENCE_EXPERT_EVIDENCE);
 }
 
-function latestRegionSign(state: GameState, world: World, region: number, species: Species): number | null {
-  let latest: number | null = null;
-  for (const [key, sign] of Object.entries(state.player.huntSigns)) {
-    if (cellAt(world, Number(key)).region !== region) continue;
-    const seenAt = sign.species[species];
-    if (seenAt !== undefined && (latest === null || seenAt > latest)) latest = seenAt;
+/**
+ * The sign table grouped by the region each signed cell lies in, with the
+ * cells that carry a sign listed alongside.
+ *
+ * The latest sign of a species and the failures recorded against it are facts
+ * about a region, not about a cell, but the chooser asks for them once per
+ * cell it scores and once per species it scores with. Read straight off the
+ * table that is a walk of every sign the survivor has ever noted, per cell,
+ * per species, and the table only grows - so one decision grew dearer all
+ * run, and the Ahead forecast and the catch-up on return paid it again.
+ *
+ * The chooser's candidate set wants the signed cells themselves, and reading
+ * them off the same grouping saves probing the table once per cell of the
+ * region, of which there are far more than there are signs.
+ *
+ * The grouping is built on the first ask and kept until a sign is written.
+ * Within a region the failures keep the table's own order, so the evidence
+ * below sums in the order it summed when it was read off the table.
+ */
+interface RegionSigns {
+  latest: Partial<Record<Species, number>>;
+  failures: Partial<Record<Species, { at: number; count: number }[]>>;
+  cells: number[];
+}
+
+const NO_REGION_SIGNS: RegionSigns = { latest: {}, failures: {}, cells: [] };
+
+let signIndex = new Map<number, RegionSigns>();
+let signIndexOf: Record<number, HuntSign> | null = null;
+let signIndexAt = -1;
+let signRevision = 0;
+
+/** Every write to the sign table goes through noteHuntSign or noteFailedHunt, and both say so here. */
+function forgetSignIndex(): void {
+  signRevision++;
+}
+
+function regionSigns(state: GameState, world: World, region: number): RegionSigns {
+  if (signIndexOf !== state.player.huntSigns || signIndexAt !== signRevision) {
+    signIndex = new Map();
+    for (const [key, sign] of Object.entries(state.player.huntSigns)) {
+      const at = cellAt(world, Number(key)).region;
+      let entry = signIndex.get(at);
+      if (!entry) {
+        entry = { latest: {}, failures: {}, cells: [] };
+        signIndex.set(at, entry);
+      }
+      entry.cells.push(Number(key));
+      for (const [name, seenAt] of Object.entries(sign.species) as [Species, number | undefined][]) {
+        if (seenAt === undefined) continue;
+        const latest = entry.latest[name];
+        if (latest === undefined || seenAt > latest) entry.latest[name] = seenAt;
+      }
+      for (const [name, failure] of Object.entries(sign.failures ?? {}) as [Species, { at: number; count: number } | undefined][]) {
+        if (!failure) continue;
+        const noted = entry.failures[name] ?? [];
+        noted.push(failure);
+        entry.failures[name] = noted;
+      }
+    }
+    signIndexOf = state.player.huntSigns;
+    signIndexAt = signRevision;
   }
-  return latest;
+  return signIndex.get(region) ?? NO_REGION_SIGNS;
+}
+
+function latestRegionSign(state: GameState, world: World, region: number, species: Species): number | null {
+  return regionSigns(state, world, region).latest[species] ?? null;
 }
 
 function learnedAbsent(state: GameState, world: World, cell: number, species: Species): boolean {
@@ -197,10 +259,8 @@ function learnedAbsent(state: GameState, world: World, cell: number, species: Sp
   const latestSign = latestRegionSign(state, world, region, species);
   if (latestSign !== null && state.minute - latestSign < HUNT_SIGN_DAYS * 1440) return false;
   let evidence = 0;
-  for (const [key, sign] of Object.entries(state.player.huntSigns)) {
-    if (cellAt(world, Number(key)).region !== region) continue;
-    const failure = sign.failures?.[species];
-    if (failure && failure.at > (latestSign ?? -1)) {
+  for (const failure of regionSigns(state, world, region).failures[species] ?? []) {
+    if (failure.at > (latestSign ?? -1)) {
       evidence += failure.count * failureMemoryFactor(state, state.minute - failure.at);
     }
   }
@@ -398,10 +458,16 @@ export function huntCandidates(state: GameState, world: World, regions: readonly
   const { x: hx, y: hy } = patchXY(here);
   for (const region of regions) {
     for (const spot of region.spots) chosen.add(spot.cell);
-    for (const cell of region.cells) {
+    // The signed cells come from the table grouped by region rather than from
+    // a probe of every cell in it: a region holds far more patches than a
+    // survivor has ever left a sign in.
+    for (const cell of regionSigns(state, world, region.id).cells) {
       const sign = state.player.huntSigns[cell];
-      if (sign && (Object.values(sign.species).some(at => at !== undefined && state.minute - at < HUNT_SIGN_DAYS * 1440)
-        || Object.keys(sign.failures ?? {}).length > 0)) chosen.add(cell);
+      if (!sign) continue;
+      if (Object.values(sign.species).some(at => at !== undefined && state.minute - at < HUNT_SIGN_DAYS * 1440)
+        || Object.keys(sign.failures ?? {}).length > 0) chosen.add(cell);
+    }
+    for (const cell of region.cells) {
       if (state.huntPressure[cell] !== undefined) chosen.add(cell);
       if (!isKnown(state, cell)) continue;
       const ground = cellAt(world, cell);

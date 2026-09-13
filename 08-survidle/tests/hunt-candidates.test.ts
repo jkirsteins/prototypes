@@ -1,6 +1,6 @@
 import { isKnown } from "../src/sim/mapped";
 import { describe, expect, it, vi } from "vitest";
-import { huntCandidates, bestHuntCell } from "../src/sim/hunting";
+import { huntCandidates, bestHuntCell, noteFailedHunt, noteHuntSign } from "../src/sim/hunting";
 import { newGame } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
 import * as position from "../src/sim/position";
@@ -16,8 +16,8 @@ describe("bounded fine hunting candidates", () => {
     const normal = huntCandidates(state, world, [region]);
     const omitted = region.cells.filter(cell => !normal.includes(cell) && cellAt(world, cell).terrain !== "water");
     expect(omitted.length).toBeGreaterThan(2);
-    state.player.huntSigns[omitted[0]] = { species: { hare: state.minute } };
-    state.player.huntSigns[omitted[1]] = { species: {}, failures: { hare: { at: state.minute, count: 1 } } };
+    noteHuntSign(state, omitted[0], "hare");
+    noteFailedHunt(state, omitted[1], "hare");
     state.huntPressure[omitted[2]] = 0.5;
     const candidates = huntCandidates(state, world, [region]);
     expect(candidates).toContain(here);
