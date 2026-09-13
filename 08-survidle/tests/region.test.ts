@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { worldCacheStats } from "../src/world/aggregate";
-import { cellAt, cellIdx, neighbours, regionOf, regionPeek, solvedTerrainAt, terrainOf, terrainOfPatch, terrainPeek, patchAt } from "../src/world/cells";
+import { cellAt, cellIdx, FINE_CHUNK, neighbours, regionOf, regionPeek, solvedTerrainAt, terrainOf, terrainOfPatch, terrainPeek, patchAt } from "../src/world/cells";
+import { refineChunk } from "../src/world/refine";
 import { regionAtPatch } from "../src/world/fine-terrain";
 import { latticeOf, regionAt } from "../src/world/gen";
 import { PATCH_KM, patchId } from "../src/world/spatial";
-import { LATTICE } from "../src/world/terrain";
+import { LATTICE, TERRAINS } from "../src/world/terrain";
 import { passable } from "../src/world/route";
 import { watersideCell } from "../src/sim/position";
 import { rangeNoise } from "../src/world/wildlife";
@@ -45,7 +46,12 @@ describe("fine world and regions", () => {
     expect(worldCacheStats(world).generatedPatches).toBe(0);
     const { x, y, terrain, region } = patchAt(world, id);
     expect(cellAt(world, id)).toEqual({ x, y, terrain, region });
-    expect(terrainOf(world, 6411, 1875)).toBe(terrain);
+    // Both entry points read the refinement's own classification for the
+    // patch, so agreeing with each other is not the whole claim.
+    const refined = refineChunk(world.seed, world.solved, Math.floor(6411 / FINE_CHUNK), Math.floor(1875 / FINE_CHUNK));
+    const classified = TERRAINS[refined.terrain[(1875 % FINE_CHUNK) * FINE_CHUNK + (6411 % FINE_CHUNK)]];
+    expect(terrain).toBe(classified);
+    expect(terrainOf(world, 6411, 1875)).toBe(classified);
     expect(regionOf(world, 6411, 1875)).toBe(regionAtPatch(21, id));
     expect(neighbours(world, id)).toEqual([id - 1, id + 1, id - 10800, id + 10800]);
   });

@@ -1,7 +1,8 @@
 import { requireCamp } from "./siting-helpers";
 import { describe, expect, it } from "vitest";
 import { fishSpecies } from "../src/sim/species";
-import { solvedTerrainAt, terrainOfPatch, terrainPeek } from "../src/world/cells";
+import { FINE_CHUNK, solvedTerrainAt, terrainOfPatch, terrainPeek } from "../src/world/cells";
+import { refineChunk } from "../src/world/refine";
 import { cellAt, generateWorld, hasSpot, heightAt, neighbours, regionAt, regionPeek, speciesHere, WORLD_H, WORLD_W } from "../src/world/gen";
 import { FINE_PER_PARENT, PATCH_KM, patchId } from "../src/world/spatial";
 import { LATTICE_W, TERRAINS } from "../src/world/terrain";
@@ -29,7 +30,11 @@ describe("world generation", () => {
     // patch's own ground is the chunk's, and asking for it builds one.
     expect(terrainPeek(fine, patch)).toBe(solvedTerrainAt(fine, 6411, 1875));
     expect(fine.fineChunks.size).toBe(0);
-    expect(TERRAINS).toContain(terrainOfPatch(fine, patch));
+    // The chunk's ground is the refinement's own classification, so the patch
+    // reads exactly what refineChunk wrote for it - not merely some terrain.
+    const refined = refineChunk(fine.seed, fine.solved, Math.floor(6411 / FINE_CHUNK), Math.floor(1875 / FINE_CHUNK));
+    const inChunk = (1875 % FINE_CHUNK) * FINE_CHUNK + (6411 % FINE_CHUNK);
+    expect(terrainOfPatch(fine, patch)).toBe(TERRAINS[refined.terrain[inChunk]]);
     expect(fine.fineChunks.size).toBe(1);
   });
 
