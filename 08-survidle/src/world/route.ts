@@ -2,7 +2,7 @@
 import type { IceMode, Terrain } from "../sim/types";
 import { fineHeightAt, fordAt, type World } from "./cells";
 import { filterReachableFineCandidates, findHierarchicalRoute, type TraversalProfile } from "./fine-route";
-import { type MetricPoint, PATCH_KM, PATCH_M, type PatchId, patchCenter, patchId, patchXY } from "./spatial";
+import { BYTES_PER_SLOT, type MetricPoint, PATCH_KM, PATCH_M, type PatchId, patchCenter, patchId, patchXY } from "./spatial";
 
 /** Walking speed on this ground relative to open forest. */
 export const TERRAIN_SPEED: Record<Terrain, number> = {
@@ -41,9 +41,11 @@ interface RouteCache {
 const caches = new WeakMap<World, RouteCache>();
 
 /** Retained work only; observing diagnostics does not create a cache. */
-export function routeCacheStats(world: World): { routes: number; routeLimit: number; routeBuilds: number } {
+export function routeCacheStats(world: World): { routes: number; routeLimit: number; routeBuilds: number; routeBytes: number } {
   const cache = caches.get(world);
-  return { routes: cache?.routes.size ?? 0, routeLimit: ROUTE_CACHE_LIMIT, routeBuilds: cache?.builds ?? 0 };
+  let routeBytes = 0;
+  for (const [key, path] of cache?.routes ?? []) routeBytes += key.length * 2 + (path?.length ?? 0) * BYTES_PER_SLOT;
+  return { routes: cache?.routes.size ?? 0, routeLimit: ROUTE_CACHE_LIMIT, routeBuilds: cache?.builds ?? 0, routeBytes };
 }
 
 function profileFor(

@@ -1,5 +1,5 @@
 import type { Terrain } from "../sim/types";
-import { FINE_PER_PARENT, fineNeighbours, type PatchId, PATCH_M, parentXY, patchId, patchXY } from "./spatial";
+import { BYTES_PER_SLOT, FINE_PER_PARENT, fineNeighbours, type PatchId, PATCH_M, parentXY, patchId, patchXY } from "./spatial";
 
 export interface FineGrid {
   w: number;
@@ -53,13 +53,27 @@ const DIRECT_PATCH_LIMIT = 65536;
 const PARENT_MARGIN = 40;
 
 /** Retained work only; observing diagnostics does not create a cache. */
-export function fineRouteCacheStats(grid: FineGrid): { topologies: number; topologyLimit: number; topologyBuilds: number; overlays: number; overlayLimit: number; localTrees: number } {
+export function fineRouteCacheStats(grid: FineGrid): {
+  topologies: number; topologyLimit: number; topologyBuilds: number; overlays: number; overlayLimit: number;
+  localTrees: number; topologyBytes: number; overlayBytes: number;
+} {
   const cache = caches.get(grid);
   let localTrees = 0;
-  for (const overlay of cache?.overlays.values() ?? []) localTrees += overlay.size;
+  let overlayBytes = 0;
+  for (const overlay of cache?.overlays.values() ?? []) {
+    localTrees += overlay.size;
+    for (const tree of overlay.values()) overlayBytes += (tree.costs.size + tree.previous.size) * 2 * BYTES_PER_SLOT;
+  }
+  let topologyBytes = 0;
+  for (const topology of cache?.topology.values() ?? []) {
+    // The components hold the same patches the member set does, counted again:
+    // a ceiling reading is allowed to be generous, never short.
+    topologyBytes += topology.key.length * 2 + (topology.members.size + topology.portals.length) * BYTES_PER_SLOT;
+    for (const component of topology.components.values()) topologyBytes += (component.length + 2) * BYTES_PER_SLOT;
+  }
   return {
     topologies: cache?.topology.size ?? 0, topologyLimit: TOPOLOGY_LIMIT, topologyBuilds: cache?.topologyBuilds ?? 0,
-    overlays: cache?.overlays.size ?? 0, overlayLimit: OVERLAY_LIMIT, localTrees,
+    overlays: cache?.overlays.size ?? 0, overlayLimit: OVERLAY_LIMIT, localTrees, topologyBytes, overlayBytes,
   };
 }
 

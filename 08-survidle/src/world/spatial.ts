@@ -13,6 +13,14 @@ export interface FineNeighbour {
   corners: PatchId[];
 }
 
+/**
+ * What one number costs a cache that keeps it outside a typed array: a slot in
+ * an array, a Set or half a Map entry. Eight bytes is the engine's own double,
+ * and it is the figure the memory gates add up, so a cache's reading is the
+ * same arithmetic wherever it is taken.
+ */
+export const BYTES_PER_SLOT = 8;
+
 export const PATCH_M = 50;
 export const PATCH_KM = PATCH_M / 1000;
 export const FINE_PER_PARENT = 6;

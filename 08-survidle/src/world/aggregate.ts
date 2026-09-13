@@ -3,7 +3,7 @@ import { FINE_CHUNK, FINE_CHUNK_LIMIT, type FineChunk, fineSurfaceAt, patchAt, t
 import { regionAtPatch } from "./fine-terrain";
 import { type FineGrid, fineRouteCacheStats } from "./fine-route";
 import { routeCacheStats } from "./route";
-import { FINE_PER_PARENT, PATCH_KM, type PatchId, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
+import { BYTES_PER_SLOT, FINE_PER_PARENT, PATCH_KM, type PatchId, patchId, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "./spatial";
 import { CANOPY_HEIGHT_M, TERRAINS } from "./terrain";
 
 const FINE_CHUNKS_W = Math.ceil(WORLD_FINE_W / FINE_CHUNK);
@@ -311,23 +311,60 @@ export interface WorldCacheStats {
   generatedPatches: number;
   parentSummaries: number;
   parentSummaryBuilds: number;
+  /** Bytes the retained chunks hold: their arrays, their channel paths and the summaries they carry. */
+  fineChunkBytes: number;
   topologies: number;
   topologyLimit: number;
   topologyBuilds: number;
+  topologyBytes: number;
   overlays: number;
   overlayLimit: number;
+  overlayBytes: number;
   localTrees: number;
   routes: number;
   routeLimit: number;
   routeBuilds: number;
+  routeBytes: number;
+}
+
+/** A summary's own numbers: the terrain tally, the region tally and its scalars. */
+function parentSummaryBytes(summary: ParentSummary): number {
+  const scalars = 6;
+  const potential = 3;
+  return (TERRAINS.length * 2 + summary.regionCounts.size * 2 + scalars + potential) * BYTES_PER_SLOT;
+}
+
+/**
+ * The bytes one retained chunk holds. Each array is counted once however many
+ * names point at it - the chunk's terrain is the refinement's terrain - so the
+ * reading is the memory the chunk occupies rather than the sum of its fields.
+ */
+export function fineChunkBytes(chunk: FineChunk): number {
+  const buffers = new Set<ArrayBufferLike>();
+  let bytes = 0;
+  const arrays: ArrayBufferView[] = [
+    chunk.fine.height, chunk.fine.filled, chunk.fine.kind, chunk.fine.surface, chunk.fine.depression,
+    chunk.fine.rims, chunk.fine.channel, chunk.fine.terrain, chunk.fine.slope, chunk.fine.wetness,
+    chunk.fine.aspect, chunk.terrain, chunk.region,
+  ];
+  for (const array of arrays) {
+    if (buffers.has(array.buffer)) continue;
+    buffers.add(array.buffer);
+    bytes += array.byteLength;
+  }
+  for (const path of chunk.fine.channels) bytes += (path.patches.length + 5) * BYTES_PER_SLOT;
+  for (const summary of chunk.parentSummaries.values()) bytes += parentSummaryBytes(summary);
+  return bytes;
 }
 
 export function worldCacheStats(world: World): WorldCacheStats {
   let generatedPatches = 0;
   let parentSummaries = 0;
+  let chunkBytes = 0;
   for (const chunk of world.fineChunks.values()) {
     generatedPatches += chunk.samples;
     parentSummaries += chunk.parentSummaries.size;
+    chunkBytes += fineChunkBytes(chunk);
   }
   return {
     fineChunks: world.fineChunks.size,
@@ -336,6 +373,7 @@ export function worldCacheStats(world: World): WorldCacheStats {
     generatedPatches,
     parentSummaries,
     parentSummaryBuilds: world.parentSummaryBuilds,
+    fineChunkBytes: chunkBytes,
     ...fineRouteCacheStats(world),
     ...routeCacheStats(world),
   };
