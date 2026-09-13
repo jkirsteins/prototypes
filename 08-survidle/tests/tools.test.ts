@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { SAVE_VERSION, WORLD_VERSION } from "../src/sim/world-version";
 import { itemLabel } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
@@ -106,11 +107,13 @@ describe("tools as items", () => {
     expect(itemLabel("fishingSpear", 2)).toBe("2 fishing spears");
   });
 
-  it("saves are version 10 and a version 3 file is refused", () => {
+  it("saves carry the current envelope, and one from another world is refused", () => {
     const { state } = newGame(17);
     const raw = JSON.parse(serialize(state));
-    expect(raw.version).toBe(10);
-    raw.version = 3;
+    expect(raw.version).toBe(SAVE_VERSION);
+    expect(raw.worldVersion).toBe(WORLD_VERSION);
+    expect(readSave(JSON.stringify(raw))).not.toBeNull();
+    raw.version = SAVE_VERSION - 1;
     expect(readSave(JSON.stringify(raw))).toBeNull();
   });
 });

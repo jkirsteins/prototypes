@@ -1,3 +1,4 @@
+import { markSeen, newKnowledge } from "../src/sim/fineknowledge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as climate from "../src/sim/climate";
 import { calendar } from "../src/sim/calendar";
@@ -71,7 +72,8 @@ describe("hunting knowledge", () => {
     const { state, world } = armedGame();
     const heath = spotOf(regionAt(world, huntGround(world)), "heath")!.cell;
     placeAt(state, world, heath);
-    state.mapped = { [heath]: 1 };
+    state.knowledge = newKnowledge();
+    markSeen(state.knowledge, heath);
     setSkillLevel(state, "hunting", 20);
     expect(bestHuntCell(state, world, cal)).toBe(heath);
   });
@@ -167,13 +169,12 @@ describe("hunting knowledge", () => {
     const { state, world } = armedGame();
     setSkillLevel(state, "hunting", 20);
     const local = regionAt(world, state.player.region);
-    for (const neighbour of local.neighbours) mapRegion(state, world, neighbour.id);
-    for (const cell of local.cells) {
-      for (const species of huntedLand()) {
-        noteFailedHunt(state, cell, species);
-        noteFailedHunt(state, cell, species);
-        noteFailedHunt(state, cell, species);
-      }
+    // One mapped neighbour is all the expert needs somewhere else to go.
+    mapRegion(state, world, local.neighbours[0].id);
+    // Three failures establish regional absence for an expert; repeating them
+    // on thousands of fine patches changes neither the knowledge nor this test.
+    for (const species of huntedLand()) {
+      for (let i = 0; i < 3; i++) noteFailedHunt(state, cellOf(state, world), species);
     }
     expect(cellAt(world, bestHuntCell(state, world, cal)).region).not.toBe(state.player.region);
   });
@@ -182,8 +183,14 @@ describe("hunting knowledge", () => {
     const { state, world } = armedGame();
     setSkillLevel(state, "hunting", 20);
     const local = regionAt(world, state.player.region);
-    for (const neighbour of local.neighbours) mapRegion(state, world, neighbour.id);
-    for (const cell of local.cells) state.huntPressure[cell] = 1;
+    // One mapped neighbour is all the expert needs somewhere else to go.
+    mapRegion(state, world, local.neighbours[0].id);
+    // Existing 2 km influence covers the whole region from sparse sites.
+    for (const cell of local.cells) {
+      if (huntPressureFactor(state, world, cell) > 0.25) state.huntPressure[cell] = 1;
+    }
+    expect(Object.keys(state.huntPressure).length).toBeLessThan(100);
+    expect(local.cells.every(cell => huntPressureFactor(state, world, cell) === 0.25)).toBe(true);
 
     expect(cellAt(world, bestHuntCell(state, world, cal)).region).not.toBe(state.player.region);
   });

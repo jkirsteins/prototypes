@@ -10,9 +10,11 @@ import { addOrder, chooseOrder, ordersHere } from "../src/sim/orders";
 import { cellOf, placeAt, placeAtSpot, spotHere, watersideCell } from "../src/sim/position";
 import { availableTasks, beginTask, check, drawSpecies, MEND_AT, startTask, stepTask, stopTask, WORK_TASKS } from "../src/sim/tasks";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "../src/sim/species";
+import { CLEARING_SHARE } from "../src/world/groundchange";
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
 import { campSite, regionState } from "../src/sim/regionstate";
+import { setWoodPatchLeft, woodPatchFull, woodPatchLeft } from "../src/sim/stocks";
 import { cellAt, hasSpot, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 import { lakeShoreNear, regionNear, seaShoreBesideLake, walkableNeighbour } from "./world-facts";
@@ -45,12 +47,12 @@ describe("tasks", () => {
     expect(check(state, world, cal, "chop").why).toContain("forest");
     placeAtSpot(state, world, state.player.region, "forest");
     expect(check(state, world, cal, "chop").ok).toBe(true);
-    const wood0 = regionState(state, world, state.player.region).wood;
+    const wood0 = woodPatchLeft(regionState(state, world, state.player.region), world, cellOf(state, world));
     expect(startTask(state, world, cal, "chop")).toBe(true);
     done(g);
     expect(qty(herePile(state, world), "log")).toBe(4);
     expect(qty(state.player.pack, "stick")).toBe(4);
-    expect(regionState(state, world, state.player.region).wood).toBe(wood0 - 1);
+    expect(woodPatchLeft(regionState(state, world, state.player.region), world, cellOf(state, world))).toBe(wood0 - 1);
     expect(tool(state.player, "axe")!.durability).toBe(99);
     expect(state.stats.trees).toBe(1);
   });
@@ -60,11 +62,15 @@ describe("tasks", () => {
     siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
-    regionState(state, world, state.player.region).wood = 2;
+    // Leave the patch one stem above the share at which felling turns it into
+    // a clearing, so the repeat runs out of this ground rather than out of
+    // minutes: the one fell it has left carries it through the threshold.
+    const patch = cellOf(state, world);
+    setWoodPatchLeft(regionState(state, world, state.player.region), world, patch, woodPatchFull(world, patch) * CLEARING_SHARE + 1);
     startTask(state, world, cal, "chop", undefined, true);
     run(g, 200);
     expect(state.task).toBeNull();
-    expect(qty(herePile(state, world), "log")).toBe(8);
+    expect(qty(herePile(state, world), "log")).toBe(4);
     expect(state.log.some((e) => e.text.includes("{You} {stop}"))).toBe(true);
   });
 
@@ -77,7 +83,7 @@ describe("tasks", () => {
     const walk = check(state, world, cal, "walk", "spot:forest");
     expect(walk.ok).toBe(true);
     const route = findRoute(world, cellOf(state, world), forest.cell)!;
-    expect(routeKm(route)).toBeCloseTo(forest.km, 1);
+    expect(routeKm(route, cellOf(state, world))).toBeCloseTo(forest.km, 1);
     startTask(state, world, cal, "walk", "spot:forest");
     expect(state.route?.path.length).toBe(route.length);
     done(g);
@@ -222,7 +228,7 @@ describe("tasks", () => {
     const { state, world } = g;
     // A region that can hold deer at all: a hunt cannot bring one down where
     // the species has no capacity.
-    placeAt(state, world, regionAt(world, regionNear(world, state.player.region, (id) => (regionAt(world, id).capacity.deer ?? 0) > 0)).campCell);
+    placeAt(state, world, regionAt(world, regionNear(world, state.player.region, (id) => (regionAt(world, id).capacity.deer ?? 0) > 0)).campCell!);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     state.player.tools.push({ id: "bow", durability: 100 });

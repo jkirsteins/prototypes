@@ -19,12 +19,12 @@ import { readSave, serialize } from "../src/sim/save";
 import { startTask, stepTask } from "../src/sim/tasks";
 import type { GameState, OpportunityKey } from "../src/sim/types";
 import { atmosphereAt, skyReadDay, stepWeather } from "../src/sim/weather";
-import { cellAt, regionAt } from "../src/world/gen";
+import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, passable, routeMinutes } from "../src/world/route";
-import { siteCamp } from "./siting-helpers";
+import { requireCamp, siteCamp } from "./siting-helpers";
 import { testAtmosphere, testRain } from "./weather-helpers";
 import { isLee } from "../src/sim/shelter";
-import { regionNear, terrainCellNear, walkableNeighbour } from "./world-facts";
+import { landNeighbour, regionNear, terrainCellNear, walkableNeighbour } from "./world-facts";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -692,14 +692,17 @@ describe("natural-first weather", () => {
     const home = cellOf(state, world);
     const remote = regionAt(world, state.player.region).neighbours
       .map((neighbour) => regionAt(world, neighbour.id))
-      .find((region) => findRoute(world, home, region.campCell) !== null)!;
-    const refuge = remote.campCell;
+      .find((region) => region.campCell !== null && findRoute(world, home, region.campCell) !== null)!;
+    const refuge = requireCamp(remote);
     const mapped = findRoute(world, home, refuge);
     expect(mapped).not.toBeNull();
-    for (const cell of [home, ...(mapped ?? [])]) markKnown(state, cell);
+    for (const cell of [home, ...(mapped ?? [])]) {
+      markKnown(state, cell);
+      for (const corner of neighbours(world, cell)) markKnown(state, corner);
+    }
     const route = survivorRoute(state, world, home, refuge, "none", fearsFell(state));
     expect(route).not.toBeNull();
-    const lead = routeMinutes(world, route!, baseWalkSpeed(state, calendar(state.minute, state.startDoy), state.weather), "none") + 30;
+    const lead = routeMinutes(world, route!, home, baseWalkSpeed(state, calendar(state.minute, state.startDoy), state.weather), "none") + 30;
     state.opportunities.context.weather = {
       opportunity: "remoteStorm", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: { region: remote.id, centre: refuge, radiusKm: 1 },
@@ -725,7 +728,7 @@ describe("natural-first weather", () => {
     activateRemoteRefuge(state);
     const home = state.player.region;
     const remote = walkableNeighbour(world, home);
-    const refuge = regionAt(world, remote).campCell;
+    const refuge = regionAt(world, remote).campCell!;
     placeAt(state, world, refuge);
     siteFor(regionState(state, world, remote), refuge).cover = 2;
     recordOpportunityEvent(state, {
@@ -735,11 +738,14 @@ describe("natural-first weather", () => {
     const homeCell = state.regions[home].campCell!;
     const mapped = findRoute(world, refuge, homeCell);
     expect(mapped).not.toBeNull();
-    for (const cell of [refuge, ...(mapped ?? [])]) markKnown(state, cell);
+    for (const cell of [refuge, ...(mapped ?? [])]) {
+      markKnown(state, cell);
+      for (const corner of neighbours(world, cell)) markKnown(state, corner);
+    }
     placeAt(state, world, homeCell);
     const route = survivorRoute(state, world, homeCell, refuge, "none", fearsFell(state));
     expect(route).not.toBeNull();
-    const lead = routeMinutes(world, route!, baseWalkSpeed(state, calendar(state.minute, state.startDoy), state.weather), "none") + 30;
+    const lead = routeMinutes(world, route!, homeCell, baseWalkSpeed(state, calendar(state.minute, state.startDoy), state.weather), "none") + 30;
     state.weather.storm = {
       id: 82, source: "natural", kind: "rain", from: state.minute + lead + 0.01,
       until: state.minute + lead + 360, warned: false,
@@ -772,8 +778,8 @@ describe("natural-first weather", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     activateRemoteRefuge(state);
-    const remote = regionAt(world, state.player.region).neighbours[0].id;
-    const refuge = regionAt(world, remote).campCell;
+    const remote = landNeighbour(world, state.player.region);
+    const refuge = requireCamp(regionAt(world, remote));
     placeAt(state, world, refuge);
     recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: state.minute, region: remote, cell: refuge,
@@ -803,14 +809,15 @@ describe("Chapter 3 refuge storm evidence", () => {
     const remote = regionAt(world, regionNear(world, home, (id) => {
       if (id === home) return false;
       const region = regionAt(world, id);
+      if (region.campCell === null) return false;
       const land = region.cells.filter((cell) => passable(cellAt(world, cell).terrain));
-      return land.some((cell) => straightKm(world, region.campCell, cell) > 1)
+      return land.some((cell) => straightKm(world, region.campCell!, cell) > 1)
         && land.some((cell) => cellAt(world, cell).terrain === "meadow" && !isLee(world, cell, atmosphereAt(state, world, cell).windBearingDeg))
         && land.some((cell) => cellAt(world, cell).terrain === "spruce");
     }));
     state.opportunities.context.weather = {
       opportunity: "remoteStorm", status: "running", createdAt: state.minute, attempts: 1,
-      stormId, source: "natural", area: { region: remote.id, centre: remote.campCell, radiusKm: 1 },
+      stormId, source: "natural", area: { region: remote.id, centre: remote.campCell!, radiusKm: 1 },
       announcedAt: state.minute, resolvedAt: null, minutesByProtection: [0, 0, 0, 0],
       atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
     return { home, remote };
@@ -823,8 +830,8 @@ describe("Chapter 3 refuge storm evidence", () => {
     // a storm, so the search keeps to land.
     const far = remote.cells
       .filter((cell) => passable(cellAt(world, cell).terrain))
-      .reduce((best, cell) => straightKm(world, remote.campCell, cell) > straightKm(world, remote.campCell, best) ? cell : best, remote.campCell);
-    expect(straightKm(world, remote.campCell, far)).toBeGreaterThan(1);
+      .reduce((best, cell) => straightKm(world, remote.campCell!, cell) > straightKm(world, remote.campCell!, best) ? cell : best, remote.campCell!);
+    expect(straightKm(world, remote.campCell!, far)).toBeGreaterThan(1);
     placeAt(state, world, far);
     siteFor(regionState(state, world, remote.id), far).structures.leanTo = true;
     state.weather.storm = { id: 90, source: "natural", kind: "rain", from: state.minute, until: state.minute + 60, warned: true };
@@ -914,7 +921,7 @@ describe("Chapter 3 refuge storm evidence", () => {
 
     state.opportunities.context.weather!.status = "running";
     state.opportunities.context.weather!.stormId = 97;
-    state.opportunities.context.weather!.area = { region: remote.id, centre: remote.campCell, radiusKm: 1 };
+    state.opportunities.context.weather!.area = { region: remote.id, centre: remote.campCell!, radiusKm: 1 };
     recordOpportunityEvent(state, {
       kind: "stormEnded", minute: state.minute + 60, stormId: 97, stormKind: "rain", survivorAlive: true,
       minutesByProtection: [0, 0, 60, 0], atCampMinutes: 0, awayFromCampMinutes: 60, maxWetness: 10 }, world);
@@ -925,8 +932,8 @@ describe("Chapter 3 refuge storm evidence", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     activateRemoteRefuge(state);
-    const remote = regionAt(world, state.player.region).neighbours[0].id;
-    const refuge = regionAt(world, remote).campCell;
+    const remote = landNeighbour(world, state.player.region);
+    const refuge = requireCamp(regionAt(world, remote));
     placeAt(state, world, refuge);
     recordOpportunityEvent(state, {
       kind: "protectionChanged", minute: state.minute, region: remote, cell: refuge,
@@ -967,9 +974,9 @@ describe("Chapter 3 refuge storm evidence", () => {
     const { remote } = remoteAttempt(state, world, 95);
     state.opportunities.context.chapter3HomeRegion = state.player.region;
     state.regions[remote.id] = structuredClone(state.regions[state.player.region]);
-    state.regions[remote.id].campCell = remote.campCell;
-    placeAt(state, world, remote.campCell);
-    siteFor(state.regions[remote.id], remote.campCell).structures.leanTo = true;
+    state.regions[remote.id].campCell = requireCamp(remote);
+    placeAt(state, world, requireCamp(remote));
+    siteFor(state.regions[remote.id], requireCamp(remote)).structures.leanTo = true;
     state.weather.storm = { id: 95, source: "natural", kind: "rain", from: state.minute, until: state.minute + 60, warned: true };
 
     advance(state, world, 60);

@@ -21,8 +21,14 @@ export interface UiState {
   panes: Panes;
   /** Region clicked on the map, or null for the one you stand in. */
   selected: number | null;
-  /** The map cell under the pointer, or null when the pointer is off the board. Derived from where the pointer is, never from a glyph's own enter and leave. */
+  /** The map patch under the pointer, or null when the pointer is off the board. Derived from where the pointer is, never from a glyph's own enter and leave. */
   hover: number | null;
+  /**
+   * The exact patch a click on the board resolved to, marked on the map until
+   * the next click. A glyph at the block rungs stands for up to a few thousand
+   * patches, so the one an order would be given for is shown before it is.
+   */
+  destination: number | null;
   /** What happened while the tab was closed, until dismissed. */
   away: AwaySummary | null;
   confirmAbandon: boolean;
@@ -56,7 +62,7 @@ export interface UiState {
   /** The day catchUp was called on, so the away report's since-line reads from where the player left off. */
   awayFromDay: number;
   /** The copy button reads "copied" until this real-time millisecond. */
-  /** Index into ZOOMS: 0 is the closest cosmetic detail view. */
+  /** Index into ZOOMS: 0 is the closest rung, one glyph to one 50 m patch. */
   zoom: number;
   /** The Do row whose kinds are open, or null. */
   open: { id: TaskId; arg: string } | null;
@@ -152,7 +158,7 @@ export function simulationPaused(state: GameState, ui: UiState): boolean {
 
 export function newUiState(): UiState {
   return {
-    panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, cloudShadows: DEFAULT_CLOUD_SHADOWS, selected: null, hover: null, away: null, confirmAbandon: false, confirmCamp: false,
+    panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, cloudShadows: DEFAULT_CLOUD_SHADOWS, selected: null, hover: null, destination: null, away: null, confirmAbandon: false, confirmCamp: false,
     cemetery: false, manual: false, teach: null, opportunityCatalog: { open: false, category: "survival", page: 0, detail: null }, opportunityPresentation: null, recognition: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false, regions: false },
     hurry: newHurry(), speedHistory: newSpeedHistory(), wildlifeStartles: [], wildlifeStartleIds: new Set(), mapViewport: null,

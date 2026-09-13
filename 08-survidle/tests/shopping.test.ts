@@ -149,7 +149,7 @@ describe("the tracked shopping target", () => {
     const { state, world } = newGame(3);
     // A region given both an outcrop and a forest: the stone and the stick a
     // knife wants are each answered by a named place only where there is one.
-    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["outcrop", "forest"])).campCell);
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["outcrop", "forest"])).campCell!);
     state.shopping = shoppingTarget("craft", "knife");
     const html = placesHtml(state, world, calendar(state.minute, state.startDoy));
     expect(html).toMatch(/outcrop[\s\S]*stone for stone knife/);

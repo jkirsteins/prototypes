@@ -1,3 +1,5 @@
+import { knownPatches } from "../src/sim/fineknowledge";
+import { requireCamp } from "./siting-helpers";
 /**
  * The survivor routes on the ground they have mapped, never the true
  * grid: a fresh game cannot plan a walk to unmapped ground, mapping a
@@ -27,7 +29,9 @@ describe("the survivor routes on knowledge", () => {
     // A region on the far side of the world: seen at a distance (so the
     // travel option's own "know nothing of that country" gate does not
     // fire first) but nothing between here and there has ever been walked.
-    const far = home === 0 ? 1 : 0;
+    const far = cellAt(world, (world.h - 100) * world.w + world.w - 100).region;
+    expect(far).not.toBe(home);
+    requireCamp(regionAt(world, far));
     state.discovered[far] = SEEN;
     expect(discovery(state, far)).not.toBe(0);
     const o = check(state, world, cal, "travel", `region:${far}`);
@@ -51,31 +55,36 @@ describe("the survivor routes on knowledge", () => {
     const home = state.player.region;
     // The landing maps the home region whole; a neighbour, never visited, is
     // ground the survivor has never seen, which is what this case is about.
-    const nb = regionAt(world, home).neighbours[0].id;
+    // A neighbour with land in it: a coast's neighbours include regions that
+    // are nothing but sea, and a region of sea names no camp and no spot.
+    const nb = regionAt(world, home).neighbours.map((n) => n.id).find((id) => regionAt(world, id).campCell !== null)!;
     const r = regionAt(world, nb);
     expect(r.spots.some((s) => !isKnown(state, s.cell))).toBe(true);
     // Cell capabilities read the true ground, not the survivor's map.
-    expect(cellPossibilities(world, r.campCell)).toEqual(seepGround(world, r.campCell) ? ["seep possible"] : []);
+    expect(cellPossibilities(world, requireCamp(r))).toEqual(seepGround(world, requireCamp(r)) ? ["seep possible"] : []);
   });
 
   it("survivorRoute refuses ground the state has not mapped, even when the true grid would allow it", () => {
     const { state, world } = newGame(3);
     const home = state.player.region;
-    const camp = regionAt(world, home).campCell;
+    const camp = requireCamp(regionAt(world, home));
+    // A neighbour whose camp is truly walkable from this one: a coast puts the
+    // far side of a fjord among a region's neighbours, and no mapping opens a
+    // way across water.
     const nb = walkableNeighbour(world, home);
     // The neighbour's camp cell exists and is truly reachable, but nothing
     // has been mapped, so the survivor cannot plan a route to it.
-    expect(survivorRoute(state, world, camp, regionAt(world, nb).campCell)).toBeNull();
+    expect(survivorRoute(state, world, camp, requireCamp(regionAt(world, nb)))).toBeNull();
     mapRegion(state, world, home);
     mapRegion(state, world, nb);
-    expect(survivorRoute(state, world, camp, regionAt(world, nb).campCell)).not.toBeNull();
+    expect(survivorRoute(state, world, camp, requireCamp(regionAt(world, nb)))).not.toBeNull();
   });
 
   it("frontierRoute permits one unknown final step and no route through unknown ground", () => {
     const { state, world } = newGame(3);
     const from = cellOf(state, world);
     let target: number | undefined;
-    for (const known of Object.keys(state.mapped).map(Number)) {
+    for (const known of knownPatches(state.knowledge)) {
       target = neighbours(world, known).find((cell) => !isKnown(state, cell) && passable(cellAt(world, cell).terrain) && survivorRoute(state, world, from, known) !== null);
       if (target !== undefined) break;
     }

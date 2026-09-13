@@ -8,8 +8,8 @@ import { cellAt, regionAt } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { FIRE_LOW_KG } from "../src/sim/items";
 import type { Species } from "../src/sim/species";
-import { ensureGround } from "../src/sim/weather";
-import { siteCamp } from "./siting-helpers";
+import { ensureGround, patchGroundModifiers } from "../src/sim/weather";
+import { siteCamp, requireCamp } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
 
 const base: Surroundings = { forest: 0, birch: 0, open: 0, bog: 0, lake: 0, sea: 0, footing: "grass", frozen: false, fire: "none", indoors: false, rain: "none", storm: false };
@@ -60,7 +60,8 @@ describe("surroundings", () => {
       placeAt(state, world, bog);
       expect(surroundings(state, world, 10).footing).toBe("bog");
     }
-    ground.snowCm = 6;
+    // Enough of a fall for 6 cm to be lying under the crowns of this patch.
+    ground.snowCm = 6 / patchGroundModifiers(world, forest!).snow;
     placeAt(state, world, forest!);
     expect(surroundings(state, world, -3).footing).toBe("snow");
     ground.snowCm = 0;
@@ -157,7 +158,7 @@ describe("open calls", () => {
     const { state, world } = newGame(5);
     siteCamp(state, world);
     const id = regionWith(state, world, "loon");
-    placeAt(state, world, regionAt(world, id).campCell);
+    placeAt(state, world, requireCamp(regionAt(world, id)));
     ensureGround(state, world, id).iceCm = 0;
     const st = regionState(state, world, id);
     st.pop.loon = regionAt(world, id).capacity.loon;
@@ -172,7 +173,7 @@ describe("open calls", () => {
     const { state, world } = newGame(5);
     siteCamp(state, world);
     const id = regionWith(state, world, "wolf");
-    placeAt(state, world, regionAt(world, id).campCell);
+    placeAt(state, world, requireCamp(regionAt(world, id)));
     regionState(state, world, id).pop.wolf = regionAt(world, id).capacity.wolf;
     const full = calendar(at(3, 1));
     const dark = calendar(at(3 + 15, 1));

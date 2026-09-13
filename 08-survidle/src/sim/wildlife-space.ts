@@ -1,10 +1,10 @@
 import { Rng, derive } from "../rng";
-import { CELL_KM } from "../units";
-import { WORLD_H, WORLD_W } from "../world/gen";
+import { type MetricPoint, PATCH_M, type PatchId, patchAtMetric, patchXY, WORLD_FINE_H, WORLD_FINE_W } from "../world/spatial";
 import type { World } from "../world/gen";
 import type { GameState, WildlifeSubject } from "./types";
 
-export interface MetricPoint { xM: number; yM: number }
+/** The one metric point, defined by the lattice; wildlife shares the survivor's space. */
+export type { MetricPoint };
 
 export type SpatialEstimate =
   | { kind: "exact"; point: MetricPoint }
@@ -37,37 +37,31 @@ function hash(value: string): number {
 }
 
 export function metricPointForPlayer(state: GameState, _world: World): MetricPoint | null {
-  if (!Number.isFinite(state.player.x) || !Number.isFinite(state.player.y)) return invalid("wildlife player position must be finite");
-  const metresPerCell = CELL_KM * 1000;
-  return { xM: state.player.x * metresPerCell, yM: state.player.y * metresPerCell };
+  // The survivor's position is already the metric point; nothing to convert.
+  if (!finitePoint(state.player)) return invalid("wildlife player position must be finite");
+  return { xM: state.player.xM, yM: state.player.yM };
 }
 
-export function metricAreaForCell(world: World, cell: number): SpatialEstimate | null {
-  if (!Number.isFinite(world.w) || !Number.isFinite(world.h) || !Number.isFinite(cell)) {
-    return invalid("wildlife cell bounds must be finite");
-  }
-  const x = cell % world.w;
-  const y = Math.floor(cell / world.w);
-  const metresPerCell = CELL_KM * 1000;
+/** The metres one patch covers, read off the lattice rather than recomputed. */
+function patchArea(patch: PatchId): SpatialEstimate {
+  const { x, y } = patchXY(patch);
   return {
     kind: "area",
     key: `cell:${x},${y}`,
-    min: { xM: x * metresPerCell, yM: y * metresPerCell },
-    max: { xM: (x + 1) * metresPerCell, yM: (y + 1) * metresPerCell },
+    min: { xM: x * PATCH_M, yM: y * PATCH_M },
+    max: { xM: (x + 1) * PATCH_M, yM: (y + 1) * PATCH_M },
   };
+}
+
+export function metricAreaForCell(world: World, cell: number): SpatialEstimate | null {
+  if (!Number.isInteger(cell) || cell < 0 || cell >= world.w * world.h) return invalid("wildlife cell must be a patch of this world");
+  return patchArea(cell);
 }
 
 /** Stable fallback used while loading saves written before exact wildlife positions. */
 export function metricPointForStoredCell(seed: number, subjectId: number, cell: number): MetricPoint | null {
-  if (!Number.isInteger(cell) || cell < 0 || cell >= WORLD_W * WORLD_H) return invalid("wildlife stored cell must be valid");
-  const metresPerCell = CELL_KM * 1000;
-  const x = cell % WORLD_W;
-  const y = Math.floor(cell / WORLD_W);
-  return resolveSpatialEstimate(seed, subjectId, {
-    kind: "area", key: `cell:${x},${y}`,
-    min: { xM: x * metresPerCell, yM: y * metresPerCell },
-    max: { xM: (x + 1) * metresPerCell, yM: (y + 1) * metresPerCell },
-  });
+  if (!Number.isInteger(cell) || cell < 0 || cell >= WORLD_FINE_W * WORLD_FINE_H) return invalid("wildlife stored cell must be valid");
+  return resolveSpatialEstimate(seed, subjectId, patchArea(cell));
 }
 
 export function metricPointForWildlife(state: GameState, world: World, subject: WildlifeSubject): MetricPoint | null {
@@ -80,14 +74,11 @@ export function metricPointForWildlife(state: GameState, world: World, subject: 
   return point;
 }
 
-/** Grid conversion stays at this adapter boundary; callers reason in metres. */
-export function cellForMetricPoint(world: World, point: MetricPoint): number | null {
+/** The lattice does the bucketing; wildlife only bounds it to this world. */
+export function cellForMetricPoint(world: World, point: MetricPoint): PatchId | null {
   if (!finitePoint(point)) return invalid("wildlife metric position must be finite");
-  const metresPerCell = CELL_KM * 1000;
-  const x = Math.floor(point.xM / metresPerCell);
-  const y = Math.floor(point.yM / metresPerCell);
-  if (x < 0 || y < 0 || x >= world.w || y >= world.h) return null;
-  return y * world.w + x;
+  if (point.xM < 0 || point.yM < 0 || point.xM >= world.w * PATCH_M || point.yM >= world.h * PATCH_M) return null;
+  return patchAtMetric(point);
 }
 
 export function resolveSpatialEstimate(seed: number, subjectId: number, estimate: SpatialEstimate): MetricPoint | null {

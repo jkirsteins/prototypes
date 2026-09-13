@@ -1,0 +1,95 @@
+{
+  "capturedAt": "2026-09-13T01:09:42.851Z",
+  "sourceCommit": "c342e7b0",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "deviceScale": 2
+  },
+  "captures": {
+    "after100m": {
+      "seed": 21,
+      "minute": 10,
+      "startDoy": 90,
+      "player": {
+        "xM": 63325,
+        "yM": 613775,
+        "region": 18849
+      },
+      "zoom": "100 m per glyph, 7.2 by 3.6 km",
+      "renderedCells": 2592,
+      "cosmeticDetails": 0,
+      "playerMarks": 1,
+      "overlayHidden": true,
+      "cacheStats": {
+        "fineChunks": 11,
+        "fineChunkLimit": 64,
+        "fineChunkBuilds": 11,
+        "generatedPatches": 101376,
+        "parentSummaries": 1327,
+        "parentSummaryBuilds": 1327,
+        "fineChunkBytes": 2991504,
+        "topologies": 68,
+        "topologyLimit": 4096,
+        "topologyBuilds": 68,
+        "overlays": 99,
+        "overlayLimit": 1024,
+        "localTrees": 1126,
+        "topologyBytes": 54368,
+        "overlayBytes": 1205280,
+        "routes": 46,
+        "routeLimit": 512,
+        "routeBuilds": 46,
+        "routeBytes": 11790
+      },
+      "box": {
+        "x": 320,
+        "y": 10,
+        "width": 840,
+        "height": 450
+      }
+    },
+    "after50m": {
+      "seed": 21,
+      "minute": 10,
+      "startDoy": 90,
+      "player": {
+        "xM": 63325,
+        "yM": 613775,
+        "region": 18849
+      },
+      "zoom": "50 m per glyph, 3.6 by 1.8 km",
+      "renderedCells": 2592,
+      "cosmeticDetails": 0,
+      "playerMarks": 1,
+      "overlayHidden": true,
+      "cacheStats": {
+        "fineChunks": 11,
+        "fineChunkLimit": 64,
+        "fineChunkBuilds": 11,
+        "generatedPatches": 101376,
+        "parentSummaries": 1327,
+        "parentSummaryBuilds": 1327,
+        "fineChunkBytes": 2991504,
+        "topologies": 68,
+        "topologyLimit": 4096,
+        "topologyBuilds": 68,
+        "overlays": 99,
+        "overlayLimit": 1024,
+        "localTrees": 1126,
+        "topologyBytes": 54368,
+        "overlayBytes": 1205280,
+        "routes": 46,
+        "routeLimit": 512,
+        "routeBuilds": 46,
+        "routeBytes": 11790
+      },
+      "box": {
+        "x": 320,
+        "y": 10,
+        "width": 840,
+        "height": 450
+      }
+    }
+  }
+}

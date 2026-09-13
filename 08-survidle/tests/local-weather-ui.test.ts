@@ -1,3 +1,4 @@
+import { markSeen, setKnowledge } from "../src/sim/fineknowledge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as climate from "../src/sim/climate";
 import { calendar } from "../src/sim/calendar";
@@ -37,11 +38,11 @@ describe("local weather presentation", () => {
     };
     for (let gy = 0; gy < level.h; gy++) {
       for (let gx = 0; gx < level.w; gx++) {
-        const x = x0 + gx * level.cells;
-        const y = y0 + gy * level.cells;
+        const x = x0 + gx * level.finePerGlyph;
+        const y = y0 + gy * level.finePerGlyph;
         if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
         const cell = cellIdx(world, x, y);
-        state.mapped[cell] = 1;
+        markSeen(state.knowledge, cell);
         regions.add(regionPeek(world, x, y));
       }
     }
@@ -59,8 +60,8 @@ describe("local weather presentation", () => {
     const visibleGlyphs = new Set([...visible].map((cell) => {
       const cx = cell % world.w;
       const cy = Math.floor(cell / world.w);
-      const gx = Math.floor((cx - x0) / level.cells);
-      const gy = Math.floor((cy - y0) / level.cells);
+      const gx = Math.floor((cx - x0) / level.finePerGlyph);
+      const gy = Math.floor((cy - y0) / level.finePerGlyph);
       return gy * level.w + gx;
     }).filter((glyph) => glyph >= 0 && glyph < level.w * level.h)).size;
     // Ground history is replayed at one fixed point per region, so the point
@@ -107,6 +108,9 @@ describe("local weather presentation", () => {
     const y = Math.floor(here / world.w);
     const rainy = here;
     const ui = newUiState();
+    // One glyph to one patch, so the sample the map takes is the patch the
+    // mocked atmosphere is keyed to.
+    ui.zoom = 0;
     const cal = calendar(state.minute, state.startDoy);
     const level = levelAt(ui.zoom);
     const origin = viewOrigin(state, world, ui.zoom);
@@ -114,8 +118,8 @@ describe("local weather presentation", () => {
     const hiddenCandidates: number[] = [];
     for (let gy = 0; gy < level.h; gy++) {
       for (let gx = 0; gx < level.w; gx++) {
-        const cx = origin.x0 + gx * level.cells;
-        const cy = origin.y0 + gy * level.cells;
+        const cx = origin.x0 + gx * level.finePerGlyph;
+        const cy = origin.y0 + gy * level.finePerGlyph;
         if (cx < 0 || cy < 0 || cx >= world.w || cy >= world.h) continue;
         const candidate = cellIdx(world, cx, cy);
         if (!visible.has(candidate)) hiddenCandidates.push(candidate);
@@ -124,8 +128,8 @@ describe("local weather presentation", () => {
     const [hiddenKnown, unknown] = hiddenCandidates;
     expect(hiddenKnown).toBeTypeOf("number");
     expect(unknown).toBeTypeOf("number");
-    state.mapped[hiddenKnown] = 1;
-    delete state.mapped[unknown];
+    markSeen(state.knowledge, hiddenKnown);
+    setKnowledge(state.knowledge, unknown, "unknown");
     ensureGround(state, world, regionPeek(world, x, y)).snowCm = 18;
     vi.spyOn(climate, "sampleAtmosphere").mockImplementation((_weather, _world, _minute, sx, sy) => (
       sx === x && sy === y
@@ -165,7 +169,7 @@ describe("local weather presentation", () => {
     ui.zoom = 3;
     const cal = calendar(state.minute, state.startDoy);
     const visible = visibleCells(state, world, cal, cellOf(state, world));
-    for (const cell of visible) state.mapped[cell] = 1;
+    for (const cell of visible) markSeen(state.knowledge, cell);
     vi.spyOn(climate, "sampleAtmosphere").mockReturnValue(air({ cloud: 0.95, fog: 0.8 }));
 
     const root = document.createElement("div");
@@ -180,7 +184,7 @@ describe("local weather presentation", () => {
       expect([...visible].some((cell) => {
         const cx = cell % world.w;
         const cy = Math.floor(cell / world.w);
-        return cx >= sx && cx < sx + level.cells && cy >= sy && cy < sy + level.cells;
+        return cx >= sx && cx < sx + level.finePerGlyph && cy >= sy && cy < sy + level.finePerGlyph;
       })).toBe(true);
       expect(element.classList).not.toContain("fog");
     }
@@ -309,7 +313,10 @@ describe("local weather presentation", () => {
   it("keys coarse weather to the projected viewshed, not only the local sample", () => {
     const { state, world } = newGame(21);
     const ui = newUiState();
-    ui.zoom = 3;
+    // The first block rung. Sight in forest reaches about 150 m, so a wider
+    // glyph swallows the whole viewshed and any change to it; 100 m a glyph
+    // is where the projection can still tell two viewsheds apart.
+    ui.zoom = 1;
     const cal = calendar(state.minute, state.startDoy);
     let extinction = 0.06;
     vi.spyOn(climate, "sampleAtmosphere").mockImplementation(() => air({ extinctionPerKm: extinction }));

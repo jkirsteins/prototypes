@@ -11,9 +11,10 @@
  * Every finder is pure geometry over the solved arrays, so it costs a flood of
  * a region or two and never a route search.
  */
-import { cellAt, fordAt, hasSpot, heightAt, neighbours, regionAt, regionOf, streamAt, terrainOf, waterKindOf, type World } from "../src/world/gen";
-import { CANOPY_HEIGHT_M } from "../src/sim/sight";
-import { UPWIND_STEP } from "../src/sim/shelter";
+import { cellAt, fineSurfaceAt, fordAt, hasSpot, heightAt, neighbours, regionAt, regionOf, solvedTerrainAt, streamAt, terrainOf, waterKindOf, type World } from "../src/world/gen";
+import { FINE_PER_PARENT, PATCH_M } from "../src/world/spatial";
+import { CANOPY_HEIGHT_M } from "../src/world/terrain";
+import { LEE_FULL_RATIO, LEE_REACH_M, UPWIND_STEP } from "../src/sim/shelter";
 import { passable } from "../src/world/route";
 import type { SpotId, Terrain } from "../src/sim/types";
 
@@ -122,14 +123,14 @@ export function iceShortcut(world: World, home: number, from: number): IceCrossi
  */
 export function walkableNeighbour(world: World, home: number): number {
   const land = (cell: number) => dryShod(world, cell);
-  const from = regionAt(world, home).campCell;
+  const from = regionAt(world, home).campCell!;
   for (const { id } of regionAt(world, home).neighbours) {
     if (id === home) continue;
     const inEither = (cell: number) => {
       const r = regionOfCell(world, cell);
       return r === home || r === id;
     };
-    if (flood(world, from, inEither, land).has(regionAt(world, id).campCell)) return id;
+    if (flood(world, from, inEither, land).has(regionAt(world, id).campCell!)) return id;
   }
   throw new Error(`no region beside ${home} is walkable from its camp without leaving the two`);
 }
@@ -234,9 +235,44 @@ export function regionsOutward(world: World, home: number, limit = 120): number[
  * search is geometry only and ignores which terrains the rule refuses lee to,
  * so a rock or a fell standing behind a ridge can be found and asked about.
  */
+/**
+ * How much of the wind the ground upwind of a patch takes out, measured the way
+ * the shelter rule measures it: a patch at a time over 1.5 km of refined ground,
+ * each sample priced at the distance it really stands at. The coarse 300 m walk
+ * below is a filter, not an answer - over a kilometre and a half of 50 m ground
+ * there is nearly always a bank the solve's own heights cannot see, and a cell
+ * the filter calls open is often sheltered in fact. Terrain refusal is
+ * deliberately left out, so a rock or a fell behind a ridge can be found and
+ * asked whether the rule shelters it.
+ */
+function fineBlocking(world: World, cell: number, dx: number, dy: number): number {
+  const x = xOf(world, cell);
+  const y = yOf(world, cell);
+  const here = fineSurfaceAt(world, cell);
+  const stepM = PATCH_M * Math.hypot(dx, dy);
+  let blocking = 0;
+  for (let d = 1; d * stepM <= LEE_REACH_M; d++) {
+    const sx = x + dx * d;
+    const sy = y + dy * d;
+    if (sx < 0 || sy < 0 || sx >= world.w || sy >= world.h) break;
+    const ground = fineSurfaceAt(world, sy * world.w + sx) - here;
+    const ratio = (ground + (CANOPY_HEIGHT_M[terrainOf(world, sx, sy)] ?? 0)) / (d * stepM);
+    if (ratio > blocking) blocking = ratio;
+  }
+  return blocking;
+}
+
+/** Clear of half shelter either way, never on the line: half shelter is half of LEE_FULL_RATIO. */
+function decided(blocking: number, blocked: boolean): boolean {
+  const half = LEE_FULL_RATIO / 2;
+  return blocked ? blocking > half * 1.2 : blocking < half * 0.8;
+}
+
 export function leeCellNear(world: World, home: number, terrain: Terrain, windBearingDeg: number, blocked = true): number {
   // Five steps upwind, the reach the shelter rule uses, each measured at the
-  // true distance it stands at rather than at a flat 300 m.
+  // true distance it stands at rather than at a flat 300 m. A step is a 300 m
+  // cell, which is FINE_PER_PARENT patches, and the ground upwind is the
+  // solved ground the heights belong to.
   const eighth = ((Math.round(windBearingDeg / 45) % 8) + 8) % 8;
   const [dx, dy] = UPWIND_STEP[eighth];
   for (const id of regionsOutward(world, home, 400)) {
@@ -248,16 +284,16 @@ export function leeCellNear(world: World, home: number, terrain: Terrain, windBe
       let over = 0;
       let samples = 0;
       for (let d = 1; d <= 5; d++) {
-        const sx = x + dx * d;
-        const sy = y + dy * d;
+        const sx = x + dx * d * FINE_PER_PARENT;
+        const sy = y + dy * d * FINE_PER_PARENT;
         if (sx < 0 || sy < 0 || sx >= world.w || sy >= world.h) break;
         samples++;
-        const top = heightAt(world, sx, sy) + (CANOPY_HEIGHT_M[terrainOf(world, sx, sy)] ?? 0) - h;
+        const top = heightAt(world, sx, sy) + (CANOPY_HEIGHT_M[solvedTerrainAt(world, sx, sy)] ?? 0) - h;
         over = Math.max(over, top / (d * 300 * Math.hypot(dx, dy)));
       }
       if (samples < 5) continue;
-      // Half shelter is a ratio of 0.05; clear of it either way, never on the line.
-      if (blocked ? over > 0.06 : over < 0.04) return cell;
+      if (!decided(over, blocked)) continue;
+      if (decided(fineBlocking(world, cell, dx, dy), blocked)) return cell;
     }
   }
   // Fell is the ground above the treeline, so it sits on the tops and has
@@ -268,16 +304,24 @@ export function leeCellNear(world: World, home: number, terrain: Terrain, windBe
 }
 
 function leeCellAnywhere(world: World, terrain: Terrain, dx: number, dy: number, blocked: boolean): number {
-  for (let y = 5; y < world.h - 5; y++) {
-    for (let x = 5; x < world.w - 5; x++) {
-      if (terrainOf(world, x, y) !== terrain) continue;
+  // A cell at a time over the whole world: the fine ground of 144 million
+  // patches would be generated to answer this, and what the search wants is
+  // the solved ground the heights come from.
+  const reach = 5 * FINE_PER_PARENT;
+  for (let y = reach; y < world.h - reach; y += FINE_PER_PARENT) {
+    for (let x = reach; x < world.w - reach; x += FINE_PER_PARENT) {
+      if (solvedTerrainAt(world, x, y) !== terrain) continue;
       const h = heightAt(world, x, y);
       let over = 0;
       for (let d = 1; d <= 5; d++) {
-        const top = heightAt(world, x + dx * d, y + dy * d) + (CANOPY_HEIGHT_M[terrainOf(world, x + dx * d, y + dy * d)] ?? 0) - h;
+        const sx = x + dx * d * FINE_PER_PARENT;
+        const sy = y + dy * d * FINE_PER_PARENT;
+        const top = heightAt(world, sx, sy) + (CANOPY_HEIGHT_M[solvedTerrainAt(world, sx, sy)] ?? 0) - h;
         over = Math.max(over, top / (d * 300 * Math.hypot(dx, dy)));
       }
-      if (blocked ? over > 0.06 : over < 0.04) return y * world.w + x;
+      if (!decided(over, blocked)) continue;
+      const cell = y * world.w + x;
+      if (decided(fineBlocking(world, cell, dx, dy), blocked)) return cell;
     }
   }
   throw new Error(`this world holds no ${terrain} that is ${blocked ? "" : "un"}blocked upwind`);
@@ -433,6 +477,8 @@ export function openCampWithForestNear(world: World, home: number, withinCells =
   };
   for (const id of regionsOutward(world, home, 600)) {
     const camp = regionAt(world, id).campCell;
+    // An all-water region has no camp, and so no open camp either.
+    if (camp === null) continue;
     const terrain = terrainAt(camp);
     if (!passable(terrain) || FOREST.includes(terrain)) continue;
     const forestCells = forestRing(camp);
@@ -514,7 +560,7 @@ export function shoreCampWithDryForest(world: World, home: number, accept: (regi
   const wet = (cell: number) => streamAt(world, cell) || neighbours(world, cell).some((n) => streamAt(world, n) || waterKindOf(world, n) !== null);
   return regionNear(world, home, (id) => {
     const region = regionAt(world, id);
-    if (!wet(region.campCell) || !accept(id)) return false;
+    if (!wet(region.campCell!) || !accept(id)) return false;
     const forest = region.spots.find((s) => s.id === "forest");
     return forest !== undefined && !wet(forest.cell);
   });
@@ -530,9 +576,20 @@ export function shoreCampWithDryForest(world: World, home: number, accept: (regi
 export function forestCampOnWater(world: World, home: number): number {
   const id = regionNear(world, home, (r) => {
     const camp = regionAt(world, r).campCell;
-    return FOREST.includes(cellAt(world, camp).terrain) && neighbours(world, camp).some((n) => waterKindOf(world, n) !== null);
+    return camp !== null && FOREST.includes(cellAt(world, camp).terrain) && neighbours(world, camp).some((n) => waterKindOf(world, n) !== null);
   });
-  return regionAt(world, id).campCell;
+  return regionAt(world, id).campCell!;
+}
+
+/**
+ * The first neighbouring region that holds land. A coast's neighbours include
+ * regions that are nothing but sea, and a region of sea names no camp and no
+ * spot, so a case about somewhere else to be must ask for ground.
+ */
+export function landNeighbour(world: World, home: number): number {
+  const id = regionAt(world, home).neighbours.map((n) => n.id).find((n) => regionAt(world, n).campCell !== null);
+  if (id === undefined) throw new Error(`every region beside ${home} is open water`);
+  return id;
 }
 
 /** The nearest region to `home`, itself included, that satisfies a rule. */

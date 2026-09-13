@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calendar, LATITUDE_DEG } from "../src/sim/calendar";
+import { PATCH_M } from "../src/world/spatial";
 import { CAMP_FIRE_LUX, DARK_LUX, illuminance, lightWord, moonAltitude, skyLux, sunAltitude, TORCH_LUX, lightFactor } from "../src/sim/light";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
@@ -83,7 +84,10 @@ describe("flame", () => {
     const cal = calendar(state.minute, state.startDoy);
     st.fire.lit = true;
     expect(illuminance(state, world, cal, st.campCell!)).toBeGreaterThan(CAMP_FIRE_LUX * 0.9);
+    // The next patch is 50 m away: inverse square puts 0.016 lux there, which
+    // is nothing to work by, and the fire is credited to its own patch only.
     expect(illuminance(state, world, cal, st.campCell! + 1)).toBeLessThan(1);
+    expect(CAMP_FIRE_LUX * (1.4 / PATCH_M) ** 2).toBeLessThan(0.02);
   });
 
   it("goes where the torch goes", () => {

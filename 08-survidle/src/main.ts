@@ -20,16 +20,18 @@ import { log } from "./sim/log";
 import { startIntent, type Where } from "./sim/intent";
 import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
-import { isKnown } from "./sim/mapped";
+import { isKnown, knowledgeGen, markKnown } from "./sim/mapped";
+import { patchId, patchXY } from "./world/spatial";
 import { frontierRoute } from "./sim/routing";
 import { newWorld } from "./sim/newgame";
 import { moveOrderByHand, pinOrderByHand, removeOrderByHand } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
-import { campCellOf, cellOf } from "./sim/position";
+import { campCellOf, cellOf, placeAtPatch } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
-import { awaySeconds, catchUp, clearSave, knowLoadedGround, loadGame, saveGame } from "./sim/save";
+import { awaySeconds, catchUp, clearSave, knowLoadedGround, loadGame, SAVE_KEY, saveGame } from "./sim/save";
 import { recordOpportunityEvent } from "./sim/opportunities";
+import { canPersist, inspectSave } from "./sim/world-version";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, OpportunityEvent, OpportunityKey, TaskId } from "./sim/types";
@@ -47,12 +49,12 @@ import { opportunityPanelHtml } from "./ui/opportunity-panel";
 import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, mapViewportBounds, viewOrigin } from "./ui/map";
+import { levelAt, LEVELS, legendHtml, mapAggregateAtPoint, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, type TargetResolution, viewOrigin } from "./ui/map";
 import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
-  manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
+  manualHtml, oldWorldHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, simulationPaused, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
@@ -64,6 +66,8 @@ import { shoppingHtml, shoppingQuery } from "./ui/shopping";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
 import { hideLoading, showLoading } from "./ui/loading";
 import { recognitionHtml } from "./ui/wildlife-panel";
+import { type WorldCacheStats, worldCacheStats } from "./world/aggregate";
+import { bindGround } from "./world/cells";
 import { regionAt, type World } from "./world/gen";
 import { loadWorld } from "./world/worldloader";
 
@@ -105,6 +109,8 @@ let sinkMade = beaconConfigured && beaconRec.on;
 let sink: Sink | null = sinkMade ? makeSink() : null;
 const beacon = createBeacon(localStorage, sink, beaconRec);
 let wasDead = false;
+/** Set when boot() finds a save from before the fine lattice; cleared the moment fresh() builds a real world. */
+let oldWorldSave = false;
 
 // Assigned by boot()/fresh() before anything reads it; the assertion is for TS,
 // which cannot see the assignment through the function call.
@@ -114,6 +120,7 @@ let world!: World;
 let startleRestore: (() => void) | null = null;
 let startleStep: (() => void) | null = null;
 function persistGame(): void {
+  if (!canPersist(oldWorldSave)) return;
   if (!(import.meta.env.DEV && startleRestore)) saveGame(state);
 }
 const ui = newUiState();
@@ -154,8 +161,16 @@ let tellForecaster: ((w: World) => void) | null = null;
 // frame does nothing, and a second click cannot start a second solve.
 let solving = false;
 
-/** A new run: the world is solved behind the bar first, so nothing starts on a world that is not there yet. */
-async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0): Promise<void> {
+/**
+ * A new run: the world is solved behind the bar first, so nothing starts on a
+ * world that is not there yet.
+ *
+ * `persist` is false only for the world boot() builds under an old-world
+ * message: that world exists so the page has something to render behind the
+ * overlay, and saving it here would silently overwrite the very save the
+ * message is about, before the player has chosen to discard it.
+ */
+async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0, persist = true): Promise<void> {
   if (solving) return;
   solving = true;
   // The finally is what makes the flag and the bar safe to hold: a solve that
@@ -182,13 +197,25 @@ async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: numbe
   ui.confirmCamp = false;
   resetPanels();
   resetForecastAt();
-  persistGame();
+  // Only a persisted fresh world is a real commit away from old-world: the
+  // one boot() builds to render behind the message (persist: false) must
+  // leave the flag - and the save on disk it is warning about - alone.
+  if (persist) {
+    oldWorldSave = false;
+    persistGame();
+  }
   awayDial?.refresh();
   tellForecaster?.(world);
 }
 
 async function boot() {
   ui.panes = loadPanes(localStorage);
+  const savedText = forcedSeed || startDoy !== undefined ? null : localStorage.getItem(SAVE_KEY);
+  if (savedText && inspectSave(savedText) === "old-world") {
+    oldWorldSave = true;
+    await fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy, 0, false);
+    return;
+  }
   let refusal = "";
   const saved = forcedSeed || startDoy !== undefined ? null : loadGame(localStorage, (reason) => { refusal = reason; });
   if (saved) {
@@ -203,6 +230,8 @@ async function boot() {
       hideLoading();
       solving = false;
     }
+    // Before anything reads terrain: the loaded run's clearings are part of it.
+    bindGround(world, state);
     fillPopulations(state, world);
     knowLoadedGround(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
@@ -225,6 +254,12 @@ async function boot() {
 }
 
 let lastTipKey = "";
+/**
+ * The block the pointer last resolved through, so the tooltip can say what
+ * else the glyph holds. Hover set from a Do row names a patch and no block,
+ * and clears this with it.
+ */
+let hoverTarget: MapTarget | null = null;
 let lastMapKey = "";
 let lastWeatherKey = "";
 /**
@@ -244,10 +279,10 @@ function renderTip(cal = calendar(state.minute, state.startDoy)) {
   const tip = document.getElementById("maptip")!;
   setHidden(tip, ui.hover === null);
   if (ui.hover !== null) {
-    const tk = tipKey(state, world, cal, ui.hover);
+    const tk = tipKey(state, world, cal, ui.hover, hoverTarget);
     if (tk !== lastTipKey) {
       lastTipKey = tk;
-      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay));
+      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay, hoverTarget));
     }
   }
 }
@@ -324,8 +359,11 @@ function render(nowMs = performance.now()) {
   if (cloudShadows && cloudShadows.checked !== ui.cloudShadows) cloudShadows.checked = ui.cloudShadows;
 
   const overlay = document.getElementById("overlay")!;
-  if (!ui.opportunityPresentation) ui.opportunityPresentation = nextOpportunityPresentation(state, ui);
-  if (ui.manual) {
+  if (!oldWorldSave && !ui.opportunityPresentation) ui.opportunityPresentation = nextOpportunityPresentation(state, ui);
+  if (oldWorldSave) {
+    setPanel("overlay", oldWorldHtml());
+    overlay.hidden = false;
+  } else if (ui.manual) {
     setPanel("overlay", manualHtml());
     setHidden(overlay, false);
   } else if (ui.cemetery) {
@@ -617,6 +655,15 @@ function onClick(ev: Event) {
       clearSave();
       void fresh();
       ui.settings = false;
+      lastReal = performance.now();
+      render();
+      return;
+    // The old-world message is its own confirmation - it already named the
+    // incompatible save - so this skips reset-world's generic confirm()
+    // rather than asking the same question twice.
+    case "old-world-new":
+      clearSave();
+      fresh();
       lastReal = performance.now();
       render();
       return;
@@ -965,39 +1012,68 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const x = cell % world.w;
     const y = Math.floor(cell / world.w);
-    const gx = Math.floor((x - x0) / l.cells);
-    const gy = Math.floor((y - y0) / l.cells);
+    const gx = Math.floor((x - x0) / l.finePerGlyph);
+    const gy = Math.floor((y - y0) / l.finePerGlyph);
     if (gx < 0 || gy < 0 || gx >= l.w || gy >= l.h) return;
     const glyph = document.querySelector<HTMLElement>("#mapdyn .grid")?.children.item(gy * l.w + gx);
     if (!(glyph instanceof HTMLElement) || !glyph.classList.contains("c")) return;
     glyph.classList.add("target");
     targetGlyph = glyph;
   };
-  const cellUnder = (ev: { clientX: number; clientY: number }): number | null => {
+  const targetUnder = (ev: { clientX: number; clientY: number }, resolution: TargetResolution) => {
     const grid = board.querySelector<HTMLElement>(".grid");
-    return grid ? cellFromClient(world, state, ui, ev.clientX, ev.clientY, grid.getBoundingClientRect()) : null;
+    if (!grid) return null;
+    const rect = grid.getBoundingClientRect();
+    return mapTargetAtClient(world, state, ui, ev.clientX, ev.clientY, rect, calendar(state.minute, state.startDoy), resolution);
   };
+  // A pointer crossing the board fires per pixel and a block is the same
+  // block for a glyph's width of them, so the work is done once per block
+  // entered. Knowledge moves what a block resolves to, so its stamp is part
+  // of what "the same block" means.
+  let hoverBlock = "";
   board.addEventListener("pointermove", (ev) => {
-    const cell = cellUnder(ev);
-    if (cell === ui.hover) return;
-    ui.hover = cell;
+    const grid = board.querySelector<HTMLElement>(".grid");
+    const rect = grid?.getBoundingClientRect();
+    const box = rect ? mapAggregateAtPoint(world, state, ui, ev.clientX - rect.left, ev.clientY - rect.top) : null;
+    const block = box ? `${box.x0}:${box.y0}:${box.size}:${knowledgeGen()}` : "";
+    if (block === hoverBlock && hoverTarget) return;
+    hoverBlock = block;
+    hoverTarget = targetUnder(ev, "geometric");
+    ui.hover = hoverTarget?.patch ?? null;
     renderTip();
   });
   board.addEventListener("pointerdown", (ev) => {
     pointerType = ev.pointerType;
   });
   board.addEventListener("click", (ev) => {
-    // Touch keeps its first tap for inspecting the cell. A mouse click on
+    // Touch keeps its first tap for inspecting the ground. A mouse click on
     // known ground in this region is an explicit destination in its own
-    // right, whether or not generation happened to name that cell a place.
-    const cell = cellUnder(ev);
+    // right, whether or not generation happened to name that patch a place.
+    //
+    // A glyph at the block rungs stands for up to a few thousand patches, so
+    // the exact patch it resolves to is shown first and the click after it -
+    // on the same resolved patch - is what gives the order. At 50 m a glyph
+    // is the patch and there is nothing to disclose, so one click walks.
+    const target = targetUnder(ev, "routed");
+    const cell = target?.patch ?? null;
     if (cell === null || cell === cellOf(state, world)) return;
+    const disclosing = target!.aggregate.size > 1 && ui.destination !== cell;
     if (pointerType === "touch" && touchCell !== cell) {
       touchCell = cell;
+      hoverTarget = target;
+      ui.hover = cell;
+      ui.destination = cell;
+      render();
+      return;
+    }
+    if (disclosing) {
+      ui.destination = cell;
+      hoverTarget = target;
       ui.hover = cell;
       render();
       return;
     }
+    ui.destination = cell;
     const cal = calendar(state.minute, state.startDoy);
     const frontier = !isKnown(state, cell)
       ? frontierRoute(state, world, cellOf(state, world), cell, "none")
@@ -1013,11 +1089,13 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
   });
   board.addEventListener("pointerleave", (ev) => {
     if (ev.pointerType === "touch") return;
+    hoverTarget = null;
     ui.hover = null;
     renderTip();
   });
   board.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
+      hoverTarget = null;
       ui.hover = null;
       board.querySelector<HTMLElement>(".grid")?.focus();
       render();
@@ -1040,7 +1118,12 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     if (!next) return;
     ev.preventDefault();
     next.focus();
-    ui.hover = Number(next.dataset.mapCell);
+    // The arrow keys land on a glyph, and a glyph at the block rungs is not
+    // a patch. Resolve it through its own middle so the keyboard reads out
+    // the patch a click on it would walk to.
+    const level = levelAt(ui.zoom);
+    hoverTarget = mapTargetAtPoint(world, state, ui, (x + 0.5) * level.px, (y + 0.5) * level.line, calendar(state.minute, state.startDoy));
+    ui.hover = hoverTarget?.patch ?? Number(next.dataset.mapCell);
     render();
   });
 
@@ -1053,6 +1136,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     if (!row) return;
     const cell = Number(row.dataset.at);
     if (Number.isFinite(cell)) {
+      hoverTarget = null;
       ui.hover = cell;
       showTarget(cell);
       renderTip();
@@ -1062,6 +1146,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     const from = (ev.target as HTMLElement | null)?.closest?.("[data-at]");
     const to = (ev.relatedTarget as HTMLElement | null)?.closest?.("[data-at]");
     if (from && !to && ev.pointerType !== "touch") {
+      hoverTarget = null;
       ui.hover = null;
       clearTarget();
       renderTip();
@@ -1076,12 +1161,15 @@ requestAnimationFrame(frame);
 declare global {
   interface Window { survidle: {
     get state(): GameState; get world(): World; advance(minutes: number): void; speed: number;
+    cacheStats(): WorldCacheStats;
     weatherShot: null | { name: WeatherShotName; visibleCells: number };
     startleSetup?(scenario: import("../scripts/startle-seeds").StartleScenario): Promise<void>;
     startleStep?(): void;
     startleAdvance?(minutes: number): void;
     startleEnd?(): void;
     opportunityEvent?(event: OpportunityEvent): void;
+    placeAtPatch?(patch: number): void;
+    reveal?(patch: number, radiusPatches: number): void;
   } }
 }
 window.survidle = {
@@ -1089,6 +1177,9 @@ window.survidle = {
   get world() { return world; },
   advance(minutes: number) { advance(state, world, minutes); render(); },
   speed,
+  // A reading of how much fine ground the run has had to build. It counts
+  // caches; it never fills or clears one, so asking does not change the run.
+  cacheStats() { return worldCacheStats(world); },
   weatherShot: weatherShot ? { name: weatherShotName!, visibleCells: weatherShot.visible.size } : null,
 };
 if (import.meta.env.DEV) {
@@ -1127,6 +1218,24 @@ if (import.meta.env.DEV) {
   // uses, so discovery, credit and the notice queue behave as they do in play.
   window.survidle.opportunityEvent = (event) => {
     recordOpportunityEvent(state, event, world);
+    render();
+  };
+  // Standing somewhere the run has not walked to, and reading ground the
+  // survivor has not seen: what a browser check of distant terrain needs. Both
+  // go through the sim's own doors - the placement runs the ordinary region
+  // change and viewshed, the reveal is the same mark the sight pass makes.
+  window.survidle.placeAtPatch = (patch) => {
+    placeAtPatch(state, world, patch);
+    render();
+  };
+  window.survidle.reveal = (patch, radiusPatches) => {
+    const { x, y } = patchXY(patch);
+    for (let dy = -radiusPatches; dy <= radiusPatches; dy++) {
+      for (let dx = -radiusPatches; dx <= radiusPatches; dx++) {
+        if (x + dx < 0 || y + dy < 0 || x + dx >= world.w || y + dy >= world.h) continue;
+        markKnown(state, patchId(x + dx, y + dy));
+      }
+    }
     render();
   };
 }

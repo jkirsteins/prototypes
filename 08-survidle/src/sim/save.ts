@@ -16,10 +16,12 @@ import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
 import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type Species, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
 import { emptyWildlife } from "./wildlife-agents";
+import { decodeKnowledge, encodeKnowledge, type KnowledgeChunks, newKnowledge, setKnowledge } from "./fineknowledge";
 import { migrateWeather } from "./weather";
 import { DISTURBANCE_PROFILES } from "./species";
 import { precipitationStormKind } from "./weather";
 import { metricPointForStoredCell } from "./wildlife-space";
+import { inspectSave, SAVE_VERSION, WORLD_VERSION } from "./world-version";
 
 export const SAVE_KEY = "survidle.save";
 
@@ -28,34 +30,59 @@ export function awaySeconds(state: GameState): number {
   return state.awayHours * 3600;
 }
 
-export interface SaveFile { version: 10; savedAt: number; state: GameState }
+export interface SaveFile { version: typeof SAVE_VERSION; worldVersion: typeof WORLD_VERSION; savedAt: number; state: GameState }
 
 /** A save written for a world this build can no longer make, with the sentence to show for it. */
 export interface RefusedSave { refused: string }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  // Keep the output boundary one-way even if a caller still holds old JSON.
-  const current = { ...state };
-  delete (current as unknown as Record<string, unknown>)["goals"];
-  const file: SaveFile = { version: 10, savedAt: now, state: current };
-  return JSON.stringify(file);
+  // Knowledge is chunked typed arrays, which JSON cannot carry: it goes out
+  // as its own compact string and comes back through migrate.
+  const carried = { ...state, knowledge: encodeKnowledge(state.knowledge) };
+  delete (carried as unknown as Record<string, unknown>)["goals"];
+  return JSON.stringify({ version: SAVE_VERSION, worldVersion: WORLD_VERSION, savedAt: now, state: carried });
+}
+
+/** A save's knowledge field as it may arrive: encoded, a cell-keyed record from before the lattice, or absent. */
+interface LegacyKnowledge {
+  knowledge?: KnowledgeChunks | string;
+  mapped?: Record<number, 1 | 3>;
+}
+
+function loadKnowledge(state: LegacyKnowledge): KnowledgeChunks {
+  const carried = state.knowledge;
+  if (typeof carried === "string") return decodeKnowledge(carried);
+  // A structured clone rather than an encoded string, and possibly written
+  // before there was far country: the fine chunks are its own, the coarse map
+  // is simply empty.
+  if (carried && carried.chunks instanceof Map) {
+    if (!(carried.coarse instanceof Map)) carried.coarse = new Map();
+    return carried;
+  }
+  const knowledge = newKnowledge();
+  // A save written while knowledge was a property per cell: the same ground,
+  // dim where the journal held it. Ground nobody had is simply absent.
+  for (const [cell, level] of Object.entries(state.mapped ?? {})) {
+    setKnowledge(knowledge, Number(cell), level === 3 ? "inherited" : "seen");
+  }
+  delete state.mapped;
+  return knowledge;
 }
 
 /**
- * A save carries no world, only its seed, so a save whose seed means a
- * different map cannot be loaded into this one: the run would stand on
- * ground that is not the ground it was saved on. Such a save is refused
- * with its reason rather than read.
+ * A save carries no world, only its seed, and nothing migrates across a
+ * world-version boundary: the patch ids of a save written on another terrain
+ * model mean nothing on this one. Such a save is refused with its reason
+ * rather than read.
  */
 export function deserialize(text: string): SaveFile | RefusedSave | null {
+  const compatibility = inspectSave(text);
+  if (compatibility === "invalid") return null;
+  if (compatibility === "old-world") return { refused: "This save is from a world made by an older map and cannot be loaded; a new world begins." };
   try {
-    const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
-    if (typeof file?.version !== "number" || !file.state || typeof file.savedAt !== "number") return null;
-    if (file.version < 10) return { refused: "This save is from a world made by an older map and cannot be loaded; a new world begins." };
-    if (file.version !== 10) return null;
-    migrate(file.state, file.version);
-    file.version = 10;
-    return file as unknown as SaveFile;
+    const file = JSON.parse(text) as SaveFile;
+    migrate(file.state);
+    return file;
   } catch {
     return null;
   }
@@ -66,18 +93,20 @@ export function deserialize(text: string): SaveFile | RefusedSave | null {
  * run in progress survives a new structure the same way it survives a new
  * region: by not having it yet.
  */
-export function migrate(state: GameState, version = 10): void {
+export function migrate(state: GameState): void {
   state.startDoy ??= START_DOY;
+  state.knowledge = loadKnowledge(state as unknown as LegacyKnowledge);
   migrateWeather(state);
   state.awayHours ??= AWAY_HOURS_DEFAULT;
-  // Nothing under version 10 reaches here any more, so this reads as a plain
-  // default; it is kept as the shape the next version bump copies.
-  state.advanceCarry = version < 9 ? 0 : (state.advanceCarry ?? 0);
+  state.advanceCarry ??= 0;
   state.skills ??= newSkills();
   // A skill added since the save was written is the harder half of the same
   // problem: the record is there, so the line above sees nothing missing, and
   // the hole is one key down. Every id gets its own default, not just the whole.
   for (const id of SKILL_IDS) state.skills[id] ??= { xp: 0, mastery: {}, pool: 0 };
+  // A save written before ground could change carries no clearings, which is
+  // exactly an empty record: the shape is additive, so no version bump.
+  state.groundChanges ??= {};
   state.intent ??= null;
   state.ledger ??= [];
   state.year ??= 1;
@@ -161,6 +190,11 @@ export function migrate(state: GameState, version = 10): void {
     // took out of nine hectares a cell is inside a season's regrowth anyway.
     delete (st as unknown as Record<string, unknown>).roots;
     st.rootCells ??= {};
+    // A save from before the wood stock was the ground's carries one number for
+    // the whole region. There is no patch it belongs to, so the region opens
+    // uncut and grows from there rather than stranding a figure nothing reads.
+    st.woodCells ??= {};
+    delete (st as unknown as { wood?: number }).wood;
     st.sapTaps ??= { day: 0, n: 0 };
   }
   for (const d of state.ledger) {

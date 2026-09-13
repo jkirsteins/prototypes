@@ -2,11 +2,13 @@ import type { Calendar } from "./calendar";
 import { absence, regionDensity } from "./animals";
 import { body } from "./person";
 import { hasTool, produce } from "./inventory";
+import { isKnown } from "./mapped";
 import { campCellOf, cellOf, forestCell, heathCell, kmBetween, rockCell, straightKm, watersideCell } from "./position";
 import { skillLevel, oddsFactor } from "./skills";
 import { anAnimal, huntedLand, SPECIES_DEFS, type Species } from "./species";
 import type { Carcass, CarcassYields, GameState, HuntSign } from "./types";
-import { cellAt, regionAt, type World } from "../world/gen";
+import { cellAt, regionAt, type RegionDef, type World } from "../world/gen";
+import { parentKey, parentXY, patchXY } from "../world/spatial";
 import { iceAt, localWeather } from "./weather";
 import { noteHuntSpoiledKcal } from "./hunt-audit";
 import { FOODS } from "./items";
@@ -183,7 +185,8 @@ export function huntAbsenceEvidenceNeeded(state: GameState): number {
 }
 
 /**
- * The sign table grouped by the region each signed cell lies in.
+ * The sign table grouped by the region each signed cell lies in, with the
+ * cells that carry a sign listed alongside.
  *
  * The latest sign of a species and the failures recorded against it are facts
  * about a region, not about a cell, but the chooser asks for them once per
@@ -192,6 +195,10 @@ export function huntAbsenceEvidenceNeeded(state: GameState): number {
  * per species, and the table only grows - so one decision grew dearer all
  * run, and the Ahead forecast and the catch-up on return paid it again.
  *
+ * The chooser's candidate set wants the signed cells themselves, and reading
+ * them off the same grouping saves probing the table once per cell of the
+ * region, of which there are far more than there are signs.
+ *
  * The grouping is built on the first ask and kept until a sign is written.
  * Within a region the failures keep the table's own order, so the evidence
  * below sums in the order it summed when it was read off the table.
@@ -199,9 +206,10 @@ export function huntAbsenceEvidenceNeeded(state: GameState): number {
 interface RegionSigns {
   latest: Partial<Record<Species, number>>;
   failures: Partial<Record<Species, { at: number; count: number }[]>>;
+  cells: number[];
 }
 
-const NO_REGION_SIGNS: RegionSigns = { latest: {}, failures: {} };
+const NO_REGION_SIGNS: RegionSigns = { latest: {}, failures: {}, cells: [] };
 
 let signIndex = new Map<number, RegionSigns>();
 let signIndexOf: Record<number, HuntSign> | null = null;
@@ -220,9 +228,10 @@ function regionSigns(state: GameState, world: World, region: number): RegionSign
       const at = cellAt(world, Number(key)).region;
       let entry = signIndex.get(at);
       if (!entry) {
-        entry = { latest: {}, failures: {} };
+        entry = { latest: {}, failures: {}, cells: [] };
         signIndex.set(at, entry);
       }
+      entry.cells.push(Number(key));
       for (const [name, seenAt] of Object.entries(sign.species) as [Species, number | undefined][]) {
         if (seenAt === undefined) continue;
         const latest = entry.latest[name];
@@ -439,6 +448,43 @@ export function huntEstimate(state: GameState, world: World, cal: Calendar, cell
   return { kgPerHour, confidence, species };
 }
 
+/** Deterministic scouting set: exact local evidence and named places plus
+ * the nearest known passable patch of each terrain in each 6x6 parent.
+ * This preserves local facts without exhaustively routing every fine patch. */
+export function huntCandidates(state: GameState, world: World, regions: readonly RegionDef[]): number[] {
+  const here = cellOf(state, world);
+  const chosen = new Set<number>([here]);
+  const nearest = new Map<string, { cell: number; distance: number }>();
+  const { x: hx, y: hy } = patchXY(here);
+  for (const region of regions) {
+    for (const spot of region.spots) chosen.add(spot.cell);
+    // The signed cells come from the table grouped by region rather than from
+    // a probe of every cell in it: a region holds far more patches than a
+    // survivor has ever left a sign in.
+    for (const cell of regionSigns(state, world, region.id).cells) {
+      const sign = state.player.huntSigns[cell];
+      if (!sign) continue;
+      if (Object.values(sign.species).some(at => at !== undefined && state.minute - at < HUNT_SIGN_DAYS * 1440)
+        || Object.keys(sign.failures ?? {}).length > 0) chosen.add(cell);
+    }
+    for (const cell of region.cells) {
+      if (state.huntPressure[cell] !== undefined) chosen.add(cell);
+      if (!isKnown(state, cell)) continue;
+      const ground = cellAt(world, cell);
+      if (ground.terrain === "water") continue;
+      const parent = parentXY(cell);
+      const key = `${parentKey(parent.x, parent.y)}:${ground.terrain}`;
+      const distance = (ground.x - hx) ** 2 + (ground.y - hy) ** 2;
+      const previous = nearest.get(key);
+      if (!previous || distance < previous.distance || (distance === previous.distance && cell < previous.cell)) {
+        nearest.set(key, { cell, distance });
+      }
+    }
+  }
+  for (const { cell } of nearest.values()) chosen.add(cell);
+  return [...chosen].sort((a, b) => a - b);
+}
+
 /**
  * Whether this hunter has anything worth hunting at a cell. The walk only
  * scales how good the ground is, never whether it is worth anything at all -
@@ -484,7 +530,7 @@ export function bestHuntCell(state: GameState, world: World, cal: Calendar): num
   const regions = skillLevel(state, "hunting") >= 8 && (hasLocalFailures || hasLocalPressure)
     ? [r, ...r.neighbours.map((neighbour) => regionAt(world, neighbour.id))]
     : [r];
-  // A route to every mapped cell of a region costs far more than the choice
+  // A route to every candidate costs far more than the choice
   // between them is worth, and a cell across water costs most of all: A*
   // expands its whole box before it can say there is no way there. So the
   // ground that is cut off is found in one flood, and the rest is sifted on
@@ -498,8 +544,8 @@ export function bestHuntCell(state: GameState, world: World, cal: Calendar): num
   const reachable = reachableFrom(state, world, here, "none");
   const camp = campCellOf(state, world);
   const skill = Math.min(1, (skillLevel(state, "hunting") - 1) / 19);
-  const shortlist = rankHuntChoices(regions.flatMap((region) => region.cells)
-    .filter((cell) => state.mapped[cell] !== undefined && reachable.has(cell))
+  const shortlist = rankHuntChoices(huntCandidates(state, world, regions)
+    .filter((cell) => isKnown(state, cell) && reachable.has(cell))
     .map((cell) => {
       const km = straightKm(world, here, cell);
       const travel = { toCell: km, toCamp: camp === null ? 0 : straightKm(world, cell, camp) };

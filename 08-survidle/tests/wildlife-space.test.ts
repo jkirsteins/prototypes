@@ -42,7 +42,7 @@ describe("wildlife metric space", () => {
   it("rejects non-finite geometry at the spatial boundary", () => {
     const { state, world } = newGame(1);
     const assertion = vi.spyOn(console, "assert").mockImplementation(() => undefined);
-    state.player.x = Number.NaN;
+    state.player.xM = Number.NaN;
 
     expect(metricPointForPlayer(state, world)).toBeNull();
     expect(metricAreaForCell(world, Number.NaN)).toBeNull();

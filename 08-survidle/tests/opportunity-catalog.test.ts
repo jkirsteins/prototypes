@@ -141,7 +141,7 @@ it("migrates old aggregate trap catches without inventing species credit", () =>
   const { state } = newGame(3);
   const region = state.regions[state.player.region];
   region.trap = { cell: region.campCell!, kg: 1, oilyKg: 0, fish: ["perch"], age: 0 };
-  migrate(state, 10);
+  migrate(state);
   expect(region.trap.caught).toEqual([]);
   expect(state.opportunities.completedAt["trap:perch"]).toBeUndefined();
 });

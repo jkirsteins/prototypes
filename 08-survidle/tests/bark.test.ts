@@ -7,6 +7,8 @@ import { BARK_FRESH_KG_PER_HOUR, BARK_TREE_SHARE, FOODS, GUT } from "../src/sim/
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
+import { setWoodPatchLeft, woodPatchFull, woodPatchLeft } from "../src/sim/stocks";
+import { CLEARING_SHARE } from "../src/world/groundchange";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { cellAt, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
@@ -32,11 +34,11 @@ describe("pine inner bark", () => {
     const cal = calendar(0, 130);
     const o = check(state, world, cal, "innerBark");
     expect(o.ok).toBe(true);
-    const wood = st.wood;
+    const wood = woodPatchLeft(st, world, pine);
     startTask(state, world, cal, "innerBark");
     for (let m = 0; m < 60 && state.task; m++) stepTask(state, world, cal, new Rng(m), 1);
     expect(qty(state.player.pack, "freshBark")).toBeCloseTo(BARK_FRESH_KG_PER_HOUR, 6);
-    expect(wood - st.wood).toBeCloseTo(BARK_FRESH_KG_PER_HOUR * BARK_TREE_SHARE, 6);
+    expect(wood - woodPatchLeft(st, world, pine)).toBeCloseTo(BARK_FRESH_KG_PER_HOUR * BARK_TREE_SHARE, 6);
     placeAt(state, world, st.campCell!);
     siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
@@ -52,7 +54,7 @@ describe("pine inner bark", () => {
     expect(qty(state.player.pack, "barkFlour") + qty(pile(state, st.campCell!), "barkFlour")).toBeCloseTo(1, 1);
   });
 
-  it("stripping outside spring is half as fast and a stand can be stripped out", () => {
+  it("stripping outside spring is half as fast and a stand stripped past the clearing share is no longer pine", () => {
     const { state, world } = newGame(17, 250);
     siteCamp(state, world);
     const region = state.player.region;
@@ -65,7 +67,9 @@ describe("pine inner bark", () => {
     startTask(state, world, cal, "innerBark");
     for (let m = 0; m < 60 && state.task; m++) stepTask(state, world, cal, new Rng(m), 1);
     expect(qty(state.player.pack, "freshBark")).toBeCloseTo(BARK_FRESH_KG_PER_HOUR / 2, 6);
-    st.wood = 0.5;
-    expect(check(state, world, cal, "innerBark").why).toBe("the pines are stripped");
+    // Stripping past the clearing share is what ends the work now: the ground
+    // succeeds to a clearing, and a clearing is not pine forest to stand in.
+    setWoodPatchLeft(st, world, pine, woodPatchFull(world, pine) * CLEARING_SHARE);
+    expect(check(state, world, cal, "innerBark").why).toBe("stand in pine forest");
   });
 });

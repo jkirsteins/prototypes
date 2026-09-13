@@ -6,7 +6,7 @@
 import { generateWorld, type World } from "./gen";
 import { type SolveProgress, STAGES } from "./solve";
 import type { SolveMessage } from "./solve.worker";
-import { WORLD_H, WORLD_W } from "./terrain";
+import { WORLD_CELL_H, WORLD_CELL_W } from "./terrain";
 import { readSolved, worldKey, writeSolved } from "./worldstore";
 
 export async function loadWorld(seed: number, onProgress: SolveProgress = () => {}): Promise<World> {
@@ -15,7 +15,7 @@ export async function loadWorld(seed: number, onProgress: SolveProgress = () => 
     onProgress("reading the ground", 0);
     return generateWorld(seed);
   }
-  const key = worldKey(seed, WORLD_W, WORLD_H);
+  const key = worldKey(seed, WORLD_CELL_W, WORLD_CELL_H);
   const cached = await readSolved(key);
   if (cached) {
     onProgress("reading the ground", 1);
@@ -58,6 +58,6 @@ export async function loadWorld(seed: number, onProgress: SolveProgress = () => 
     // The bar is up before the worker's first word, so nothing is clickable
     // underneath while the solve starts.
     onProgress(STAGES[0], 0);
-    worker.postMessage({ seed, w: WORLD_W, h: WORLD_H });
+    worker.postMessage({ seed });
   });
 }

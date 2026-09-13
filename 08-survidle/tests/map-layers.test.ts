@@ -2,9 +2,10 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
+import { newKnowledge } from "../src/sim/fineknowledge";
 import { mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
-import { cellCenter, cellOf, setRegion } from "../src/sim/position";
+import { cellOf, placeAt, setRegion } from "../src/sim/position";
 import { visibleCells } from "../src/sim/sight";
 import { ensureGround } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
@@ -12,6 +13,9 @@ import { activateWildlife } from "../src/sim/wildlife-agents";
 import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml, WATER_RIPPLES, waterRipplePeak, waterRipplePhases } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState } from "../src/ui/render";
 import { cellAt, neighbours, regionPeek } from "../src/world/gen";
+import { cellIdx, chunkIndexOf, residentChunk } from "../src/world/cells";
+import { CHANNEL_STREAM } from "../src/world/refine";
+import { FINE_PER_PARENT, patchXY } from "../src/world/spatial";
 import { passable } from "../src/world/route";
 import { css, rule } from "./css";
 import { neighbourLandCell } from "./siting-helpers";
@@ -21,6 +25,41 @@ import { testAtmosphere } from "./weather-helpers";
 afterEach(() => vi.restoreAllMocks());
 
 describe("the map's compositing layers", () => {
+  it("marks a brook where the channel runs, not across its whole parent", () => {
+    const { state, world } = newGame(79);
+    mapRegion(state, world, state.player.region);
+    const here = cellOf(state, world);
+    const { x, y } = patchXY(here);
+    const chunk = residentChunk(world, x, y)!;
+    // The brook is the chunk's own channel, so the case paints one: the patches
+    // of one 300 m parent, one with the channel through it and the rest dry.
+    chunk.fine.channel.fill(0);
+    const px0 = Math.floor(x / FINE_PER_PARENT) * FINE_PER_PARENT;
+    const py0 = Math.floor(y / FINE_PER_PARENT) * FINE_PER_PARENT;
+    const parent: number[] = [];
+    for (let fy = py0; fy < py0 + FINE_PER_PARENT; fy++) {
+      for (let fx = px0; fx < px0 + FINE_PER_PARENT; fx++) parent.push(cellIdx(world, fx, fy));
+    }
+    // A glyph already carrying the player or the camp draws no brook, so the
+    // channel goes on ground with nothing else on it.
+    const plain = parent.filter((cell) => cell !== here && cell !== state.regions[state.player.region]?.campCell);
+    const wet = plain[0];
+    chunk.fine.channel[chunkIndexOf(wet % world.w, Math.floor(wet / world.w))] = CHANNEL_STREAM;
+    const ui = newUiState();
+    // The closest rung: one glyph is one patch, which is the only rung that marks a brook.
+    ui.zoom = 0;
+    const map = document.createElement("div");
+    map.id = "mapdyn";
+    map.innerHTML = mapHtml(world, state, ui, calendar(state.minute, state.startDoy));
+    document.body.append(map);
+    try {
+      const marked = parent.filter((cell) => map.querySelector(`[data-map-cell="${cell}"]`)?.classList.contains("mk-stream"));
+      expect(marked).toEqual([wet]);
+    } finally {
+      map.remove();
+    }
+  });
+
   it("turns frozen water from liquid blue into distinct thin and safe ice surfaces", () => {
     const sheet = document.createElement("style");
     sheet.textContent = css;
@@ -191,7 +230,7 @@ describe("the map's compositing layers", () => {
     testAtmosphere({ fog: 0.2 });
     enqueueWildlifeStartle(ui, {
       id: "layer-startle", subjectId: 999,
-      source: { xM: state.player.x * 300, yM: state.player.y * 300 },
+      source: { xM: state.player.xM, yM: state.player.yM },
       bearingRad: 0, distanceM: 45, uncertaintyM: 0,
       perception: { kind: "heard", identification: "unknown", uncertaintyM: 0 },
       terrain: "spruce", body: "light", group: "group", logText: "Something crashes away.",
@@ -205,15 +244,16 @@ describe("the map's compositing layers", () => {
     document.body.append(map);
     try {
       const cue = map.querySelector(".wildlife-startle")!;
-      const player = map.querySelector(".mk-player")!;
-      const source = player.closest(".c")!;
+      // At the closest rung the survivor's glyph is the cell, so the filters
+      // and the dimming ride on the cell and its own signal, not on a mark
+      // nested inside it.
+      const source = map.querySelector(".mk-player")!;
+      const player = source.querySelector(".cell-signal")!;
       source.classList.add("tone-0", "dim");
       const z = (element: Element) => Number(getComputedStyle(element).zIndex);
-      expect(getComputedStyle(source).overflow).toBe("hidden");
       expect(getComputedStyle(source).filter).toBe("");
       expect(getComputedStyle(source).opacity).toBe("");
       expect(getComputedStyle(player).opacity).toBe("0.45");
-      expect(getComputedStyle(source.querySelector(".cell-weather")!).opacity).toBe("");
       expect(cue.parentElement).toBe(map.querySelector(".grid"));
       expect(z(cue)).toBeGreaterThan(z(player));
       expect(z(cue)).toBeGreaterThan(z(map.querySelector(".walk")!));
@@ -225,22 +265,30 @@ describe("the map's compositing layers", () => {
     }
   });
 
-  it("keeps detailed player and camp signals above routes without lifting ordinary animals", () => {
+  it("keeps player and camp signals above routes without lifting ordinary animals", () => {
     const sheet = document.createElement("style");
     sheet.textContent = css;
     document.head.append(sheet);
     const map = document.createElement("div");
     map.id = "mapdyn";
-    map.innerHTML = '<div class="scroll-x"><div class="grid detailed"><span class="c"><b class="micro-mark mk-player"></b><b class="micro-mark mk-camp"></b><b class="micro-mark mk-fire"></b><b class="micro-mark mk-coals"></b><b class="micro-mark mk-animal"></b></span><svg class="walk"></svg><i class="wildlife-startle"></i></div></div>';
+    // The three things you would know in the dark without looking sit above
+    // the walk line; a herd's glyph is ordinary ground and passes under it.
+    // The herd's exact mark at the closest rung is laid over the grid, so it
+    // rises with the rest of the signals.
+    map.innerHTML = '<div class="scroll-x"><div class="grid fine">'
+      + '<span class="c mk mk-player"></span><span class="c mk mk-camp"></span><span class="c mk mk-fire"></span>'
+      + '<span class="c mk mk-coals"></span><span class="c mk mk-animal"></span>'
+      + '<svg class="walk"></svg><b class="micro-mark wildlife-map-mark mk-animal"></b><i class="wildlife-startle"></i></div></div>';
     document.body.append(map);
     try {
       const z = (selector: string) => Number(getComputedStyle(map.querySelector(selector)!).zIndex);
       const route = z(".walk");
-      for (const signal of [".mk-player", ".mk-camp", ".mk-fire", ".mk-coals"]) {
+      for (const signal of [".c.mk-player", ".c.mk-camp", ".c.mk-fire", ".c.mk-coals"]) {
         expect(z(signal)).toBeGreaterThan(route);
         expect(z(signal)).toBeLessThan(z(".wildlife-startle"));
       }
-      expect(z(".mk-animal")).toBeLessThan(route);
+      expect(z(".c.mk-animal")).toBeLessThan(route);
+      expect(z(".micro-mark.mk-animal")).toBeGreaterThan(route);
     } finally {
       sheet.remove();
       map.remove();
@@ -271,21 +319,25 @@ describe("the map's compositing layers", () => {
     document.body.append(map);
     try {
       const route = Number(getComputedStyle(map.querySelector(".walk")!).zIndex);
-      for (const selector of [".mk-player", `.mk-${kind}`]) {
-        const cell = map.querySelector(selector)!.closest(".c")!;
-        // Exercise both snow filters on real map markup, independent of the
-        // generated cell's elevation rank within this particular viewport.
-        for (const [tone, filter] of [["tone-0", "brightness(0.82)"], ["tone-2", "brightness(1.18)"]]) {
-          cell.classList.remove("tone-0", "tone-2");
-          cell.classList.add(tone);
-          expect(getComputedStyle(cell).filter).toBe("");
-          expect(getComputedStyle(cell.querySelector(".terrain-visual")!).filter).toBe(filter);
-          expect(Number(getComputedStyle(cell).zIndex)).toBeGreaterThan(route);
-        }
+      // A glyph carrying one of the three essential marks rises above the
+      // walk line whatever the snow is doing to the ground around it.
+      for (const selector of [".c.mk-player", `.c.mk-${kind}`]) {
+        const cell = map.querySelector(selector)!;
+        expect(Number(getComputedStyle(cell).zIndex)).toBeGreaterThan(route);
+      }
+      // Exercise both snow filters on real map markup, on ground carrying no
+      // mark: a mark's glyph draws a letter and not the ground under it.
+      const terrainCell = [...map.querySelectorAll(".c:not(.fog):not(.void):not(.mk)")]
+        .find((cell) => cell.querySelector(".terrain-visual"))!;
+      terrainCell.classList.add("ground-snow");
+      for (const [tone, filter] of [["tone-0", "brightness(0.82)"], ["tone-2", "brightness(1.18)"]]) {
+        terrainCell.classList.remove("tone-0", "tone-2");
+        terrainCell.classList.add(tone);
+        expect(getComputedStyle(terrainCell).filter).toBe("");
+        expect(getComputedStyle(terrainCell.querySelector(".terrain-visual")!).filter).toBe(filter);
       }
       const animalMark = map.querySelector(`[data-wildlife-id="${animal.id}"]`)!;
       expect(Number(getComputedStyle(animalMark).zIndex)).toBeGreaterThan(route);
-      const terrainCell = [...map.querySelectorAll(".c:not(.fog):not(.void)")].find((cell) => !cell.querySelector(".micro-mark"))!;
       expect(Number(getComputedStyle(terrainCell).zIndex)).toBeLessThan(route);
     } finally {
       sheet.remove();
@@ -322,8 +374,8 @@ describe("the map's compositing layers", () => {
     const frames = css.match(/@keyframes water-ripple[\s\S]*?\n}/)?.[0] ?? "";
     expect(frames).toContain("0%, 100% { opacity: 0; }");
     expect(frames).toContain("50% { opacity: calc(var(--water-peak, 0.4) * var(--water-gain, 1)); }");
-    // At the close rungs a cell is a big block, and the same peak would wash out its detail glyphs.
-    expect(rule(".grid.detailed .c.water-live .water-ripple")).toContain("--water-gain: 0.5");
+    // At the closest rung a glyph is one patch in a big box, and the same peak reads as a wash there.
+    expect(rule(".grid.fine .c.water-live .water-ripple")).toContain("--water-gain: 0.5");
     expect(frames).not.toContain("background");
     expect(frames).not.toContain("transform");
     // Neighbours are near each other in phase: one drawn cell east moves each
@@ -355,13 +407,11 @@ describe("the map's compositing layers", () => {
     state.minute = summer;
     state.weather.elapsedMinutes = 0;
     const cell = y * world.w + x;
-    const center = cellCenter(world, cell);
-    state.player.x = center.x;
-    state.player.y = center.y;
+    placeAt(state, world, cell);
     setRegion(state, world, regionPeek(world, x, y));
     ensureGround(state, world, state.player.region);
     const cal = calendar(state.minute, state.startDoy);
-    state.mapped = {};
+    state.knowledge = newKnowledge();
     for (const seen of visibleCells(state, world, cal, cell)) markKnown(state, seen);
     const ui = newUiState();
     const first = mapHtml(world, state, ui, cal);

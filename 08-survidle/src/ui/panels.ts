@@ -41,7 +41,7 @@ import { campWaterCapacity, THIRSTY_L, WATER_FULL } from "../sim/water";
 import { atmosphereAt, forecastText, groundAt, iceMode, type LocalConditions, localStorm, localWeather, stormComing, stormNow } from "../sim/weather";
 import { fmtDaysAbout, fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { cellAt, regionAt, speciesHere, type World } from "../world/gen";
-import { routeKm } from "../world/route";
+import { remainingKm } from "../world/route";
 import { hurryKind, type HurryState } from "./hurry";
 import { esc, type UiState } from "./render";
 import { shoppingPlaceCueHtml } from "./shopping";
@@ -446,14 +446,16 @@ export function placesHtml(state: GameState, world: World, cal: Calendar, displa
  * ground the map is already drawing.
  */
 export function wayIntoHtml(state: GameState, world: World, cal: Calendar, region: number, offersOnly = false, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
-  const name = esc(regionAt(world, region).name);
+  const destination = regionAt(world, region);
+  if (destination.campCell === null) return "";
+  const name = esc(destination.name);
   // Where the region lies, so hovering the row can point at it on the map.
-  const at = ` data-at="${regionAt(world, region).campCell}"`;
+  const at = ` data-at="${destination.campCell}"`;
   if (knownShare(state, world, region) >= 1) {
     const go = check(state, world, cal, "travel", `region:${region}`);
     const ice = thinIceButton(state, world, cal, "travel", `region:${region}`, go);
     if (!go.ok && offersOnly) return "";
-    const km = kmBetween(state, world, cellOf(state, world), regionAt(world, region).campCell, "safe");
+    const km = kmBetween(state, world, cellOf(state, world), destination.campCell, "safe");
     const estimate = km === null ? fmtDuration(go.duration) : formatTravel(km, go.duration, display);
     return go.ok
       ? `<div class="way" data-way="${region}"${at}><button class="mini go" data-act="task" data-id="travel" data-arg="region:${region}">Go to ${name} <small>${esc(estimate)}</small></button>${ice}</div>`
@@ -481,7 +483,8 @@ export function travelHtml(state: GameState, world: World, cal: Calendar, displa
 function rosterEntry(state: GameState, world: World, id: number, s: Species, cal: Calendar): string {
   const def = SPECIES_DEFS[s];
   // The same predicate the hunt and fish rows use, so the card and the row cannot disagree.
-  const sampleCell = regionAt(world, id).campCell;
+  const region = regionAt(world, id);
+  const sampleCell = region.campCell ?? region.cells[0];
   const gone = absence(def, cal, localWeather(state, world, sampleCell).iceCm);
   if (gone) {
     if (!isVoiceOnly(s)) return `${def.name} ${gone}`;
@@ -667,7 +670,7 @@ const CARE_ROUTE_PURPOSE = {
 function walkingStep(state: GameState, world: World, cal: Calendar, suffix = ""): string {
   if (!state.route) return "walking";
   const manner = walkManner(state, world, cal);
-  return `${manner} ${routeKm(state.route.path).toFixed(1)} km${suffix}`;
+  return `${manner} ${remainingKm(state.route.path, state.player).toFixed(1)} km${suffix}`;
 }
 
 function activityStep(state: GameState, world: World, cal: Calendar): string {
@@ -979,6 +982,19 @@ export function landingHtml(state: GameState, world: World): string {
 <button class="act" data-act="land">Land</button>
 <button class="mini" data-act="next-boat" title="A week later, and the world runs on without you">wait for the next boat and three new people (${esc(fmtWorldDate(next))})</button>
 <button class="mini" data-act="manual-open">How to survive</button>
+</div>`;
+}
+
+/**
+ * Shown instead of a save from before the fine lattice: the only way off it
+ * is the new-world action. Its own text already asks the question reset-world's
+ * generic confirm() would ask again, so this button skips that dialog.
+ */
+export function oldWorldHtml(): string {
+  return `<div class="box">
+<h1>Old save</h1>
+<p>This saved world used the old 300 m terrain model. Start a new world to use the 50 m simulation.</p>
+<button class="act" data-act="old-world-new">Start a new world</button>
 </div>`;
 }
 

@@ -1,4 +1,5 @@
 import { cellAt, neighbours, waterKindOf, type World } from "../world/gen";
+import { knownPatches } from "./fineknowledge";
 import type { Calendar } from "./calendar";
 import { STRUCTURES, TOOLS, type FoodId } from "./items";
 import { SPECIES_DEFS, type Species } from "./species";
@@ -146,7 +147,7 @@ export function knownTrapOpportunityKeys(state: GameState): OpportunityKey[] {
 }
 
 export function knownForageOpportunityKeys(state: GameState, world: World, _cal: Calendar): OpportunityKey[] {
-  const known = Object.keys(state.mapped).map(Number);
+  const known = knownPatches(state.knowledge);
   const hasTerrain = (...terrain: string[]) => known.some((cell) => terrain.includes(cellAt(world, cell).terrain));
   const byWater = (kind: "any" | "sea") => known.some((cell) => neighbours(world, cell).some((next) => kind === "any" ? cellAt(world, next).terrain === "water" : waterKindOf(world, next) === kind));
   const available = new Set<FoodId>();

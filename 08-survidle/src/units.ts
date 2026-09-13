@@ -8,7 +8,9 @@ export const GAME_MINUTES_PER_REAL_SECOND = 1;
 export const AWAY_HOURS_DEFAULT = 8;
 export const AWAY_HOURS_MAX = 24;
 
+/** The solved world's cell, in km: the lattice the height, water and discharge arrays are on. Fine patches are PATCH_KM. */
 export const CELL_KM = 0.3;
+
 /** Real paths wander; straight-line distance times this. */
 export const PATH_FACTOR = 1.25;
 

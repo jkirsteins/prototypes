@@ -24,11 +24,14 @@ const once = (task: IntentRequest["task"], arg?: string): IntentRequest =>
 
 describe("a waiting row names its cause", () => {
   it("a row that could run but is not chosen relies on its visible rank", () => {
-    const { state, world } = newGame(1000010);
+    const { state, world } = newGame(17);
     siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     addOrder(state, world, { ...once("sticks"), until: { kind: "forever" } }, "grind");
-    addOrder(state, world, { ...once("stone"), until: { kind: "forever" } }, "grind");
+    // Dead wood, not stone: the ground a seed lands on decides what is there
+    // to gather, and a row that cannot run at all names its cause instead of
+    // leaning on its rank, which is the other case.
+    addOrder(state, world, { ...once("deadwood"), until: { kind: "forever" } }, "grind");
     const judged = judgeOrders(state, world, cal);
     // Indexes 0 and 1 are the care rows; the two real orders follow them.
     const [, , head, second] = ordersHere(state, world);

@@ -1,3 +1,5 @@
+import { encodeKnowledge, setKnowledge } from "../src/sim/fineknowledge";
+import { SAVE_VERSION } from "../src/sim/world-version";
 import { afterEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { activateWildlife, claimHuntableAnimal, dailyWildlife, emptyWildlife, evaluateWildlifeDisturbance, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
@@ -23,13 +25,12 @@ import { resolveCell } from "../src/sim/intent";
 import { setWildlifeEventSink } from "../src/sim/wildlife-events";
 import type { WildlifeStartleEvent } from "../src/sim/wildlife-encounter";
 import { metricAreaForCell, resolveSpatialEstimate } from "../src/sim/wildlife-space";
-import { CHUNK } from "../src/world/cells";
-import { paintWorld } from "./world-fixture";
+import { FINE_CHUNK } from "../src/world/cells";
+import { TERRAIN_INDEX } from "../src/world/terrain";
 import type { World } from "../src/world/gen";
 import type { Terrain } from "../src/sim/types";
-import { CELL_KM } from "../src/units";
+import { PATCH_M, patchId, patchXY } from "../src/world/spatial";
 
-const CELL_M = CELL_KM * 1000;
 
 afterEach(() => setWildlifeEventSink(null));
 
@@ -46,13 +47,21 @@ function disturbanceScene() {
   const startCell = regionAt(world, state.player.region).cells.find((cell) => passable(cellAt(world, cell).terrain)
     && neighbours(world, cell).length === 4
     && neighbours(world, cell).every((n) => cellAt(world, n).region === state.player.region && passable(cellAt(world, n).terrain)))!;
+  // A herd flees hundreds of metres, which is many 50 m patches. This seed
+  // puts a region boundary 150 m west of the start, so the scene states the
+  // ground the flight crosses: the same terrain, all of it this region's.
+  const { x, y } = patchXY(startCell);
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -6; dx <= 1; dx++) {
+    const patch = patchId(x + dx, y + dy);
+    setGround(world, patch, cellAt(world, patch).terrain, state.player.region);
+  }
   deer.active!.cell = startCell;
   const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, startCell)!)!;
   deer.active!.position = point;
   deer.active!.travel = null;
-  // The fixture puts the survivor one metre from this herd's stable coarse estimate.
-  state.player.x = (point.xM + 1) / CELL_M;
-  state.player.y = point.yM / CELL_M;
+  // The fixture puts the survivor one metre from this herd's stable estimated point.
+  state.player.xM = point.xM + 1;
+  state.player.yM = point.yM;
   state.minute = 1;
   state.wildlife.lastSpatialTick = 0;
   state.weather.precip = "none";
@@ -63,10 +72,10 @@ function disturbanceScene() {
 
 function setGround(world: World, cell: number, terrain: Terrain, region?: number): void {
   const { x, y } = cellAt(world, cell);
-  paintWorld(world, [cell], terrain);
-  if (region === undefined) return;
-  const chunk = world.chunks.get(Math.floor(y / CHUNK) * 4096 + Math.floor(x / CHUNK))!;
-  chunk.region[(y % CHUNK) * CHUNK + x % CHUNK] = region;
+  const chunk = world.fineChunks.get(Math.floor(y / FINE_CHUNK) * Math.ceil(world.w / FINE_CHUNK) + Math.floor(x / FINE_CHUNK))!;
+  const i = (y % FINE_CHUNK) * FINE_CHUNK + x % FINE_CHUNK;
+  chunk.terrain[i] = TERRAIN_INDEX[terrain];
+  if (region !== undefined) chunk.region[i] = region;
 }
 
 function hiddenDisturbanceScene() {
@@ -75,8 +84,8 @@ function hiddenDisturbanceScene() {
   const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, startCell)!)!;
   // This herd is near its cell's south edge. From the next cell at midnight
   // its departure is close enough to hear but its ground is out of sight.
-  state.player.x = point.xM / CELL_M;
-  state.player.y = Math.floor(point.yM / CELL_M) + 1.01;
+  state.player.xM = point.xM;
+  state.player.yM = point.yM + PATCH_M;
   setGround(world, cellOf(state, world), "spruce");
   state.minute = 960;
   const cal = calendar(state.minute, state.startDoy);
@@ -145,8 +154,8 @@ describe("immediate wildlife disturbance", () => {
     evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
     const escaped = deer.active!.cell;
     const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, escaped)!)!;
-    state.player.x = point.xM / CELL_M;
-    state.player.y = point.yM / CELL_M;
+    state.player.xM = point.xM;
+    state.player.yM = point.yM;
     state.minute = 2;
     evaluateWildlifeDisturbance(state, world, calendar(2), true, seesStartle);
     expect(deer.active!.lastDetectionMinute).toBe(2);
@@ -197,8 +206,8 @@ describe("immediate wildlife disturbance", () => {
     const { state, world, deer, startCell, cal } = hiddenDisturbanceScene();
     deer.name = "River Herd";
     state.wildlife.recognized[deer.id] = true;
-    delete state.mapped[startCell];
-    const before = JSON.stringify({ mapped: state.mapped, discovered: state.discovered, wildlife: {
+    setKnowledge(state.knowledge, startCell, "unknown");
+    const before = JSON.stringify({ mapped: encodeKnowledge(state.knowledge), discovered: state.discovered, wildlife: {
       visible: state.wildlife.visible, familiarity: state.wildlife.familiarity, lastKnownDay: deer.lastKnownDay,
     } });
     const events: WildlifeStartleEvent[] = [];
@@ -208,7 +217,7 @@ describe("immediate wildlife disturbance", () => {
     expect(events[0].perception.kind).toBe("heard");
     expect(state.opportunities.discoveredAt["track:deer"]).toBeUndefined();
     expect(events[0].logText).not.toContain("River");
-    expect(JSON.stringify({ mapped: state.mapped, discovered: state.discovered, wildlife: {
+    expect(JSON.stringify({ mapped: encodeKnowledge(state.knowledge), discovered: state.discovered, wildlife: {
       visible: state.wildlife.visible, familiarity: state.wildlife.familiarity, lastKnownDay: deer.lastKnownDay,
     } })).toBe(before);
   });
@@ -230,9 +239,9 @@ describe("immediate wildlife disturbance", () => {
     const target = neighbours(world, startCell)[0];
     state.task = { id: "walk", arg: `cell:${target}`, progress: 0, duration: 20, repeat: false };
     state.route = { target, path: [target], walked: [startCell], label: "nearby", ice: "none", lastLand: startCell };
-    const before = { x: state.player.x, y: state.player.y };
+    const before = { xM: state.player.xM, yM: state.player.yM };
     advance(state, world, 1, { wildlife: "detailed", live: true });
-    expect({ x: state.player.x, y: state.player.y }).not.toEqual(before);
+    expect({ xM: state.player.xM, yM: state.player.yM }).not.toEqual(before);
     expect(state.wildlife.lastSpatialTick).toBe(0);
     expect(deer.active!.intent).toBe("flee");
     expect(deer.active!.cell).toBe(startCell);
@@ -313,16 +322,16 @@ describe("immediate wildlife disturbance", () => {
     const { state, world, deer, cal } = disturbanceScene();
     evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
     const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
-    state.player.x = (point.xM + 500) / CELL_M;
-    state.player.y = point.yM / CELL_M;
+    state.player.xM = point.xM + 500;
+    state.player.yM = point.yM;
     state.minute = 30;
     evaluateWildlifeDisturbance(state, world, calendar(30), true, noDetection);
     expect(deer.active!.intent).toBe("flee");
-    state.player.x = point.xM / CELL_M;
+    state.player.xM = point.xM;
     state.minute = 31;
     evaluateWildlifeDisturbance(state, world, calendar(31), true, noDetection);
     expect(deer.active!.intent).toBe("flee");
-    state.player.x = (point.xM + 500) / CELL_M;
+    state.player.xM = point.xM + 500;
     evaluateWildlifeDisturbance(state, world, calendar(31), true, noDetection);
     expect(deer.active).toMatchObject({ alarm: 0, intent: "wander", escapeStartedMinute: null, escapeRemainingM: 0 });
   });
@@ -368,8 +377,8 @@ describe("immediate wildlife disturbance", () => {
     const x = startCell % world.w;
     const y = Math.floor(startCell / world.w);
     const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, startCell)!)!;
-    state.player.x = x + (point.xM / CELL_M - x < 0.5 ? 0.999 : 0.001);
-    state.player.y = y + (point.yM / CELL_M - y < 0.5 ? 0.999 : 0.001);
+    state.player.xM = (x + (point.xM / PATCH_M - x < 0.5 ? 0.999 : 0.001)) * PATCH_M;
+    state.player.yM = (y + (point.yM / PATCH_M - y < 0.5 ? 0.999 : 0.001)) * PATCH_M;
     deer.active!.rest = 100;
     state.minute = 10;
     stepWildlife(state, world, calendar(10), new Rng(2), 1, "detailed");
@@ -399,11 +408,11 @@ describe("immediate wildlife disturbance", () => {
     evaluateWildlifeDisturbance(state, world, cal, true, seesStartle);
     const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
     state.minute = 31;
-    state.player.x = (point.xM + 500) / CELL_M;
-    state.player.y = point.yM / CELL_M;
+    state.player.xM = point.xM + 500;
+    state.player.yM = point.yM;
     evaluateWildlifeDisturbance(state, world, calendar(31), true, noDetection);
     state.minute = 32;
-    state.player.x = point.xM / CELL_M;
+    state.player.xM = point.xM;
     evaluateWildlifeDisturbance(state, world, calendar(32), true, seesStartle);
     expect(deer.active!.escapeEpisode).toBe(2);
     expect(events).toHaveLength(2);
@@ -594,6 +603,8 @@ describe("large animal agents", () => {
     const wolf = state.wildlife.subjects.find((s) => s.species === "wolf")!;
     const center = light === "campfire" ? campCell(st) : cellOf(state, world);
     const distance = (cell: number) => Math.abs((cell % world.w) - (center % world.w)) + Math.abs(Math.floor(cell / world.w) - Math.floor(center / world.w));
+    // Steering is a distance in metres now, not a count of grid steps.
+    const metresFrom = (cell: number) => Math.hypot(patchXY(cell).x - patchXY(center).x, patchXY(cell).y - patchXY(center).y) * PATCH_M;
     const source = regionAt(world, state.player.region).cells.find((cell) => passable(cellAt(world, cell).terrain) && distance(cell) === 3 && neighbours(world, cell).some((n) => passable(cellAt(world, n).terrain) && cellAt(world, n).region === state.player.region && distance(n) === 2));
     expect(source).toBeDefined();
     wolf.active!.cell = source!;
@@ -605,7 +616,7 @@ describe("large animal agents", () => {
     state.minute = 10;
     stepWildlife(state, world, calendar(state.minute, state.startDoy), new Rng(2), 10, "detailed");
     expect(state.wildlife.subjects).toContain(wolf);
-    expect(distance(wolf.active!.travel?.cell ?? wolf.active!.cell)).toBeGreaterThanOrEqual(3);
+    expect(metresFrom(wolf.active!.travel?.cell ?? wolf.active!.cell)).toBeGreaterThanOrEqual(metresFrom(source!));
 
     st.fire.lit = false;
     state.player.torch.lit = false;
@@ -615,7 +626,7 @@ describe("large animal agents", () => {
     state.minute = 20;
     stepWildlife(state, world, calendar(state.minute, state.startDoy), new Rng(2), 10, "detailed");
     const destination = wolf.active!.travel as { cell: number } | null;
-    expect(distance(destination?.cell ?? wolf.active!.cell)).toBe(2);
+    expect(metresFrom(destination?.cell ?? wolf.active!.cell)).toBeLessThan(metresFrom(source!));
   });
 
   it("resolves wolf pursuit from positions and decrements prey once", () => {
@@ -733,14 +744,18 @@ describe("large animal agents", () => {
     expect(st.pop.deer).toBeCloseTo(2.4, 9);
   });
 
-  it("does not claim a represented animal from another cell", () => {
+  it("does not claim a represented animal from beyond a hunter's reach", () => {
     const { state, world } = newGame(79);
     const region = state.player.region;
     const st = regionState(state, world, region);
     st.pop.deer = 2;
     activateWildlife(state, world, new Rng(1));
     const deer = state.wildlife.subjects.find((subject) => subject.species === "deer")!;
-    const encounter = regionAt(world, region).cells.find((cell) => cell !== deer.active?.cell)!;
+    const standing = patchXY(deer.active!.cell);
+    const encounter = regionAt(world, region).cells.find((cell) => {
+      const there = patchXY(cell);
+      return Math.hypot(there.x - standing.x, there.y - standing.y) * PATCH_M > 400;
+    })!;
 
     expect(claimHuntableAnimal(state, world, "deer", encounter)).toBe(false);
     expect(wildlifeMembers(deer)).toBe(2);
@@ -985,10 +1000,10 @@ describe("animal recognition", () => {
     expect(mapHtml(world, state, close, cal)).not.toContain("mk-animal");
   });
 
-  it("round-trips version 10 and fills a save written without wildlife", () => {
+  it("round-trips the current save and fills a save written without wildlife", () => {
     const { state } = newGame(79);
     const current = JSON.parse(serialize(state));
-    expect(current.version).toBe(10);
+    expect(current.version).toBe(SAVE_VERSION);
     expect(readSave(JSON.stringify(current))!.state.wildlife).toEqual(state.wildlife);
 
     delete current.state.wildlife;

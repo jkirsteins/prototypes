@@ -11,6 +11,8 @@ import { newGame } from "../src/sim/newgame";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, forestCell, heathCell, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
+import { setWoodPatchLeft, woodPatchFull } from "../src/sim/stocks";
+import { CLEARING_SHARE } from "../src/world/groundchange";
 import { readSave, serialize } from "../src/sim/save";
 import { check, stepTask, stopTask , isShortAtCamp } from "../src/sim/tasks";
 import { setSkillLevel } from "../src/sim/horizon";
@@ -136,7 +138,7 @@ describe("where the work is done", () => {
     // A region that was given both spots: an outcrop to ask for and a forest to
     // fall back to. A region without an outcrop names no spot to refuse.
     const id = regionWithSpots(world, state.player.region, ["outcrop", "forest", "heath"]);
-    placeAt(state, world, regionAt(world, id).campCell);
+    placeAt(state, world, regionAt(world, id).campCell!);
     siteCamp(state, world);
     // Off forest ground, same reason as above, so the fallback is really tested.
     placeAtSpot(state, world, state.player.region, "heath");
@@ -167,7 +169,7 @@ describe("where the work is done", () => {
     // grounds to weigh against each other.
     const g = newGame(1);
     const { state, world } = g;
-    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["heath", "forest"])).campCell);
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["heath", "forest"])).campCell!);
     siteCamp(state, world);
     const r = regionAt(world, state.player.region);
     state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
@@ -200,7 +202,7 @@ describe("where the work is done", () => {
     // the forest are over their head and do not count toward that ground.
     const g = newGame(1);
     const { state, world } = g;
-    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["heath", "forest"])).campCell);
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["heath", "forest"])).campCell!);
     siteCamp(state, world);
     const r = regionAt(world, state.player.region);
     state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
@@ -265,11 +267,15 @@ describe("the work tier", () => {
     expect(startIntent(state, world, cal, rng(), req("chop"))).toBe(false);
     expect(state.intent).toBeNull();
     state.player.tools = [{ id: "axe", durability: 100 }];
-    regionState(state, world, state.player.region).wood = 1;
-    startIntent(state, world, cal, rng(), req("chop", { until: { kind: "forever" } }));
+    // One fell is all this patch has left before felling carries it past the
+    // clearing share, and the order is bound to it, so the work runs out where
+    // it stands rather than moving on to the next stand.
+    const felling = spotOf(regionAt(world, state.player.region), "forest")!.cell;
+    setWoodPatchLeft(regionState(state, world, state.player.region), world, felling, woodPatchFull(world, felling) * CLEARING_SHARE + 1);
+    startIntent(state, world, cal, rng(), req("chop", { until: { kind: "forever" }, where: { cell: felling } }));
     expect(until(g, () => state.intent === null)).toBe(true);
     expect(state.stats.trees).toBe(1);
-    expect(state.log.some((e) => e.text === "Fell any tree: nothing left worth felling. {You} {stop}.")).toBe(true);
+    expect(state.log.some((e) => e.text === "Fell any tree: stand in the forest; walk to the forest. {You} {stop}.")).toBe(true);
   });
 
   it("N times counts completions of the work only", () => {
@@ -315,7 +321,7 @@ describe("the work tier", () => {
     const { state, world } = g;
     // Stone is gathered at an outcrop, so the camp has to be in a region that
     // was given one; a region of forest and bog offers nothing to pick up.
-    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["outcrop"])).campCell);
+    placeAt(state, world, regionAt(world, regionWithSpots(world, state.player.region, ["outcrop"])).campCell!);
     siteCamp(state, world);
     mapRegion(state, world, state.player.region);
     const camp = regionState(state, world, state.player.region).campCell!;

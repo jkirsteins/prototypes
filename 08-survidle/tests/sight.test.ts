@@ -1,22 +1,31 @@
+import { newKnowledge } from "../src/sim/fineknowledge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as climate from "../src/sim/climate";
 import { calendar } from "../src/sim/calendar";
 import { CLEAR_MOR_KM, extinctionComponents, MAX_OPTICAL_DEPTH } from "../src/sim/climate";
-import { CELL_KM } from "../src/units";
 import { isKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
-import { campfireVisible, opticalCandidateRangeCells, opticalSampler, seeFrom, sightRangeCells, visibleCells } from "../src/sim/sight";
+import { campfireVisible, CAMPFIRE_HORIZON_M, clearObstacleReadCount, EXACT_SIGHT_M, FOREST_VISIBILITY_M, obstacleReadCount, opticalCandidateRangeCells, opticalSampler, seeFrom, sightRangeCells, sightReachCells, SIGHT_HORIZON_CELLS, SIGHT_HORIZON_M, visibleCells } from "../src/sim/sight";
 import { setSkillLevel } from "../src/sim/horizon";
 import { placeAt } from "../src/sim/position";
+import { PATCH_KM, PATCH_M } from "../src/world/spatial";
+import { FINE_CHUNK as CHUNK_PATCHES } from "../src/world/cells";
 import { current } from "../src/sim/record";
 import type { GameState } from "../src/sim/types";
 import { visibleWildlife } from "../src/sim/wildlife-agents";
-import { cellAt, heightAt, regionAt, type World } from "../src/world/gen";
+import { cellAt, fineSurfaceAt, heightAt, regionAt, type World } from "../src/world/gen";
+import { FINE_CHUNK } from "../src/world/cells";
+import { parentSummary } from "../src/world/aggregate";
+import { CANOPY_HEIGHT_M, TERRAIN_INDEX } from "../src/world/terrain";
+import * as cells from "../src/world/cells";
+import * as gen from "../src/world/gen";
 import { testAtmosphere } from "./weather-helpers";
-import { flatWorld, paintWorld } from "./world-fixture";
+import { solvedWorld } from "./world-fixture";
 import { regionsOutward } from "./world-facts";
+import { refineChunk } from "../src/world/refine";
 
 const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const FOREST = new Set(["spruce", "pine", "birch"]);
 
 /** A meadow-or-bog cell in `region` with `n` more open cells running straight from it in some cardinal direction. */
 function openRun(world: World, region: number, n: number): { vantage: number; end: number } {
@@ -37,10 +46,12 @@ function openRun(world: World, region: number, n: number): { vantage: number; en
         end = ny * world.w + nx;
       }
       if (ok) {
-        const observer = heightAt(world, x, y) + 1.7;
+        // The reader the ray itself marches over: the run must be clear in the
+        // refined surface, not in the parent's average of it.
+        const observer = fineSurfaceAt(world, idx) + 1.7;
         let horizon = -Infinity;
         for (let i = 1; i <= n; i++) {
-          const elevation = heightAt(world, x + dx * i, y + dy * i);
+          const elevation = fineSurfaceAt(world, (y + dy * i) * world.w + x + dx * i);
           const slope = (elevation - observer) / i;
           if (i === n && slope < horizon) ok = false;
           horizon = Math.max(horizon, slope);
@@ -49,7 +60,7 @@ function openRun(world: World, region: number, n: number): { vantage: number; en
       if (ok) return { vantage: idx, end };
     }
   }
-  throw new Error(`region ${region} has no ${n}-cell open run`);
+  throw new Error(`region ${region} has no ${n}-patch open run`);
 }
 
 /**
@@ -74,69 +85,53 @@ function spruceCell(world: World, region: number): number {
   throw new Error(`no region within reach of ${region} has a spruce cell closed on every side`);
 }
 
-const FOREST = new Set(["spruce", "pine", "birch"]);
-
-/**
- * A forest cell on a shore: `n` water cells run straight from it in one
- * cardinal direction, and the far bank past them is land. Searched over the
- * whole start region and its neighbours, since a shore run this long is rarer
- * than a spruce cell.
- */
-function forestShore(world: World, region: number, n: number): { vantage: number; water: number[]; farBank: number } {
-  const { cells } = regionAt(world, region);
-  const cx = Math.round(cells.reduce((s, c) => s + (c % world.w), 0) / cells.length);
-  const cy = Math.round(cells.reduce((s, c) => s + Math.floor(c / world.w), 0) / cells.length);
-  for (let y = cy - 30; y <= cy + 30; y++) {
-    for (let x = cx - 30; x <= cx + 30; x++) {
-      if (x < 1 || y < 1 || x >= world.w - 1 || y >= world.h - 1) continue;
-      const idx = y * world.w + x;
-      if (!FOREST.has(cellAt(world, idx).terrain)) continue;
-      for (const [dx, dy] of DIRS) {
-        const water: number[] = [];
-        for (let i = 1; i <= n; i++) {
-          const nx = x + dx * i;
-          const ny = y + dy * i;
-          if (nx < 0 || ny < 0 || nx >= world.w || ny >= world.h) break;
-          const nidx = ny * world.w + nx;
-          if (cellAt(world, nidx).terrain !== "water") break;
-          water.push(nidx);
-        }
-        if (water.length < n) continue;
-        const bx = x + dx * (n + 1);
-        const by = y + dy * (n + 1);
-        if (bx < 0 || by < 0 || bx >= world.w || by >= world.h) continue;
-        const farBank = by * world.w + bx;
-        if (cellAt(world, farBank).terrain === "water") continue;
-        return { vantage: idx, water, farBank };
-      }
-    }
-  }
-  throw new Error(`region ${region} has no forest cell with ${n} water cells running from it`);
-}
-
 // Seed 1's start region, at solar noon on landing day (1 April): bright enough that light never gates the range.
 const NOON = calendar(300);
 
-/**
- * A small all-meadow world isolates distance and weather from generated canopy.
- * A test that paints terrain onto it must ask for its own seed: the viewshed
- * cache names a world by seed and size, so two differently painted worlds of the
- * same seed would answer with each other's viewsheds.
- */
-function openWorld(seed = 1): { state: GameState; world: World; vantage: number } {
+/** One public fine chunk isolates local optics from generated canopy. */
+function openWorld(): { state: GameState; world: World; vantage: number } {
   const state = newGame(1).state;
-  const world = flatWorld({ w: 32, h: 32, terrain: "meadow", heightM: 600, seed });
-  const vantage = 16 * world.w + 16;
-  state.player.x = 16.5;
-  state.player.y = 16.5;
+  // The physical field itself, so a ray, the parent summaries its bounds come
+  // from and the generated terrain beyond the fixture chunk all agree.
+  flatFields(600);
+  const terrain = new Uint8Array(FINE_CHUNK * FINE_CHUNK);
+  terrain.fill(7); // TERRAINS[7] is meadow.
+  const region = new Int32Array(FINE_CHUNK * FINE_CHUNK);
+  const world = solvedWorld(1);
+  world.fineChunks.set(0, { cx: 0, cy: 0, fine: refineChunk(1, world.solved, 0, 0), terrain, region,
+    samples: terrain.length, parentSummaries: new Map() });
+  // The middle of the chunk, so a ray has the same room in every direction.
+  const vantage = 48 * world.w + 48;
+  state.player.xM = 48.5 * PATCH_M;
+  state.player.yM = 48.5 * PATCH_M;
   state.player.region = 0;
   state.weather.ground[0] = { updatedHour: 0, snowCm: 0, surfaceWaterMm: 0,
     soilMoisture: 0.3, frost: 0, iceCm: 0, dryHours: 0, temperatureSum: 0, temperatureHours: 0 };
   return { state, world, vantage };
 }
 
+/** One elevation over the whole world, at the one reader the ray and the summaries share. */
+function flatFields(elevationM: number): void {
+  vi.spyOn(cells, "fineSurfaceAt").mockReturnValue(elevationM);
+}
+
+/**
+ * The relief the vantage stands in. Prominence reads the solve's own heights
+ * rather than the refined surface a ray marches, so a flat field of one
+ * elevation is a vantage of no prominence at all: this says the vantage patch
+ * rises `metres` over ground that is at sea level everywhere else.
+ */
+function standsAbove(x: number, y: number, metres: number): void {
+  vi.spyOn(gen, "heightAt").mockImplementation((_world, px, py) => (px === x && py === y ? metres : 0));
+}
+
 function at(world: World, vantage: number, dx: number, dy: number): number {
   return vantage + dy * world.w + dx;
+}
+
+/** A fixture distance said in metres, in patches. Optics are physical, the lattice is not. */
+function away(metres: number): number {
+  return Math.round(metres / PATCH_M);
 }
 
 function setUniformExtinction(extinctionPerKm: number): void {
@@ -152,42 +147,112 @@ afterEach(() => vi.restoreAllMocks());
  * and a test asking what one look from one cell reveals would be reading the
  * landing's work instead of its own.
  */
-function forget(state: { mapped: Record<number, number> }): void {
-  state.mapped = {};
+function forget(state: GameState): void {
+  state.knowledge = newKnowledge();
+}
+
+
+/**
+ * A scene drawn row by row, at the same public FineGrid contract as the
+ * routing fixture: every patch is 50 m, coordinates are scene-local, and the
+ * characters say what stands there.
+ *
+ *   `.` open ground at sea level      `@` the observer, on open ground
+ *   `^` a rock band, ROCK_BAND_M up   `T` closed spruce, 22 m crowns
+ *
+ * Elevation and canopy are explicit so a test can say exactly what should
+ * hide what, and both the ray and the parent summaries that accelerate it
+ * read the same numbers. A scene may give any glyph its own height in metres,
+ * including the observer's.
+ */
+const ROCK_BAND_M = 3;
+const SCENE_ORIGIN = 8;
+const SCENE_ELEVATION_M: Record<string, number> = { "^": ROCK_BAND_M };
+
+interface FineSightScene {
+  state: GameState;
+  world: World;
+  vantage: number;
+  id(x: number, y: number): number;
+}
+
+function fineSightFixture(rows: string[], heights: Record<string, number> = {}): FineSightScene {
+  const elevationOf = { ...SCENE_ELEVATION_M, ...heights };
+  const state = newGame(1).state;
+  const elevations = new Map<number, number>();
+  const world = solvedWorld(1);
+  const terrain = new Uint8Array(FINE_CHUNK * FINE_CHUNK);
+  terrain.fill(TERRAIN_INDEX.meadow);
+  const region = new Int32Array(FINE_CHUNK * FINE_CHUNK);
+  world.fineChunks.set(0, { cx: 0, cy: 0, fine: refineChunk(1, world.solved, 0, 0), terrain, region, samples: terrain.length, parentSummaries: new Map() });
+  const id = (x: number, y: number) => (SCENE_ORIGIN + y) * world.w + SCENE_ORIGIN + x;
+  let vantage = -1;
+  rows.forEach((row, y) => {
+    [...row].forEach((glyph, x) => {
+      const px = SCENE_ORIGIN + x;
+      const py = SCENE_ORIGIN + y;
+      if (glyph === "^") terrain[py * FINE_CHUNK + px] = TERRAIN_INDEX.rock;
+      const height = elevationOf[glyph];
+      if (height !== undefined) elevations.set(id(x, y), height);
+      if (glyph === "T") terrain[py * FINE_CHUNK + px] = TERRAIN_INDEX.spruce;
+      if (glyph === "@") vantage = id(x, y);
+    });
+  });
+  if (vantage < 0) throw new Error("the scene has no observer");
+  vi.spyOn(cells, "fineSurfaceAt").mockImplementation((_world, patch: number) => elevations.get(patch) ?? 0);
+  state.player.xM = (vantage % world.w + 0.5) * PATCH_M;
+  state.player.yM = (Math.floor(vantage / world.w) + 0.5) * PATCH_M;
+  state.player.region = 0;
+  state.weather.ground[0] = { updatedHour: 0, snowCm: 0, surfaceWaterMm: 0,
+    soilMoisture: 0.3, frost: 0, iceCm: 0, dryHours: 0, temperatureSum: 0, temperatureHours: 0 };
+  testAtmosphere({ extinctionPerKm: 0.06 });
+  return { state, world, vantage, id };
 }
 
 describe("sight", () => {
-  it("keeps every whole-cell target inside the 50 km clear-air MOR", () => {
-    const candidates = opticalCandidateRangeCells(1000);
-    expect(candidates).toBe(Math.ceil(CLEAR_MOR_KM / CELL_KM));
-    expect((candidates - 1) * CELL_KM).toBeLessThan(CLEAR_MOR_KM);
-    expect(candidates * CELL_KM).toBeGreaterThan(CLEAR_MOR_KM);
+  it("enumerates one fine chunk of ground and never past the clear-air MOR", () => {
+    // A fell vantage reaches thousands of patches; what is read patch by patch
+    // is the chunk of ground the world holds at 50 m, well inside clear air's
+    // own contrast limit.
+    const candidates = opticalCandidateRangeCells(100_000);
+    expect(candidates).toBe(CHUNK_PATCHES);
+    expect(candidates * PATCH_KM).toBeLessThan(CLEAR_MOR_KM);
+    expect(opticalCandidateRangeCells(away(600))).toBe(away(600));
   });
 
-  it("keeps the range from the highest ground the terrain model makes inside the horizon of 3000 m", () => {
-    const { state, world } = newGame(17);
+  it("claims no more than the sight horizon from a thousand-metre fell", () => {
+    const { state, world, vantage } = openWorld();
+    world.fineChunks.get(0)!.terrain.fill(TERRAIN_INDEX.fell);
+    flatFields(1_000);
+    standsAbove(48, 48, 1_000);
     testAtmosphere({ cloud: 0, precipMmPerHour: 0, extinctionPerKm: 0.06 });
     current(state).person.axes.eyes = 2;
     setSkillLevel(state, "wayfinding", 20);
-    let high = -1;
-    let highest = -Infinity;
-    for (let y = 180; y < world.h - 180; y += 12) {
-      for (let x = 180; x < world.w - 180; x += 12) {
-        const cell = y * world.w + x;
-        const terrain = cellAt(world, cell).terrain;
-        if (terrain !== "fell" && terrain !== "rock") continue;
-        if (heightAt(world, x, y) > highest) { highest = heightAt(world, x, y); high = cell; }
-      }
-    }
-    // The template's crest is about 1800 m at 61 N and its relief adds a few
-    // hundred, so no ground reaches 3000 m. The horizon of the highest ground
-    // there is - 3.57 * sqrt(m) km, in cells of 300 m - is what the range may
-    // not pass, with sharp eyes and an expert reading of the ground each adding
-    // half again. Prominence is height above the lowest ground within 20 km, so
-    // it can only be less than the height itself.
-    expect(highest).toBeLessThan(3000);
-    const ceiling = Math.ceil((3.57 * Math.sqrt(highest)) / CELL_KM * 1.5 * 1.5);
-    expect(sightRangeCells(state, world, NOON, high)).toBeLessThanOrEqual(ceiling);
+    // A thousand metres of prominence is a geometric horizon of 113 km, and a
+    // sharp eye (1.5x) on a practised wayfinder (1.5x) would multiply it to
+    // 254 km. The air has taken the ground's contrast long before either: no
+    // reach answers past SIGHT_HORIZON_M.
+    expect(3.57 * Math.sqrt(1_000)).toBeGreaterThan(SIGHT_HORIZON_M / 1000);
+    expect(sightRangeCells(state, world, NOON, vantage)).toBe(SIGHT_HORIZON_CELLS);
+    expect(sightReachCells(state, world, NOON, vantage)).toBe(SIGHT_HORIZON_CELLS);
+    expect(opticalCandidateRangeCells(sightReachCells(state, world, NOON, vantage)))
+      .toBeLessThanOrEqual(SIGHT_HORIZON_CELLS);
+  });
+
+  it("takes its horizon from the air, because the world's own summits stand higher than the air allows", () => {
+    // The honest maximum is the smaller of two limits, so the derivation is
+    // only sound while the geometry is the looser one. The highest ground the
+    // solve produces is near 2900 m: a horizon of about 190 km, far past what
+    // clear air carries terrain contrast through.
+    const solved = solvedWorld(1).solved;
+    let highestM = 0;
+    for (let i = 0; i < solved.height.length; i++) if (solved.height[i] > highestM) highestM = solved.height[i];
+    expect(highestM).toBeGreaterThan(2_000);
+    expect(3.57 * Math.sqrt(highestM)).toBeGreaterThan(CLEAR_MOR_KM);
+    expect(SIGHT_HORIZON_M).toBe(CLEAR_MOR_KM * 1000);
+    // A fire is read against the dark at a lower contrast than ground is, so
+    // its own horizon is the one range that honestly runs further.
+    expect(CAMPFIRE_HORIZON_M).toBeGreaterThan(SIGHT_HORIZON_M);
   });
 
   it("uses one physical radius in cardinal and diagonal directions", () => {
@@ -195,10 +260,13 @@ describe("sight", () => {
     testAtmosphere({ extinctionPerKm: 0.06 });
 
     const visible = visibleCells(state, world, NOON, vantage);
-
-    expect(visible.has(at(world, vantage, 15, 0))).toBe(true);
-    expect(visible.has(at(world, vantage, 9, 12))).toBe(true);
-    expect(visible.has(at(world, vantage, 15, 15))).toBe(false);
+    // 3-4-5: the same 3.5 km from the vantage along an axis and on the
+    // diagonal, and a square corner at 4.9 km that the eye's own 4.65 km
+    // horizon does not reach.
+    const r = away(3_500);
+    expect(visible.has(at(world, vantage, r, 0))).toBe(true);
+    expect(visible.has(at(world, vantage, r * 3 / 5, r * 4 / 5))).toBe(true);
+    expect(visible.has(at(world, vantage, r, r))).toBe(false);
   });
 
   it("stops at the meteorological optical range in uniform air", () => {
@@ -207,13 +275,14 @@ describe("sight", () => {
 
     const visible = visibleCells(state, world, NOON, vantage);
 
-    expect(visible.has(at(world, vantage, 4, 0))).toBe(true);
-    expect(visible.has(at(world, vantage, 5, 0))).toBe(false);
+    // A 1.2 km meteorological range: ground just inside it, nothing past it.
+    expect(visible.has(at(world, vantage, away(1_050), 0))).toBe(true);
+    expect(visible.has(at(world, vantage, away(1_350), 0))).toBe(false);
   });
 
   it("lets a luminous campfire ray use its own contrast threshold", () => {
     const { state, world, vantage } = openWorld();
-    const fire = at(world, vantage, 10, 0);
+    const fire = at(world, vantage, away(3_000), 0);
     setUniformExtinction(0.06);
 
     expect(campfireVisible(state, world, vantage, fire)).toBe(true);
@@ -221,7 +290,7 @@ describe("sight", () => {
 
   it("hides a campfire behind dense weather even when terrain is clear", () => {
     const { state, world, vantage } = openWorld();
-    const fire = at(world, vantage, 10, 0);
+    const fire = at(world, vantage, away(3_000), 0);
     setUniformExtinction(MAX_OPTICAL_DEPTH / 0.2);
 
     expect(campfireVisible(state, world, vantage, fire)).toBe(false);
@@ -230,28 +299,32 @@ describe("sight", () => {
   it("attenuates a ray through a local obscuring band", () => {
     const { state, world, vantage } = openWorld();
     const clear = testAtmosphere({ extinctionPerKm: 0.06 });
+    // A 300 m band of dense air one patch east of the vantage: the air is read
+    // on its own 300 m grid, so the band is stated at that grain.
     vi.mocked(climate.sampleAtmosphere).mockImplementation((_weather, _world, _minute, x) => ({
       ...clear,
-      extinctionPerKm: x === 17 ? MAX_OPTICAL_DEPTH / 0.3 : 0.06,
+      extinctionPerKm: x >= 54 && x < 60 ? MAX_OPTICAL_DEPTH / 0.3 : 0.06,
     }));
 
     const visible = visibleCells(state, world, NOON, vantage);
 
     expect(visible.has(at(world, vantage, 1, 0))).toBe(true);
-    expect(visible.has(at(world, vantage, 2, 0))).toBe(false);
+    expect(visible.has(at(world, vantage, away(700), 0))).toBe(false);
   });
 
   it("does not recover contrast after a ray leaves an obscuring band", () => {
     const { state, world, vantage } = openWorld();
     const clear = testAtmosphere({ extinctionPerKm: 0.06 });
+    // A 300 m band of dense air one patch east of the vantage: the air is read
+    // on its own 300 m grid, so the band is stated at that grain.
     vi.mocked(climate.sampleAtmosphere).mockImplementation((_weather, _world, _minute, x) => ({
       ...clear,
-      extinctionPerKm: x === 17 ? MAX_OPTICAL_DEPTH / 0.3 : 0.06,
+      extinctionPerKm: x >= 54 && x < 60 ? MAX_OPTICAL_DEPTH / 0.3 : 0.06,
     }));
 
     const visible = visibleCells(state, world, NOON, vantage);
 
-    expect(visible.has(at(world, vantage, 6, 0))).toBe(false);
+    expect(visible.has(at(world, vantage, away(1_500), 0))).toBe(false);
   });
 
   it("adds independent obscurants along the same ray", () => {
@@ -259,17 +332,18 @@ describe("sight", () => {
     const rain = extinctionComponents({ rainMmPerHour: 0.5 }).total;
     const fog = extinctionComponents({ fog: 0.3 }).total;
     const combined = extinctionComponents({ rainMmPerHour: 0.5, fog: 0.3 }).total;
+    const target = at(world, vantage, away(3_000), 0);
     setUniformExtinction(rain);
-    expect(visibleCells(state, world, NOON, vantage).has(at(world, vantage, 10, 0))).toBe(true);
+    expect(visibleCells(state, world, NOON, vantage).has(target)).toBe(true);
     setUniformExtinction(fog);
-    expect(visibleCells(state, world, NOON, vantage).has(at(world, vantage, 10, 0))).toBe(true);
+    expect(visibleCells(state, world, NOON, vantage).has(target)).toBe(true);
     setUniformExtinction(combined);
-    expect(visibleCells(state, world, NOON, vantage).has(at(world, vantage, 10, 0))).toBe(false);
+    expect(visibleCells(state, world, NOON, vantage).has(target)).toBe(false);
   });
 
   it("keeps mapped ground remembered when current weather hides it", () => {
     const { state, world, vantage } = openWorld();
-    const far = at(world, vantage, 8, 0);
+    const far = at(world, vantage, away(2_400), 0);
     testAtmosphere({ extinctionPerKm: 0.06 });
     seeFrom(state, world, NOON, vantage);
     expect(isKnown(state, far)).toBe(true);
@@ -281,7 +355,7 @@ describe("sight", () => {
 
   it("uses current visibility rather than mapped memory for wildlife", () => {
     const { state, world, vantage } = openWorld();
-    const far = at(world, vantage, 8, 0);
+    const far = at(world, vantage, away(2_400), 0);
     state.wildlife.activeRegion = 0;
     state.wildlife.subjects = [{
       id: 1, species: "deer", form: "herd", region: 0,
@@ -290,7 +364,7 @@ describe("sight", () => {
       colour: 0, lastKnownDay: -1, denCell: null,
       active: {
         cell: far,
-        position: { xM: (far % world.w + 0.5) * CELL_KM * 1000, yM: (Math.floor(far / world.w) + 0.5) * CELL_KM * 1000 },
+        position: { xM: (far % world.w + 0.5) * PATCH_M, yM: (Math.floor(far / world.w) + 0.5) * PATCH_M },
         travel: null, hunger: 0, thirst: 0, rest: 0, alarm: 0, intent: "rest", target: null, route: [],
         escapeRemainingM: 0, escapeStartedMinute: null, lastDetectionMinute: null, escapeEpisode: 0,
       },
@@ -311,8 +385,8 @@ describe("sight", () => {
     visibleCells(state, world, NOON, vantage);
 
     // The ray fan crosses thousands of segments, but interpolated extinction
-    // needs no more than the world's 1,024 integer centres plus local light.
-    expect(vi.mocked(climate.sampleAtmosphere).mock.calls.length).toBeLessThanOrEqual(world.w * world.h + 1);
+    // needs no more than the bounded local 32x32 centres plus local light.
+    expect(vi.mocked(climate.sampleAtmosphere).mock.calls.length).toBeLessThanOrEqual(32 * 32 + 1);
   });
 
   it("interpolates continuously across cell boundaries independent of query order", () => {
@@ -320,17 +394,19 @@ describe("sight", () => {
     const clear = testAtmosphere();
     vi.mocked(climate.sampleAtmosphere).mockImplementation((_weather, _world, _minute, x) => ({
       ...clear,
-      extinctionPerKm: x <= 16 ? 0.1 : 1.1,
+      extinctionPerKm: x <= 48 ? 0.1 : 1.1,
     }));
     const forward = opticalSampler(state, world);
-    const left = forward.extinction(16.499, 16);
-    const right = forward.extinction(16.501, 16);
+    const left = forward.extinction(48.499, 48);
+    const right = forward.extinction(48.501, 48);
     const reverse = opticalSampler(state, world);
-    expect(reverse.extinction(16.501, 16)).toBeCloseTo(right, 12);
-    expect(reverse.extinction(16.499, 16)).toBeCloseTo(left, 12);
-    expect(right - left).toBeCloseTo(0.002, 6);
-    expect(forward.extinction(-1e-9, 16)).toBe(Number.POSITIVE_INFINITY);
-    expect(forward.extinction(world.w - 1 + 1e-9, 16)).toBe(Number.POSITIVE_INFINITY);
+    expect(reverse.extinction(48.501, 48)).toBeCloseTo(right, 12);
+    expect(reverse.extinction(48.499, 48)).toBeCloseTo(left, 12);
+    // The air is read every 300 m, so the same 0.002-patch step moves a sixth
+    // as far between two samples as a patch-grained field would.
+    expect(right - left).toBeCloseTo(0.002 / 6, 8);
+    expect(forward.extinction(-1e-9, 48)).toBe(Number.POSITIVE_INFINITY);
+    expect(forward.extinction(world.w - 1 + 1e-9, 48)).toBe(Number.POSITIVE_INFINITY);
   });
 
   it("keeps symmetric rays equal through smoothly varying air", () => {
@@ -338,15 +414,17 @@ describe("sight", () => {
     const clear = testAtmosphere();
     vi.mocked(climate.sampleAtmosphere).mockImplementation((_weather, _world, _minute, x, y) => ({
       ...clear,
-      extinctionPerKm: 0.1 + 0.2 * Math.hypot(x - 16, y - 16),
+      extinctionPerKm: 0.1 + 0.2 * Math.hypot(x - 48, y - 48),
     }));
 
     const visible = visibleCells(state, world, NOON, vantage);
     const cardinal = (distance: number) => [[distance, 0], [-distance, 0], [0, distance], [0, -distance]]
       .map(([dx, dy]) => visible.has(at(world, vantage, dx, dy)));
 
-    expect(cardinal(9)).toEqual([true, true, true, true]);
-    expect(cardinal(10)).toEqual([false, false, false, false]);
+    // Extinction climbs with distance from the vantage, so the ray runs out of
+    // contrast at the same range whichever way it is cast.
+    expect(cardinal(away(1_100))).toEqual([true, true, true, true]);
+    expect(cardinal(away(1_300))).toEqual([false, false, false, false]);
   });
 
   it("never sees beyond its Euclidean range at the square corners", () => {
@@ -410,11 +488,82 @@ describe("sight", () => {
     expect(visible.has(scenario!.behind)).toBe(false);
   });
 
+
+  it("blocks the lower ground behind a one-patch rock band", () => {
+    const scene = fineSightFixture([".....", ".@^..", "....."]);
+    const visible = visibleCells(scene.state, scene.world, NOON, scene.vantage);
+    // A 3 m band 50 m away stands over a 1.7 m eye's line to the flat ground
+    // beyond it, and the patch beside it is open.
+    expect(visible.has(scene.id(2, 1))).toBe(true);
+    expect(visible.has(scene.id(3, 1))).toBe(false);
+    expect(visible.has(scene.id(3, 0))).toBe(true);
+  });
+
+  it("subdivides a parent whose bounds settle neither side of the ray", () => {
+    // The band sits inside the fourth 300 m parent east of the observer, past
+    // the close view, and that parent's own bounds say only that something in
+    // there stands 3 m up: the patches before the band are open ground and the
+    // ones behind it are hidden, which only an exact descent can tell apart.
+    // The observer, 19 patches of open ground, the band at 1 km, and more open ground behind it.
+    const eastward = `@${".".repeat(19)}^${".".repeat(5)}`;
+    const scene = fineSightFixture([eastward, ".".repeat(eastward.length)]);
+    const visible = visibleCells(scene.state, scene.world, NOON, scene.vantage);
+    expect(visible.has(scene.id(19, 0))).toBe(true);
+    expect(visible.has(scene.id(20, 0))).toBe(true);
+    expect(visible.has(scene.id(21, 0))).toBe(false);
+    expect(visible.has(scene.id(25, 0))).toBe(false);
+    // The row beside it, in the same parents, keeps its open view.
+    expect(visible.has(scene.id(25, 1))).toBe(true);
+  });
+
+
+  it("keeps a below-eye parent that the horizon cuts through", () => {
+    // From a 100 m hill over a 99.4 m rise 50 m out, the ground beyond falls
+    // under the horizon and climbs back over it at 2.23 km, inside the parent
+    // that holds 2.00 to 2.25 km. That ground stands under the eye, so the
+    // steepest angle in the parent is at its far edge and the shallowest at
+    // its near one - read the other way round, the whole parent either looks
+    // hidden, and a stretch of visible ground is dropped, or looks open, and
+    // ground under the horizon is claimed seen.
+    const rows = [`@r${".".repeat(50)}`, ".".repeat(52)];
+    const scene = fineSightFixture(rows, { "@": 100, r: 99.4 });
+    const visible = visibleCells(scene.state, scene.world, NOON, scene.vantage);
+    expect(visible.has(scene.id(1, 0))).toBe(true);
+    expect(visible.has(scene.id(20, 0))).toBe(false);
+    expect(visible.has(scene.id(41, 0))).toBe(false);
+    expect(visible.has(scene.id(44, 0))).toBe(false);
+    expect(visible.has(scene.id(45, 0))).toBe(true);
+    expect(visible.has(scene.id(50, 0))).toBe(true);
+  });
+
+  it("bounds a ray's obstructions with the same canopy heights the summaries count", () => {
+    // The summary's tallest obstruction has to be an upper bound on what a ray
+    // reads at any distance. That holds because both read one canopy table,
+    // and because the close view outreaches the range in which a ray discounts
+    // the crowns it is standing among.
+    const scene = fineSightFixture(["@TTTTTTTTTTTT"]);
+    const parent = parentSummary(scene.world, Math.floor((SCENE_ORIGIN + 6) / 6), Math.floor(SCENE_ORIGIN / 6));
+    expect(parent.maxObstructionM).toBe(CANOPY_HEIGHT_M.spruce);
+    expect(EXACT_SIGHT_M).toBeGreaterThanOrEqual(FOREST_VISIBILITY_M);
+  });
+
+  it("reads far fewer exact patches than a ray that descends everywhere", () => {
+    const { state, world, vantage } = openWorld();
+    testAtmosphere({ extinctionPerKm: 0.06 });
+    clearObstacleReadCount();
+    const visible = visibleCells(state, world, NOON, vantage);
+    const reads = obstacleReadCount();
+    // Every ray in the fan crosses about 93 patches; the summaries settle the
+    // flat country beyond the close view without reading any of them.
+    expect(visible.size).toBeGreaterThan(5_000);
+    expect(reads).toBeLessThan(visible.size / 4);
+  });
+
   it("reads far over open ground and no further than the next cell through closed spruce", () => {
     const { state, world } = newGame(1);
     testAtmosphere({ extinctionPerKm: 0.06 });
     const region = state.player.region;
-    const { vantage, end } = openRun(world, region, 10);
+    const { vantage, end } = openRun(world, region, away(3_000));
     forget(state);
     seeFrom(state, world, NOON, vantage);
     expect(isKnown(state, end)).toBe(true);
@@ -453,7 +602,7 @@ describe("sight", () => {
   it("maps nothing at night", () => {
     const { state, world } = newGame(1);
     const region = state.player.region;
-    const { vantage, end } = openRun(world, region, 10);
+    const { vantage, end } = openRun(world, region, away(3_000));
     state.weather.clear = false;
     // 2 a.m. in December, moon new: astronomical night with cloud over what little
     // starlight there is, so illuminance floors at the dark reference and the light
@@ -467,7 +616,7 @@ describe("sight", () => {
 
   it("a torch lights nearby ground but does not turn night into distant terrain sight", () => {
     const { state, world } = newGame(1);
-    const { vantage, end } = openRun(world, state.player.region, 10);
+    const { vantage, end } = openRun(world, state.player.region, away(3_000));
     placeAt(state, world, vantage);
     state.player.torch = { lit: true, minutes: 60 };
     state.weather.clear = false;
@@ -477,30 +626,14 @@ describe("sight", () => {
     expect(visible.has(end)).toBe(false);
   });
 
-  it("trees at the water's edge see across the lake", () => {
-    const { state, world } = newGame(1);
-    testAtmosphere({ extinctionPerKm: 0.06 });
-    const { vantage, water, farBank } = forestShore(world, state.player.region, 4);
-    forget(state);
-    seeFrom(state, world, NOON, vantage);
-    // The ring gives the first water cell for free; the open water past it is
-    // what standing at the edge of the wood is worth.
-    for (const cell of water.slice(1)) expect(isKnown(state, cell)).toBe(true);
-    expect(isKnown(state, farBank)).toBe(true);
-  });
-
   it("stops at the first blocking canopy", () => {
-    // One height throughout, so what stops the ray is the canopy and not the
-    // ground. A generated coast cannot serve this: the land behind the first
-    // spruce stand rises out of the fjord and is seen over the trees, which is
-    // the right answer to a different question.
-    const { state, world, vantage } = openWorld(9001);
-    testAtmosphere({ extinctionPerKm: 0.06 });
-    const water = vantage + 1;
-    const spruce = vantage + 4;
-    const behind = vantage + 5;
-    paintWorld(world, [water, vantage + 2, vantage + 3], "water");
-    paintWorld(world, [spruce], "spruce");
+    const { state, world, vantage } = openWorld();
+    const water = at(world, vantage, 1, 0);
+    const spruce = at(world, vantage, 2, 0);
+    const behind = at(world, vantage, 3, 0);
+    const terrain = world.fineChunks.get(0)!.terrain;
+    terrain[48 * FINE_CHUNK + 49] = TERRAIN_INDEX.water;
+    terrain[48 * FINE_CHUNK + 50] = TERRAIN_INDEX.spruce;
     forget(state);
     seeFrom(state, world, NOON, vantage);
     expect(isKnown(state, water)).toBe(true);

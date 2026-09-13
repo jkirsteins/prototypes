@@ -25,6 +25,12 @@ export function valueNoise(x: number, y: number, seed: number): number {
   return top + (bottom - top) * fy;
 }
 
+/** Value noise sampled at an explicitly physical wavelength in metres. */
+export function valueNoiseMetres(xM: number, yM: number, seed: number, wavelengthM: number, yWavelengthM = wavelengthM): number {
+  if (!(wavelengthM > 0) || !(yWavelengthM > 0)) throw new RangeError("noise wavelengths must be positive");
+  return valueNoise(xM / wavelengthM, yM / yWavelengthM, seed);
+}
+
 export function fbm(x: number, y: number, seed: number, octaves = 4): number {
   let sum = 0;
   let amp = 1;
@@ -35,6 +41,24 @@ export function fbm(x: number, y: number, seed: number, octaves = 4): number {
     norm += amp;
     amp *= 0.5;
     freq *= 2;
+  }
+  return sum / norm;
+}
+
+/** Fractal value noise whose base wavelengths are expressed in metres. */
+export function fbmMetres(xM: number, yM: number, seed: number, wavelengthM: number, octaves = 4, yWavelengthM = wavelengthM): number {
+  let sum = 0;
+  let amp = 1;
+  let norm = 0;
+  // The octave scale is doubled rather than raised: the solve's determinism rule
+  // allows only the four operations and a square root, and this file is one of
+  // the files it greps.
+  let scale = 1;
+  for (let i = 0; i < octaves; i++) {
+    sum += amp * valueNoiseMetres(xM, yM, seed + i * 101, wavelengthM / scale, yWavelengthM / scale);
+    norm += amp;
+    amp *= 0.5;
+    scale *= 2;
   }
   return sum / norm;
 }

@@ -1,19 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   coastKmAt, coastLineU, inBothnia, latitudeAt, runoffLsKm2, templateHeightM, treelineM,
-  LAT_BOTTOM, LAT_TOP, TERRAINS, TERRAIN_INDEX, WORLD_H, WORLD_W,
+  LAT_BOTTOM, LAT_TOP, TERRAINS, TERRAIN_INDEX, WORLD_CELL_H, WORLD_CELL_W, WORLD_H, WORLD_W,
 } from "../src/world/terrain";
 
 describe("world shape", () => {
-  it("is 540 by 667 km of 300 m cells", () => {
-    expect(WORLD_W).toBe(1800);
-    expect(WORLD_H).toBe(2224);
+  it("is 540 by 667 km, as 300 m cells and as the 50 m patches the game addresses", () => {
+    expect(WORLD_CELL_W).toBe(1800);
+    expect(WORLD_CELL_H).toBe(2224);
+    expect(WORLD_W).toBe(WORLD_CELL_W * 6);
+    expect(WORLD_H).toBe(WORLD_CELL_H * 6);
   });
 
   it("puts 67 N on the top row and 61 N on the bottom, 111 km a degree", () => {
     expect(latitudeAt(0)).toBe(LAT_TOP);
-    expect(latitudeAt(WORLD_H)).toBe(LAT_BOTTOM);
-    expect(latitudeAt(WORLD_H / 2)).toBeCloseTo(64, 6);
+    expect(latitudeAt(WORLD_CELL_H)).toBe(LAT_BOTTOM);
+    expect(latitudeAt(WORLD_CELL_H / 2)).toBeCloseTo(64, 6);
     // One degree is 370.7 rows of 300 m.
     expect(latitudeAt(0) - latitudeAt(370.67)).toBeCloseTo(1, 2);
   });

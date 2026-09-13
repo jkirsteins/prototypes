@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BOG_WET, MEADOW_DAMP, MEADOW_DRY, groundGlyph, toneCuts, toneOf, VARIANTS } from "../src/ui/ground";
 import { legendHtml } from "../src/ui/map";
 import type { Terrain } from "../src/sim/types";
-import { generateWorld, moistureAt, terrainOf, WORLD_H, WORLD_W } from "../src/world/gen";
+import { generateWorld, moistureAt, solvedTerrainAt, terrainOf, WORLD_H, WORLD_W } from "../src/world/gen";
 
 /** The worlds the quantiles are measured over; the rest of the file reuses the first, so the file solves or loads three. */
 const SAMPLE_SEEDS = [1000010, 17, 42];
@@ -21,10 +21,13 @@ function bandMoisture(): Record<string, number[]> {
       s = (s * 1103515245 + 12345) & 0x7fffffff;
       return s / 0x7fffffff;
     };
+    // The bands belong to the classifier, so the sample reads the solved
+    // ground: a random patch of the fine ground would build a whole 96 by 96
+    // chunk for each of the twenty thousand samples.
     for (let i = 0; i < 20000; i++) {
       const x = Math.floor(rnd() * WORLD_W);
       const y = Math.floor(rnd() * WORLD_H);
-      const t = terrainOf(world, x, y);
+      const t = solvedTerrainAt(world, x, y);
       if (t === "bog" || t === "meadow") out[t].push(moistureAt(world, x, y));
     }
   }

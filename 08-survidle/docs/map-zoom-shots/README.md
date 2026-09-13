@@ -1,18 +1,30 @@
 # Close map zoom references
 
-The older `before-rung0.png`, `after-rung0.png`, and `places-rung1.png`
-record the first map zoom and layout corrections.
+The older `before-rung0.png`, `after-rung0.png`, and `places-rung1.png` record
+the first map zoom and layout corrections.
 
-The visual-subcell pass adds two current references:
+`visual-subcells-rung1.png` and `visual-subcells-rung0.png` are historical:
+they show the cosmetic 100 m and 50 m fields the close rungs once drew inside
+one 300 m cell. Nothing inside those fields was mechanical. The
+authoritative-close-zoom migration replaced them with real 50 m patches, so
+these two shots are kept only as the "before" they were.
 
-- `visual-subcells-rung1.png`: the first close rung, with 24 by 12 simulation
-  cells and nine seamless 100 m visual details inside each one.
-- `visual-subcells-rung0.png`: the closest rung, with 12 by 6 simulation cells
-  and 36 seamless 50 m visual details inside each one.
+The rung ladder now, closest first, in 50 m patches per glyph:
 
-Both shots place one recognized deer beside the survivor to make the separate
-visual positions visible. This is screenshot setup, not a special game state or
-a claim that distance within their shared 300 m cell is mechanical. During a
-real Walk task, the survivor marker also follows the continuous in-cell
-position already tracked by the simulation; it does not add another task or
-progress bar.
+| Patches per glyph | Ground per glyph | Board |
+| --- | --- | --- |
+| 1 | 50 m | 72 by 36 glyphs |
+| 2 | 100 m | 72 by 36 glyphs |
+| 6 | 300 m | 72 by 36 glyphs |
+| 18 | 900 m | 72 by 36 glyphs |
+| 54 | 2.7 km | 72 by 36 glyphs |
+| the whole world | one glyph per block of the world's height | 36 glyphs tall |
+
+Every rung but the last is a square block of the same authoritative patches, so
+the closest rung is the ground the simulation runs on rather than a magnified
+default, and a click at any rung names the exact patch an order is given for.
+The board keeps its size on screen throughout; the farthest rung is only as
+wide as the world needs.
+
+The current before-and-after captures of the close rungs live in
+`../close-zoom-simulation-shots/`, beside the design they were taken for.

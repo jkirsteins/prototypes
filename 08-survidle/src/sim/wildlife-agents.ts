@@ -1,6 +1,7 @@
 import { derive, type Rng } from "../rng";
 import { cellAt, regionAt, type World } from "../world/gen";
 import { findRoute, passable } from "../world/route";
+import { type FineNeighbour, fineNeighbours, PATCH_M, type PatchId, patchCenter, patchId, patchXY } from "../world/spatial";
 import { calendar, type Calendar } from "./calendar";
 import { popOf } from "./animals";
 import { regionDensity } from "./animals";
@@ -51,10 +52,16 @@ function campStore(state: GameState, subjectRegion: number): { cell: number; pro
   return { cell: st.campCell, protected: Boolean(structures?.cabin || structures?.turfHut) };
 }
 
-function suitableCells(world: World, region: number, species: AgentSpecies): number[] {
-  const habitat = species === "reindeer" ? new Set(["fell", "rock", "bog", "pine"])
+function habitatOf(species: AgentSpecies): Set<string> {
+  return species === "reindeer" ? new Set(["fell", "rock", "bog", "pine"])
     : species === "elk" ? new Set(["spruce", "bog", "birch", "pine"])
       : new Set(["spruce", "pine", "birch", "bog", "meadow", "fell", "rock"]);
+}
+
+/** Every patch of a region this species could stand on. Whole-region work:
+ * for placing a subject that has none, never for a step it is about to take. */
+function suitableCells(world: World, region: number, species: AgentSpecies): number[] {
+  const habitat = habitatOf(species);
   const cells = regionAt(world, region).cells.filter((idx) => {
     const c = cellAt(world, idx);
     return passable(c.terrain) && habitat.has(c.terrain);
@@ -62,14 +69,116 @@ function suitableCells(world: World, region: number, species: AgentSpecies): num
   return cells.length ? cells : regionAt(world, region).cells.filter((idx) => passable(cellAt(world, idx).terrain));
 }
 
-function neighbours4(world: World, cell: number): number[] {
-  const x = cell % world.w;
-  return [cell - 1, cell + 1, cell - world.w, cell + world.w]
-    .filter((idx) => idx >= 0 && idx < world.w * world.h && Math.abs((idx % world.w) - x) <= 1);
+/** The 50 m strides an animal may take: its own region, passable ground, and
+ * no diagonal that squeezes between two blocked patches. */
+function stepCandidates(world: World, subject: WildlifeSubject, from: PatchId): FineNeighbour[] {
+  return fineNeighbours(world, from).filter((n) => {
+    const c = cellAt(world, n.patch);
+    return c.region === subject.region && passable(c.terrain)
+      && n.corners.every((corner) => passable(cellAt(world, corner).terrain));
+  });
 }
 
-function cellDistance(world: World, a: number, b: number): number {
-  return Math.abs((a % world.w) - (b % world.w)) + Math.abs(Math.floor(a / world.w) - Math.floor(b / world.w));
+function stepPatches(world: World, subject: WildlifeSubject, from: PatchId): PatchId[] {
+  return stepCandidates(world, subject, from).map((n) => n.patch);
+}
+
+function metresBetween(a: PatchId, b: PatchId): number {
+  const from = patchCenter(a);
+  const to = patchCenter(b);
+  return Math.hypot(to.xM - from.xM, to.yM - from.yM);
+}
+
+/** How far an animal looks for water or feeding ground before settling for
+ * what is around it. A patch is 50 m; a region is tens of thousands of them,
+ * and no animal searches a region to decide its next step. */
+const LOCAL_RANGE_M = 1200;
+
+/** Wolves will not close on firelight. The standoff is the light's reach. */
+const LIGHT_STANDOFF_M = 600;
+
+/** Near enough that a survivor in the open hears the pack before it comes. */
+const WOLF_WARNING_M = 300;
+
+/** How far a hunter reaches for the animal being hunted. A stalk closes the
+ * last stretch, so the animal has to be in the same field rather than under
+ * the hunter's feet; the field is half of a parent area across. */
+const HUNT_REACH_M = 150;
+
+/**
+ * The nearest patch within local range that answers `want`, by true distance.
+ * The search walks outward one square ring at a time and stops at the first
+ * ring that cannot hold anything nearer than what it already has. A patch is
+ * only read when a ring reaches it, so an animal standing on what it wants
+ * pays for one patch instead of for the whole window.
+ */
+function nearestLocalPatch(world: World, from: PatchId, want: (patch: PatchId) => boolean): PatchId | undefined {
+  const reach = Math.round(LOCAL_RANGE_M / PATCH_M);
+  const origin = patchXY(from);
+  let best: PatchId | undefined;
+  let bestM = Number.POSITIVE_INFINITY;
+  const consider = (x: number, y: number): void => {
+    if (x < 0 || y < 0 || x >= world.w || y >= world.h) return;
+    const metres = Math.hypot(x - origin.x, y - origin.y) * PATCH_M;
+    if (metres > LOCAL_RANGE_M || metres >= bestM) return;
+    const patch = patchId(x, y);
+    if (!want(patch)) return;
+    best = patch;
+    bestM = metres;
+  };
+  for (let ring = 0; ring <= reach && bestM > ring * PATCH_M; ring++) {
+    if (ring === 0) {
+      consider(origin.x, origin.y);
+      continue;
+    }
+    for (let x = origin.x - ring; x <= origin.x + ring; x++) {
+      consider(x, origin.y - ring);
+      consider(x, origin.y + ring);
+    }
+    for (let y = origin.y - ring + 1; y <= origin.y + ring - 1; y++) {
+      consider(origin.x - ring, y);
+      consider(origin.x + ring, y);
+    }
+  }
+  return best;
+}
+
+/** Feeding ground of this animal's own kind, within its own region. */
+function localForage(world: World, subject: WildlifeSubject, from: PatchId): PatchId | undefined {
+  const habitat = habitatOf(subject.species);
+  return nearestLocalPatch(world, from, (patch) => {
+    const c = cellAt(world, patch);
+    return c.region === subject.region && passable(c.terrain) && habitat.has(c.terrain);
+  });
+}
+
+/** Land beside open water, in this animal's own region: where it drinks. */
+function shoreOf(world: World, subject: WildlifeSubject, water: PatchId, from: PatchId): PatchId | undefined {
+  return fineNeighbours(world, water)
+    .filter((n) => {
+      const c = cellAt(world, n.patch);
+      return c.region === subject.region && passable(c.terrain);
+    })
+    .map((n) => n.patch)
+    .sort((a, b) => metresBetween(a, from) - metresBetween(b, from))[0];
+}
+
+/**
+ * Where an animal drinks. The search looks for water rather than for shore:
+ * a patch's own terrain is one read while its shore is nine, and the bank of
+ * the nearest water is within a patch of the nearest bank. Water whose banks
+ * all lie in another region falls back to reading shores directly, which is
+ * cheap precisely because that water is near.
+ */
+function localShore(world: World, subject: WildlifeSubject, from: PatchId): PatchId | undefined {
+  const water = nearestLocalPatch(world, from, (patch) => cellAt(world, patch).terrain === "water");
+  const bank = water === undefined ? undefined : shoreOf(world, subject, water, from);
+  if (bank !== undefined || water === undefined) return bank;
+  return nearestLocalPatch(world, from, (patch) => {
+    const c = cellAt(world, patch);
+    if (c.region !== subject.region || !passable(c.terrain)) return false;
+    return fineNeighbours(world, patch).some((n) => cellAt(world, n.patch).terrain === "water");
+  });
 }
 
 function denning(subject: WildlifeSubject, cal: Calendar): boolean {
@@ -131,9 +240,18 @@ export function activateWildlife(state: GameState, world: World, rng: Rng): void
       available -= n;
     }
   }
+  const ground = new Map<AgentSpecies, number[]>();
+  const groundFor = (species: AgentSpecies): number[] => {
+    let cells = ground.get(species);
+    if (!cells) {
+      cells = suitableCells(world, region, species);
+      ground.set(species, cells);
+    }
+    return cells;
+  };
   for (const subject of state.wildlife.subjects.filter((s) => s.region === region)) {
     if (subject.species === "bear" && subject.denCell === null) {
-      const dens = suitableCells(world, region, "bear");
+      const dens = groundFor("bear");
       if (dens.length) subject.denCell = dens[derive(state.seed, 9000 + subject.id) % dens.length];
     }
     if (denning(subject, cal)) {
@@ -141,7 +259,7 @@ export function activateWildlife(state: GameState, world: World, rng: Rng): void
       continue;
     }
     if (subject.active) continue;
-    const cells = suitableCells(world, region, subject.species);
+    const cells = groundFor(subject.species);
     if (!cells.length) continue;
     const cell = cells[rng.int(cells.length)];
     const position = subjectPoint(state, world, subject, cell);
@@ -173,20 +291,59 @@ function beginSegment(state: GameState, world: World, subject: WildlifeSubject, 
   return true;
 }
 
-/** Selects a passable escape segment without moving through it. */
+/**
+ * One 50 m stride directly away from the disturbance, chosen but not walked.
+ * The stride translates the animal by exactly one patch offset, so a held
+ * direction keeps the flight straight: the metres an escape spends are the
+ * metres it puts between the animal and what frightened it.
+ */
 function beginEscapeSegment(state: GameState, world: World, subject: WildlifeSubject): boolean {
   const active = subject.active;
   if (!active || active.travel || active.escapeRemainingM <= 0) return false;
   const actor = metricPointForPlayer(state, world);
   const from = metricPointForWildlife(state, world, subject);
   if (!actor || !from) return false;
-  const candidates = neighbours4(world, active.cell)
-    .filter((cell) => cellAt(world, cell).region === subject.region && passable(cellAt(world, cell).terrain))
-    .map((cell) => ({ cell, point: subjectPoint(state, world, subject, cell) }))
-    .filter((candidate): candidate is { cell: number; point: MetricPoint } => candidate.point !== null)
-    .sort((a, b) => Math.hypot(b.point.xM - actor.xM, b.point.yM - actor.yM) - Math.hypot(a.point.xM - actor.xM, a.point.yM - actor.yM));
-  const next = candidates[0];
-  return next ? beginSegment(state, world, subject, next.cell) : false;
+  const awayX = from.xM - actor.xM;
+  const awayY = from.yM - actor.yM;
+  const away = Math.hypot(awayX, awayY) || 1;
+  const here = patchXY(active.cell);
+  const stride = stepCandidates(world, subject, active.cell)
+    .map((n) => {
+      const step = patchXY(n.patch);
+      const dx = (step.x - here.x) * PATCH_M;
+      const dy = (step.y - here.y) * PATCH_M;
+      return { patch: n.patch, dx, dy, alignment: (dx * awayX + dy * awayY) / (n.distanceM * away) };
+    })
+    .sort((a, b) => b.alignment - a.alignment)[0];
+  if (!stride) return false;
+  active.position = from;
+  active.travel = { destination: { xM: from.xM + stride.dx, yM: from.yM + stride.dy }, cell: stride.patch };
+  return true;
+}
+
+/**
+ * Keeps one hierarchical route per destination: a route is searched when the
+ * animal takes a target and not again while its steps still fit under the
+ * animal's feet. Ground it cannot reach gives the target up rather than
+ * paying for the same failed search on every stride.
+ */
+function followRoute(world: World, subject: WildlifeSubject, candidates: readonly PatchId[]): boolean {
+  const active = subject.active;
+  if (!active || active.target === null) return false;
+  if (active.route.length > 0 && active.route.at(-1) === active.target && candidates.includes(active.route[0])) return true;
+  const route = findRoute(world, active.cell, active.target);
+  // Only a whole path is a path. Ground outside the animal's own region is out
+  // of bounds for it, and keeping the rest of such a route would leave holes an
+  // animal walks into and then stands in, re-searching the same cached steps.
+  const walkable = route !== null && route.length > 0 && candidates.includes(route[0])
+    && route.every((cell) => cellAt(world, cell).region === subject.region);
+  if (!walkable) {
+    active.route = [];
+    active.target = null;
+    return false;
+  }
+  active.route = [...route];
+  return true;
 }
 
 function continueSegment(state: GameState, world: World, subject: WildlifeSubject, rng: Rng): boolean {
@@ -195,16 +352,18 @@ function continueSegment(state: GameState, world: World, subject: WildlifeSubjec
   if (active.intent === "flee") return beginEscapeSegment(state, world, subject);
   if (active.target !== null) {
     if (active.cell === active.target) return false;
-    const candidates = neighbours4(world, active.cell)
-      .filter((cell) => cellAt(world, cell).region === subject.region && passable(cellAt(world, cell).terrain));
-    const routeStillFits = active.route.length > 0 && active.route.at(-1) === active.target && candidates.includes(active.route[0]);
-    if (!routeStillFits) active.route = findRoute(world, active.cell, active.target)?.filter((cell) => cellAt(world, cell).region === subject.region) ?? [];
+    const candidates = stepPatches(world, subject, active.cell);
+    if (!followRoute(world, subject, candidates)) return false;
     const next = active.route.shift();
-    return next !== undefined && candidates.includes(next) ? beginSegment(state, world, subject, next) : false;
+    if (next === undefined || !candidates.includes(next)) {
+      active.route = [];
+      active.target = null;
+      return false;
+    }
+    return beginSegment(state, world, subject, next);
   }
   if (active.intent !== "wander") return false;
-  const candidates = neighbours4(world, active.cell)
-    .filter((cell) => cellAt(world, cell).region === subject.region && passable(cellAt(world, cell).terrain));
+  const candidates = stepPatches(world, subject, active.cell);
   return candidates.length ? beginSegment(state, world, subject, candidates[rng.int(candidates.length)]) : false;
 }
 
@@ -444,9 +603,7 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
     active.intent = "flee";
     active.target = null;
   } else if (active.thirst >= 60) {
-    const shore = regionAt(world, subject.region).cells
-      .filter((cell) => passable(cellAt(world, cell).terrain) && neighbours4(world, cell).some((n) => cellAt(world, n).terrain === "water"))
-      .sort((a, b) => cellDistance(world, active.cell, a) - cellDistance(world, active.cell, b))[0];
+    const shore = localShore(world, subject, active.cell);
     if (shore !== undefined) {
       active.intent = "drink";
       active.target = shore;
@@ -455,10 +612,7 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
   if (active.alarm < 50 && active.thirst < 60 && subject.species === "wolf" && active.hunger >= 60) {
     const prey = state.wildlife.subjects
       .filter((s) => s.region === subject.region && s.active && (s.form === "herd") && wildlifeMembers(s) > 0)
-      .sort((a, b) => {
-        const distance = (s: WildlifeSubject) => Math.abs((s.active!.cell % world.w) - (active.cell % world.w)) + Math.abs(Math.floor(s.active!.cell / world.w) - Math.floor(active.cell / world.w));
-        return distance(a) - distance(b);
-      })[0];
+      .sort((a, b) => metresBetween(a.active!.cell, active.cell) - metresBetween(b.active!.cell, active.cell))[0];
     if (prey?.active) {
       active.intent = "hunt";
       active.target = prey.active.cell;
@@ -478,7 +632,7 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
     }
   }
   if (active.alarm < 50 && active.thirst < 60 && subject.form === "herd" && active.hunger >= 60) {
-    const forage = suitableCells(world, subject.region, subject.species).sort((a, b) => cellDistance(world, active.cell, a) - cellDistance(world, active.cell, b))[0];
+    const forage = localForage(world, subject, active.cell);
     if (forage === active.cell) {
       active.hunger = Math.max(0, active.hunger - 40);
       subject.condition = Math.min(100, subject.condition + 4);
@@ -497,20 +651,22 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
     active.rest = Math.max(0, active.rest - 5);
     return;
   }
-  const x = active.cell % world.w;
-  let candidates = neighbours4(world, active.cell)
-    .filter((idx) => idx >= 0 && idx < world.w * world.h && Math.abs((idx % world.w) - x) <= 1)
-    .filter((idx) => cellAt(world, idx).region === subject.region && passable(cellAt(world, idx).terrain));
+  let candidates = stepPatches(world, subject, active.cell);
   if (subject.species === "wolf") {
     const lit = [] as number[];
     if (st?.fire.lit && st.campCell !== null) lit.push(st.campCell);
     if (state.player.region === subject.region && state.player.torch.lit) lit.push(cellOf(state, world));
     if (lit.length) {
-      const lightDistance = (cell: number) => Math.min(...lit.map((center) => Math.abs((cell % world.w) - (center % world.w)) + Math.abs(Math.floor(cell / world.w) - Math.floor(center / world.w))));
+      const lightDistance = (cell: number) => Math.min(...lit.map((center) => metresBetween(cell, center)));
       const here = lightDistance(active.cell);
-      const safe = candidates.filter((cell) => lightDistance(cell) > 2 && (here > 2 || lightDistance(cell) > here));
-      candidates = safe.length ? safe : candidates.filter((cell) => lightDistance(cell) >= here && lightDistance(cell) > 2);
-      if (active.target !== null && lightDistance(active.target) <= 2) {
+      // Beyond the standoff where that is one stride away; otherwise a wolf
+      // already inside it gives ground, and one outside never closes.
+      const safe = candidates.filter((cell) => lightDistance(cell) > LIGHT_STANDOFF_M && (here > LIGHT_STANDOFF_M || lightDistance(cell) > here));
+      const giving = candidates.filter((cell) => lightDistance(cell) > here);
+      candidates = safe.length ? safe
+        : here <= LIGHT_STANDOFF_M ? giving
+          : candidates.filter((cell) => lightDistance(cell) >= here);
+      if (active.target !== null && lightDistance(active.target) <= LIGHT_STANDOFF_M) {
         active.target = null;
         active.route = [];
         active.intent = "flee";
@@ -519,19 +675,17 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
   }
   let routedStep: number | undefined;
   if (active.target !== null && active.cell !== active.target) {
-    const routeStillFits = active.route.length > 0 && active.route.at(-1) === active.target && candidates.includes(active.route[0]);
-    if (!routeStillFits) active.route = findRoute(world, active.cell, active.target)?.filter((cell) => cellAt(world, cell).region === subject.region) ?? [];
+    followRoute(world, subject, candidates);
     if (active.route.length && candidates.includes(active.route[0])) routedStep = active.route.shift();
-    const tx = active.target % world.w;
-    const ty = Math.floor(active.target / world.w);
-    candidates.sort((a, b) => Math.abs((a % world.w) - tx) + Math.abs(Math.floor(a / world.w) - ty) - (Math.abs((b % world.w) - tx) + Math.abs(Math.floor(b / world.w) - ty)));
+    const target = active.target;
+    if (target !== null) candidates.sort((a, b) => metresBetween(a, target) - metresBetween(b, target));
   } else {
     active.route = [];
-    if (active.intent === "flee") candidates.sort((a, b) => cellDistance(world, b, playerCell) - cellDistance(world, a, playerCell));
+    if (active.intent === "flee") candidates.sort((a, b) => metresBetween(b, playerCell) - metresBetween(a, playerCell));
   }
   if (subject.species === "wolf" && active.target === cellOf(state, world) && cal.isNight) {
-    const distance = Math.abs((active.cell % world.w) - (active.target % world.w)) + Math.abs(Math.floor(active.cell / world.w) - Math.floor(active.target / world.w));
-    if (distance === 1 && active.alarm === 0) {
+    const distance = metresBetween(active.cell, active.target);
+    if (distance > 0 && distance <= WOLF_WARNING_M && active.alarm === 0) {
       active.alarm = 1;
       log(state, "Wolves pace just beyond the dark. They are coming closer.", "bad");
       if (routedStep !== undefined) beginSegment(state, world, subject, routedStep);
@@ -565,8 +719,8 @@ function moveOne(state: GameState, world: World, cal: Calendar, subject: Wildlif
       }
       if (wildlifeMembers(prey) === 0) removeSubject(state, prey);
     }
-    const atFire = Boolean(st?.fire.lit && st.campCell !== null && cellDistance(world, active.cell, st.campCell) <= 2);
-    const atTorch = state.player.region === subject.region && state.player.torch.lit && cellDistance(world, active.cell, cellOf(state, world)) <= 2;
+    const atFire = Boolean(st?.fire.lit && st.campCell !== null && metresBetween(active.cell, st.campCell) <= LIGHT_STANDOFF_M);
+    const atTorch = state.player.region === subject.region && state.player.torch.lit && metresBetween(active.cell, cellOf(state, world)) <= LIGHT_STANDOFF_M;
     if (active.cell === cellOf(state, world) && cal.isNight && !sheltered(state, world) && !atFire && !atTorch) {
       cue("wolves");
       if (hasQuirk(state, "sleepsLight")) {
@@ -689,10 +843,15 @@ export function claimHuntableAnimal(state: GameState, world: World, species: Spe
     return true;
   }
 
-  let subject = subjectId === undefined
-    ? state.wildlife.subjects.find((candidate) => candidate.region === region && candidate.species === species && candidate.active?.cell === cell && wildlifeMembers(candidate) > 0)
-    : state.wildlife.subjects.find((candidate) => candidate.id === subjectId && candidate.region === region && candidate.species === species
-      && (candidate.active?.cell === cell || candidate.denCell === cell) && wildlifeMembers(candidate) > 0);
+  const reachM = (candidate: WildlifeSubject): number => {
+    const standing = candidate.active ? metresBetween(candidate.active.cell, cell) : Number.POSITIVE_INFINITY;
+    const den = subjectId !== undefined && candidate.denCell !== null ? metresBetween(candidate.denCell, cell) : Number.POSITIVE_INFINITY;
+    return Math.min(standing, den);
+  };
+  let subject = state.wildlife.subjects
+    .filter((candidate) => candidate.region === region && candidate.species === species && wildlifeMembers(candidate) > 0
+      && (subjectId === undefined || candidate.id === subjectId) && reachM(candidate) <= HUNT_REACH_M)
+    .sort((a, b) => reachM(a) - reachM(b))[0];
   if (!subject && subjectId === undefined) {
     const represented = state.wildlife.subjects
       .filter((candidate) => candidate.region === region && candidate.species === species)

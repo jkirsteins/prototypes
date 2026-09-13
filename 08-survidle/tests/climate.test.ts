@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { WORLD_H, WORLD_W } from "../src/world/gen";
+import { WORLD_H, WORLD_W, type World } from "../src/world/gen";
+import { PATCH_KM } from "../src/world/spatial";
 import { flatWorld } from "./world-fixture";
 import { cachedAtmosphereFieldNodes, cachedAtmosphereFieldWaves, extinctionComponents, fieldTransport, MAX_ATMOSPHERE_FIELD_NODES, meteorologicalRangeKm, precipitationPhase, sampleAtmosphere, terrainModifiers } from "../src/sim/climate";
 
@@ -17,6 +18,21 @@ function climateWorld(seed: number) {
 
 const weather = { startDoy: 180, snowCm: 0 };
 
+/**
+ * A place whose winter wind clears `kmh`, found by walking the broad field's
+ * own 12 km nodes. What the wind does where is the field's, so a fixture that
+ * needs a gale asks for one.
+ */
+function windyWinterPlace(world: World, kmh: number): { x: number; y: number } {
+  const step = Math.round(12 / PATCH_KM);
+  for (let y = step; y < 40 * step; y += step) {
+    for (let x = step; x < 40 * step; x += step) {
+      if (sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, x, y).windKmh > kmh + 2) return { x, y };
+    }
+  }
+  throw new Error(`no place in the world blows over ${kmh} km/h in winter`);
+}
+
 describe("deterministic local atmosphere", () => {
   it("keeps a high inland site within an annual precipitation envelope while retaining heavy bands", () => {
     // SMHI's 1991-2020 normal is about 400-600 mm in northern inland
@@ -28,7 +44,7 @@ describe("deterministic local atmosphere", () => {
     let wetHours = 0;
     let peakMmPerHour = 0;
     for (let hour = 0; hour < 365 * 24; hour++) {
-      const air = sampleAtmosphere({ startDoy: 90, snowCm: 0 }, world, hour * 60, 1254, 470);
+      const air = sampleAtmosphere({ startDoy: 90, snowCm: 0 }, world, hour * 60, 7524, 2820);
       liquidMm += air.precipMmPerHour;
       if (air.precipMmPerHour >= 0.2) wetHours++;
       peakMmPerHour = Math.max(peakMmPerHour, air.precipMmPerHour);
@@ -43,25 +59,25 @@ describe("deterministic local atmosphere", () => {
   it("reuses exact lattice nodes and bounds the per-world field cache", () => {
     const world = climateWorld(17);
     const sine = vi.spyOn(Math, "sin");
-    const first = sampleAtmosphere(weather, world, 1234, 650, 720);
+    const first = sampleAtmosphere(weather, world, 1234, 3900, 4320);
     sine.mockClear();
-    expect(sampleAtmosphere(weather, world, 1234, 650, 720)).toEqual(first);
+    expect(sampleAtmosphere(weather, world, 1234, 3900, 4320)).toEqual(first);
     expect(sine).toHaveBeenCalledTimes(1);
     sine.mockRestore();
-    const negative = sampleAtmosphere(weather, world, 1234, -650, -720);
+    const negative = sampleAtmosphere(weather, world, 1234, -3900, -4320);
     expect(cachedAtmosphereFieldWaves(world)).toBe(4);
 
     for (let i = 0; i < 2_000; i++) sampleAtmosphere(weather, world, 1234, i * 30, i * 17);
     expect(cachedAtmosphereFieldNodes(world)).toBeLessThanOrEqual(MAX_ATMOSPHERE_FIELD_NODES);
-    expect(sampleAtmosphere(weather, world, 1234, -650, -720)).toEqual(negative);
+    expect(sampleAtmosphere(weather, world, 1234, -3900, -4320)).toEqual(negative);
     // The field is keyed by the seed, not by the world object: the same world
     // under another seed answers as that seed's world does. The fixture is shared
     // with the rest of the file, so its own seed goes back before leaving.
     world.seed = 19;
     try {
-      const changedSeed = sampleAtmosphere(weather, world, 1234, -650, -720);
+      const changedSeed = sampleAtmosphere(weather, world, 1234, -3900, -4320);
       expect(changedSeed).not.toEqual(negative);
-      expect(changedSeed).toEqual(sampleAtmosphere(weather, climateWorld(19), 1234, -650, -720));
+      expect(changedSeed).toEqual(sampleAtmosphere(weather, climateWorld(19), 1234, -3900, -4320));
     } finally {
       world.seed = 17;
     }
@@ -74,7 +90,7 @@ describe("deterministic local atmosphere", () => {
     // the case is about is that sampling leaves the world alone - no chunk or
     // region materialized, no solved array written - and these readings say so.
     const fingerprint = () => JSON.stringify({
-      seed: world.seed, w: world.w, h: world.h, chunks: world.chunks.size, regions: world.regions.size,
+      seed: world.seed, w: world.w, h: world.h, chunks: world.fineChunks.size, regions: world.regions.size,
       start: [world.start, world.startCell, world.startRing],
       strided: Array.from({ length: 64 }, (_, i) => {
         const cell = Math.floor((i * world.w * world.h) / 64);
@@ -95,15 +111,18 @@ describe("deterministic local atmosphere", () => {
     const world = climateWorld(17);
     let adjacentPressure = 0;
     let distantPressure = 0;
-    for (let x = 0; x < 150; x += 10) {
+    // 50 m is one patch; 30 km is 600 of them, well past the 12 km broad lattice.
+    for (let x = 0; x < 900; x += 60) {
       // The northern sea removes elevation differences from the field comparison.
       const a = sampleAtmosphere(weather, world, 1440, x, 0);
       const b = sampleAtmosphere(weather, world, 1440, x + 1, 0);
-      const far = sampleAtmosphere(weather, world, 1440, x + 250, 0);
+      const far = sampleAtmosphere(weather, world, 1440, x + 600, 0);
       adjacentPressure += Math.abs(a.pressureHpa - b.pressureHpa);
       distantPressure += Math.abs(a.pressureHpa - far.pressureHpa);
+      expect(Math.abs(a.temperatureC - b.temperatureC)).toBeLessThan(1);
       expect(Math.abs(a.relativeHumidity - b.relativeHumidity)).toBeLessThan(0.03);
       expect(Math.abs(a.cloud - b.cloud)).toBeLessThan(0.06);
+      expect(far).not.toEqual(a);
     }
     expect(adjacentPressure).toBeLessThan(distantPressure / 15);
     expect(distantPressure).toBeGreaterThan(10);
@@ -117,11 +136,14 @@ describe("deterministic local atmosphere", () => {
     const a = sampleAtmosphere(weather, world, 0, 100, 100);
     const later = sampleAtmosphere(weather, world, 20, 100, 100);
     const transport = fieldTransport(world.seed);
-    const transported = sampleAtmosphere(weather, world, 20, 100 + transport.xKmh / 0.9, 100 + transport.yKmh / 0.9);
+    // Twenty minutes of transport, in patches: the air moves xKmh/3 km, and a
+    // patch is PATCH_KM of it.
+    const transported = sampleAtmosphere(weather, world, 20,
+      100 + transport.xKmh / 3 / PATCH_KM, 100 + transport.yKmh / 3 / PATCH_KM);
     expect(later.pressureHpa).not.toBeCloseTo(a.pressureHpa, 3);
     expect(transported.pressureHpa).toBeCloseTo(a.pressureHpa, 9);
-    const left = sampleAtmosphere(weather, world, 0, 40 - 0.00001, 0);
-    const right = sampleAtmosphere(weather, world, 0, 40 + 0.00001, 0);
+    const left = sampleAtmosphere(weather, world, 0, 240 - 0.00001, 0);
+    const right = sampleAtmosphere(weather, world, 0, 240 + 0.00001, 0);
     expect(Math.abs(left.pressureHpa - right.pressureHpa)).toBeLessThan(0.0001);
   });
 
@@ -137,14 +159,14 @@ describe("deterministic local atmosphere", () => {
     expect(difference(here, later)).toBeGreaterThan(0.1);
     expect(difference(here, next)).toBeLessThan(1);
     expect(difference(here, soon)).toBeLessThan(0.01);
-    for (let x = 0; x < world.w; x += 60) {
-      const wind = sampleAtmosphere(weather, world, 1440, x, 500);
+    for (let x = 0; x < world.w; x += 360) {
+      const wind = sampleAtmosphere(weather, world, 1440, x, 3000);
       expect(wind.windKmh).toBeGreaterThanOrEqual(0);
       expect(wind.windKmh).toBeLessThanOrEqual(60);
       expect(Math.hypot(wind.windXKmh, wind.windYKmh)).toBeCloseTo(wind.windKmh, 10);
     }
-    const left = sampleAtmosphere(weather, world, 0, 40 - 0.00001, 0);
-    const right = sampleAtmosphere(weather, world, 0, 40 + 0.00001, 0);
+    const left = sampleAtmosphere(weather, world, 0, 240 - 0.00001, 0);
+    const right = sampleAtmosphere(weather, world, 0, 240 + 0.00001, 0);
     expect(difference(left, right)).toBeLessThan(0.0001);
   });
 
@@ -153,8 +175,8 @@ describe("deterministic local atmosphere", () => {
     let dry = 0;
     let wet = 0;
     const rates: number[] = [];
-    for (let x = 0; x < world.w; x += 30) {
-      const sample = sampleAtmosphere(weather, world, 1440, x, 500);
+    for (let x = 0; x < world.w; x += 180) {
+      const sample = sampleAtmosphere(weather, world, 1440, x, 3000);
       if (sample.cloud <= 0.65) {
         expect(sample.precipMmPerHour).toBe(0);
         expect(sample.precip).toBe("none");
@@ -182,9 +204,13 @@ describe("deterministic local atmosphere", () => {
 
   it("uses the requested season and only develops blowing snow over cold snow cover", () => {
     const world = climateWorld(17);
-    const summer = sampleAtmosphere(weather, world, 0, 500, 600);
-    const winter = sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, 500, 600);
-    const bare = sampleAtmosphere({ startDoy: 15 }, world, 0, 500, 600);
+    // Snow blows only over 18 km/h, and where the winter wind reaches that is
+    // the field's own business: the case finds such a place rather than naming
+    // one, since a patch is 50 m and the field's nodes are 12 km apart.
+    const gale = windyWinterPlace(world, 18);
+    const summer = sampleAtmosphere(weather, world, 0, gale.x, gale.y);
+    const winter = sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, gale.x, gale.y);
+    const bare = sampleAtmosphere({ startDoy: 15 }, world, 0, gale.x, gale.y);
     expect(winter.temperatureC).toBeLessThan(summer.temperatureC - 15);
     expect(winter.windKmh).toBeGreaterThan(18);
     expect(winter.blowingSnow).toBeGreaterThan(0);
@@ -199,8 +225,8 @@ describe("deterministic local atmosphere", () => {
     expect(Math.hypot(transport.xKmh, transport.yKmh)).toBeLessThan(18);
     let calm = 0;
     let drifting = 0;
-    for (let x = 200; x < 1400; x += 60) {
-      const sample = sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, x, 600);
+    for (let x = 1200; x < 8400; x += 360) {
+      const sample = sampleAtmosphere({ startDoy: 15, snowCm: 40 }, world, 0, x, 3600);
       expect(sample.temperatureC).toBeLessThan(0);
       if (sample.windKmh <= 18) {
         expect(sample.blowingSnow).toBe(0);
@@ -245,9 +271,9 @@ describe("optical extinction", () => {
   it("supplies both rain and snow to extinction while atmospheric precipitation is mixed", () => {
     const world = climateWorld(17);
     let mixed = 0;
-    for (let x = 200; x < 1500; x += 100) {
+    for (let x = 1200; x < 9000; x += 600) {
       for (let startDoy = 70; startDoy < 160; startDoy += 5) {
-        const sample = sampleAtmosphere({ startDoy }, world, 0, x, 500);
+        const sample = sampleAtmosphere({ startDoy }, world, 0, x, 3000);
         if (sample.temperatureC <= -1 || sample.temperatureC >= 1 || sample.precipMmPerHour === 0) continue;
         expect(sample.rainMmPerHour).toBeGreaterThan(0);
         expect(sample.snowCmPerHour).toBeGreaterThan(0);

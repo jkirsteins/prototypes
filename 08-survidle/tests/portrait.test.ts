@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
+import { PATCH_M } from "../src/world/spatial";
 import { regionState } from "../src/sim/regionstate";
 import { siteCamp } from "./siting-helpers";
 import type { GameState, TaskId } from "../src/sim/types";
@@ -55,7 +56,7 @@ describe("the live portrait state", () => {
     const camp = regionState(state, world, state.player.region);
     camp.fire.lit = true;
     expect(livePortraitState(state, world, cal, 10).firelit).toBe(true);
-    state.player.x += 1;
+    state.player.xM += PATCH_M;
     expect(livePortraitState(state, world, cal, 10).firelit).toBe(false);
     state.player.torch.lit = true;
     expect(livePortraitState(state, world, cal, 10).firelit).toBe(true);

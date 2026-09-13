@@ -1,3 +1,4 @@
+import { knowledgeAt } from "../src/sim/fineknowledge";
 import { describe, expect, it } from "vitest";
 import { newGame } from "../src/sim/newgame";
 import { dimAll, isKnown, knownShare, knowledgeGen, mapRegion, markKnown } from "../src/sim/mapped";
@@ -20,6 +21,6 @@ describe("mapped cells", () => {
     dimAll(state);
     // Dim ground is still known ground: an heir may walk the journal.
     expect(isKnown(state, fresh)).toBe(true);
-    expect(state.mapped[fresh]).toBe(3);
+    expect(knowledgeAt(state.knowledge, fresh)).toBe("inherited");
   });
 });

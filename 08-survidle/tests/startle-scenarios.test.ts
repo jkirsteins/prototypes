@@ -1,3 +1,4 @@
+import { encodeKnowledge, knowledgeAt } from "../src/sim/fineknowledge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findStartleScenario, prepareStartleScenario, replayStartleScenario, stepStartleScenario } from "../scripts/startle-seeds";
 import { setWildlifeEventSink } from "../src/sim/wildlife-events";
@@ -19,7 +20,7 @@ describe("reproducible startle playtests", () => {
     expect(replayStartleScenario(scenario!)).toEqual(result);
     expect(findStartleScenario(kind, scenario!.seed, scenario!.seed)).toEqual(scenario);
     const scene = prepareStartleScenario(scenario!);
-    const before = JSON.stringify({ mapped: scene.state.mapped, wildlife: scene.state.wildlife.familiarity, visible: scene.state.wildlife.visible });
+    const before = JSON.stringify({ mapped: encodeKnowledge(scene.state.knowledge), wildlife: scene.state.wildlife.familiarity, visible: scene.state.wildlife.visible });
     const events: WildlifeStartleEvent[] = [];
     setWildlifeEventSink(event => events.push(event));
     stepStartleScenario(scene, scenario!, true);
@@ -35,8 +36,8 @@ describe("reproducible startle playtests", () => {
       if (kind === "visible") expect(events[0].perception.kind).toBe("seen");
       if (kind === "heard-only") {
         expect(events[0].perception.kind).toBe("heard");
-        expect(scene.state.mapped[scenario!.startCell]).toBeUndefined();
-        expect(JSON.stringify({ mapped: scene.state.mapped, wildlife: scene.state.wildlife.familiarity, visible: scene.state.wildlife.visible })).toBe(before);
+        expect(knowledgeAt(scene.state.knowledge, scenario!.startCell)).toBe("unknown");
+        expect(JSON.stringify({ mapped: encodeKnowledge(scene.state.knowledge), wildlife: scene.state.wildlife.familiarity, visible: scene.state.wildlife.visible })).toBe(before);
       }
       if (kind === "bog") expect(events[0].terrain).toBe("bog");
       if (kind === "snow") expect(scene.state.weather.snowCm).toBeGreaterThanOrEqual(5);

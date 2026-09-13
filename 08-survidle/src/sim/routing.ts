@@ -7,9 +7,10 @@
 import { cellAt, fordAt, neighbours, regionOf, terrainOf, type World } from "../world/gen";
 import { isKnown, knowledgeGen } from "./mapped";
 import type { GameState, IceMode } from "./types";
-import { knownRoute, passable, routeMinutes, type RouteConditions } from "../world/route";
+import { knownRoute, knownRouteCandidates, passable, routeMinutes, type RouteConditions } from "../world/route";
 import { groundAt, iceMode } from "./weather";
 import { fearsFell, hasQuirk } from "./fears";
+import { cellOf } from "./position";
 
 const weatherIds = new WeakMap<GameState["weather"], number>();
 let nextWeatherId = 0;
@@ -36,7 +37,7 @@ export function routeConditions(state: GameState, world: World, requested: IceMo
 }
 
 export function survivorRouteMinutes(state: GameState, world: World, path: number[], baseKmh: number, ice: IceMode = "none"): number {
-  return routeMinutes(world, path, baseKmh, routeConditions(state, world, ice));
+  return routeMinutes(world, path, cellOf(state, world), baseKmh, routeConditions(state, world, ice));
 }
 
 /** A route the survivor could actually plan: it may not leave the ground they know. */
@@ -94,7 +95,9 @@ export function frontierRoute(
   avoidFell = false,
 ): number[] | null {
   const conditions = routeConditions(state, world, ice);
-  if (isKnown(state, to) || !passable(cellAt(world, to).terrain, conditions.iceAt(to)) || conditions.blockedAt?.(to)) return null;
+  // The ford is what makes a river parent's channel crossable; without it the
+  // one step into the dark could never be the step across the water.
+  if (isKnown(state, to) || !passable(cellAt(world, to).terrain, conditions.iceAt(to), fordAt(world, to)) || conditions.blockedAt?.(to)) return null;
   const edges = neighbours(world, to).filter((cell) => isKnown(state, cell));
   let best: number[] | null = null;
   for (const edge of edges) {
@@ -104,6 +107,18 @@ export function frontierRoute(
     if (!best || path.length < best.length) best = path;
   }
   return best;
+}
+
+/**
+ * A rejection-only connectivity prefilter with exactly survivorRoute's
+ * knowledge, ice and blocked-patch rules. Retained candidates still need
+ * their own exact route; what this buys is not having to ask for one per
+ * patch of a block that holds thousands.
+ */
+export function survivorRouteCandidates(
+  state: GameState, world: World, from: number, candidates: readonly number[], ice: IceMode = "none",
+): number[] {
+  return knownRouteCandidates(world, from, candidates, (cell) => isKnown(state, cell), knowledgeGen(), routeConditions(state, world, ice));
 }
 
 /**
@@ -125,4 +140,13 @@ export function exploreRoute(
 ): number[] | null {
   const known = (c: number) => isKnown(state, c) || regionOf(world, c % world.w, Math.floor(c / world.w)) === region;
   return knownRoute(world, from, to, known, `${knowledgeGen()}:x${region}`, routeConditions(state, world, ice), avoidFell);
+}
+
+/** A rejection-only connectivity prefilter, with precisely exploreRoute's
+ * knowledge, ice and blocked-patch rules. Retained cells still need routes. */
+export function exploreRouteCandidates(
+  state: GameState, world: World, from: number, candidates: readonly number[], region: number, ice: IceMode = "none",
+): number[] {
+  const known = (cell: number) => isKnown(state, cell) || regionOf(world, cell % world.w, Math.floor(cell / world.w)) === region;
+  return knownRouteCandidates(world, from, candidates, known, `${knowledgeGen()}:x${region}`, routeConditions(state, world, ice));
 }

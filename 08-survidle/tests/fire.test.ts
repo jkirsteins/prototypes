@@ -10,6 +10,7 @@ import { newGame } from "../src/sim/newgame";
 import { feltTemperature, INDOOR_C, warmthTarget } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
+import { woodLeft } from "../src/sim/stocks";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { ensureGround, localWeather } from "../src/sim/weather";
 import { siteCamp } from "./siting-helpers";
@@ -264,7 +265,7 @@ describe("spread and smoke", () => {
     st.fire.unattended = 200;
     ensureGround(state, world, state.player.region).dryHours = 96;
     placeAtSpot(state, world, state.player.region, "forest");
-    const wood0 = st.wood;
+    const wood0 = woodLeft(st, world, state.player.region);
     const rng = new Rng(9);
     let hours = 0;
     while (st.fire.lit && hours < 400) {
@@ -273,7 +274,7 @@ describe("spread and smoke", () => {
     }
     expect(st.fire.lit).toBe(false);
     expect(hours).toBeLessThan(400);
-    expect(st.wood).toBeLessThan(wood0);
+    expect(woodLeft(st, world, state.player.region)).toBeLessThan(wood0);
     expect(campSite(st)!.structures.leanTo).toBe(false);
     expect(state.log.some((e) => e.text.startsWith("Smoke on the wind"))).toBe(true);
     expect(state.log.some((e) => e.text === "The ground is tinder dry.")).toBe(true);

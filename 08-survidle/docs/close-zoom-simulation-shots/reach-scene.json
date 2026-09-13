@@ -1,0 +1,105 @@
+{
+  "capturedAt": "2026-09-13T01:12:29.830Z",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "deviceScale": 2
+  },
+  "stand": {
+    "x": 4233,
+    "y": 12969,
+    "patch": 140069433,
+    "revealPatches": 40
+  },
+  "reloadIdentical": true,
+  "facts": {
+    "reach50m": {
+      "seed": 42,
+      "minute": 0,
+      "startDoy": 90,
+      "player": {
+        "xM": 211675,
+        "yM": 648475,
+        "region": 19916
+      },
+      "zoom": "50 m per glyph, 3.6 by 1.8 km",
+      "renderedCells": 2592,
+      "riverGlyphs": 17,
+      "waterGlyphs": 458,
+      "fogGlyphs": 0,
+      "cosmeticDetails": 0,
+      "box": {
+        "x": 320,
+        "y": 10,
+        "width": 840,
+        "height": 450
+      }
+    },
+    "reach100m": {
+      "seed": 42,
+      "minute": 0,
+      "startDoy": 90,
+      "player": {
+        "xM": 211675,
+        "yM": 648475,
+        "region": 19916
+      },
+      "zoom": "100 m per glyph, 7.2 by 3.6 km",
+      "renderedCells": 2592,
+      "riverGlyphs": 16,
+      "waterGlyphs": 215,
+      "fogGlyphs": 0,
+      "cosmeticDetails": 0,
+      "box": {
+        "x": 320,
+        "y": 10,
+        "width": 840,
+        "height": 450
+      }
+    },
+    "reach300m": {
+      "seed": 42,
+      "minute": 0,
+      "startDoy": 90,
+      "player": {
+        "xM": 211675,
+        "yM": 648475,
+        "region": 19916
+      },
+      "zoom": "300 m per glyph, 22 by 11 km",
+      "renderedCells": 2592,
+      "riverGlyphs": 8,
+      "waterGlyphs": 20,
+      "fogGlyphs": 0,
+      "cosmeticDetails": 0,
+      "box": {
+        "x": 320,
+        "y": 10,
+        "width": 840,
+        "height": 450
+      }
+    },
+    "reach50mReload": {
+      "seed": 42,
+      "minute": 0,
+      "startDoy": 90,
+      "player": {
+        "xM": 211675,
+        "yM": 648475,
+        "region": 19916
+      },
+      "zoom": "50 m per glyph, 3.6 by 1.8 km",
+      "renderedCells": 2592,
+      "riverGlyphs": 17,
+      "waterGlyphs": 458,
+      "fogGlyphs": 0,
+      "cosmeticDetails": 0,
+      "box": {
+        "x": 320,
+        "y": 10,
+        "width": 840,
+        "height": 450
+      }
+    }
+  }
+}

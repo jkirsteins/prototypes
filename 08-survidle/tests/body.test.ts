@@ -1,3 +1,4 @@
+import { setKnowledge } from "../src/sim/fineknowledge";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
@@ -20,7 +21,7 @@ import { PACK_COMFORTABLE_KG } from "../src/units";
 import { isWorkOrder } from "../src/sim/types";
 import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
-import { siteCamp } from "./siting-helpers";
+import { requireCamp, siteCamp } from "./siting-helpers";
 import { forestCampOnWater, forestPairNear, leeCellNear, openCampWithForestNear, shoreCampWithDryForest, terrainCellNear, unnamedShoreRegion } from "./world-facts";
 import { ensureGround, iceMode } from "../src/sim/weather";
 import { testAtmosphere, testRain } from "./weather-helpers";
@@ -449,7 +450,7 @@ describe("the runner in the elements", () => {
     const g = newGame(10);
     const { state, world } = g;
     const region = shoreCampWithDryForest(world, state.player.region);
-    placeAt(state, world, regionAt(world, region).campCell);
+    placeAt(state, world, regionAt(world, region).campCell!);
     siteCamp(state, world);
     mapRegion(state, world, state.player.region);
     addItem(state.player.pack, "driedMeat", 2);
@@ -665,7 +666,7 @@ describe("the runner in the elements", () => {
     ensureGround(state, world, state.player.region).iceCm = 20;
     const cal2 = calendar(state.minute);
     const route = findRoute(world, here, campCell, "safe")!;
-    const expected = routeMinutes(world, route, baseWalkSpeed(state, cal2, state.weather), "safe");
+    const expected = routeMinutes(world, route, here, baseWalkSpeed(state, cal2, state.weather), "safe");
     expect(minutesToCamp(state, world, cal2)).toBeCloseTo(expected, 6);
   });
 
@@ -879,7 +880,7 @@ describe("the shared storm plan", () => {
     const remoteRegion = regionAt(world, hereRegion.neighbours[0].id);
     mapRegion(state, world, hereRegion.id);
     mapRegion(state, world, remoteRegion.id);
-    const refuge = remoteRegion.campCell;
+    const refuge = requireCamp(remoteRegion);
     siteFor(regionState(state, world, remoteRegion.id), refuge).structures.leanTo = true;
     state.weather.storm = { id: 33, source: "natural", kind: "rain", from: 1000, until: 1360, warned: false };
     const plan = stormOptions(state, world, state.weather.storm);
@@ -893,7 +894,7 @@ describe("the shared storm plan", () => {
     expect(plan.recommended).toBe("remoteRefuge");
     expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)).toMatchObject({ id: "walk", arg: `cell:${refuge}` });
 
-    delete state.mapped[refuge];
+    setKnowledge(state.knowledge, refuge, "unknown");
     expect(stormOptions(state, world, state.weather.storm).options.some((option) => option.kind === "remoteRefuge")).toBe(false);
   });
 
@@ -905,7 +906,7 @@ describe("the shared storm plan", () => {
     const remoteRegion = regionAt(world, homeRegion.neighbours[0].id);
     mapRegion(state, world, homeRegion.id);
     mapRegion(state, world, remoteRegion.id);
-    siteFor(regionState(state, world, remoteRegion.id), remoteRegion.campCell).structures.turfHut = true;
+    siteFor(regionState(state, world, remoteRegion.id), requireCamp(remoteRegion)).structures.turfHut = true;
     state.weather.storm = { id: 35, source: "natural", kind: "rain", from: 1000, until: 1360, warned: false };
     expect(stormOptions(state, world, state.weather.storm).recommended).toBe("localShelter");
     expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("rest");

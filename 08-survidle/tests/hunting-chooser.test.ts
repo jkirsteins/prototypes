@@ -1,15 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { bestHuntCell, HUNT_SHORTLIST, huntEstimate, noteHuntSign } from "../src/sim/hunting";
+import { bestHuntCell, huntCandidates, HUNT_SHORTLIST, huntEstimate, noteHuntSign } from "../src/sim/hunting";
 import { markKnown, mapRegion } from "../src/sim/mapped";
+import { isKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { setSkillLevel } from "../src/sim/horizon";
-import { cellOf, kmBetween } from "../src/sim/position";
+import { campCellOf, cellOf, kmBetween } from "../src/sim/position";
 import * as routing from "../src/sim/routing";
 import { skillLevel } from "../src/sim/skills";
 import { visibleCells } from "../src/sim/sight";
 import { regionAt } from "../src/world/gen";
-import { flatWorld, paintWorld } from "./world-fixture";
+import { fineFixture } from "./fine-fixture";
+import { FINE_CHUNK } from "../src/world/cells";
+import { CHANNEL_RIVER } from "../src/world/refine";
+import { KIND } from "../src/world/solve";
+import { TERRAIN_INDEX } from "../src/world/terrain";
+import { patchId } from "../src/world/spatial";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -20,18 +26,24 @@ function searchKey(args: unknown[]): string {
 
 describe("reachable ground", () => {
   it("leaves the far bank out when no ford crosses the river", () => {
-    const world = flatWorld({ w: 21, h: 5, terrain: "meadow" });
-    const river = [10, 31, 52, 73, 94];
-    paintWorld(world, river, "river");
+    // A river is a channel one 50 m patch wide now, not a painted 300 m column,
+    // so the barrier is carved into the chunk and the banks are ordinary ground.
+    const f = fineFixture({ terrain: "meadow" });
+    for (let y = 0; y < FINE_CHUNK; y++) {
+      const i = y * FINE_CHUNK + 48;
+      f.terrain[i] = TERRAIN_INDEX.river;
+      f.kind[i] = KIND.river;
+      f.channel[i] = CHANNEL_RIVER;
+    }
     // A summer start, so no ice turns the river into a road.
-    const { state } = newGame(1, 200, undefined, world);
-    for (let cell = 0; cell < world.w * world.h; cell++) markKnown(state, cell);
-    const reachable = routing.reachableFrom(state, world, 0, "none");
-    expect(reachable.has(9)).toBe(true);
-    expect(reachable.has(31 - 1)).toBe(true);
-    for (const cell of river) expect(reachable.has(cell)).toBe(false);
-    expect(reachable.has(11)).toBe(false);
-    expect(reachable.has(20)).toBe(false);
+    const { state } = newGame(1, 200, undefined, f.world);
+    for (let y = 0; y < FINE_CHUNK; y++) for (let x = 0; x < FINE_CHUNK; x++) markKnown(state, patchId(x, y));
+    const reachable = routing.reachableFrom(state, f.world, patchId(40, 32), "none");
+    expect(reachable.has(patchId(47, 32))).toBe(true);
+    expect(reachable.has(patchId(40, 10))).toBe(true);
+    for (let y = 0; y < FINE_CHUNK; y++) expect(reachable.has(patchId(48, y))).toBe(false);
+    expect(reachable.has(patchId(49, 32))).toBe(false);
+    expect(reachable.has(patchId(80, 32))).toBe(false);
   });
 });
 
@@ -51,7 +63,10 @@ describe("the hunting chooser", () => {
   // from the region to the shortlist. Level 10 mixes the two terms and is the
   // case that can. The expert's choice is not the cell underfoot, so the
   // agreement has teeth there too.
-  it.each([1, 10, 20])("picks the cell the whole-region sweep picks at hunting level %i", (level) => {
+  // A sweep of all the candidate ground is exactly the assertion that the
+  // shortlist cuts no winner: if the twenty-four it keeps had lost the best
+  // cell, the sweep would name it here and the chooser would not.
+  it.each([1, 10, 20])("picks the cell a sweep of every candidate cell picks at hunting level %i", (level) => {
     const { state, world } = newGame(42);
     mapRegion(state, world, state.player.region);
     setSkillLevel(state, "hunting", level);
@@ -61,20 +76,32 @@ describe("the hunting chooser", () => {
 });
 
 /**
- * The chooser as it scored before the shortlist: an estimate and a route for
- * every mapped cell of the region. It is here so the shortlist is measured
- * against the scoring it replaced rather than against a remembered cell.
+ * The chooser as it scored before the shortlist: an estimate and a real route
+ * for every cell the chooser is willing to consider, rather than for the
+ * twenty-four it keeps. It is here so the shortlist is measured against the
+ * scoring it replaced rather than against a remembered cell.
+ *
+ * Two things it must share with the chooser or it measures something else.
+ * The ground: `huntCandidates` represents each parent and terrain by the
+ * nearest patch of it, which is a narrowing of its own with its own reason,
+ * and not what the shortlist does. The travel: `huntEstimate` divides by the
+ * walk, so an estimate told nothing about the walk is a different quantity.
  */
 function sweepHuntCell(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"], cal: ReturnType<typeof calendar>): number {
   const here = cellOf(state, world);
+  const camp = campCellOf(state, world);
   const observable = visibleCells(state, world, cal, here);
-  const choices = regionAt(world, state.player.region).cells
-    .filter((cell) => state.mapped[cell] !== undefined)
+  const choices = huntCandidates(state, world, [regionAt(world, state.player.region)])
+    .filter((cell) => isKnown(state, cell))
     .map((cell) => {
-      const estimate = huntEstimate(state, world, cal, cell, observable);
-      if (!estimate.species.length) return null;
       const km = kmBetween(state, world, here, cell, "none");
       if (km === null) return null;
+      // The same quantity the chooser scores: an estimate that has been told
+      // what the walk to the cell and back to camp costs. Scoring without it
+      // measures a different thing and the two paths cannot be compared.
+      const travel = { toCell: km, toCamp: camp === null ? 0 : (kmBetween(state, world, cell, camp, "none") ?? 0) };
+      const estimate = huntEstimate(state, world, cal, cell, observable, travel);
+      if (!estimate.species.length) return null;
       return { cell, km, estimate };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);

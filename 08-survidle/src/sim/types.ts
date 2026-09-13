@@ -3,6 +3,8 @@
  * kilocalories, degrees Celsius, kilometres. The only unreal thing in the
  * game is how fast the clock runs, and that lives in units.ts.
  */
+import type { GroundChanges } from "../world/groundchange";
+import type { KnowledgeChunks } from "./fineknowledge";
 import type { FoodId } from "./items";
 import type { DayLedger } from "./ledger";
 import type { Species } from "./species";
@@ -213,11 +215,15 @@ export interface Task {
   surveyWater?: number;
   surveyShore?: number;
   surveyProgress?: number;
+  /** Minutes of the current hour walked on the roughest three grounds, which is what the sweep's injury chance is scaled by. */
+  roughMinutes?: number;
 }
 
 /**
- * Work set aside with its share done. A felled-halfway tree stays halfway
- * at its forest; a half-made knife travels in your hands. The key says which.
+ * Work set aside with its share done. A felled-halfway tree stays halfway on
+ * the 50 m patch it stands on; a half-made knife travels in your hands. The
+ * key says which, and for located work it names the exact patch, so work set
+ * aside is picked up where it was left and nowhere else.
  */
 export interface PausedTask {
   id: TaskId;
@@ -226,7 +232,7 @@ export interface PausedTask {
   any?: boolean;
   /** Share of the work done, 0..1. */
   fraction: number;
-  /** The cell it was set aside in; -1 for carried work. */
+  /** The exact patch it was set aside on; -1 for carried work. */
   cell: number;
   duration?: number;
   huntPhase?: "pursuit" | "field";
@@ -514,8 +520,13 @@ export interface Site {
 }
 
 export interface RegionState {
-  /** Standing trees worth felling. */
-  wood: number;
+  /**
+   * Standing trees worth felling, by the patch they stand on, and only for
+   * patches something has been taken from: an absent patch is uncut ground
+   * holding what its own area grows. Felling on one patch leaves the next
+   * one untouched, and each grows back on its own.
+   */
+  woodCells: Record<number, number>;
   /** Animals by species, only for species with capacity here. */
   pop: Partial<Record<Species, number>>;
   /** The cell that is home: where the fire burns, the rack dries and the runner walks back to. Null until somebody makes camp here. */
@@ -559,10 +570,10 @@ export interface RegionState {
 export interface Player {
   /** Day index of the dawn preceding the last sky reading; null until read. */
   skyReadDay: number | null;
-  /** Position in cell units; the cell under foot is floor(x), floor(y). */
-  x: number;
-  y: number;
-  /** The region of the cell under foot, kept current by every move. */
+  /** Position in metres from the world's north-west corner; the patch under foot is whichever contains that point. */
+  xM: number;
+  yM: number;
+  /** The region of the patch under foot, kept current by every move. */
   region: number;
   health: number;
   /** The stomach's fullness, 0..KCAL_FULL: the signal that drives hunger, satiety and the Food bar. Eating fills it, time empties it; it holds no energy of its own. */
@@ -1000,8 +1011,15 @@ export interface GameState {
   regions: Record<number, RegionState>;
   /** Fog of war: 1 seen from next door, 2 visited, 3 dim (visited once, since forgotten). Absent means unknown. */
   discovered: Record<number, 1 | 2 | 3>;
-  /** Ground whose walking is known: 1 this life's, 3 the journal's. Absent means unknown. */
-  mapped: Record<number, 1 | 3>;
+  /** Ground whose walking is known, two bits a patch: unknown, the journal's, seen, walked. */
+  knowledge: KnowledgeChunks;
+  /**
+   * Ground this world's survivors changed, by the patch it happened on.
+   * Sparse: generated terrain is never written to, so a felled-out stand is
+   * a clearing here and nowhere else. World-owned, like the knowledge and
+   * the deeds: an heir lands on the clearings the ancestor cut.
+   */
+  groundChanges: GroundChanges;
   weather: WeatherWorld;
   task: Task | null;
   log: LogEntry[];
@@ -1011,14 +1029,14 @@ export interface GameState {
   /** The last game hour and day index that had their periodic roll. */
   lastHour: number;
   lastDay: number;
-  /** Tasks set aside, by pauseKey. */
+  /** Tasks set aside, by pauseKey: located work under its own patch. */
   paused: Record<string, PausedTask>;
-  /** What lies on the ground, by cell index. */
+  /** What lies on the ground, by the patch it lies on. */
   piles: Record<number, Inventory>;
-  /** Kills awaiting field processing, still fixed to the cell where they fell. */
+  /** Kills awaiting field processing, still fixed to the patch where they fell. */
   carcasses: Carcass[];
   nextCarcassId: number;
-  /** Recent disturbance by cell, 0 calm to 1 strongly avoided. */
+  /** Recent disturbance by patch, 0 calm to 1 strongly avoided. */
   huntPressure: Record<number, number>;
   /** Seeps by the cell they are dug on. */
   seeps: Record<number, Seep>;

@@ -1,7 +1,7 @@
 /** Deterministic moving air. No random stream, world chunks or ground records are changed here. */
 import { derive } from "../rng";
-import { CELL_KM } from "../units";
-import { heightAt, moistureAt, waterKindOf, type World } from "../world/cells";
+import { cellIdx, heightAt, inWorld, moistureAt, waterKindOf, type World } from "../world/cells";
+import { PATCH_KM } from "../world/spatial";
 import { START_MINUTE_OF_DAY } from "./calendar";
 import type { AtmosphereSample } from "./types";
 
@@ -177,9 +177,12 @@ function field(world: World, salt: number, xKm: number, yKm: number, spacingKm: 
   return top * (1 - fy) + bottom * fy;
 }
 
+/** How far upwind and downwind the lift across a slope is measured, in km of true ground. */
+const LIFT_SPAN_KM = 6;
+
 /** Pure terrain response, with elevations in km and moisture in 0..1. */
 export function terrainModifiers(elevationKm: number, upwindElevationKm: number, meanElevationKm: number, moisture: number) {
-  // Lift across 6 km: cap the response so steep terrain cannot create a storm.
+  // Lift across LIFT_SPAN_KM: cap the response so steep terrain cannot create a storm.
   const lift = clamp(elevationKm - upwindElevationKm, -0.6, 0.6);
   return {
     temperatureOffsetC: -6.5 * elevationKm,
@@ -190,9 +193,9 @@ export function terrainModifiers(elevationKm: number, upwindElevationKm: number,
   };
 }
 
-/** Ground height in km above sea level; the sea and its floor read zero. Cell coordinates may be fractional. */
-function elevationKm(world: World, x: number, y: number): number {
-  return Math.max(0, heightAt(world, Math.floor(x), Math.floor(y))) / 1000;
+/** Ground height in km above sea level at a point given in km of true distance; the sea and its floor read zero. */
+function elevationKm(world: World, xKm: number, yKm: number): number {
+  return Math.max(0, heightAt(world, Math.floor(xKm / PATCH_KM), Math.floor(yKm / PATCH_KM))) / 1000;
 }
 
 /** Constant translation of the weather systems, separate from the local surface wind. */
@@ -220,24 +223,33 @@ function localWind(world: World, airX: number, airY: number, prevailing: { xKmh:
   return { windXKmh, windYKmh, windKmh, windBearingDeg };
 }
 
-/** x/y are world cell coordinates (fractional midpoints allowed); minute is absolute run time. */
+/**
+ * x/y are fine patch coordinates (fractional midpoints allowed); minute is
+ * absolute run time. Everything the air is made of is measured in km of true
+ * distance, so a storm keeps its size and speed whatever the lattice under it.
+ */
 export function sampleAtmosphere(weather: ClimateState, world: World, minute: number, x: number, y: number): AtmosphereSample {
   const transport = fieldTransport(world.seed);
-  const airX = x * CELL_KM - transport.xKmh * minute / 60;
-  const airY = y * CELL_KM - transport.yKmh * minute / 60;
+  const xKm = x * PATCH_KM;
+  const yKm = y * PATCH_KM;
+  const airX = xKm - transport.xKmh * minute / 60;
+  const airY = yKm - transport.yKmh * minute / 60;
   const { windKmh, windBearingDeg, windXKmh, windYKmh } = localWind(world, airX, airY, transport);
   const pressure = field(world, 720, airX, airY, BROAD_LATTICE_KM);
   const humidity = field(world, 721, airX, airY, BROAD_LATTICE_KM);
   const anomaly = field(world, 722, airX, airY, BROAD_LATTICE_KM);
   const detail = field(world, 723, airX, airY, DETAIL_LATTICE_KM);
-  const cx = Math.floor(x);
-  const cy = Math.floor(y);
-  const height = waterKindOf(world, cy * world.w + cx) === "sea" ? 0 : elevationKm(world, cx, cy);
-  const dx = windKmh > 0 ? windXKmh / windKmh * 20 : 0;
-  const dy = windKmh > 0 ? windYKmh / windKmh * 20 : 0;
-  const upwind = elevationKm(world, x - dx, y - dy);
-  const downwind = elevationKm(world, x + dx, y + dy);
-  const modifiers = terrainModifiers(height, upwind, (upwind + downwind) / 2, moistureAt(world, cx, cy));
+  const px = Math.floor(x);
+  const py = Math.floor(y);
+  // The air is sampled upwind and downwind of the world's own edges, so a
+  // reading off the lattice is ordinary here: outside is sea level.
+  const inside = inWorld(world, px, py);
+  const height = !inside || waterKindOf(world, cellIdx(world, px, py)) === "sea" ? 0 : elevationKm(world, xKm, yKm);
+  const dxKm = windKmh > 0 ? windXKmh / windKmh * LIFT_SPAN_KM : 0;
+  const dyKm = windKmh > 0 ? windYKmh / windKmh * LIFT_SPAN_KM : 0;
+  const upwind = elevationKm(world, xKm - dxKm, yKm - dyKm);
+  const downwind = elevationKm(world, xKm + dxKm, yKm + dyKm);
+  const modifiers = terrainModifiers(height, upwind, (upwind + downwind) / 2, inside ? moistureAt(world, px, py) : 0);
   const parentHumidity = clamp(0.45 + 0.55 * humidity + 0.15 * (0.5 - pressure));
   // Clouds begin at 55% humidity; substantial rain support needs 65% cloud.
   // Terrain and subordinate detail may shape rain inside this broad support only.

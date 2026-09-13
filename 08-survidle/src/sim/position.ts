@@ -1,13 +1,15 @@
 import { localWeather } from "./weather";
 /**
- * Where the player is, in cells, and what that means: which region, which
+ * Where the player is, in metres, and what that means: which region, which
  * named spot if any, what ground is under foot, and how far camp is. The
  * UI never shows coordinates; it shows what these functions say.
  */
-import { CELL_KM } from "../units";
-import { type Cell, cellAt, neighbours, regionAt, regionOf, streamAt, waterKindOf, type World } from "../world/gen";
-import { routeKm } from "../world/route";
+import { type MetricPoint, PATCH_M, type PatchId, patchAtMetric, patchCenter } from "../world/spatial";
+import { clamp } from "../units";
+import { type Cell, cellAt, regionAt, regionOf, waterBesideAt, type WaterKind, type World } from "../world/gen";
+import { remainingKm, routeKm } from "../world/route";
 import { calendar } from "./calendar";
+import { markWalked } from "./mapped";
 import { enterRegion, VISITED } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { seeFrom } from "./sight";
@@ -15,15 +17,29 @@ import { walkableIce } from "./weather";
 import type { GameState, IceMode, SpotId, Terrain } from "./types";
 import { cellSurface, surfaceLocation } from "./cellstatus";
 
-export function cellIndex(world: World, x: number, y: number): number {
-  const cx = Math.min(world.w - 1, Math.max(0, Math.floor(x)));
-  const cy = Math.min(world.h - 1, Math.max(0, Math.floor(y)));
-  return cy * world.w + cx;
+/**
+ * The fine patch containing a metre point. There is one conversion rule and
+ * `patchAtMetric` owns it, which means a point outside the world is an error
+ * rather than a silently nearby patch. A survivor's own position is the one
+ * place that cannot be an error: a walk lands on the world's edge and float
+ * arithmetic can put it a millimetre past it, so the point is clamped into
+ * the world before it is converted, never after.
+ */
+export function patchAt(world: World, point: MetricPoint): PatchId {
+  return patchAtMetric({
+    xM: clamp(point.xM, 0, world.w * PATCH_M - 1e-6),
+    yM: clamp(point.yM, 0, world.h * PATCH_M - 1e-6),
+  });
 }
 
-/** The cell under the player's feet. */
-export function cellOf(state: GameState, world: World): number {
-  return cellIndex(world, state.player.x, state.player.y);
+/** The fine patch under the player's feet. */
+export function patchOf(state: GameState, world: World): PatchId {
+  return patchAt(world, state.player);
+}
+
+/** The name most of the sim still calls patchOf by; the same fine patch, no conversion. */
+export function cellOf(state: GameState, world: World): PatchId {
+  return patchOf(state, world);
 }
 
 /**
@@ -36,17 +52,32 @@ export function campCellOf(state: GameState, _world: World, region = state.playe
   return state.regions[region]?.campCell ?? null;
 }
 
-export function cellCenter(world: World, idx: number): { x: number; y: number } {
-  return { x: (idx % world.w) + 0.5, y: Math.floor(idx / world.w) + 0.5 };
+/** Puts the player in the middle of a fine patch and updates the region. */
+export function placeAtPatch(state: GameState, world: World, patch: PatchId): void {
+  const c = patchCenter(patch);
+  state.player.xM = c.xM;
+  state.player.yM = c.yM;
+  setRegion(state, world, regionOf(world, patch % world.w, Math.floor(patch / world.w)));
+  markWalked(state, patch);
+  seeFrom(state, world, calendar(state.minute, state.startDoy), patch);
 }
 
-/** Puts the player in the middle of a cell and updates the region. */
-export function placeAt(state: GameState, world: World, idx: number): void {
-  const c = cellCenter(world, idx);
-  state.player.x = c.x;
-  state.player.y = c.y;
-  setRegion(state, world, regionOf(world, idx % world.w, Math.floor(idx / world.w)));
-  seeFrom(state, world, calendar(state.minute, state.startDoy), idx);
+/** The name most of the sim still calls placeAtPatch by. */
+export function placeAt(state: GameState, world: World, patch: PatchId): void {
+  placeAtPatch(state, world, patch);
+}
+
+/**
+ * Puts the player at an exact metre point, wherever inside a patch that
+ * falls, and updates the region from the patch that then holds them.
+ */
+export function placeAtMetric(state: GameState, world: World, point: MetricPoint): void {
+  const patch = patchAt(world, point);
+  state.player.xM = point.xM;
+  state.player.yM = point.yM;
+  setRegion(state, world, regionOf(world, patch % world.w, Math.floor(patch / world.w)));
+  markWalked(state, patch);
+  seeFrom(state, world, calendar(state.minute, state.startDoy), patch);
 }
 
 /** Records a change of region, discovering it on first entry. */
@@ -101,16 +132,17 @@ export function heathCell(world: World, idx: number): boolean {
 }
 
 /**
- * Land beside water: any water including a stream on the cell, one kind only,
- * or "fishing" for water that is a cell of its own - a lake, the sea or a
- * river. A brook of 20 litres a second is drinking water and nothing more:
+ * Land beside water: any water including a channel under the feet, one kind
+ * only, or "fishing" for water that is a patch of its own - a lake, the sea or
+ * a river. A brook of 20 litres a second is drinking water and nothing more:
  * nothing lives in it to catch and no axe cuts a hole in it.
+ *
+ * The reading is at the patch, not at its 300 m parent: a river or a stream is
+ * one patch wide, so the water is where the channel runs and the ground a
+ * hundred metres off is dry.
  */
-export function watersideCell(world: World, idx: number, kind: "lake" | "sea" | "river" | "stream" | "fishing" | "any" = "any"): boolean {
-  if (kind === "stream") return streamAt(world, idx);
-  if (kind === "any") return streamAt(world, idx) || neighbours(world, idx).some((n) => waterKindOf(world, n) !== null);
-  if (kind === "fishing") return neighbours(world, idx).some((n) => waterKindOf(world, n) !== null);
-  return neighbours(world, idx).some((n) => waterKindOf(world, n) === kind);
+export function watersideCell(world: World, idx: number, kind: WaterKind | "fishing" | "any" = "any"): boolean {
+  return waterBesideAt(world, idx, kind);
 }
 
 export function inForest(state: GameState, world: World): boolean {
@@ -132,25 +164,25 @@ export function byWater(state: GameState, world: World): boolean {
 /** Route length in km from the player to a cell, or null if unreachable. */
 export function kmTo(state: GameState, world: World, idx: number, ice: IceMode = "none"): number | null {
   const route = survivorRoute(state, world, cellOf(state, world), idx, ice);
-  return route ? routeKm(route) : null;
+  return route ? routeKm(route, cellOf(state, world)) : null;
 }
 
 export function kmBetween(state: GameState, world: World, a: number, b: number, ice: IceMode = "none"): number | null {
   const route = survivorRoute(state, world, a, b, ice);
-  return route ? routeKm(route) : null;
+  return route ? routeKm(route, a) : null;
 }
 
 /** Straight-line km, for descriptions where a route is not needed. */
-export function straightKm(world: World, a: number, b: number): number {
-  const pa = cellCenter(world, a);
-  const pb = cellCenter(world, b);
-  return Math.hypot(pa.x - pb.x, pa.y - pb.y) * CELL_KM;
+export function straightKm(_world: World, a: number, b: number): number {
+  const pa = patchCenter(a);
+  const pb = patchCenter(b);
+  return Math.hypot(pa.xM - pb.xM, pa.yM - pb.yM) / 1000;
 }
 
 /** "at camp", "in the spruce, 0.4 km from camp", "on the way to Stensund, 2.1 km to go". */
 export function describeWhere(state: GameState, world: World): string {
   if (state.route?.path.length) {
-    return `on the way to ${state.route.label}, ${routeKm(state.route.path).toFixed(1)} km to go`;
+    return `on the way to ${state.route.label}, ${remainingKm(state.route.path, state.player).toFixed(1)} km to go`;
   }
   const spot = spotHere(state, world);
   if (spot === "camp") return "at camp";

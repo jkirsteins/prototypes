@@ -558,18 +558,19 @@ Every browser pass runs at 1440 by 900 and at 390 wide against
 Weather reference screenshots need the development server in one shell, then
 `npm run shots` in another. Headless Chrome writes the following seed 17
 simulation states to `docs/map-shots/`; the minute is elapsed game time and x/y
-are 300 m cell coordinates:
+are 50 m patch coordinates:
 
 | shot | minute | x | y | simulated feature |
 | --- | ---: | ---: | ---: | --- |
-| clear | 1,440 | 1,696 | 880 | clear comparison above rock |
-| sunny-clouds | 170,160 | 700 | 950 | dry midsummer sun under a broken cloud field |
-| approaching-rain | 86,760 | 1,040 | 150 | rain-band edge |
-| local-rain | 108,720 | 1,112 | 400 | 12.42 mm/h rain core |
-| persisted-snow | 480,480 | 872 | 864 | 14.71 cm/h snow over 60 cm retained ground snow |
-| valley-fog | 19,560 | 1,432 | 1,036 | dry 0.57 fog in a local bog depression |
-| windward-lee | 3,960 | 700 | 950 | terrain-modified extinction gradient |
-| obscured | 480,480 | 1,696 | 880 | 0.36 km MOR at the clear comparison rock |
+| clear | 1,440 | 10,179 | 5,283 | clear comparison above rock |
+| sunny-clouds | 170,160 | 4,203 | 5,703 | dry midsummer sun under a broken cloud field |
+| approaching-rain | 86,760 | 6,243 | 903 | rain-band edge |
+| local-rain | 108,720 | 7,968 | 792 | 10.34 mm/h rain core |
+| persisted-snow | 480,480 | 5,235 | 5,187 | falling snow over retained ground snow |
+| frozen-water | 481,200 | 1,053 | 303 | safe winter ice over coastal water |
+| valley-fog | 19,560 | 8,595 | 6,219 | dry fog in a local bog depression |
+| windward-lee | 3,960 | 4,203 | 5,703 | terrain-modified extinction gradient |
+| obscured | 480,480 | 10,179 | 5,283 | dense snow and fog at the clear comparison rock |
 
 The URL only selects a catalog entry. Normal `GameState`, `WeatherWorld`,
 `visibleCells` and `mapHtml` generate every class, variable, glyph and known

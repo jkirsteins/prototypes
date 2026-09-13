@@ -1,13 +1,16 @@
 import { derive, Rng } from "../rng";
+import { bindGround } from "../world/cells";
 import { generateWorld, regionAt, type World } from "../world/gen";
 import { calendar, fmtDate, START_DOY } from "./calendar";
 import { newOpportunities } from "./opportunities";
 import { AWAY_HOURS_DEFAULT } from "../units";
+import { patchCenter } from "../world/spatial";
 import { addItem, emptyInventory } from "./inventory";
 import { FOODS, KCAL_FULL } from "./items";
 import { creditYield } from "./ledger";
 import { log } from "./log";
-import { mapRegion } from "./mapped";
+import { newKnowledge } from "./fineknowledge";
+import { mapRegion, markWalked } from "./mapped";
 import { newRecord } from "./record";
 import { rollName } from "./names";
 import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
@@ -28,13 +31,13 @@ export const START_KCAL = KCAL_FULL * (5 / 6);
 /** Dried meat in the arrival pack, in kilos. */
 export const ARRIVAL_DRIED_MEAT_KG = 1;
 
-function freshPlayer(person: Person, world: World, cell: number, region: number): Player {
+function freshPlayer(person: Person, cell: number, region: number): Player {
   const pack = emptyInventory();
   addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
   return {
     skyReadDay: null,
-    x: (cell % world.w) + 0.5,
-    y: Math.floor(cell / world.w) + 0.5,
+    xM: patchCenter(cell).xM,
+    yM: patchCenter(cell).yM,
     region,
     health: 100,
     kcal: START_KCAL,
@@ -75,7 +78,7 @@ function freshPlayer(person: Person, world: World, cell: number, region: number)
 /** Fills the person half of a state: the body, its kit, its skills and its empty log. The world half is untouched. */
 export function newPerson(state: GameState, world: World, cell: number, region: number): void {
   resetWildlifeKnowledge(state);
-  state.player = freshPlayer(personOf(state), world, cell, region);
+  state.player = freshPlayer(personOf(state), cell, region);
   state.task = null;
   state.log = [];
   state.dead = null;
@@ -91,6 +94,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
   // what they arrive knowing rather than something they discovered, so the
   // leaves it makes possible arrive without a word.
   seeFrom(state, world, calendar(state.minute, state.startDoy), cell, false);
+  markWalked(state, cell);
 }
 
 /** The first survivor's record for the direct path: a name for the sex the seed rolls, and the median person unless one is given. */
@@ -110,6 +114,7 @@ export function newWorld(seed: number, boat = 0, startDoy = START_DOY, world?: W
   const doy = startDoy + 7 * boat;
   const g = newGame(seed, doy, undefined, world);
   const start = regionAt(g.world, g.world.start);
+  if (start.campCell === null) throw new Error("starting region has no passable camp");
   const candidates = rollCandidates(seed, 1, boat, []);
   g.state.log = [];
   g.state.landing = { cell: start.campCell, region: g.world.start, date: { year: 1, doy }, gapDays: 0, candidates, boat, chosen: 0, name: candidates[0].name, oldCamp: null };
@@ -122,6 +127,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person, giv
   // A world already solved (the loading bar's worker) is used as it stands; otherwise one is made here.
   const world = given ?? generateWorld(seed);
   const start = regionAt(world, world.start);
+  if (start.campCell === null) throw new Error("starting region has no passable camp");
   const first = firstRecord(seed, startDoy, person);
   const state: GameState = {
     seed,
@@ -130,10 +136,11 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person, giv
     minute: 0,
     advanceCarry: 0,
     rng: derive(seed, 99),
-    player: freshPlayer(first.person, world, start.campCell, world.start),
+    player: freshPlayer(first.person, start.campCell, world.start),
     regions: {},
     discovered: {},
-    mapped: {},
+    knowledge: newKnowledge(),
+    groundChanges: {},
     weather: newWeather(startDoy),
     task: null,
     log: [],
@@ -162,6 +169,8 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person, giv
     teachQueue: [],
     wildlife: emptyWildlife(),
   };
+  // The world must read this run's changed ground before anything asks it for terrain.
+  bindGround(world, state);
   // The same fresh slate a landing gives, from the one door that gives it.
   resetTeaching(state);
   creditYield(state, "kit", ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg);
@@ -172,6 +181,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person, giv
     rolledDay: local.rolledDay, dryDays: local.dryDays, wetDay: local.wetDay, iceCm: local.iceCm,
   });
   seeFrom(state, world, calendar(state.minute, state.startDoy), start.campCell, false);
+  markWalked(state, start.campCell);
   enterRegion(state, world, world.start);
   // A camp is chosen, and a choice needs the ground in front of you.
   mapRegion(state, world, world.start, false);

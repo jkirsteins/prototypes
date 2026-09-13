@@ -2,6 +2,7 @@ const SEASON_KEYS = ["season:spring", "season:summer", "season:autumn", "season:
 import { activeOpportunityKeys, reveal, unpresentedOpportunityKeys } from "./opportunity-helpers";
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
+import { newKnowledge } from "../src/sim/fineknowledge";
 import { dismissOpportunityPresentation, recordOpportunityEvent, opportunityDef, opportunitySteps, OPPORTUNITIES, newOpportunities } from "../src/sim/opportunities";
 import { ITEM_NAMES, RECIPE_IDS, RECIPES, STRUCTURE_IDS, STRUCTURES, TOOL_IDS, TOOLS } from "../src/sim/items";
 import { newGame, newPerson, newWorld } from "../src/sim/newgame";
@@ -148,7 +149,7 @@ describe("the authored opportunity journey", () => {
     // and pine, so the honest way to watch forage arrive later is to start
     // from unknown ground and let the mapping seam reveal it.
     state.opportunities = newOpportunities(cal.season);
-    state.mapped = {};
+    state.knowledge = newKnowledge();
     state.minute = 500;
     mapRegion(state, world, state.player.region);
     expect(state.opportunities.discoveredAt["forage:berries"]).toBe(500);
@@ -503,8 +504,10 @@ describe("opportunities are the world's, not a life's", () => {
       expect(loaded.opportunities.context.chapter3HomeRegion).toBe(home);
     }
     expect(loaded.opportunities.completedAt.remoteRefuge).toBeUndefined();
-    const remote = regionAt(world, home).neighbours[0].id;
-    const refuge = regionAt(world, remote).campCell;
+    // A neighbour with land in it: a coast's neighbours include regions that
+    // are nothing but sea, and a region of sea names no camp to take refuge in.
+    const remote = regionAt(world, home).neighbours.map((n) => n.id).find((id) => regionAt(world, id).campCell !== null)!;
+    const refuge = regionAt(world, remote).campCell!;
     placeAt(loaded, world, refuge);
     expect(recordOpportunityEvent(loaded, {
       kind: "protectionChanged", minute: loaded.minute, region: remote,

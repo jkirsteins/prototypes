@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { encodeKnowledge, newKnowledge } from "../src/sim/fineknowledge";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
@@ -8,12 +9,13 @@ import { activateWildlife } from "../src/sim/wildlife-agents";
 import type { WildlifeStartleEvent } from "../src/sim/wildlife-encounter";
 import { DEFAULT_ZOOM, levelAt, mapHtml, mapKey, mapViewportBounds, viewOrigin } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState, resetPanels, setPanel } from "../src/ui/render";
-import { cellAt, neighbours } from "../src/world/gen";
+import { cellAt, type World } from "../src/world/gen";
+import type { GameState } from "../src/sim/types";
+import { visibleCells } from "../src/sim/sight";
 import { passable } from "../src/world/route";
 import { css, rule } from "./css";
-import { CELL_KM } from "../src/units";
+import { PATCH_M, patchXY } from "../src/world/spatial";
 
-const CELL_M = CELL_KM * 1000;
 
 function scene() {
   const { state, world } = newGame(79);
@@ -22,7 +24,7 @@ function scene() {
   const cal = calendar(state.minute, state.startDoy);
   const event: WildlifeStartleEvent = {
     id: "hidden-subject-987654321:episode-1", subjectId: 987654321,
-    source: { xM: (Math.floor(state.player.x) + 5.5) * CELL_M, yM: (Math.floor(state.player.y) + 0.5) * CELL_M },
+    source: { xM: (Math.floor(state.player.xM / PATCH_M) + 5.5) * PATCH_M, yM: (Math.floor(state.player.yM / PATCH_M) + 0.5) * PATCH_M },
     bearingRad: 0, distanceM: 1500, uncertaintyM: 40,
     perception: { kind: "heard", identification: "unknown", uncertaintyM: 40 },
     terrain: "spruce", body: "light", group: "group", logText: "Something crashes away.",
@@ -35,24 +37,60 @@ beforeEach(() => {
   document.body.innerHTML = '<div id="mapdyn"></div>';
 });
 
+/**
+ * A patch the map draws as its own glyph at this rung, and one the survivor can
+ * actually see. Two things changed under this fixture at once: a neighbour 50 m
+ * off falls inside the survivor's own block at every rung but the closest, and
+ * that block's one mark is the survivor's, so the animal would never be drawn;
+ * and sight is a set of rays over 50 m patches, so which ground is visible is
+ * a shape, not a radius. The animal stands on the nearest visible patch that
+ * owns its glyph.
+ */
+function patchOfOwnGlyph(state: GameState, world: World, zoom: number): number {
+  const here = cellOf(state, world);
+  const span = levelAt(zoom).finePerGlyph;
+  const block = (patch: number) => {
+    const { x, y } = patchXY(patch);
+    return `${Math.floor(x / span)},${Math.floor(y / span)}`;
+  };
+  const mine = block(here);
+  const cal = calendar(state.minute, state.startDoy);
+  const origin = patchXY(here);
+  const seen = [...visibleCells(state, world, cal, here)]
+    .filter((patch) => block(patch) !== mine && passable(cellAt(world, patch).terrain))
+    .sort((a, b) => {
+      const pa = patchXY(a);
+      const pb = patchXY(b);
+      return (pa.x - origin.x) ** 2 + (pa.y - origin.y) ** 2 - ((pb.x - origin.x) ** 2 + (pb.y - origin.y) ** 2);
+    });
+  if (seen.length === 0) throw new Error(`nothing visible owns its own glyph at zoom ${zoom}`);
+  return seen[0];
+}
+
 describe("transient wildlife map cues", () => {
   it("adds one non-identifying cue over hidden ground, preserves map knowledge, and expires after 1200 ms", () => {
     const { state, world, ui, cal, event } = scene();
-    state.mapped = {};
-    const before = JSON.stringify(state);
+    state.knowledge = newKnowledge();
+    const before = JSON.stringify(state) + encodeKnowledge(state.knowledge);
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
     const cue = document.querySelector(".wildlife-startle")!;
     expect(cue?.className).toBe("wildlife-startle heard");
-    const sourceCell = Math.floor(event.source.yM / CELL_M) * world.w + Math.floor(event.source.xM / CELL_M);
-    expect(document.querySelector(`[data-map-cell="${sourceCell}"]`)?.classList.contains("fog")).toBe(true);
+    // The glyph the source falls in is a block of patches, and its data-map-cell
+    // names the block's first patch rather than the source's own.
+    const level = levelAt(ui.zoom);
+    const origin = viewOrigin(state, world, ui.zoom);
+    const gx = Math.floor((Math.floor(event.source.xM / PATCH_M) - origin.x0) / level.finePerGlyph);
+    const gy = Math.floor((Math.floor(event.source.yM / PATCH_M) - origin.y0) / level.finePerGlyph);
+    const blockCell = (origin.y0 + gy * level.finePerGlyph) * world.w + origin.x0 + gx * level.finePerGlyph;
+    expect(document.querySelector(`[data-map-cell="${blockCell}"]`)?.classList.contains("fog")).toBe(true);
     expect(cue?.parentElement?.classList.contains("grid")).toBe(true);
     expect(cue?.textContent).toBe("!");
     expect(cue?.getAttribute("aria-hidden")).toBe("true");
     expect(document.querySelector(".mk-animal")).toBeNull();
     expect(document.body.innerHTML).not.toContain(String(event.subjectId));
     expect(document.body.innerHTML).not.toContain(event.id);
-    expect(JSON.stringify(state)).toBe(before);
+    expect(JSON.stringify(state) + encodeKnowledge(state.knowledge)).toBe(before);
     expect(mapHtml(world, state, ui, cal, 2200)).not.toContain('class="wildlife-startle');
     expect(ui.wildlifeStartles).toHaveLength(0);
   });
@@ -73,7 +111,7 @@ describe("transient wildlife map cues", () => {
   it.each([0, 1, DEFAULT_ZOOM])("preserves the player glyph and original animation start from zoom %i", (zoom) => {
     const { state, world, ui, cal, event } = scene();
     ui.zoom = zoom;
-    event.source = { xM: state.player.x * CELL_M, yM: state.player.y * CELL_M };
+    event.source = { xM: state.player.xM, yM: state.player.yM };
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
     const first = document.querySelector(".wildlife-startle")!;
@@ -81,10 +119,9 @@ describe("transient wildlife map cues", () => {
     expect(first).not.toBeNull();
     expect(first.parentElement).toBe(player.closest(".grid"));
     expect(player.firstChild?.textContent).toBe("@");
-    if (zoom < DEFAULT_ZOOM) {
-      expect(player.closest(".c")?.querySelectorAll(".micro-ground")).toHaveLength(zoom === 0 ? 36 : 9);
-      expect(player.classList.contains("micro-mark")).toBe(true);
-    }
+    // Every rung draws one glyph per block and none inside it.
+    expect(player.classList.contains("c")).toBe(true);
+    expect(document.querySelectorAll(".micro-ground")).toHaveLength(0);
     expect(first.getAttribute("style")).toContain("--wildlife-start:1000ms");
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1500));
     expect(document.querySelector(".wildlife-startle")).toBe(first);
@@ -101,9 +138,9 @@ describe("transient wildlife map cues", () => {
     ui.zoom = zoom;
     activateWildlife(state, world, new Rng(1));
     const subject = state.wildlife.subjects.find((s) => s.active)!;
-    subject.active!.cell = neighbours(world, cellOf(state, world)).find((c) => passable(cellAt(world, c).terrain) && cellAt(world, c).region === state.player.region)!;
+    subject.active!.cell = patchOfOwnGlyph(state, world, zoom);
     const cell = cellAt(world, subject.active!.cell);
-    event.source = { xM: (cell.x + 0.5) * CELL_M, yM: (cell.y + 0.5) * CELL_M };
+    event.source = { xM: (cell.x + 0.5) * PATCH_M, yM: (cell.y + 0.5) * PATCH_M };
     event.subjectId = subject.id;
     event.perception = { kind: "seen", identification: "species" };
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1000));
@@ -115,10 +152,13 @@ describe("transient wildlife map cues", () => {
     expect(animal?.firstChild?.textContent).toBe(original);
     expect(animal?.closest(".grid")?.querySelector(".wildlife-startle.seen")?.textContent).toBe("!");
     expect(animal?.getAttribute("style")).toContain("--wildlife-start:1000ms");
-    if (zoom < DEFAULT_ZOOM) {
-      expect(animal?.classList.contains("micro-mark")).toBe(true);
+    // Only the closest rung carries the herd's own metre position, laid over
+    // the grid; the block rungs put its letter on the glyph it stands in.
+    if (zoom === 0) {
       expect(animal?.classList.contains("wildlife-map-mark")).toBe(true);
       expect(animal?.parentElement?.classList.contains("grid")).toBe(true);
+    } else {
+      expect(animal?.closest(".c")).not.toBeNull();
     }
     const heardUi = newUiState();
     heardUi.zoom = zoom;
@@ -130,7 +170,7 @@ describe("transient wildlife map cues", () => {
     const { state, world, ui, cal, event } = scene();
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const level = levelAt(ui.zoom);
-    event.source = { xM: (x0 + level.w + 10) * CELL_M, yM: (y0 + 4.5) * CELL_M };
+    event.source = { xM: (x0 + (level.w + 10) * level.finePerGlyph) * PATCH_M, yM: (y0 + 4.5 * level.finePerGlyph) * PATCH_M };
     event.uncertaintyM = 0;
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
@@ -150,7 +190,8 @@ describe("transient wildlife map cues", () => {
       { left: 266, top: 232, right: 566, bottom: 392 },
     );
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
-    event.source = { xM: (x0 + 68.5) * CELL_M, yM: (y0 + 20.5) * CELL_M };
+    const glyphPatches = levelAt(ui.zoom).finePerGlyph;
+    event.source = { xM: (x0 + 68.5 * glyphPatches) * PATCH_M, yM: (y0 + 20.5 * glyphPatches) * PATCH_M };
     event.uncertaintyM = 0;
     enqueueWildlifeStartle(ui, event, 1000);
     setPanel("mapdyn", mapHtml(world, state, ui, cal, 1100));
@@ -176,9 +217,9 @@ describe("transient wildlife map cues", () => {
     ui.zoom = 0;
     ui.mapViewport = { left: 0, top, right: 792, bottom: 504 };
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
-    // A source near the top of a detailed cell is visible, but its raised cue
-    // needs clamping to keep the pop and rise inside the viewport.
-    event.source = { xM: (x0 + 6.5) * CELL_M, yM: (y0 + row + 0.2) * CELL_M };
+    // A source near the top of a patch is visible, but its raised cue needs
+    // clamping to keep the pop and rise inside the viewport.
+    event.source = { xM: (x0 + 6.5) * PATCH_M, yM: (y0 + row + 0.2) * PATCH_M };
     event.bearingRad = -Math.PI / 2;
     event.uncertaintyM = 0;
     enqueueWildlifeStartle(ui, event, 1000);
@@ -188,7 +229,7 @@ describe("transient wildlife map cues", () => {
     expect(cues[0].classList.contains("edge")).toBe(true);
     expect(cues[0].classList.contains("bearing-north")).toBe(true);
     expect(cues[0].parentElement?.classList.contains("grid")).toBe(true);
-    expect(cues[0].style.left).toBe("429px");
+    expect(cues[0].style.left).toBe("71.5px");
     expect(cues[0].style.top).toBe(cueTop);
     expect(cues[0].style.getPropertyValue("--wildlife-start")).toBe("1000ms");
   });

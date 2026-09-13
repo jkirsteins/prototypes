@@ -12,7 +12,8 @@ import { coastKmOfCell } from "../src/world/classify";
 import { leeScore } from "../src/sim/shelter";
 import { FLAG_STREAM, KIND } from "../src/world/solve";
 import { NO_FLOW, receiverOf } from "../src/world/hydro";
-import { latitudeAt, TERRAINS, WORLD_H, WORLD_W } from "../src/world/terrain";
+import { latitudeAt, TERRAINS, WORLD_CELL_H, WORLD_CELL_W, WORLD_H } from "../src/world/terrain";
+import { FINE_PER_PARENT, patchId, patchXY } from "../src/world/spatial";
 
 if (process.argv.includes("--time")) {
   const { coarseSize, coarseSurface, erode, ERODE_ITERATIONS, upsample } = await import("../src/world/erode");
@@ -24,19 +25,19 @@ if (process.argv.includes("--time")) {
     f();
     console.log(`${label.padEnd(28)} ${((performance.now() - t0) / 1000).toFixed(2)} s`);
   };
-  const { cw, ch } = coarseSize(WORLD_W, WORLD_H);
+  const { cw, ch } = coarseSize(WORLD_CELL_W, WORLD_CELL_H);
   let c!: ReturnType<typeof coarseSurface>;
   t("coarse surface", () => { c = coarseSurface(seed, cw, ch); });
   t(`erosion x${ERODE_ITERATIONS}`, () => erode(c.height, cw, ch, c.uplift, c.sea, ERODE_ITERATIONS));
   let fine!: Float32Array;
-  t("upsample", () => { fine = upsample(c.height, cw, ch, WORLD_W, WORLD_H, seed); });
-  const sea = new Uint8Array(WORLD_W * WORLD_H);
+  t("upsample", () => { fine = upsample(c.height, cw, ch, WORLD_CELL_W, WORLD_CELL_H, seed); });
+  const sea = new Uint8Array(WORLD_CELL_W * WORLD_CELL_H);
   for (let i = 0; i < sea.length; i++) sea[i] = fine[i] <= 0 ? 1 : 0;
   let filled!: Float32Array;
-  t("priority flood (full)", () => { filled = priorityFlood(fine, WORLD_W, WORLD_H, sea); });
+  t("priority flood (full)", () => { filled = priorityFlood(fine, WORLD_CELL_W, WORLD_CELL_H, sea); });
   let dir!: Uint8Array;
-  t("flow directions (full)", () => { dir = flowDirections(filled, WORLD_W, WORLD_H, sea); });
-  t("accumulate (full)", () => accumulate(dir, WORLD_W, WORLD_H, null));
+  t("flow directions (full)", () => { dir = flowDirections(filled, WORLD_CELL_W, WORLD_CELL_H, sea); });
+  t("accumulate (full)", () => accumulate(dir, WORLD_CELL_W, WORLD_CELL_H, null));
   process.exit(0);
 }
 
@@ -48,7 +49,9 @@ for (const seed of seeds) {
   const t0 = performance.now();
   const world = generateWorld(seed);
   const s = world.solved;
-  const W = WORLD_W, H = WORLD_H, n = W * H;
+  // The report walks the solve, which is the 300 m lattice; 0.3 km and
+  // 0.09 km2 below are one of its cells and one of its cells' area.
+  const W = WORLD_CELL_W, H = WORLD_CELL_H, n = W * H;
   console.log(`\n== seed ${seed} (world in ${((performance.now() - t0) / 1000).toFixed(1)} s)`);
   // Distance from land to running or standing water, by BFS from every water or stream cell.
   const d = new Int32Array(n).fill(-1);
@@ -121,7 +124,9 @@ for (const seed of seeds) {
     for (let i = 0; i < n; i++) {
       if (s.kind[i] !== KIND.land) continue;
       cells++;
-      if (leeScore(world, i, windBearingDeg).score >= 0.5) lee++;
+      // Lee is read per patch, so a cell is sampled at its middle patch.
+      const middle = patchId((i % W) * FINE_PER_PARENT + FINE_PER_PARENT / 2, Math.floor(i / W) * FINE_PER_PARENT + FINE_PER_PARENT / 2);
+      if (leeScore(world, middle, windBearingDeg).score >= 0.5) lee++;
     }
     return 100 * lee / Math.max(1, cells);
   };
@@ -129,5 +134,7 @@ for (const seed of seeds) {
   console.log(`lee share of land: ${leeWinds.map(([name, deg]) => `${name} ${leeShare(deg).toFixed(1)}%`).join(" ")}   (no target; tens of percent is a sheltered landscape)`);
   const heights = [...s.height].filter((_, i) => s.kind[i] === KIND.land);
   console.log(`land height m: p50 ${pct(heights, 0.5)} p90 ${pct(heights, 0.9)} max ${pct(heights, 1)}`);
-  console.log(`start ${world.startCell} at row ${Math.floor(world.startCell / W)} (${latitudeAt(Math.floor(world.startCell / W), H).toFixed(2)} N), height ${heightAt(world, world.startCell % W, Math.floor(world.startCell / W))} m, terrain ${terrainOf(world, world.startCell % W, Math.floor(world.startCell / W))}, shore ${waterKindOf(world, world.startCell + 1) ?? waterKindOf(world, world.startCell - 1) ?? "?"}`);
+  // The start is a patch, so its row and its ground are read on the fine lattice.
+  const start = patchXY(world.startCell);
+  console.log(`start ${world.startCell} at patch row ${start.y} (${latitudeAt(start.y, WORLD_H).toFixed(2)} N), height ${heightAt(world, start.x, start.y)} m, terrain ${terrainOf(world, start.x, start.y)}, shore ${waterKindOf(world, world.startCell + 1) ?? waterKindOf(world, world.startCell - 1) ?? "?"}`);
 }

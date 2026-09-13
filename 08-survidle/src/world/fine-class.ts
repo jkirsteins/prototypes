@@ -1,0 +1,201 @@
+/**
+ * What the ground is at 50 m. The classifier is the hydrology spec's section
+ * 3, the same rules the solve applies per 300 m cell (classify.ts), fed with
+ * what the refined chunk measures: the fine surface's own slope and receiver,
+ * the fine upslope area, and the coast distance and latitude of the patch
+ * rather than of its parent. Water comes first and is the chunk's, not the
+ * parent's; land is decided per patch, so a parent's ground can be two
+ * classes and a shore or a river bank falls where the height says.
+ *
+ * The parent's class is never copied down. How often the two agree is
+ * measured, not enforced.
+ *
+ * The determinism rule of the solve holds here as it does in refine.ts:
+ * addition, subtraction, multiplication, division, comparison, square root
+ * and the integer-hash noise, and nothing else.
+ */
+import { derive } from "../rng";
+import { KIND, landTerrainIndex, precipitationIndex, soilNoiseAtKm, solvedSoilScale, specificAreaM, uniformAt, upslopeCellsOf, wetnessOfSpecificArea } from "./classify";
+import { accumulate, DIST8, DX8, DY8, flowDirections, NO_FLOW, receiverOf } from "./hydro";
+import { valueNoiseMetres } from "./noise";
+import type { FineWindow } from "./refine";
+import { FINE_PER_PARENT, PATCH_M } from "./spatial";
+import type { SolvedWorld } from "./solve";
+import { coastKmAt, latitudeAt, TEMPLATE_H_KM, TEMPLATE_W_KM, TERRAIN_INDEX } from "./terrain";
+
+/** Children to a parent: what one patch is worth as a share of a solved cell's area. */
+const PATCH_CELLS = 1 / (FINE_PER_PARENT * FINE_PER_PARENT);
+
+/**
+ * How far the sub-cell noise moves a patch's draw on the soil distribution.
+ * The rank transform makes a rock rate the real share of ground, and a
+ * symmetric nudge of the draw leaves that share alone while breaking a 2 km
+ * soil patch into the stone and moss of a hillside: a fifth of the range is
+ * enough to mottle a band's edge without moving the band.
+ */
+const SOIL_BREAKUP = 0.05;
+
+/** Fine variation from 100 m to 1.2 km, with the longest scale dominant. */
+function fineNoise(xM: number, yM: number, seed: number): number {
+  const wavelengths = [1_200, 600, 300, 150, 100];
+  let sum = 0;
+  let weight = 1;
+  let total = 0;
+  for (let i = 0; i < wavelengths.length; i++) {
+    sum += weight * valueNoiseMetres(xM, yM, seed + i * 101, wavelengths[i]);
+    total += weight;
+    weight *= 0.5;
+  }
+  return sum / total;
+}
+
+/**
+ * Whether a parent on the window's rim sends its water into the window, which
+ * is what makes its catchment the chunk's business. Follow the solve's flow
+ * from it: if it reaches a parent inside the rim it has entered, and if it
+ * leaves the window or stops first it has not. The cells the chunk drains
+ * *into* also sit on the rim, and their catchment is mostly the chunk itself,
+ * so handing it to them would draw a wet line back into the ground they
+ * drained.
+ */
+export function rimEntersWindow(solved: SolvedWorld, win: FineWindow, px: number, py: number): boolean {
+  let x = px;
+  let y = py;
+  for (let step = 0; step < win.pw + win.ph; step++) {
+    const d = solved.flowDir[y * solved.w + x];
+    if (d === NO_FLOW) return false;
+    x += DX8[d];
+    y += DY8[d];
+    if (x < win.px0 || y < win.py0 || x >= win.px0 + win.pw || y >= win.py0 + win.ph) return false;
+    const i = x - win.px0;
+    const j = y - win.py0;
+    if (i > 0 && j > 0 && i < win.pw - 1 && j < win.ph - 1) return true;
+  }
+  return false;
+}
+
+/**
+ * The upslope area of every patch of the window in solved cells: each patch
+ * carries its own thirty-sixth of a cell down the fine flow directions, and
+ * each parent on the window's rim whose water enters the window hands over the
+ * catchment its discharge implies, since everything above the rim is outside
+ * what the chunk can see.
+ */
+function upslopeCells(solved: SolvedWorld, win: FineWindow, dir: Uint8Array, filled: Float32Array): Float32Array {
+  const n = win.ww * win.wh;
+  const weight = new Float32Array(n).fill(PATCH_CELLS);
+  for (let j = 0; j < win.ph; j++) {
+    for (let i = 0; i < win.pw; i++) {
+      if (i > 0 && j > 0 && i < win.pw - 1 && j < win.ph - 1) continue;
+      const px = win.px0 + i;
+      const py = win.py0 + j;
+      // A rim cell that also takes water from inside the window hands over a
+      // catchment that counts the window's own ground twice. Losing its real
+      // area from outside would be the larger error of the two, so it hands
+      // over anyway.
+      if (!rimEntersWindow(solved, win, px, py)) continue;
+      const inherited = upslopeCellsOf(solved.discharge[py * solved.w + px], px, py, solved.w, solved.h) - 1;
+      if (inherited <= 0) continue;
+      // Where the rim cell's water gathers, which for a channel cell is its channel.
+      let lowest = -1;
+      for (let dy = 0; dy < FINE_PER_PARENT; dy++) {
+        for (let dx = 0; dx < FINE_PER_PARENT; dx++) {
+          const k = (j * FINE_PER_PARENT + dy) * win.ww + i * FINE_PER_PARENT + dx;
+          if (lowest < 0 || filled[k] < filled[lowest]) lowest = k;
+        }
+      }
+      weight[lowest] += inherited;
+    }
+  }
+  return accumulate(dir, win.ww, win.wh, weight).flow;
+}
+
+/**
+ * What the classifier measured per patch, kept because consumers read the same
+ * numbers: the weather wants the slope and the aspect for how wind strips a
+ * patch, and the wetness for whether rain stands on it. Both are quantised to
+ * a byte - the slope over its first 45 degrees, the wetness over its whole
+ * range - because a modifier bounded to a few tenths cannot tell a finer step
+ * apart, and a byte a patch is 9 KB a chunk.
+ */
+export interface FineMeasures {
+  terrain: Uint8Array;
+  /** Downhill gradient at the patch, 1 at 45 degrees and above. */
+  slope: Uint8Array;
+  /** The wetness index of the patch, 0 shedding to 1 soaked. */
+  wetness: Uint8Array;
+  /** The fine flow direction the patch drains by, as hydro's 0..7, or NO_FLOW. */
+  aspect: Uint8Array;
+}
+
+const byte = (v: number): number => v <= 0 ? 0 : v >= 1 ? 255 : Math.round(v * 255);
+
+/** Back from a stored byte to the number the classifier measured. */
+export function fromByte(v: number): number {
+  return v / 255;
+}
+
+/**
+ * The ground of a chunk's patches, as TERRAIN_INDEX values in the chunk's own
+ * 96 by 96 layout. Water first: the chunk's sea, lake and pond patches are
+ * water and a river parent's channel patches are river (the kind the channel
+ * pass left on them), which leaves the banks to be classified as the land
+ * they are.
+ */
+export function classifyFine(
+  seed: number, solved: SolvedWorld, win: FineWindow,
+  x0: number, y0: number, w: number, h: number, stride: number,
+  height: Float32Array, filled: Float32Array, kind: Uint8Array,
+): FineMeasures {
+  const out = new Uint8Array(stride * stride);
+  const slopeOut = new Uint8Array(stride * stride);
+  const wetnessOut = new Uint8Array(stride * stride);
+  const aspectOut = new Uint8Array(stride * stride).fill(NO_FLOW);
+  const n = win.ww * win.wh;
+  const standing = new Uint8Array(n);
+  for (let i = 0; i < n; i++) if (kind[i] === KIND.sea || kind[i] === KIND.lake) standing[i] = 1;
+  const dir = flowDirections(filled, win.ww, win.wh, standing);
+  const area = upslopeCells(solved, win, dir, filled);
+  const soilScale = solvedSoilScale(seed, solved);
+  const breakupSeed = derive(seed, 28);
+  const fineW = solved.w * FINE_PER_PARENT;
+  const fineH = solved.h * FINE_PER_PARENT;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const fx = x0 + x;
+      const fy = y0 + y;
+      const i = (fy - win.fy0) * win.ww + fx - win.fx0;
+      const local = y * stride + x;
+      // Standing water and a channel are soaked by definition and have no
+      // slope a wind strips; the land rules below never see them.
+      if (standing[i]) { out[local] = TERRAIN_INDEX.water; wetnessOut[local] = 255; continue; }
+      if (kind[i] === KIND.river) { out[local] = TERRAIN_INDEX.river; wetnessOut[local] = 255; continue; }
+      let slope = 0;
+      if (dir[i] !== NO_FLOW) {
+        const r = receiverOf(i, dir[i], win.ww);
+        slope = (filled[i] - filled[r]) / (DIST8[dir[i]] * PATCH_M);
+        if (slope < 0) slope = 0;
+        aspectOut[local] = dir[i];
+      }
+      slopeOut[local] = byte(slope);
+      const u = (fx + 0.5) / fineW;
+      const v = (fy + 0.5) / fineH;
+      const coastKm = coastKmAt(u, v);
+      const lat = latitudeAt(fy + 0.5, fineH);
+      // The patch's own specific catchment area: its upslope area, still
+      // counted in solved cells, over the 50 m of contour a patch presents
+      // rather than the 300 m a cell presents. The coarse rung averages the
+      // same index over a cell's 36 points (classify.ts's cellWetness), so
+      // the two rungs are one definition measured at two spacings.
+      const wetness = wetnessOfSpecificArea(specificAreaM(area[i], PATCH_M), slope);
+      const p = precipitationIndex(coastKm);
+      const raw = soilNoiseAtKm(seed, u * TEMPLATE_W_KM, v * TEMPLATE_H_KM);
+      let soil = uniformAt(soilScale, raw) + SOIL_BREAKUP * (fineNoise((fx + 0.5) * PATCH_M, (fy + 0.5) * PATCH_M, breakupSeed) - 0.5);
+      if (soil < 0) soil = 0;
+      if (soil > 1) soil = 1;
+      wetnessOut[local] = byte(wetness);
+      out[local] = landTerrainIndex(height[i], slope, lat, coastKm, wetness, p, soil);
+    }
+  }
+  return { terrain: out, slope: slopeOut, wetness: wetnessOut, aspect: aspectOut };
+}

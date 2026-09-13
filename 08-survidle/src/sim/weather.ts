@@ -1,13 +1,15 @@
 import type { Rng } from "../rng";
-import { fmtDuration } from "../units";
-import { regionPeek, type World } from "../world/gen";
-import { LATTICE, LATTICE_W } from "../world/terrain";
+import { clamp, fmtDuration } from "../units";
+import { fineGroundAt, fineHeightAt, latitudeOfRow, regionPeek, terrainOf, type World } from "../world/gen";
+import { DIST8, DX8, DY8, NO_FLOW } from "../world/hydro";
+import { coastKmAt, LATTICE, LATTICE_W, treelineM } from "../world/terrain";
+import { patchAtMetric, type PatchId } from "../world/spatial";
 import { calendar, START_MINUTE_OF_DAY, type Calendar } from "./calendar";
-import { sampleAtmosphere } from "./climate";
+import { fieldTransport, sampleAtmosphere } from "./climate";
 import { hasQuirk } from "./fears";
 import { survivedStorms } from "./record";
 import { skillLevel } from "./skills";
-import type { AtmosphereSample, GameState, IceMode, LocalGroundWeather, Season, Weather, WeatherWorld } from "./types";
+import type { AtmosphereSample, GameState, IceMode, LocalGroundWeather, Season, Terrain, Weather, WeatherWorld } from "./types";
 
 export function newWeather(startDoy: number): WeatherWorld {
   return { version: 2, startDoy, ground: {}, elapsedMinutes: 0, precip: "none", clear: true, offset: 0, snowCm: 0, iceCm: 0,
@@ -97,6 +99,124 @@ export function ensureGround(state: GameState, world: World, region: number): Lo
   return ground;
 }
 
+/**
+ * What one 50 m patch does to the ground weather its region drives.
+ *
+ * The region carries the shared trajectory - what fell, what melted, how many
+ * freezing degree-days have run - because that is a weather-scale fact. Where
+ * it lies is a patch-scale one: a closed crown holds part of a snowfall off
+ * the ground under it, wind strips the exposed ground and fills the hollows,
+ * and rain stands on ground that does not drain. These are modifiers on the
+ * shared record rather than a ground record per patch, so nothing new is
+ * saved and no patch runs a trajectory of its own.
+ *
+ * Ice is deliberately not among them. It is the region's water that freezes,
+ * and it is read from the land beside that water as often as from the water
+ * itself, so a patch that is not water would report open water for a lake
+ * that is frozen solid.
+ */
+const CANOPY_SNOW_INTERCEPTION: Partial<Record<Terrain, number>> = {
+  // Share of a snowfall a closed crown holds off the ground beneath it: it
+  // sublimates or falls later as clumps. Birch is bare when the snow comes.
+  spruce: 0.35, pine: 0.25, birch: 0.1,
+};
+/** Wind takes snow off exposed ground and drops it in shelter: a ridge top keeps well under half of an open field's depth. */
+const SNOW_SCOUR_SPAN = 0.6;
+/** Rain stands on ground that does not drain and runs off ground that does. */
+const PONDING_SPAN = 0.5;
+/**
+ * The gradient at which a hillside's aspect counts for all it can. A slope of
+ * 15 percent is the break the fine detail is scaled by, and by it a windward
+ * face is taking the whole of the wind and a lee face is out of it.
+ */
+const FULL_ASPECT_SLOPE = 0.15;
+/** Height above the treeline at which the ground is as bare as ground gets: no wood, no scrub, nothing to hold a snowfall. */
+const BARE_ABOVE_TREELINE_M = 200;
+
+/**
+ * How far a patch stands out of the wind's way, 0 sheltered to 1 bare, from
+ * what the chunk measured: the gradient of the patch, which way it falls
+ * against the wind, and how far it stands above the treeline. A face that
+ * falls away from the wind is out of it and holds its snow; one that rises
+ * into it is stripped. The wind is the seed's own field transport rather than
+ * this hour's gust, because what this modifier shapes is a winter's worth of
+ * drifting, and it is what lets the reading be measured once per patch.
+ *
+ * Flat ground below the treeline reads 0.5 and scours nothing, which is what
+ * the whole world read while this was a placeholder.
+ */
+function exposureAt(world: World, cell: PatchId): number {
+  const { slope, aspect } = fineGroundAt(world, cell);
+  const wind = fieldTransport(world.seed);
+  const windSpeed = Math.hypot(wind.xKmh, wind.yKmh);
+  let windward = 0;
+  if (aspect !== NO_FLOW && windSpeed > 0) {
+    // The downhill direction against the wind's: ground that falls back into
+    // the wind is a windward face, ground that falls away from it is a lee one.
+    const downhill = DIST8[aspect];
+    windward = -(DX8[aspect] * wind.xKmh + DY8[aspect] * wind.yKmh) / (downhill * windSpeed);
+  }
+  const steep = Math.min(1, slope / FULL_ASPECT_SLOPE);
+  const x = cell % world.w;
+  const y = Math.floor(cell / world.w);
+  const treeline = treelineM(latitudeOfRow(world, y), coastKmAt((x + 0.5) / world.w, (y + 0.5) / world.h));
+  const bare = clamp((fineHeightAt(world, cell) - treeline) / BARE_ABOVE_TREELINE_M, 0, 1);
+  return clamp(0.5 + 0.5 * steep * windward + 0.5 * bare, 0, 1);
+}
+
+interface PatchGroundModifiers { snow: number; water: number }
+
+/**
+ * Terrain and the ground the chunk measured are immutable, so each patch's
+ * modifiers are computed once. The cache belongs to the world object, never to
+ * save state.
+ */
+const PATCH_MODIFIER_LIMIT = 16_384;
+const patchModifiers = new WeakMap<World, Map<PatchId, PatchGroundModifiers>>();
+
+export function patchGroundModifiers(world: World, cell: PatchId): PatchGroundModifiers {
+  let modifiersFor = patchModifiers.get(world);
+  if (!modifiersFor) {
+    modifiersFor = new Map();
+    patchModifiers.set(world, modifiersFor);
+  }
+  const cached = modifiersFor.get(cell);
+  if (cached) return cached;
+  const x = cell % world.w;
+  const y = Math.floor(cell / world.w);
+  const canopy = 1 - (CANOPY_SNOW_INTERCEPTION[terrainOf(world, x, y)] ?? 0);
+  const scour = clamp(1 - SNOW_SCOUR_SPAN * (exposureAt(world, cell) * 2 - 1), 0.4, 1.6);
+  // Ground sheds water as freely as it is dry: the wetness index is the
+  // catchment standing above the patch against the slope carrying it away.
+  const drainage = 1 - fineGroundAt(world, cell).wetness;
+  const modifiers: PatchGroundModifiers = {
+    snow: canopy * scour,
+    water: clamp(1 + PONDING_SPAN * (0.5 - drainage) * 2, 0.5, 1.5),
+  };
+  if (modifiersFor.size >= PATCH_MODIFIER_LIMIT) modifiersFor.clear();
+  modifiersFor.set(cell, modifiers);
+  return modifiers;
+}
+
+/** The region's ground as it lies on one patch. Reads only; the stored record is the region's. */
+export function groundAtPatch(state: GameState, world: World, cell: PatchId): LocalGroundWeather {
+  const x = cell % world.w;
+  const y = Math.floor(cell / world.w);
+  return patchGround(world, cell, groundAt(state, world, regionPeek(world, x, y)));
+}
+
+/** Applies one patch's modifiers to a region ground record the caller already has. */
+export function patchGround(world: World, cell: PatchId, ground: LocalGroundWeather): LocalGroundWeather {
+  const modifiers = patchGroundModifiers(world, cell);
+  if (modifiers.snow === 1 && modifiers.water === 1) return ground;
+  return {
+    ...ground,
+    snowCm: ground.snowCm * modifiers.snow,
+    surfaceWaterMm: ground.surfaceWaterMm * modifiers.water,
+    soilMoisture: clamp(ground.soilMoisture * modifiers.water, 0, 1),
+  };
+}
+
 export interface LocalConditions extends AtmosphereSample { ground: LocalGroundWeather }
 
 interface AtmosphereMemo {
@@ -161,12 +281,12 @@ export function conditionsWithGround(state: GameState, world: World, cell: numbe
 export function conditionsAt(state: GameState, world: World, _cal: Calendar, cell: number): LocalConditions {
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
-  const ground = groundAt(state, world, regionPeek(world, x, y));
+  const ground = patchGround(world, cell, groundAt(state, world, regionPeek(world, x, y)));
   return conditionsWithGround(state, world, cell, ground);
 }
 
 /** Current-cell adapter for old Weather-shaped calculations. Never drives atmosphere or ground updates. */
-export function localWeather(state: GameState, world: World, cell = Math.floor(state.player.y) * world.w + Math.floor(state.player.x)): Weather & { temperatureC: number; dryHours: number } {
+export function localWeather(state: GameState, world: World, cell = patchAtMetric(state.player)): Weather & { temperatureC: number; dryHours: number } {
   const a = conditionsAt(state, world, calendar(state.minute, state.startDoy), cell);
   const scheduled = state.weather.storm;
   const scheduledKind = scheduled && state.minute >= scheduled.from && state.minute < scheduled.until ? scheduled.kind : null;

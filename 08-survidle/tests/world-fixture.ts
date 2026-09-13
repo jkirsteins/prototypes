@@ -1,7 +1,13 @@
 import type { Terrain } from "../src/sim/types";
 import { newWorld, type World } from "../src/world/cells";
 import { KIND, type SolvedWorld } from "../src/world/solve";
-import { TERRAIN_INDEX } from "../src/world/terrain";
+import { solvedFor } from "../src/world/solvecache";
+import { TERRAIN_INDEX, WORLD_CELL_H, WORLD_CELL_W } from "../src/world/terrain";
+
+/** The solved world a run stands on, without the start search: for tests about the fine lattice over it. */
+export function solvedWorld(seed: number): World {
+  return newWorld(seed, solvedFor(seed, WORLD_CELL_W, WORLD_CELL_H));
+}
 
 /** A hand-made world of one terrain at one height, for consumer tests that must not depend on the generator. */
 export function flatWorld(opts: { w: number; h: number; terrain: Terrain; heightM?: number; seed?: number }): World {

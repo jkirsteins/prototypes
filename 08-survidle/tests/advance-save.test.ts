@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
+import { SAVE_VERSION, WORLD_VERSION } from "../src/sim/world-version";
 import { calendar } from "../src/sim/calendar";
 import { alertness, SLEEP_ONSET } from "../src/sim/sleep";
 import { bodyRowOf, isCampRow, isBodyRow } from "../src/sim/bodyorder";
@@ -170,8 +171,8 @@ describe("save", () => {
     const deer = loaded.wildlife.subjects[0];
     const point = resolveSpatialEstimate(loaded.seed, deer.id, metricAreaForCell(world, deer.active!.cell)!)!;
     // Remain 500 m away, beyond both detection and settlement ranges.
-    loaded.player.x = (point.xM + 500) / 300;
-    loaded.player.y = point.yM / 300;
+    loaded.player.xM = point.xM + 500;
+    loaded.player.yM = point.yM;
     loaded.minute = 29;
     evaluateWildlifeDisturbance(loaded, world, calendar(29, loaded.startDoy), true);
     expect(deer.active!.intent).toBe("flee");
@@ -282,12 +283,18 @@ describe("save", () => {
     expect(file.state).toEqual(uninterrupted.state);
   });
 
-  it("refuses a save written before the world was this world", () => {
+  it("refuses a save written before the fine lattice, and fills the carry into one that is current", () => {
+    // A save from the old cell world has no reading at all here: its cell ids
+    // are not patch ids, so it is turned away rather than migrated.
     const legacy = JSON.parse(serialize(newGame(9).state));
-    legacy.version = 8;
-    expect(readSave(JSON.stringify(legacy))).toBeNull();
-    const refused = deserialize(JSON.stringify(legacy));
-    expect(refused && "refused" in refused ? refused.refused : "").toMatch(/world/i);
+    legacy.version = SAVE_VERSION - 1;
+    expect(deserialize(JSON.stringify(legacy))).toBeNull();
+    const stale = JSON.parse(serialize(newGame(9).state));
+    stale.worldVersion = WORLD_VERSION - 1;
+    expect(deserialize(JSON.stringify(stale))).toBeNull();
+    const current = JSON.parse(serialize(newGame(9).state));
+    delete current.state.advanceCarry;
+    expect(readSave(JSON.stringify(current))!.state.advanceCarry).toBe(0);
   });
 
   it("a new game starts with the new body fields, and an old save gets them filled", () => {
@@ -449,7 +456,7 @@ describe("save", () => {
     expect(isWorkOrder(orders[3]) && orders[3].req.arg).toBe("willowGrouse");
   });
 
-  it("a genuine version 3 save predating ice holes and water piles loads clean", () => {
+  it("a save predating ice holes and water piles loads clean", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     const raw = JSON.parse(serialize(state));
@@ -575,9 +582,10 @@ describe("the world save", () => {
     expect(back.player.huntSigns).toEqual({});
   });
 
-  it("writes version 10 and wraps a survivor with no record as the first of the world", () => {
+  it("writes the current envelope and wraps a lone survivor as the first of the world", () => {
     const { state } = newGame(8);
-    expect(JSON.parse(serialize(state)).version).toBe(10);
+    expect(JSON.parse(serialize(state)).version).toBe(SAVE_VERSION);
+    expect(JSON.parse(serialize(state)).worldVersion).toBe(WORLD_VERSION);
     const v4 = JSON.parse(serialize(state)) as { version: number; savedAt: number; state: Record<string, unknown> };
     delete v4.state.advanceCarry;
     delete v4.state.survivors;
@@ -597,11 +605,11 @@ describe("the world save", () => {
   });
 });
 
-describe("the version 6 save", () => {
+describe("the producers' save", () => {
   it("fills the producers' fields into a save that was written without them", () => {
     const { state } = newGame(8);
     const text = serialize(state);
-    expect(JSON.parse(text).version).toBe(10);
+    expect(JSON.parse(text).version).toBe(SAVE_VERSION);
     const old = JSON.parse(text);
     delete old.state.player.known;
     for (const st of Object.values(old.state.regions) as Record<string, unknown>[]) {
