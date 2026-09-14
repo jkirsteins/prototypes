@@ -4,14 +4,14 @@ import { COLD_UNDER, SLEEP_AT, SOAKED_WETNESS, stormOptions, workResumeAt } from
 import { isCareRow } from "../sim/bodyorder";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
-import { needsMending, rackCapacity } from "../sim/camp";
+import { coveredWoodKg, needsMending, rackCapacity, woodOnHandKg } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, hasEmbers, smoky } from "../sim/fire";
 import { herePile, listItems, pileAt, qty, weight } from "../sim/inventory";
 import { body, fatLandmarks } from "../sim/person";
 import { groundOf } from "../sim/intent";
-import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_KG, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
+import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_KG, KG_ITEMS, RACK_DRY_MINUTES, SNARE_ODDS_PER_NIGHT, STRUCTURES, TOOLS } from "../sim/items";
 import { knownShare } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
@@ -31,12 +31,13 @@ import { survivorRoute } from "../sim/routing";
 import { current, worldDate } from "../sim/record";
 import { campSite, regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
+import { SEEP } from "../sim/seep";
 import { CARRY_SHARE, keyName, level, levelMinutes, masteryMilestone, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
   availableTasks, check, fallChance, type TaskOption, walkTarget, whereIs,
 } from "../sim/tasks";
-import { isWorkIntent, type AtmosphereSample, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
+import { isWorkIntent, type AtmosphereSample, type GameState, type Garment, type ItemId, type LogEntry, type Person, type RegionState, type SkillId } from "../sim/types";
 import { campWaterCapacity, THIRSTY_L, WATER_FULL } from "../sim/water";
 import { atmosphereAt, forecastText, groundAt, iceMode, type LocalConditions, localStorm, localWeather, stormComing, stormNow } from "../sim/weather";
 import { fmtDaysAbout, fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
@@ -48,6 +49,8 @@ import { shoppingPlaceCueHtml } from "./shopping";
 import { plain, voice } from "../sim/voice";
 import { skyHtml, WALL } from "./sky";
 import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
+import { DEFAULT_RATE_DISPLAY, formatRate, type RateDisplay } from "./rate";
+import { yardUsed } from "../sim/yard";
 import { activeEquipmentHtml } from "./equipment";
 
 /**
@@ -512,7 +515,37 @@ export function rosterHtml(state: GameState, world: World, id: number, cal: Cale
   return lines;
 }
 
-export function campHtml(state: GameState, world: World, cal: Calendar): string {
+/**
+ * The rate beside a producer, through the same formatRate the toolbar
+ * reads, only where the simulation can answer it exactly: the rack's
+ * throughput at its own capacity and drying time, the snares' flat odds
+ * scaled by the region's live hare density and how many stand, and every
+ * seep refilling in this region added up. The basket trap draws on a daily
+ * roll over whichever species are present and the water trough is filled
+ * by a fetch, neither of which is an hourly figure the sim has on hand, so
+ * both carry their limits line with no rate beside it.
+ */
+function producerRate(state: GameState, world: World, st: RegionState, site: ReturnType<typeof campSite>, cal: Calendar, id: string, display: RateDisplay): string {
+  if (id === "drying rack" && site) {
+    return formatRate(rackCapacity(site) / (RACK_DRY_MINUTES / 60), "kg", display);
+  }
+  if (id === "snares" && st.snares > 0) {
+    const density = regionDensity(state, world, state.player.region, "hare", cal);
+    return formatRate((st.snares * SNARE_ODDS_PER_NIGHT * density) / 24, "hare", display);
+  }
+  if (id === "seep") {
+    let lPerHour = 0;
+    for (const k of Object.keys(state.seeps)) {
+      const cell = Number(k);
+      if (cellAt(world, cell).region !== state.player.region) continue;
+      lPerHour += SEEP[state.seeps[cell].class].refillLPerHour;
+    }
+    if (lPerHour > 0) return formatRate(lPerHour, "l", display);
+  }
+  return "";
+}
+
+export function campHtml(state: GameState, world: World, cal: Calendar, display: RateDisplay = DEFAULT_RATE_DISPLAY): string {
   const id = state.player.region;
   const r = regionAt(world, id);
   const st = regionState(state, world, id);
@@ -543,15 +576,28 @@ export function campHtml(state: GameState, world: World, cal: Calendar): string 
   const rack = site?.structures.dryingRack
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
+  // A store line says what it holds, what it can hold, and what it loses,
+  // because every cap here is lossy rather than merely full.
   const campPile = pileAt(state, st.campCell);
+  const woodKg = woodOnHandKg(campPile);
+  const covered = coveredWoodKg(site);
+  const exposed = Math.max(0, woodKg - covered);
+  const wood = woodKg > 0 || covered > 0
+    ? `<div>wood: ${fmtKg(woodKg)} of ${fmtKg(covered)} covered${exposed > 0 ? `, <span class="bad">${fmtKg(exposed)} out in the weather</span>` : ""}</div>`
+    : "";
+
   const cap = campWaterCapacity(campPile, site);
   const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
     ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
     : "";
   const lying = weight(campPile);
   const heap = lying > 0 ? `<div class="dim">${fmtKg(lying)} lying here</div>` : "";
+  const yard = site ? `<div>yard: ${Math.round(yardUsed(site))} of ${Math.round(site.yardM2)} m2</div>` : "";
   const limits = CAPABILITIES.filter((c) => c.producer && standingHere(state, st, world, c))
-    .map((c) => `<div><small>${esc(c.id)}: ${esc(c.limits)}</small></div>`)
+    .map((c) => {
+      const rate = producerRate(state, world, st, site, cal, c.id, display);
+      return `<div><small>${esc(c.id)}: ${esc(c.limits)}${rate ? ` - ${esc(rate)}` : ""}</small></div>`;
+    })
     .join("");
 
   const stands = built.length || unfinished.length
@@ -561,7 +607,7 @@ export function campHtml(state: GameState, world: World, cal: Calendar): string 
   // has no place for it and the camp box does: the survivor knows what is
   // about without walking anywhere to look.
   const about = `<div class="roster">${rosterHtml(state, world, id, cal)}</div>`;
-  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${stands}${rack}${water}${heap}${limits}${about}`;
+  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${stands}${rack}${wood}${water}${heap}${yard}${limits}${about}`;
 }
 
 

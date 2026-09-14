@@ -83,3 +83,24 @@ describe("the camp box", () => {
     expect(html).toContain("<h2>");
   });
 });
+
+describe("the camp sheet", () => {
+  it("says the woodpile against its cover, and what is lossy about it", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    siteFor(st, st.campCell!).woodsheds = 1;
+    addItem(pile(state, st.campCell!), "firewood", 30);
+    const html = campHtml(state, world, calendar(state.minute, state.startDoy));
+    expect(html).toContain("1050");
+    expect(html).toContain("30");
+  });
+
+  it("says the yard, used against cleared", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    expect(campHtml(state, world, calendar(state.minute, state.startDoy))).toContain("m2");
+  });
+});

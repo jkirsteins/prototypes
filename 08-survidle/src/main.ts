@@ -335,7 +335,7 @@ function render(nowMs = performance.now()) {
   setPanel("stocks", stocksHtml(state, world, cal, ui));
   renderStockPanel(cal);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
-  setPanel("camp", campHtml(state, world, cal));
+  setPanel("camp", campHtml(state, world, cal, ui.rateDisplay));
   setPanel("maptravel", placesHtml(state, world, cal, ui.travelDisplay));
   setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
   setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));
