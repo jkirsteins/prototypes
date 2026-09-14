@@ -13,6 +13,8 @@ import { addItem, pile } from "../src/sim/inventory";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { regionState, siteFor } from "../src/sim/regionstate";
+import { SEEP_LIFE_DAYS } from "../src/sim/seep";
+import { FOOTPRINT_M2, YARD_START_M2 } from "../src/sim/yard";
 import { campHtml } from "../src/ui/panels";
 import { siteCamp } from "./siting-helpers";
 
@@ -101,6 +103,24 @@ describe("the camp sheet", () => {
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell!).structures.firePit = true;
-    expect(campHtml(state, world, calendar(state.minute, state.startDoy))).toContain("m2");
+    const html = campHtml(state, world, calendar(state.minute, state.startDoy));
+    // The fire site's own footprint against the landing camp's starting
+    // patch, both read independently of yardUsed itself, so a wrong sum
+    // in the function under test cannot also pass the check on it.
+    expect(html).toContain(`yard: ${FOOTPRINT_M2.firePit} of ${YARD_START_M2} m2`);
+  });
+
+  it("says why a stopped seep reads no rate rather than a live one", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    const cell = st.campCell!;
+    // Silted: dug long enough ago that seepStopped says so regardless of
+    // the weather this seed happens to have, which keeps the test honest
+    // about the one thing it is checking.
+    state.seeps[cell] = { class: "bog", litres: 0, ice: 0, dug: state.minute - SEEP_LIFE_DAYS * 1440 };
+    const html = campHtml(state, world, calendar(state.minute, state.startDoy));
+    expect(html).toContain("seep:");
+    expect(html).toContain("0 l/h, silted");
   });
 });

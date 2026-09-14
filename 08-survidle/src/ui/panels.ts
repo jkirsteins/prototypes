@@ -31,7 +31,7 @@ import { survivorRoute } from "../sim/routing";
 import { current, worldDate } from "../sim/record";
 import { campSite, regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
-import { SEEP } from "../sim/seep";
+import { seepRate } from "../sim/seep";
 import { CARRY_SHARE, keyName, level, levelMinutes, masteryMilestone, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
@@ -520,10 +520,13 @@ export function rosterHtml(state: GameState, world: World, id: number, cal: Cale
  * reads, only where the simulation can answer it exactly: the rack's
  * throughput at its own capacity and drying time, the snares' flat odds
  * scaled by the region's live hare density and how many stand, and every
- * seep refilling in this region added up. The basket trap draws on a daily
- * roll over whichever species are present and the water trough is filled
- * by a fetch, neither of which is an hourly figure the sim has on hand, so
- * both carry their limits line with no rate beside it.
+ * seep refilling in this region added up through the one place that knows
+ * whether a seep is actually running (`seepRate`, shared with the water
+ * line so a frozen or dried-out seep cannot read as live here while it
+ * already reads stopped there). The basket trap draws on a daily roll over
+ * whichever species are present and the water trough is filled by a fetch,
+ * neither of which is an hourly figure the sim has on hand, so both carry
+ * their limits line with no rate beside it.
  */
 function producerRate(state: GameState, world: World, st: RegionState, site: ReturnType<typeof campSite>, cal: Calendar, id: string, display: RateDisplay): string {
   if (id === "drying rack" && site) {
@@ -535,12 +538,18 @@ function producerRate(state: GameState, world: World, st: RegionState, site: Ret
   }
   if (id === "seep") {
     let lPerHour = 0;
+    const whys = new Set<string>();
     for (const k of Object.keys(state.seeps)) {
       const cell = Number(k);
       if (cellAt(world, cell).region !== state.player.region) continue;
-      lPerHour += SEEP[state.seeps[cell].class].refillLPerHour;
+      const rate = seepRate(state, world, cell);
+      lPerHour += rate.lPerHour;
+      if (rate.why) whys.add(rate.why);
     }
     if (lPerHour > 0) return formatRate(lPerHour, "l", display);
+    // Stopped, not silent: a seep standing here that is not refilling
+    // still owes the sheet a reason, the same one the water line gives.
+    if (whys.size > 0) return `0 l/h, ${[...whys].join(", ")}`;
   }
   return "";
 }
@@ -582,8 +591,11 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
   const woodKg = woodOnHandKg(campPile);
   const covered = coveredWoodKg(site);
   const exposed = Math.max(0, woodKg - covered);
+  // A camp with nothing built to keep wood dry is the common early state,
+  // not an edge case, so it says plainly that there is no cover rather than
+  // reading "of 0 g covered".
   const wood = woodKg > 0 || covered > 0
-    ? `<div>wood: ${fmtKg(woodKg)} of ${fmtKg(covered)} covered${exposed > 0 ? `, <span class="bad">${fmtKg(exposed)} out in the weather</span>` : ""}</div>`
+    ? `<div>wood: ${fmtKg(woodKg)}${covered > 0 ? ` of ${fmtKg(covered)} covered` : ", no cover"}${exposed > 0 ? `, <span class="bad">${covered > 0 ? `${fmtKg(exposed)} ` : ""}out in the weather</span>` : ""}</div>`
     : "";
 
   const cap = campWaterCapacity(campPile, site);

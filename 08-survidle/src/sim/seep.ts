@@ -50,6 +50,18 @@ export function seepStopped(state: GameState, world: World, cell: number, _ambie
   return null;
 }
 
+/**
+ * What a seep is actually adding right now: its class's litres an hour, or
+ * zero and why when `seepStopped` says it is not refilling. The one place
+ * this is decided, so a frozen or dried-out seep cannot read as a live rate
+ * in one surface while another already knows to zero it.
+ */
+export function seepRate(state: GameState, world: World, cell: number): { lPerHour: number; why: ReturnType<typeof seepStopped> } {
+  const s = state.seeps[cell];
+  const why = seepStopped(state, world, cell);
+  return { lPerHour: !s || why ? 0 : SEEP[s.class].refillLPerHour, why };
+}
+
 /** Past two thirds of its life the re-dig row shows, as a lean-to's re-roofing does. */
 export function seepNeedsRedig(state: GameState, s: Seep): boolean {
   return state.minute - s.dug >= (SEEP_LIFE_DAYS * 1440 * 2) / 3;
