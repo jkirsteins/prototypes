@@ -4369,6 +4369,16 @@ intent, which answers the 09-07 record's design question 4, a day-5 death
 leaving a camp not worth inheriting. This is the answer to that record's
 design question 6, what the map is for.
 
+**Part 2's blocker list, built.** The cheap half of this part is built: `addOrder`
+in `src/sim/orders.ts` raises `Site.build[sid] ??= 0` the moment a build is
+ordered rather than the moment work on it starts, so a planned build shows
+its blockers before a survivor has ever walked to it, and `campHtml` in
+`src/ui/panels.ts` reads that entry to print "vedbod, planned: needs 6 logs
+(have 2)". Choosing the cell by placing a ghost on the map, drawing it there,
+and the ground model teaching itself through where it is placed are what
+remains open; spec `2026-09-13-survidle-idle-layer-design.md` section 7
+names the split.
+
 **3. The camp sheet: producers and stores.** One sheet listing each
 producer with its rate (`PRODUCERS` in `src/sim/capabilities.ts`: snares,
 drying rack, basket trap, water trough, seep; snares are resource
@@ -4385,6 +4395,19 @@ person-days of food banked, and the forecast's odds at a horizon, which
 B computes as "7 of 10". The away report reads against this sheet: the
 snares took four hares and lost two, the rack is full and two days off
 drying.
+
+**Built.** Spec `2026-09-13-survidle-idle-layer-design.md`. The camp sheet
+prints each producer's rate through the shared `rate()` component and each
+store's held, cap and cap reason through `src/ui/stocks.ts`'s group table,
+with the yard's free square metres beside them; a toolbar above the three
+columns carries the same reading at a glance and opens the detail on hover
+or tap. Person-days of food banked is the headline the group table gives
+for free, since it is what a food group counted in its own unit already
+means. The wood store's cap is the one rung this MVP ships: a vedbod, and
+the one rule that makes any of these caps bite is dry firewood over cover
+re-wetting in the rain rather than keeping for ever. The forecast's odds at
+a horizon and a raised cache or cellar stay open, and so does an expansion
+rung on the rack, the vessels and the snares.
 
 **4. The stake, and nature reclaiming it.** A painted area on the map
 measuring how much ground the survivor holds against the north. One rule
@@ -4449,6 +4472,25 @@ third edge, the heat border, already on the map. Extends 4.
   a footprint in the sim that nobody can see. Revealing it is cheap. It
   is bounded by the ruling that one survivor cannot empty a shore or
   heath, so it is a texture of part 4's paint and not a part of its own.
+- **Log rot.** Nothing gives a felled log a clock, though food, structures
+  and the bough bed all have one. Decay needs wood over about 20 percent
+  moisture and temperature over about 5 C, so at 62 N the clock runs June
+  to September and stops. Ground contact is most of it and bark is the
+  rest: a birch log left with its bark on spoils in a summer, while the
+  same log debarked and stacked on skids keeps for years. The shape when
+  it comes: logs on the ground degrade, debarking yields `bark` the game
+  already wants and preserves the timber, a roof stops the clock, and a
+  rotted log splits to a reduced yield rather than vanishing. Kept off
+  this MVP so that one gate reading answers for one rule; design spec
+  `2026-09-13-survidle-idle-layer-design.md` section 9.
+- **Per-shed upkeep.** A vedbod stands for ever today, because the decay
+  loop that ages a structure collapses it by writing `site.structures[sid]
+  = false`, and a vedbod is not a boolean in `site.structures`, it is the
+  count `site.woodsheds`. Giving it the same bark-roof upkeep clock the
+  turf hut has needs a per-shed age, and `Site` carries none: one count
+  cannot say whether the first shed or the third is due for its re-roof.
+  What caps the count today is the yard alone; upkeep would be a second
+  cap on top of it, not a replacement.
 
 ### Q. The landing note
 

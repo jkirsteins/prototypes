@@ -235,7 +235,11 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   holds -3 C whatever the night does but takes no fire, and slumps after
   three warm days running); drying rack (40 kg of raw meat at 1,100 kcal
   a kilo, 3 kg raw to 1 kg dried at 3,300, the same kcal in less weight,
-  two dry days or four wet; a camp can stand two); a trap line of up to
+  two dry days or four wet; a camp can stand two); a vedbod, a roof on
+  posts over an open stack (6 logs, 12 sticks, 20 bark, 3 cordage, 300
+  minutes), covering 1,050 kg of firewood against the rain and drying wet
+  firewood at 2 kg an hour whatever the weather, the same as a cabin or a
+  lit fire; a trap line of up to
   forty snares on the heath, checked at dawn. "Hang meat to dry" is a
   task, and a keep on dried meat runs it as the rack has room. Cracking a
   bone gives marrow, and a kill's fat must be rendered at a fire within
@@ -249,6 +253,26 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   rows on the activity queue eat, drink and feed the fire while the tab is
   closed, as long as the food and firewood are there and the player has
   not ranked work over them; nothing eats behind those rows' backs.
+  Ground is what limits a camp before the 300 m cell ever does: a landing
+  camp has about 30 m2 of yard, enough for a fire site, a lean-to, a rack
+  and a trough with a little spare, and widening it is a task whose
+  minutes the ground under the camp sets - 12 m2 an hour on a dry meadow,
+  8 under spruce where the duff has to be scraped back, 4 on peat, the
+  same rate the fire site's own minutes already charge for clearing.
+- **The stocks strip.** A bar above the three columns reads what camp
+  holds in four groups - wood, food, water, pack - each against its cap
+  where the sim has one and each with which way it is moving. Hovering a
+  group, or tapping it on a phone, opens what it is made of, the cap's
+  reason where it is sitting at one, the signed causes behind the rate
+  and, for wood, the stand the store is coming out of, so a rising
+  woodpile reads beside the patch it is thinning. A click pins a group's
+  panel open until the same group is clicked again, so a mouse can move
+  onto what it opened without losing it to the next thing it passes over.
+  Rates read in game time by default - a kilogram an hour is the pace the
+  sim itself keeps - or in real time from the rates setting in the
+  settings panel; the two are exactly convertible, since a game hour is a
+  real minute, so the setting only changes the words and the decimal
+  point, never the number underneath.
 - **Spares.** A tool recipe yields a spare that is taken up when the one in
   hand breaks; "keep camp at 1 axe" is how the axe is never the end of the
   run.
@@ -690,6 +714,16 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/sim/clothing.ts`: per-garment wetness, drying and frostbite chance.
 - `src/sim/fire.ts`: wet wood, burn rate and lighting odds in weather, indoor smoke.
 - `src/sim/hazards.ts`: the hourly rolls: frostbite, fire spread, ice underfoot, freezing vessels.
+- `src/sim/yard.ts`: what each structure occupies in the camp's yard and
+  the clearing rate an hour of widening buys, read off the fire site's
+  own minutes rather than invented again.
+- `src/sim/rates.ts`: the signed causes behind a stock group's rate - the
+  task in hand, the fire, rain on an uncovered stack, the body's burn and
+  draw - and what a projection may not count, so the panel never shows a
+  guess dressed as a reading.
+- `src/ui/stocks.ts`: the group table naming what belongs to wood, food,
+  water and pack, what each holds and is capped by, and the reason
+  printed when a group sits at its cap.
 - `src/audio/manifest.ts`: every sound slot, its files and gain; `src/sim/soundscape.ts`: which beds and calls are open where.
 - `src/sim/manual.ts`: the one-page manual's four sections, the handbook
   links, and when a world opens it unasked.
