@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { Rng } from "../src/rng";
 import { newGame } from "../src/sim/newgame";
+import { orderByHand } from "../src/sim/ladder";
 import { regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { calendar } from "../src/sim/calendar";
 import { migrate, migrateSites } from "../src/sim/save";
+import { campHtml } from "../src/ui/panels";
 import { clearM2PerHour, FOOTPRINT_M2, YARD_START_M2, yardFree, yardUsed } from "../src/sim/yard";
 import { siteCamp } from "./siting-helpers";
 
@@ -75,5 +78,18 @@ describe("a camp from before the yard", () => {
     const live = regionState(state, world, state.player.region);
     const site = siteAt(live, live.campCell!)!;
     expect(site.yardM2).toBeGreaterThanOrEqual(yardUsed(site));
+  });
+});
+
+describe("a planned build", () => {
+  it("stands on the camp sheet with its blockers before any work is done", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const cal = calendar(state.minute, state.startDoy);
+    orderByHand(state, world, cal, new Rng(1), { task: "build", arg: "vedbod", until: { kind: "once" }, deliver: "camp", where: { cell: regionState(state, world, state.player.region).campCell! } }, "job");
+    const html = campHtml(state, world, cal);
+    expect(html).toContain("vedbod");
+    expect(html).toContain("planned");
+    expect(html).toContain("logs");
   });
 });

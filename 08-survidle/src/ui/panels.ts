@@ -8,10 +8,10 @@ import { coveredWoodKg, needsMending, rackCapacity, woodOnHandKg } from "../sim/
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, hasEmbers, smoky } from "../sim/fire";
-import { herePile, listItems, pileAt, qty, weight } from "../sim/inventory";
+import { herePile, listItems, pileAt, qty, shortOf, weight } from "../sim/inventory";
 import { body, fatLandmarks } from "../sim/person";
 import { groundOf } from "../sim/intent";
-import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_KG, KG_ITEMS, RACK_DRY_MINUTES, SNARE_ODDS_PER_NIGHT, STRUCTURES, TOOLS } from "../sim/items";
+import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_KG, ITEM_NAMES, KG_ITEMS, RACK_DRY_MINUTES, SNARE_ODDS_PER_NIGHT, STRUCTURES, TOOLS } from "../sim/items";
 import { knownShare } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
@@ -35,9 +35,9 @@ import { seepRate } from "../sim/seep";
 import { CARRY_SHARE, keyName, level, levelMinutes, masteryMilestone, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
-  availableTasks, check, fallChance, type TaskOption, walkTarget, whereIs,
+  availableTasks, buildMinutes, check, fallChance, type TaskOption, walkTarget, whereIs,
 } from "../sim/tasks";
-import { isWorkIntent, type AtmosphereSample, type GameState, type Garment, type ItemId, type LogEntry, type Person, type RegionState, type SkillId } from "../sim/types";
+import { isWorkIntent, type AtmosphereSample, type GameState, type Garment, type ItemId, type LogEntry, type Person, type RegionState, type SkillId, type StructureId } from "../sim/types";
 import { campWaterCapacity, THIRSTY_L, WATER_FULL } from "../sim/water";
 import { atmosphereAt, forecastText, groundAt, iceMode, type LocalConditions, localStorm, localWeather, stormComing, stormNow } from "../sim/weather";
 import { fmtDaysAbout, fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
@@ -50,7 +50,7 @@ import { plain, voice } from "../sim/voice";
 import { skyHtml, WALL } from "./sky";
 import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
 import { DEFAULT_RATE_DISPLAY, formatRate, type RateDisplay } from "./rate";
-import { yardUsed } from "../sim/yard";
+import { FOOTPRINT_M2, yardFree, yardUsed } from "../sim/yard";
 import { activeEquipmentHtml } from "./equipment";
 
 /**
@@ -570,7 +570,22 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
   if (site?.structures.snowShelter) built.push("snow shelter");
   if (st.snares) built.push(`${st.snares} snare${st.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
   if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
-  const unfinished = site ? (Object.keys(site.build) as (keyof typeof site.build)[]).filter((k) => (site.build[k] ?? 0) > 0).map((k) => `${k} in progress`) : [];
+  // A build order raises its site entry the moment it is given, so this list
+  // is what the camp is waiting on: planned work with nothing done yet reads
+  // the same as work half finished, each naming what it still wants.
+  const campPile = pileAt(state, st.campCell);
+  const planned = site
+    ? (Object.keys(site.build) as StructureId[]).map((k) => {
+        const done = site.build[k] ?? 0;
+        const total = buildMinutes(state, world, k, st.campCell!);
+        const short = shortOf([campPile, state.player.pack], STRUCTURES[k].needs);
+        const wants = FOOTPRINT_M2[k] ?? 0;
+        const noRoom = wants > 0 && yardFree(site) < wants ? `${wants} m2 of yard, ${Math.round(yardFree(site))} free` : "";
+        const blockers = [...short.map((n) => `${n.qty} ${ITEM_NAMES[n.item]}`), noRoom].filter(Boolean).join(", ");
+        const phase = done > 0 ? `${Math.round((done / total) * 100)}% built` : "planned";
+        return `${STRUCTURES[k].name}, ${phase}${blockers ? `: needs ${blockers}` : ""}`;
+      })
+    : [];
   // A third word between burning and cold: coals are live but not fed, the
   // routine state after every tended night rather than an exception. How
   // long they last is the fuel bar's job, and the figure moves with every
@@ -587,7 +602,6 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
     : "";
   // A store line says what it holds, what it can hold, and what it loses,
   // because every cap here is lossy rather than merely full.
-  const campPile = pileAt(state, st.campCell);
   const woodKg = woodOnHandKg(campPile);
   const covered = coveredWoodKg(site);
   const exposed = Math.max(0, woodKg - covered);
@@ -612,8 +626,8 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
     })
     .join("");
 
-  const stands = built.length || unfinished.length
-    ? `<div>${[...built, ...unfinished].join(", ")}</div>`
+  const stands = built.length || planned.length
+    ? `<div>${[...built, ...planned].join(", ")}</div>`
     : `<div class="dim">nothing built</div>`;
   // What lives here is a region's reading, not a cell's, so the map's hover
   // has no place for it and the camp box does: the survivor knows what is

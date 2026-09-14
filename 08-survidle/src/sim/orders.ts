@@ -69,10 +69,11 @@ import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
 import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
-import { campSite, regionState } from "./regionstate";
+import { campSite, regionState, siteFor } from "./regionstate";
 import { check, setAside } from "./tasks";
 import { isWorkIntent, type GameState, type IntentRequest, type ItemId, type Order, type OrderKind, type Site, type StructureId, type TaskId, type Verdict, type WorkOrder } from "./types";
 import { campWaterCapacity } from "./water";
+import { FOOTPRINT_M2 } from "./yard";
 
 /** The list of the region under foot. */
 export function ordersHere(state: GameState, world: World): Order[] {
@@ -110,6 +111,14 @@ function placeOf(list: Order[], rank: Landing): number {
 export function addOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: Landing): WorkOrder {
   const st = regionState(state, world, state.player.region);
   const n = normalizeOrder(req, kind);
+  // A build the player has asked for is a thing the camp is waiting on, not
+  // a row in a list. Writing the site entry at placement rather than at the
+  // first minute of work is what lets the camp sheet say so, and it is what
+  // a heir inherits: the predecessor's intent, with the ground it wanted.
+  if (req.task === "build" && req.arg && FOOTPRINT_M2[req.arg as StructureId] !== undefined && st.campCell !== null) {
+    const site = siteFor(st, st.campCell);
+    site.build[req.arg as StructureId] ??= 0;
+  }
   // The day it was given is the rise's start for a paced keep that names no season.
   const o: WorkOrder = { id: st.nextOrderId++, kind: n.kind, req: n.req, done: 0, minutes: 0, skipped: "", givenDoy: calendar(state.minute, state.startDoy).dayOfYear };
   st.orders.splice(rank === undefined ? st.orders.length : placeOf(st.orders, rank), 0, o);
