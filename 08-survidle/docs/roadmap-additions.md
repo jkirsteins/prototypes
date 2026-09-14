@@ -1527,3 +1527,131 @@ testing that the code runs.
 
 What would look wrong: a change that breaks the shortlist cut shipping with
 this test green.
+
+## The render surface: four canvases and a DOM for the rest
+
+**Raised** 2026-09-14, after Safari terminated the page with "This web page
+was reloaded because it was using significant memory" and the profile showed
+the cost is the document, not the simulation.
+
+### What the measurements say
+
+Taken on the live page over CDP, with the game sitting still and nothing
+being asked of it, in headless Chrome with no GPU:
+
+| | per 30 s | share of one core |
+| --- | ---: | ---: |
+| Style recalculation | 3.40 s | 11% |
+| Script, all of it | 0.94 s | 3% |
+| Layout | 0.06 s | 0.2% |
+| Total task time | 11.26 s | 38% |
+
+Style recalculation costs three and a half times everything the simulation
+and the panels do together. The JS heap sits between 18 and 21 MB and
+collects cleanly, so what Safari ran out of is not the heap: it is the
+document. The page holds 14,279 elements, of which 4,226 are SVG star
+circles, 567 are water-shimmer overlays at three per water cell, and 192 are
+cloud shadows. `prefers-reduced-motion` changes almost nothing, because the
+stars carry transitions rather than animations and the reduced-motion block
+only names animations.
+
+The conclusion the numbers force: the game draws a continuously animated
+scene through a document, and a document is the wrong instrument for that.
+Every moving pixel costs a style resolution on an element that also carries
+classes, data attributes and an accessibility role it does not need.
+
+### The architecture
+
+Four surfaces, split by how often each one changes rather than by what it
+depicts. That split is the whole point: a layer that changes on a walk must
+not be redrawn because a wave moved.
+
+- **Static map canvas.** Terrain, region borders, remembered ground,
+  structures. Redraws only when something it depicts actually changes: a
+  step, a zoom, newly discovered ground, a building raised, the season
+  turning. On a still minute it draws nothing at all.
+- **Effects canvas.** Water shimmer, clouds, fog, precipitation, wildlife,
+  the route line and the player marker. Everything that moves on its own
+  clock. Redraws per animation frame, but as drawing commands rather than as
+  thousands of elements, and it can drop to a lower rate or stop entirely
+  under reduced motion without touching the layer beneath it.
+- **Sky canvas.** Stars, the Milky Way, clouds, precipitation, the sun and
+  the moon. This layer alone removes 4,226 SVG circles and the loop in
+  `projectCoordinateStars` that rewrites two attributes on every one of them
+  ten times a second.
+- **DOM.** Buttons, panels, the tooltip, the stocks bar, labels, settings.
+  Everything a person clicks, reads or types into stays a document, because
+  that is what a document is good at.
+
+### What this buys, and what it costs
+
+Gained: the per-element style cost disappears for everything on a canvas,
+which by the table above is most of the frame. The close-zoom sub-lattice
+stops being a DOM multiplication problem and becomes arithmetic. Reduced
+motion becomes a real switch rather than a CSS block that misses half its
+targets. The compositor stops holding thousands of animated boxes, which is
+the half of the problem Safari actually complained about.
+
+Given up, and the user has accepted this: keyboard navigation of the map and
+screen-reader support for it. That acceptance is what makes this tractable,
+because it removes the requirement that every cell be a focusable element
+with a label.
+
+What must be rebuilt rather than lost:
+
+- **Hit testing** becomes arithmetic. A pointer position maps to a cell by
+  division, which is cheaper and more direct than asking the document which
+  element is under the cursor. The tooltip stays a DOM element positioned
+  over the canvas, so hovering still reads the same.
+- **Theming.** Cell colours come from CSS custom properties today. A canvas
+  cannot read those per draw call; read them once into a palette object when
+  the theme is established, and re-read on a theme change.
+- **Text.** The map is glyphs, so the static layer is thousands of
+  `fillText` calls unless they are prepared. Measure a plain `fillText` pass
+  first; if it is too slow, draw the glyph set once into an offscreen atlas
+  and blit from it, which is the standard answer and turns text into image
+  copies.
+- **Device pixel ratio.** Every canvas must be sized in device pixels and
+  scaled, or the map will be soft on a retina screen, which is exactly the
+  kind of regression that makes people reject a rewrite that was otherwise
+  correct.
+
+### The order to build it in
+
+Each stage should be shippable and separately measurable, and the profile
+should be re-read after each rather than at the end.
+
+1. **The sky canvas first.** It is self-contained, purely decorative, has no
+   hit testing and no state, and it is the largest single cost. It proves
+   the pattern on the easiest surface.
+2. **The effects canvas next**, taking the water shimmer, the cloud shadows
+   and the precipitation ripples off the map cells. This removes the
+   per-cell overlay elements while the map itself stays a document, so it
+   can be judged on its own.
+3. **The static map canvas last**, because it carries the hit testing, the
+   glyph drawing and the theming, and it is the stage that can regress the
+   feel of the game. By the time it starts, the two cheaper stages will have
+   established the palette, the pixel-ratio handling and the draw loop.
+
+### How it stays honest
+
+`tests/churn.test.ts` currently measures how often each panel rewrites
+itself, and that test loses its subject as panels become canvases. Replace
+it per layer with the same idea in the new terms: a budget on how many times
+a layer redraws over a fixed number of frames, with the static layer's
+budget being close to zero on a still minute. A static layer that redraws
+every frame is the exact failure this architecture exists to prevent, and it
+would otherwise be invisible.
+
+The existing screenshot harness keeps working, since a canvas screenshots
+like anything else, so the weather and map reference shots remain the check
+that the picture did not change.
+
+### Open questions to settle before stage three
+
+- Whether the map's glyphs survive as text or become an atlas, which only a
+  measurement can answer.
+- What happens to the close-zoom marks and the wildlife glyphs, which today
+  are positioned DOM overlays and are a natural fit for the effects layer.
+- Whether the region borders belong to the static layer or want their own,
+  given they change on discovery rather than on movement.
