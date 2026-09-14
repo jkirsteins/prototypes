@@ -31,16 +31,41 @@ const OUTDOORS_HZ = 20000;
 /** A loop at target 0 for this long is stopped and dropped. */
 const LOOP_LINGER_MS = 5000;
 /**
- * The only slots decoded eagerly, on unlock, rather than on first play: the
- * fire bed and every footstep surface. Both play on nearly every frame once
- * a run is under way, so decoding them on demand would mean the very first
- * fire crackle or footfall of a session is late or silent. Everything else
- * decodes when something first asks to play it, which is what keeps unlock
- * from pulling the whole catalogue into memory on one click.
+ * Every sound decodes on first play except two named exceptions, kept as
+ * two tiers so the reasoning for each stays visible here rather than
+ * scattered across call sites:
+ *
+ * IMMEDIATE_SLOTS decode on unlock, before anything has played: the fire
+ * bed and every footstep surface play on nearly every frame once a run is
+ * under way, so waiting for a first play would make the very first fire
+ * crackle or footfall late or silent.
+ *
+ * WARM_SLOTS decode shortly after unlock, at low priority, via
+ * warmDramaticSet(): the startle departures, ice cracking, a falling tree,
+ * a breaking tool, wolves. These are rare, one-off dramatic beats rather
+ * than a constant hum, so they must not delay the first gesture the way
+ * IMMEDIATE_SLOTS may - but a silent first occurrence can be the only
+ * occurrence a session ever has, so leaving them fully on demand risks
+ * losing the moment they exist for.
+ *
+ * Everything outside both tiers - calls, the other ambience beds, minor
+ * moments - decodes on first play: a bird call landing a beat late costs
+ * nothing worth spending memory up front to avoid.
  */
-const PRELOAD_SLOTS: Slot[] = [
+const IMMEDIATE_SLOTS: Slot[] = [
   "fire", "step_leaves", "step_grass", "step_bog", "step_rock", "step_snow", "step_ice",
 ];
+const WARM_SLOTS: Slot[] = [
+  "startle_contact",
+  "startle_hoof_light_forest", "startle_hoof_heavy_forest",
+  "startle_hoof_light_open", "startle_hoof_heavy_open",
+  "startle_hoof_bog", "startle_hoof_snow", "startle_brush_predator",
+  "toolBreaks", "fallThrough", "iceCracks", "treeFalls", "wolves",
+];
+/** How long a background warm step may wait for an idle moment before running anyway. */
+const WARM_IDLE_TIMEOUT_MS = 2000;
+/** Delay between background warm steps where the browser has no requestIdleCallback (Safari). */
+const WARM_FALLBACK_DELAY_MS = 250;
 
 const BUS_OF = (def: SlotDef, slot: Slot): "ambience" | "flavour" | "action" =>
   def.kind === "loop" ? "ambience" : CALLS.has(slot) ? "flavour" : "action";
@@ -132,6 +157,34 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     return promise;
   };
 
+  /**
+   * Runs fn at the next moment the browser considers idle, or after a fixed
+   * short delay on a browser with no requestIdleCallback (Safari has none).
+   */
+  const scheduleIdle = (fn: () => void): void => {
+    const w = window as typeof window & { requestIdleCallback?: (cb: () => void, opts: { timeout: number }) => number };
+    if (typeof w.requestIdleCallback === "function") w.requestIdleCallback(fn, { timeout: WARM_IDLE_TIMEOUT_MS });
+    else setTimeout(fn, WARM_FALLBACK_DELAY_MS);
+  };
+
+  /**
+   * Decodes every WARM_SLOTS file one at a time, each step scheduled for an
+   * idle moment rather than fired all at once. One at a time keeps this from
+   * contending with the browser's decoder against a real play request or
+   * against the immediate tier still loading; decodeFile's own cache means a
+   * real play that reaches a file before the warmer does costs the warmer
+   * nothing when it gets there.
+   */
+  const warmDramaticSet = (): void => {
+    const files = WARM_SLOTS.flatMap((slot) => slots[slot]?.files ?? []);
+    let i = 0;
+    const step = (): void => {
+      if (i >= files.length) return;
+      void decodeFile(files[i++]).finally(() => scheduleIdle(step));
+    };
+    scheduleIdle(step);
+  };
+
   const unlock = (): void => {
     if (ctx) {
       if (ctx.state === "suspended" && !suspended) void ctx.resume();
@@ -155,11 +208,12 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     footstepsDuck = ctx.createGain();
     footstepsDuck.connect(buses.action);
     applySettings();
-    for (const slot of PRELOAD_SLOTS) {
+    for (const slot of IMMEDIATE_SLOTS) {
       const def = slots[slot];
       if (!def) continue;
       for (const file of def.files) void decodeFile(file);
     }
+    warmDramaticSet();
     if (ctx.state === "suspended") void ctx.resume();
   };
 

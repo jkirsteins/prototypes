@@ -50,7 +50,7 @@ function settle(): Promise<void> {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("decode on first play, not on unlock", () => {
-  it("unlock() fetches only the preload set, never the whole catalogue", async () => {
+  it("unlock() fetches only the immediate tier synchronously, never the whole catalogue", async () => {
     vi.stubGlobal("AudioContext", Context);
     const fetch = vi.fn(async (_url: string) => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
     vi.stubGlobal("fetch", fetch);
@@ -58,8 +58,7 @@ describe("decode on first play, not on unlock", () => {
       fire: { files: ["fire.ogg"], kind: "loop", gain: 0.6 },
       step_leaves: { files: ["step_leaves_01.ogg", "step_leaves_02.ogg"], kind: "oneshot", gain: 0.5 },
       forest: { files: ["forest.ogg"], kind: "loop", gain: 0.5 },
-      raven: { files: ["raven.ogg"], kind: "oneshot", gain: 0.6 },
-      wolves: { files: ["wolves.ogg"], kind: "oneshot", gain: 0.9 },
+      owl: { files: ["owl.ogg"], kind: "oneshot", gain: 0.6 },
     };
     const engine = createAudioEngine(slots, storage());
     engine.unlock();
@@ -68,10 +67,51 @@ describe("decode on first play, not on unlock", () => {
     expect(fetched.some((u) => u.endsWith("fire.ogg"))).toBe(true);
     expect(fetched.some((u) => u.endsWith("step_leaves_01.ogg"))).toBe(true);
     expect(fetched.some((u) => u.endsWith("step_leaves_02.ogg"))).toBe(true);
-    // Not in the preload set: nothing fetches them until something plays them.
+    // Outside the immediate tier: nothing fetches them until something plays
+    // them, or until the background warmer reaches them (neither of these
+    // slots is in the warmed set either, so they stay untouched here).
     expect(fetched.some((u) => u.endsWith("forest.ogg"))).toBe(false);
-    expect(fetched.some((u) => u.endsWith("raven.ogg"))).toBe(false);
-    expect(fetched.some((u) => u.endsWith("wolves.ogg"))).toBe(false);
+    expect(fetched.some((u) => u.endsWith("owl.ogg"))).toBe(false);
+  });
+
+  it("warms the dramatic one-shots in the background, unplayed, without delaying the immediate tier", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal("AudioContext", Context);
+      const fetch = vi.fn(async (_url: string) => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
+      vi.stubGlobal("fetch", fetch);
+      const slots: Record<Slot, SlotDef> = {
+        fire: { files: ["fire.ogg"], kind: "loop", gain: 0.6 },
+        wolves: { files: ["wolves.ogg"], kind: "oneshot", gain: 0.9 },
+        toolBreaks: { files: ["toolBreaks.ogg"], kind: "oneshot", gain: 0.7 },
+        startle_contact: { files: ["startle_contact_01.ogg", "startle_contact_02.ogg"], kind: "oneshot", gain: 0.7 },
+        raven: { files: ["raven.ogg"], kind: "oneshot", gain: 0.6 },
+      };
+      const engine = createAudioEngine(slots, storage());
+      engine.unlock();
+      await vi.advanceTimersByTimeAsync(0);
+      const atGesture = fetch.mock.calls.map(([url]) => String(url));
+      expect(atGesture.some((u) => u.endsWith("fire.ogg"))).toBe(true);
+      // The dramatic set is scheduled, not fired inline with the immediate
+      // tier: nothing has asked to play any of it yet, so right after the
+      // gesture it is still unfetched.
+      expect(atGesture.some((u) => u.endsWith("wolves.ogg"))).toBe(false);
+      expect(atGesture.some((u) => u.endsWith("toolBreaks.ogg"))).toBe(false);
+      expect(atGesture.some((u) => u.endsWith("startle_contact_01.ogg"))).toBe(false);
+
+      // Past every background step's fallback delay, with nothing ever
+      // having called play(): the warmer reaches all of it on its own.
+      await vi.advanceTimersByTimeAsync(10000);
+      const settled = fetch.mock.calls.map(([url]) => String(url));
+      expect(settled.some((u) => u.endsWith("wolves.ogg"))).toBe(true);
+      expect(settled.some((u) => u.endsWith("toolBreaks.ogg"))).toBe(true);
+      expect(settled.some((u) => u.endsWith("startle_contact_01.ogg"))).toBe(true);
+      expect(settled.some((u) => u.endsWith("startle_contact_02.ogg"))).toBe(true);
+      // A slot outside both tiers is still never fetched on its own.
+      expect(settled.some((u) => u.endsWith("raven.ogg"))).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("decodes a non-preloaded sound once on first play and reuses it after", async () => {
@@ -99,12 +139,12 @@ describe("decode on first play, not on unlock", () => {
     vi.stubGlobal("AudioContext", Context);
     const fetch = vi.fn(async (_url: string) => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }));
     vi.stubGlobal("fetch", fetch);
-    const slots: Record<Slot, SlotDef> = { wolves: { files: ["wolves.ogg"], kind: "oneshot", gain: 0.9 } };
+    const slots: Record<Slot, SlotDef> = { cuckoo: { files: ["cuckoo.ogg"], kind: "oneshot", gain: 0.6 } };
     const engine = createAudioEngine(slots, storage());
     engine.unlock();
 
-    engine.play("wolves");
-    engine.play("wolves"); // concurrent: the first decode has not resolved yet
+    engine.play("cuckoo");
+    engine.play("cuckoo"); // concurrent: the first decode has not resolved yet
     await settle();
     expect(fetch).toHaveBeenCalledTimes(1);
   });

@@ -167,11 +167,11 @@ async function loadedEngine() {
 }
 
 /**
- * Decoding now happens on first play rather than eagerly in unlock(), so a
- * slot outside the engine's small preload set is silent on its very first
- * call. Tests that assert on the audio graph a specific play produces prime
- * every file a round-robin slot can pick first, then let the decode settle,
- * so the call under test lands on an already-cached buffer.
+ * A slot outside the engine's immediate and warmed tiers has no buffer
+ * until something asks to play it, so its very first call is silent. Tests
+ * that assert on the audio graph a specific play produces prime every file
+ * a round-robin slot can pick, then let the decode settle, so the call
+ * under test lands on an already-cached buffer.
  */
 async function warm(engine: AudioEngine, slots: readonly string[]): Promise<void> {
   for (const slot of slots) {
@@ -224,7 +224,7 @@ describe("optional departure playback", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const engine = createAudioEngine({ startle_contact: { files: ["missing.ogg"], gain: 1, kind: "oneshot" } }, storage());
     engine.unlock();
-    engine.play("startle_contact"); // startle_contact decodes on first play, not on unlock
+    engine.play("startle_contact"); // triggers this slot's only decode attempt
     await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
     expect(() => { engine.play("startle_contact"); engine.play("startle_contact"); engine.duck(900, 0.28); }).not.toThrow();
     expect(warn).toHaveBeenCalledTimes(1);
