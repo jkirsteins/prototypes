@@ -166,11 +166,27 @@ async function loadedEngine() {
   return { engine, ctx: Context.last };
 }
 
+/**
+ * Decoding now happens on first play rather than eagerly in unlock(), so a
+ * slot outside the engine's small preload set is silent on its very first
+ * call. Tests that assert on the audio graph a specific play produces prime
+ * every file a round-robin slot can pick first, then let the decode settle,
+ * so the call under test lands on an already-cached buffer.
+ */
+async function warm(engine: AudioEngine, slots: readonly string[]): Promise<void> {
+  for (const slot of slots) {
+    const variants = SLOTS[slot as keyof typeof SLOTS]?.files.length ?? 1;
+    for (let i = 0; i < variants; i++) engine.play(slot);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("optional departure playback", () => {
   it("ducks existing loops and footsteps, then restores smoothly without reducing startle or calls", async () => {
     const { engine, ctx } = await loadedEngine();
+    await warm(engine, ["forest", "startle_contact", "raven"]);
     engine.setLoops({ forest: 1 }, false);
     engine.play("step_leaves");
     engine.duck(900, 0.28);
@@ -190,6 +206,7 @@ describe("optional departure playback", () => {
 
   it("centres without stereo, silences mute, and drops pending departures when hidden", async () => {
     const { engine, ctx } = await loadedEngine();
+    await warm(engine, ["startle_contact", "startle_hoof_light_forest"]);
     expect(() => createScheduler(engine).wildlifeStartle(event)).not.toThrow();
     expect(ctx.sources.length).toBeGreaterThan(1);
     engine.suspend();
@@ -207,6 +224,7 @@ describe("optional departure playback", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const engine = createAudioEngine({ startle_contact: { files: ["missing.ogg"], gain: 1, kind: "oneshot" } }, storage());
     engine.unlock();
+    engine.play("startle_contact"); // startle_contact decodes on first play, not on unlock
     await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
     expect(() => { engine.play("startle_contact"); engine.play("startle_contact"); engine.duck(900, 0.28); }).not.toThrow();
     expect(warn).toHaveBeenCalledTimes(1);

@@ -30,6 +30,17 @@ const INDOORS_HZ = 600;
 const OUTDOORS_HZ = 20000;
 /** A loop at target 0 for this long is stopped and dropped. */
 const LOOP_LINGER_MS = 5000;
+/**
+ * The only slots decoded eagerly, on unlock, rather than on first play: the
+ * fire bed and every footstep surface. Both play on nearly every frame once
+ * a run is under way, so decoding them on demand would mean the very first
+ * fire crackle or footfall of a session is late or silent. Everything else
+ * decodes when something first asks to play it, which is what keeps unlock
+ * from pulling the whole catalogue into memory on one click.
+ */
+const PRELOAD_SLOTS: Slot[] = [
+  "fire", "step_leaves", "step_grass", "step_bog", "step_rock", "step_snow", "step_ice",
+];
 
 const BUS_OF = (def: SlotDef, slot: Slot): "ambience" | "flavour" | "action" =>
   def.kind === "loop" ? "ambience" : CALLS.has(slot) ? "flavour" : "action";
@@ -46,7 +57,8 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
   let footstepsDuck: GainNode | null = null;
   let lowpass: BiquadFilterNode | null = null;
   const buffers = new Map<string, AudioBuffer>();
-  const loading = new Set<string>();
+  /** In-flight decode per file, so two concurrent first-plays of the same sound share one fetch and one decode. */
+  const decoding = new Map<string, Promise<AudioBuffer | null>>();
   const warned = new Set<string>();
   const shots = new Set<AudioBufferSourceNode>();
   const roundRobin = new Map<Slot, number>();
@@ -68,12 +80,56 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     shots.clear();
   };
 
+  const stopLoops = (): void => {
+    for (const [, l] of loops) {
+      l.src.stop();
+      l.src.disconnect();
+      l.gain.disconnect();
+    }
+    loops.clear();
+  };
+
   const applySettings = (): void => {
     if (!ctx || !master) return;
     master.gain.value = cfg.muted ? 0 : cfg.volume;
     const amb = cfg.ambience ? 1 : 0;
     if (buses.ambience) buses.ambience.gain.value = amb;
     if (buses.flavour) buses.flavour.gain.value = amb;
+    // Ambience off is not just silence: the beds keep running underneath it
+    // unless stopped, spending CPU on audio nobody hears. Stopping them here
+    // costs nothing extra - setLoops already starts a fresh, faded-in node
+    // the next time a bed is wanted.
+    if (!cfg.ambience) stopLoops();
+  };
+
+  /**
+   * Fetches and decodes one file into the buffer cache, sharing an in-flight
+   * decode across concurrent callers rather than starting a second one. A
+   * file that already failed once stays failed rather than being retried on
+   * every subsequent play.
+   */
+  const decodeFile = (file: string): Promise<AudioBuffer | null> => {
+    const cached = buffers.get(file);
+    if (cached) return Promise.resolve(cached);
+    if (warned.has(file)) return Promise.resolve(null);
+    const pending = decoding.get(file);
+    if (pending) return pending;
+    if (!ctx) return Promise.resolve(null);
+    const c = ctx;
+    const promise = fetch(`${import.meta.env.BASE_URL}audio/${file}`)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((bytes) => c.decodeAudioData(bytes))
+      .then((buf) => {
+        buffers.set(file, buf);
+        return buf;
+      })
+      .catch((err: Error) => {
+        warnOnce(file, err);
+        return null;
+      })
+      .finally(() => decoding.delete(file));
+    decoding.set(file, promise);
+    return promise;
   };
 
   const unlock = (): void => {
@@ -99,20 +155,12 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     footstepsDuck = ctx.createGain();
     footstepsDuck.connect(buses.action);
     applySettings();
-    const c = ctx;
-    for (const def of Object.values(slots)) {
-      for (const file of def.files) {
-        if (buffers.has(file) || loading.has(file)) continue;
-        loading.add(file);
-        fetch(`${import.meta.env.BASE_URL}audio/${file}`)
-          .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`))))
-          .then((bytes) => c.decodeAudioData(bytes))
-          .then((buf) => buffers.set(file, buf))
-          .catch((err: Error) => warnOnce(file, err))
-          .finally(() => loading.delete(file));
-      }
+    for (const slot of PRELOAD_SLOTS) {
+      const def = slots[slot];
+      if (!def) continue;
+      for (const file of def.files) void decodeFile(file);
     }
-    if (c.state === "suspended") void c.resume();
+    if (ctx.state === "suspended") void ctx.resume();
   };
 
   const pickFile = (slot: Slot): AudioBuffer | null => {
@@ -124,8 +172,9 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     const i = (roundRobin.get(slot) ?? -1) + 1;
     roundRobin.set(slot, i);
     const file = def.files[i % def.files.length];
-    if (!buffers.has(file) && !loading.has(file)) warnOnce(file, "not decoded");
-    return buffers.get(file) ?? null;
+    const cached = buffers.get(file);
+    if (!cached) void decodeFile(file);
+    return cached ?? null;
   };
 
   const play = (slot: Slot, opts: { gain?: number; pan?: number; rate?: number; delay?: number } = {}): void => {
@@ -179,7 +228,11 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     const now = ctx.currentTime;
     lowpass.frequency.setTargetAtTime(indoors ? INDOORS_HZ : OUTDOORS_HZ, now, FADE_S);
     const wall = performance.now();
-    for (const [slot, target] of Object.entries(targets)) {
+    // Ambience off means no bed is wanted, not just no bed heard: otherwise
+    // this runs every frame regardless of the toggle and would immediately
+    // recreate whatever applySettings just stopped.
+    const active = cfg.ambience ? targets : {};
+    for (const [slot, target] of Object.entries(active)) {
       if (target <= 0) continue;
       let l = loops.get(slot);
       if (!l) {
@@ -201,7 +254,7 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
       l.gain.gain.setTargetAtTime(slots[slot].gain * Math.min(1, target), now, FADE_S);
     }
     for (const [slot, l] of loops) {
-      if ((targets[slot] ?? 0) > 0) continue;
+      if ((active[slot] ?? 0) > 0) continue;
       if (!l.quietSince) {
         l.quietSince = wall;
         l.gain.gain.setTargetAtTime(0, now, FADE_S);
