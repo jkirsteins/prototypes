@@ -6,6 +6,8 @@ import * as position from "../src/sim/position";
 import { mapRegion } from "../src/sim/mapped";
 import { hasSpot, regionAt } from "../src/world/gen";
 import { levelMinutes } from "../src/sim/skills";
+import { setSkillLevel } from "../src/sim/horizon";
+import { addItem } from "../src/sim/inventory";
 import { noteHuntSign } from "../src/sim/hunting";
 import { availableTasks } from "../src/sim/tasks";
 import { doHtml, doPurposesHtml, filterRows, intentGroups, keyedRows, makeFirst, purposeCounts, rankRows } from "../src/ui/dopanel";
@@ -565,30 +567,15 @@ describe("a row says what it is, and what stops it", () => {
 });
 
 describe("the search list's route cache", () => {
-  // Every candidate row in a search pathfinds its initial walk. A render
-  // tick asks doHtml every 100 ms regardless of whether the filter box's
-  // text is new, so the cache is what keeps that pathfind from running on
-  // every tick rather than only when its answer could differ.
-  it("does not repeat the search's pathfind when nothing it depends on has changed", () => {
-    const { state, world } = newGame(11);
-    placeAtSpot(state, world, state.player.region, "heath");
-    const cal = calendar(state.minute, state.startDoy);
-    const ui = { ...newUiState(), filter: "wood" };
-    const spy = vi.spyOn(position, "kmBetween");
-    try {
-      doHtml(state, world, cal, ui);
-      const first = spy.mock.calls.length;
-      expect(first).toBeGreaterThan(0);
-      // Same state, same filter, called again as the next render tick would:
-      // no new pathfind.
-      doHtml(state, world, cal, ui);
-      expect(spy.mock.calls.length).toBe(first);
-    } finally {
-      spy.mockRestore();
-    }
-  });
-
-  it("recomputes once the survivor moves, once new ground is known, and once the filter text asks a different question", () => {
+  // Every candidate row's route (its resolved cell and its initial walk)
+  // pathfinds; its legality (ok/why/label/detail/duration) does not - it
+  // comes straight from check() on every call, cache hit or not, which is
+  // what the next two tests are for. Route work does not repeat, but "Hunt
+  // anything" reads its own live candidate weights straight from check() on
+  // every call too - a couple of real routes, not the ~90-row cost the
+  // cache exists to avoid - so the right claim about repeat calls is that
+  // they cost the same small, fixed amount, not that they cost nothing.
+  it("does not repeat the search's route pathfind when nothing it depends on has changed", () => {
     const { state, world } = newGame(11);
     placeAtSpot(state, world, state.player.region, "heath");
     const cal = calendar(state.minute, state.startDoy);
@@ -597,26 +584,94 @@ describe("the search list's route cache", () => {
     try {
       doHtml(state, world, cal, ui);
       const afterFirst = spy.mock.calls.length;
+      expect(afterFirst).toBeGreaterThan(0);
+      // Same state, same filter, called again as the next render tick would.
+      doHtml(state, world, cal, ui);
+      const perCallFloor = spy.mock.calls.length - afterFirst;
+      expect(perCallFloor).toBeLessThan(5);
+      doHtml(state, world, cal, ui);
+      expect(spy.mock.calls.length - afterFirst - perCallFloor).toBe(perCallFloor);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("recomputes routes once the survivor moves, once new ground is known, and once the in-game minute turns over - but not for a changed filter alone", () => {
+    const { state, world } = newGame(11);
+    placeAtSpot(state, world, state.player.region, "heath");
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), filter: "wood" };
+    const spy = vi.spyOn(position, "kmBetween");
+    try {
+      doHtml(state, world, cal, ui);
+      const afterFirst = spy.mock.calls.length;
+      doHtml(state, world, cal, ui);
+      const perCallFloor = spy.mock.calls.length - afterFirst;
+      let last = spy.mock.calls.length;
 
       // The survivor's own cell moved: every route from here is stale.
       placeAtSpot(state, world, state.player.region, "shore");
       doHtml(state, world, cal, ui);
-      expect(spy.mock.calls.length).toBeGreaterThan(afterFirst);
-      const afterMove = spy.mock.calls.length;
+      expect(spy.mock.calls.length - last).toBeGreaterThan(perCallFloor);
+      last = spy.mock.calls.length;
 
       // The world learned new ground: a route through it may now be shorter,
       // or may now exist at all, even though the survivor did not move.
       mapRegion(state, world, regionAt(world, state.player.region).neighbours[0].id);
       doHtml(state, world, cal, ui);
-      expect(spy.mock.calls.length).toBeGreaterThan(afterMove);
-      const afterKnowledge = spy.mock.calls.length;
+      expect(spy.mock.calls.length - last).toBeGreaterThan(perCallFloor);
+      last = spy.mock.calls.length;
 
-      // A changed filter is a different question, not a redraw of the old one.
+      // The in-game clock crossed a minute: weather moves a route's walking
+      // speed and its thin-ice legality, and the season can move resolveCell
+      // to different ground for a season-bound task, without the survivor
+      // moving at all.
+      state.minute += 3;
+      doHtml(state, world, cal, ui);
+      expect(spy.mock.calls.length - last).toBeGreaterThan(perCallFloor);
+      last = spy.mock.calls.length;
+
+      // A changed filter asks a different question about the same rows: it
+      // re-ranks what is already on hand rather than giving any route a
+      // reason to recompute, so the call count holds at its per-call floor.
       const ui2 = { ...ui, filter: "stick" };
       doHtml(state, world, cal, ui2);
-      expect(spy.mock.calls.length).toBeGreaterThan(afterKnowledge);
+      expect(spy.mock.calls.length - last).toBe(perCallFloor);
     } finally {
       spy.mockRestore();
     }
+  });
+
+  // The whole point of splitting check() out of the cache: a row's reason
+  // for being blocked has to track what is actually true right now, even
+  // while the survivor stands still with the same filter open and no new
+  // ground has been mapped - the scenario a player waiting on a skill or a
+  // delivery is in for as long as the wait lasts.
+  it("refreshes a row's ok and why once a skill is earned or stock arrives, with cell, filter and knowledgeGen unchanged", () => {
+    const { state, world } = newGame(12);
+    const cal = calendar(state.minute, state.startDoy);
+
+    // Skill: finding a bear den needs Hunting 5. Below it the row names the
+    // level it is short by; earning the level changes the reason to
+    // whatever the ground itself says, which only happens if check() is
+    // reading the survivor's actual skill and not a cached one.
+    const uiFindDen = { ...newUiState(), filter: "find bear den" };
+    const beforeSkill = doHtml(state, world, cal, uiFindDen);
+    expect(beforeSkill).toContain("needs Hunting 5");
+    setSkillLevel(state, "hunting", 5);
+    const afterSkill = doHtml(state, world, cal, uiFindDen);
+    expect(afterSkill).not.toContain("needs Hunting 5");
+
+    // Stock: sharpening needs a stone. Blunt the axe first so the row's
+    // only blocker is the missing stone rather than a full edge.
+    const axe = state.player.tools.find((t) => t.id === "axe");
+    expect(axe).toBeDefined();
+    axe!.durability = 50;
+    const uiSharpen = { ...newUiState(), filter: "sharpen the axe" };
+    const beforeStone = doHtml(state, world, cal, uiSharpen);
+    expect(beforeStone).toContain("needs a stone");
+    addItem(state.player.pack, "stone", 1);
+    const afterStone = doHtml(state, world, cal, uiSharpen);
+    expect(afterStone).not.toContain("needs a stone");
   });
 });

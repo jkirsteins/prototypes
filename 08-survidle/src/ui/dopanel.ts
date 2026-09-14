@@ -11,7 +11,7 @@ import { RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand, type Species } from "../sim/species";
 import { plain } from "../sim/voice";
 import { check, leftBehind, type TaskOption, withProgression } from "../sim/tasks";
-import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
+import type { GameState, ItemId, OrderWhen, TaskId, Where } from "../sim/types";
 import { fmtDuration, fmtRealSeconds } from "../units";
 import { realSecondsForOrder } from "./hurry";
 import { regionState } from "../sim/regionstate";
@@ -458,14 +458,24 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${walk}${possibilities}${bar}${gives}</button>${tags}${more}${expand}</div>`;
 }
 
-/** A group's rows, built at the open row's own chosen spot, so its duration and ok reflect that spot. */
-function groupRows(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
+/**
+ * A group's rows, built at the open row's own chosen spot, so its duration
+ * and ok reflect that spot. `build` is intentOption itself for the pane
+ * view, which only ever builds the current purpose's handful of rows and
+ * was never the expensive path; the search list passes cachedRouteOption
+ * instead, since it builds every row in every group on every call.
+ */
+function groupRows(
+  g: { label: string; items: { id: TaskId; arg?: string }[] },
+  state: GameState, world: World, cal: Calendar, ui: UiState,
+  build: (state: GameState, world: World, cal: Calendar, id: TaskId, arg: string | undefined, where: Where) => TaskOption = intentOption,
+): TaskOption[] {
   const knownGame = new Set(knownHuntSpecies(state, world));
   return g.items.filter(({ id, arg }) => id !== "hunt" || arg === "any" || knownGame.has(arg as Species)).map(({ id, arg }) => {
     const argKey = arg ?? "";
     const open = ui.open !== null && ui.open.id === id && ui.open.arg === argKey;
     const where = open ? ui.choice.where : "nearest";
-    const option = withProgression(state, world, intentOption(state, world, cal, id, arg, where));
+    const option = withProgression(state, world, build(state, world, cal, id, arg, where));
     if (id !== "explore" || !arg?.startsWith("region:")) return option;
     const region = Number(arg.slice("region:".length));
     const label = region === state.player.region ? "Explore this region" : `Explore ${regionAt(world, region).name}`;
@@ -488,42 +498,82 @@ function rowsBox(key: string, heading: string, rows: string): string {
   return `<div class="grp" data-rows="${key}">${head}${rows}</div>`;
 }
 
-interface SearchRowsCache {
+interface RouteCacheEntry {
+  cell: number;
+  initialWalk: TaskOption["initialWalk"];
+}
+
+interface RouteCache {
   state: GameState;
   world: World;
   key: string;
-  rows: TaskOption[];
+  rows: Map<string, RouteCacheEntry>;
 }
 
-let searchRowsCache: SearchRowsCache | null = null;
+let routeCache: RouteCache | null = null;
 
 /**
- * The search list's ~90 candidate rows each run intentOption, which always
- * pathfinds a route for its initial walk - real work, not the cheap legality
- * check beside it. What can actually move a route while a search sits in the
- * filter box: the survivor's own cell, the region the rows are built for,
- * ground newly walked, seen close, or mapped (knowledgeGen), the filter text
- * itself (a changed search is a different question), and, when a row is
- * open, which one and the "where" it is set to (the only row whose option
- * the open state can change). Nothing else here - skill level, camp stock,
- * season, the clock generally - moves the answer enough to be worth redoing
- * the pathfind for every row on every 100 ms render tick, which is what
- * unconditionally recomputing this list was paying for even while the
- * survivor stood still and nobody was reading a route.
+ * What can move a row's route, or the cell its work happens at: the
+ * survivor's own cell, the region, ground newly walked, seen close, or
+ * mapped (knowledgeGen), and the in-game minute - resolveCell and
+ * initialWalk both read the season and the weather (a winter dig goes to
+ * the ice hole instead of the bog; walking speed and thin-ice legality both
+ * read localWeather), at the same grain placesHtml's own route cache
+ * already samples the world at. Filter text plays no part: a route does
+ * not depend on what was typed to find the row that names it.
  */
-function searchRowsKey(state: GameState, world: World, ui: UiState): string {
-  const open = ui.open ? `${ui.open.id}:${ui.open.arg}:${ui.choice.where}` : "";
-  return `${state.player.region}:${cellOf(state, world)}:${knowledgeGen()}:${ui.filter}:${open}`;
+function routeCacheKey(state: GameState, world: World): string {
+  const minute = Math.floor(state.minute + state.weather.elapsedMinutes);
+  return `${state.player.region}:${cellOf(state, world)}:${knowledgeGen()}:${minute}`;
 }
 
-function searchRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
-  const key = searchRowsKey(state, world, ui);
-  if (searchRowsCache && searchRowsCache.state === state && searchRowsCache.world === world && searchRowsCache.key === key) {
-    return searchRowsCache.rows;
+/**
+ * A row's option with its pathfind cached and its legality always fresh.
+ *
+ * intentOption bundles four things into one call: resolveCell (which itself
+ * pathfinds up to eight candidate routes for most gather, hunt and fish
+ * tasks - often the larger cost, not initialWalk's own single route), the
+ * fetch allowance a blocked build gets when a pile elsewhere in the region
+ * can supply it (another regional pathfind), initialWalk's route, and
+ * check(), which is the cheap part that decides ok/why/label/detail/duration
+ * from skill, stock and season. Caching the whole bundle, as the search list
+ * used to, kept that cheap part stale for as long as the expensive part had
+ * no reason to recompute: a row greyed out for a skill not yet earned, or
+ * materials not yet delivered, stayed greyed out with its old reason for as
+ * long as the survivor stood still with the same filter text open.
+ *
+ * So only what resolveCell and initialWalk settled on - the cell and the
+ * route - is cached, keyed by routeCacheKey plus which row this is; check()
+ * runs fresh against that cell on every call, cache hit or not, which is
+ * what keeps ok/why/detail current. The one thing this drops on a cache
+ * hit: a build blocked only for want of materials elsewhere in the region
+ * loses the "fetching X from Y first" hint (fetchAllowance's own regional
+ * pathfind is not cheap enough to run every call either) until the route
+ * cache's key next turns over - it reads as "blocked" a little longer than
+ * it has to, never as workable when it is not, which is the asymmetry that
+ * actually matters.
+ */
+function cachedRouteOption(state: GameState, world: World, cal: Calendar, id: TaskId, arg: string | undefined, where: Where): TaskOption {
+  const outerKey = routeCacheKey(state, world);
+  if (!routeCache || routeCache.state !== state || routeCache.world !== world || routeCache.key !== outerKey) {
+    routeCache = { state, world, key: outerKey, rows: new Map() };
   }
-  const rows = intentGroups(regionAt(world, state.player.region)).flatMap((g) => groupRows(g, state, world, cal, ui));
-  searchRowsCache = { state, world, key, rows };
-  return rows;
+  const cache = routeCache;
+  const rowKey = `${id}:${arg ?? ""}:${where}`;
+  let entry = cache.rows.get(rowKey);
+  if (!entry) {
+    const full = intentOption(state, world, cal, id, arg, where);
+    // resolveCell always settles on a real cell for a real intentOption call; only the
+    // bare shape check() alone returns leaves cell optional.
+    entry = { cell: full.cell!, initialWalk: full.initialWalk };
+    cache.rows.set(rowKey, entry);
+  }
+  return { ...check(state, world, cal, id, arg, entry.cell), cell: entry.cell, initialWalk: entry.initialWalk };
+}
+
+/** The search list's rows: every candidate across every group, its route cached, its legality always current. */
+function searchRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
+  return intentGroups(regionAt(world, state.player.region)).flatMap((g) => groupRows(g, state, world, cal, ui, cachedRouteOption));
 }
 
 /**

@@ -140,5 +140,29 @@ describe("the ways out", () => {
         spy.mockRestore();
       }
     });
+
+    // routeConditions() reads state.weather for ice and walking speed, so a
+    // route can change with nothing about the survivor's position or
+    // knowledge moving at all - the floored game-minute in the cache key is
+    // what catches that, at the same grain currentViewshed in map.ts already
+    // samples the world at.
+    it("recomputes once the in-game minute turns over, with the survivor's cell, region and knowledge unchanged", () => {
+      const { state, world } = newGame(21);
+      const cal = calendar(state.minute, state.startDoy);
+      const spy = vi.spyOn(position, "kmBetween");
+      try {
+        placesHtml(state, world, cal);
+        const afterFirst = spy.mock.calls.length;
+
+        placesHtml(state, world, cal);
+        expect(spy.mock.calls.length).toBe(afterFirst);
+
+        state.minute += 3;
+        placesHtml(state, world, cal);
+        expect(spy.mock.calls.length).toBeGreaterThan(afterFirst);
+      } finally {
+        spy.mockRestore();
+      }
+    });
   });
 });
