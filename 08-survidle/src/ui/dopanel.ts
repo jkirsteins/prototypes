@@ -5,6 +5,7 @@ import { knownHuntSpecies } from "../sim/hunting";
 import { groundOf, intentOption, yieldItem } from "../sim/intent";
 import { DECAYING, ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
+import { knowledgeGen } from "../sim/mapped";
 import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand, type Species } from "../sim/species";
@@ -487,6 +488,44 @@ function rowsBox(key: string, heading: string, rows: string): string {
   return `<div class="grp" data-rows="${key}">${head}${rows}</div>`;
 }
 
+interface SearchRowsCache {
+  state: GameState;
+  world: World;
+  key: string;
+  rows: TaskOption[];
+}
+
+let searchRowsCache: SearchRowsCache | null = null;
+
+/**
+ * The search list's ~90 candidate rows each run intentOption, which always
+ * pathfinds a route for its initial walk - real work, not the cheap legality
+ * check beside it. What can actually move a route while a search sits in the
+ * filter box: the survivor's own cell, the region the rows are built for,
+ * ground newly walked, seen close, or mapped (knowledgeGen), the filter text
+ * itself (a changed search is a different question), and, when a row is
+ * open, which one and the "where" it is set to (the only row whose option
+ * the open state can change). Nothing else here - skill level, camp stock,
+ * season, the clock generally - moves the answer enough to be worth redoing
+ * the pathfind for every row on every 100 ms render tick, which is what
+ * unconditionally recomputing this list was paying for even while the
+ * survivor stood still and nobody was reading a route.
+ */
+function searchRowsKey(state: GameState, world: World, ui: UiState): string {
+  const open = ui.open ? `${ui.open.id}:${ui.open.arg}:${ui.choice.where}` : "";
+  return `${state.player.region}:${cellOf(state, world)}:${knowledgeGen()}:${ui.filter}:${open}`;
+}
+
+function searchRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
+  const key = searchRowsKey(state, world, ui);
+  if (searchRowsCache && searchRowsCache.state === state && searchRowsCache.world === world && searchRowsCache.key === key) {
+    return searchRowsCache.rows;
+  }
+  const rows = intentGroups(regionAt(world, state.player.region)).flatMap((g) => groupRows(g, state, world, cal, ui));
+  searchRowsCache = { state, world, key, rows };
+  return rows;
+}
+
 /**
  * What a filter shows instead of the pane: one ranked list across every
  * subtab, the rows that say the words above the rows that merely answer to
@@ -495,7 +534,7 @@ function rowsBox(key: string, heading: string, rows: string): string {
  * looking at is the search that sent them looking by hand.
  */
 function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
-  const rows = intentGroups(regionAt(world, state.player.region)).flatMap((g) => groupRows(g, state, world, cal, ui));
+  const rows = searchRows(state, world, cal, ui);
   const { direct, related } = rankRows(rows, ui.filter);
   // A concept heading says the concept, not the "kw:" that addressed it: the
   // prefix is how a tag asks, and no part of it is for a reader.

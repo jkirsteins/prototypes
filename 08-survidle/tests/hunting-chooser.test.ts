@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { bestHuntCell, huntCandidates, HUNT_SHORTLIST, huntEstimate, noteHuntSign } from "../src/sim/hunting";
+import { bestHuntCell, huntCandidates, HUNT_SHORTLIST, huntEstimate, knownHuntSpecies, noteHuntSign } from "../src/sim/hunting";
 import { markKnown, mapRegion } from "../src/sim/mapped";
 import { isKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -183,5 +183,47 @@ describe("the sign table's budget", () => {
     const lean = signTableWork(50).visits;
     const full = signTableWork(200).visits;
     expect(full - lean).toBeLessThanOrEqual((200 - 50) * SIGN_TABLE_READS_PER_FURTHER_SIGN);
+  });
+
+  // knownHuntSpecies used to walk state.player.huntSigns itself instead of
+  // reading the same regionSigns grouping bestHuntCell already builds and
+  // keeps - a second unbounded scan, paid on every call, that only grew as a
+  // run went on.
+  it("knownHuntSpecies reads the region's cached sign table rather than walking huntSigns again", () => {
+    const { state, world } = newGame(42);
+    mapRegion(state, world, state.player.region);
+    const region = state.player.region;
+    for (const cell of regionAt(world, state.player.region).cells.slice(0, 50)) noteHuntSign(state, cell, "hare");
+    // The Proxy has to be in place before the first call: swapping it in
+    // afterwards would change state.player.huntSigns's own identity, which
+    // is itself one of regionSigns's cache keys and would invalidate it for
+    // a reason that has nothing to do with what this test is asking.
+    let walks = 0;
+    const table = state.player.huntSigns;
+    state.player.huntSigns = new Proxy(table, {
+      ownKeys(target) {
+        walks++;
+        return Reflect.ownKeys(target);
+      },
+    });
+    knownHuntSpecies(state, world, region);
+    const afterFirst = walks;
+    expect(afterFirst).toBeGreaterThan(0);
+    knownHuntSpecies(state, world, region);
+    knownHuntSpecies(state, world, region);
+    state.player.huntSigns = table;
+    expect(walks).toBe(afterFirst);
+  });
+
+  // A cache that never invalidates would pass the test above and still break
+  // the game: a species learned mid-run has to show up the next time it is
+  // asked for.
+  it("knownHuntSpecies still picks up a species noted after the cache was last read", () => {
+    const { state, world } = newGame(43);
+    mapRegion(state, world, state.player.region);
+    const region = state.player.region;
+    expect(knownHuntSpecies(state, world, region)).not.toContain("hare");
+    noteHuntSign(state, cellOf(state, world), "hare");
+    expect(knownHuntSpecies(state, world, region)).toContain("hare");
   });
 });

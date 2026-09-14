@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
+import * as position from "../src/sim/position";
+import { mapRegion } from "../src/sim/mapped";
 import { hasSpot, regionAt } from "../src/world/gen";
 import { levelMinutes } from "../src/sim/skills";
 import { noteHuntSign } from "../src/sim/hunting";
@@ -559,5 +561,62 @@ describe("a row says what it is, and what stops it", () => {
     const html = paneHtml(state, world, cal, "build", "dryingRack");
     const at = html.indexOf('data-opt="intent:build:dryingRack"');
     expect(html.slice(at, at + 600)).toContain("gives");
+  });
+});
+
+describe("the search list's route cache", () => {
+  // Every candidate row in a search pathfinds its initial walk. A render
+  // tick asks doHtml every 100 ms regardless of whether the filter box's
+  // text is new, so the cache is what keeps that pathfind from running on
+  // every tick rather than only when its answer could differ.
+  it("does not repeat the search's pathfind when nothing it depends on has changed", () => {
+    const { state, world } = newGame(11);
+    placeAtSpot(state, world, state.player.region, "heath");
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), filter: "wood" };
+    const spy = vi.spyOn(position, "kmBetween");
+    try {
+      doHtml(state, world, cal, ui);
+      const first = spy.mock.calls.length;
+      expect(first).toBeGreaterThan(0);
+      // Same state, same filter, called again as the next render tick would:
+      // no new pathfind.
+      doHtml(state, world, cal, ui);
+      expect(spy.mock.calls.length).toBe(first);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("recomputes once the survivor moves, once new ground is known, and once the filter text asks a different question", () => {
+    const { state, world } = newGame(11);
+    placeAtSpot(state, world, state.player.region, "heath");
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), filter: "wood" };
+    const spy = vi.spyOn(position, "kmBetween");
+    try {
+      doHtml(state, world, cal, ui);
+      const afterFirst = spy.mock.calls.length;
+
+      // The survivor's own cell moved: every route from here is stale.
+      placeAtSpot(state, world, state.player.region, "shore");
+      doHtml(state, world, cal, ui);
+      expect(spy.mock.calls.length).toBeGreaterThan(afterFirst);
+      const afterMove = spy.mock.calls.length;
+
+      // The world learned new ground: a route through it may now be shorter,
+      // or may now exist at all, even though the survivor did not move.
+      mapRegion(state, world, regionAt(world, state.player.region).neighbours[0].id);
+      doHtml(state, world, cal, ui);
+      expect(spy.mock.calls.length).toBeGreaterThan(afterMove);
+      const afterKnowledge = spy.mock.calls.length;
+
+      // A changed filter is a different question, not a redraw of the old one.
+      const ui2 = { ...ui, filter: "stick" };
+      doHtml(state, world, cal, ui2);
+      expect(spy.mock.calls.length).toBeGreaterThan(afterKnowledge);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

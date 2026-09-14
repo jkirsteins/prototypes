@@ -12,7 +12,7 @@ import { herePile, listItems, pileAt, qty, shortOf, weight } from "../sim/invent
 import { body, fatLandmarks } from "../sim/person";
 import { groundOf } from "../sim/intent";
 import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_KG, ITEM_NAMES, KG_ITEMS, RACK_DRY_MINUTES, SNARE_ODDS_PER_NIGHT, STRUCTURES, TOOLS } from "../sim/items";
-import { knownShare } from "../sim/mapped";
+import { knownShare, knowledgeGen } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
@@ -399,7 +399,35 @@ export function thinIceButton(state: GameState, world: World, cal: Calendar, id:
  * off. The tooltip answers "what is that cell"; this answers "where are
  * the places", which is a different question and the one he was asking.
  */
+interface PlacesCache {
+  state: GameState;
+  world: World;
+  key: string;
+  html: string;
+}
+
+let placesCache: PlacesCache | null = null;
+
+/**
+ * Every row here runs a real pathfind for its distance, over the region's
+ * spots and its mapped neighbours, and the render tick asks for this box
+ * unconditionally every 100 ms. What can move the answer: the survivor's own
+ * cell, the region the rows are drawn for, where that region's camp stands,
+ * ground newly walked, seen close, or mapped (knowledgeGen), and the
+ * chosen distance format. The floored game-minute folds in everything
+ * slower than a render tick and faster than those four - weather's pull on
+ * walking speed and thin ice, the shopping list's own shortages - at the
+ * same grain currentViewshed in map.ts already samples the world at, rather
+ * than the render loop's own real-time tick.
+ */
+function placesCacheKey(state: GameState, world: World, display: TravelDisplay): string {
+  const minute = Math.floor(state.minute + state.weather.elapsedMinutes);
+  return `${state.player.region}:${cellOf(state, world)}:${campCellOf(state, world)}:${knowledgeGen()}:${display}:${minute}`;
+}
+
 export function placesHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
+  const key = placesCacheKey(state, world, display);
+  if (placesCache && placesCache.state === state && placesCache.world === world && placesCache.key === key) return placesCache.html;
   const r = regionAt(world, state.player.region);
   const camp = campCellOf(state, world);
   const here = cellOf(state, world);
@@ -436,7 +464,9 @@ export function placesHtml(state: GameState, world: World, cal: Calendar, displa
     .filter((n) => knownShare(state, world, n.id) >= 1)
     .map((n) => wayIntoHtml(state, world, cal, n.id, true, display))
     .join("");
-  return `<div class="waylabel">places</div>${rows}${out ? `<div class="waylabel">ways out</div>${out}` : ""}`;
+  const html = `<div class="waylabel">places</div>${rows}${out ? `<div class="waylabel">ways out</div>${out}` : ""}`;
+  placesCache = { state, world, key, html };
+  return html;
 }
 
 /**

@@ -296,17 +296,21 @@ function recoveryShare(state: GameState): number {
   return Math.min(0.95, 0.7 + 0.01 * (skillLevel(state, "hunting") - 1) + (hasTool(state.player, "knife") ? 0.05 : 0));
 }
 
-/** Species for which this survivor has fresh evidence in the current region. */
+/**
+ * Species for which this survivor has fresh evidence in the current region.
+ *
+ * Reads the same regionSigns table latestRegionSign does, rather than
+ * walking the whole huntSigns object again: that table is already a full
+ * scan of every sign the survivor has ever noted, and it only grows over a
+ * run, so a second unbounded scan here paid the same cost a second time on
+ * every call.
+ */
 export function knownHuntSpecies(state: GameState, world: World, region = state.player.region): Species[] {
-  const known = new Set<Species>();
-  for (const [key, sign] of Object.entries(state.player.huntSigns)) {
-    if (cellAt(world, Number(key)).region !== region) continue;
-    for (const species of huntedLand()) {
-      const seenAt = sign.species[species];
-      if (seenAt !== undefined && state.minute - seenAt < HUNT_SIGN_DAYS * 1440) known.add(species);
-    }
-  }
-  return huntedLand().filter((species) => known.has(species));
+  const { latest } = regionSigns(state, world, region);
+  return huntedLand().filter((species) => {
+    const seenAt = latest[species];
+    return seenAt !== undefined && state.minute - seenAt < HUNT_SIGN_DAYS * 1440;
+  });
 }
 
 /** Chance that a pursuit teaches the hunter what left the sign. Empty ground never can. */
