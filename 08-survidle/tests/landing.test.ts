@@ -17,7 +17,7 @@ import { campSite, DIM, discovery, enterRegion, regionState, siteFor } from "../
 import { SKILL_IDS } from "../src/sim/skills";
 import { seasonalMean } from "../src/sim/weather";
 import { mapHtml } from "../src/ui/map";
-import { tombstoneHtml } from "../src/ui/panels";
+import { campHtml, tombstoneHtml } from "../src/ui/panels";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { PATCH_KM } from "../src/world/spatial";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
@@ -239,6 +239,35 @@ describe("what the heir is told", () => {
     // And they are where a fresh list puts them: the care rows above the work.
     expect(bodyRowOf(state, world)).not.toBe(null);
     expect(campRowOf(state, world)).not.toBe(null);
+  });
+
+  // A wipe is a wipe: a build order still sitting at its planned zero has
+  // nothing left to want it once every order in the region is gone, so it
+  // leaves no more trace than the order itself does. A structure already
+  // under way is not a plan, it is ground already broken - the same
+  // "structures, the piles, the snares" the heir inherits everywhere else.
+  it("clears a still-planned build's site entry on death, and keeps a part-built one", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    const camp = st.campCell!;
+    giveOrder(state, world, { task: "build", arg: "vedbod", until: { kind: "once" }, deliver: "camp", where: { cell: camp } }, "job");
+    giveOrder(state, world, { task: "build", arg: "leanTo", until: { kind: "once" }, deliver: "camp", where: { cell: camp } }, "job");
+    // Stands in for real minutes already banked on the lean-to before the survivor died.
+    // No advance here: the camp starts with enough of a lean-to's materials in reach that
+    // running the clock would let the scheduler actually finish it, which is not this test.
+    siteFor(st, camp).build.leanTo = 42;
+    die(state, "starved");
+    beginAgain(state, world);
+    land(state, world, { first: "Aino", last: "Berzins" });
+    const site = campSite(regionState(state, world, region))!;
+    expect(site.build.vedbod).toBeUndefined();
+    expect(site.build.leanTo).toBe(42);
+    // campHtml reads the standing survivor's own region; read the old camp's
+    // sheet by standing the heir there for the assertion.
+    state.player.region = region;
+    expect(campHtml(state, world, calendar(state.minute, state.startDoy))).not.toContain("vedbod");
   });
 
   it("says nothing about the journal when nothing was built, and the first tombstone has no comparison", () => {

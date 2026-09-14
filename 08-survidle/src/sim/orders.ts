@@ -71,7 +71,7 @@ import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
 import { campSite, regionState, siteFor } from "./regionstate";
 import { check, setAside } from "./tasks";
-import { isWorkIntent, isWorkOrder, type GameState, type IntentRequest, type ItemId, type Order, type OrderKind, type Site, type StructureId, type TaskId, type Verdict, type WorkOrder } from "./types";
+import { isWorkIntent, isWorkOrder, type GameState, type IntentRequest, type ItemId, type Order, type OrderKind, type RegionState, type Site, type StructureId, type TaskId, type Verdict, type WorkOrder } from "./types";
 import { campWaterCapacity } from "./water";
 import { FOOTPRINT_M2 } from "./yard";
 
@@ -125,24 +125,39 @@ export function addOrder(state: GameState, world: World, req: IntentRequest, kin
   return o;
 }
 
+/**
+ * A build order raises its site entry at placement (addOrder): a zero entry
+ * says "an order wants this." Every path an order can leave a region's list
+ * by - struck off by hand, or every order in the region wiped at once on
+ * death - asks the same question about each build order in `leaving`: with
+ * that order gone, does anything left in `st.orders` still want the same
+ * structure? Read `st.orders` only after the caller has already made
+ * whatever mutation is leaving it in its final state, since that is the
+ * "still wanted" the entry is judged against.
+ *
+ * A zero entry with nothing left wanting it is the same as an order that
+ * was never given, and comes down the same way: leaving no trace. Real
+ * progress (an entry above zero) is sunk work - it outlives whichever order
+ * raised it, and this never touches it, whatever else is or is not still
+ * asking for it.
+ */
+export function releasePlannedBuilds(st: RegionState, leaving: Order[]): void {
+  const site = campSite(st);
+  if (!site) return;
+  for (const o of leaving) {
+    if (!isWorkOrder(o) || o.req.task !== "build" || !o.req.arg) continue;
+    const sid = o.req.arg as StructureId;
+    const stillWanted = st.orders.some((r) => isWorkOrder(r) && r.req.task === "build" && r.req.arg === sid);
+    if ((site.build[sid] ?? 0) === 0 && !stillWanted) delete site.build[sid];
+  }
+}
+
 /** A care row is never struck off: it is filtered out of removal the same way it is filtered out of every "given" path, since nothing ever gives it and nothing ever takes it away. */
 export function removeOrder(state: GameState, world: World, id: number): void {
   const st = regionState(state, world, state.player.region);
   const gone = st.orders.find((o) => o.id === id && !isCareRow(o));
   st.orders = st.orders.filter((o) => o.id !== id || isCareRow(o));
-  // A build order raises its site entry at placement (addOrder), so striking
-  // the order off has to be able to lower it again: a planned entry (still
-  // at zero, nothing built yet) with no other order left wanting it is the
-  // same as an order that was never given, and leaves the same no trace.
-  // Real progress is sunk work and outlives the order that started it, and
-  // an entry another surviving order still names is still owed to that
-  // order, so neither is touched here.
-  if (gone && isWorkOrder(gone) && gone.req.task === "build" && gone.req.arg) {
-    const site = campSite(st);
-    const sid = gone.req.arg as StructureId;
-    const stillWanted = st.orders.some((o) => isWorkOrder(o) && o.req.task === "build" && o.req.arg === sid);
-    if (site && (site.build[sid] ?? 0) === 0 && !stillWanted) delete site.build[sid];
-  }
+  if (gone) releasePlannedBuilds(st, [gone]);
 }
 
 /**

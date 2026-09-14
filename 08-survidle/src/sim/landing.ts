@@ -20,6 +20,7 @@ import { dimAll, mapRegion } from "./mapped";
 import { fmtName } from "./names";
 import { rollCandidates } from "./person";
 import { newPerson } from "./newgame";
+import { releasePlannedBuilds } from "./orders";
 import { cellOf } from "./position";
 import { current, newRecord, worldDate } from "./record";
 import { campSite, DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
@@ -183,9 +184,19 @@ export function beginAgain(state: GameState, world: World): void {
   // regionState, so emptying a list the dead did touch and leaving it bare would give the
   // heir a home country in which nothing answers its thirst - the one country it is
   // certain to walk. The rows go back on every list the wipe reaches.
+  //
+  // A build order still at its planned zero when the wipe reaches it dies
+  // with the rest of the list: nothing survives to have wanted it, so the
+  // entry would otherwise sit on the camp sheet forever, saying "planned"
+  // for an order nobody can now cancel. Part-built work is not a plan, it
+  // is ground already broken, so it stands - the same "structures, the
+  // piles, the snares" the heir inherits, read off the site rather than the
+  // list that is going away.
   for (const st of Object.values(state.regions)) {
     st.iceHole = null;
+    const leaving = st.orders;
     st.orders = [];
+    releasePlannedBuilds(st, leaving);
     ensureCareRows(st);
   }
   // The dead survivor's log against the new clock would confuse the landing phase; the heir starts with a clean page.
