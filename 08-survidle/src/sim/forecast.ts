@@ -63,11 +63,39 @@ function median(sorted: number[]): number {
   return sorted[Math.floor((sorted.length - 1) / 2)];
 }
 
+/**
+ * A clone for one run. advance() reaches into most of state - orders,
+ * needs, camp, weather, wildlife, knowledge, ground changes - so there is
+ * no small state to hand it instead; a run needs all of that exactly as
+ * the live game has it, fog and ground changes included, since an order
+ * that would be illegal ground for the live survivor must be illegal
+ * ground here too.
+ *
+ * Two things travel differently because nothing a run does ever reads
+ * them back. Every survivor but the one alive is a closed record: only
+ * `current(state)` - the last one - is ever read or written between here
+ * and a death, so the rest come along by reference instead of a clone
+ * with no return. The notices queue is a queue for a dismiss click a
+ * forecast run never reaches; whatever it queues is thrown away with the
+ * run, so it starts each run empty rather than carrying forward whatever
+ * the live game has queued so far.
+ */
+function cloneForForecast(state: GameState): GameState {
+  const { survivors, opportunities, ...rest } = state;
+  const living = survivors[survivors.length - 1];
+  const { notices, ...restOpportunities } = opportunities;
+  return {
+    ...structuredClone(rest),
+    survivors: living ? [...survivors.slice(0, -1), structuredClone(living)] : [],
+    opportunities: { ...structuredClone(restOpportunities), notices: [] },
+  };
+}
+
 /** One horizon, `runs` times, each run on a clone of the state with its own dice. */
 export function forecastRow(state: GameState, world: World, horizon: Horizon, runs = FORECAST_RUNS): ForecastRow {
   const deaths: { cause: DeathCause; day: number }[] = [];
   for (let k = 0; k < runs; k++) {
-    const s = structuredClone(state);
+    const s = cloneForForecast(state);
     s.rng = derive(state.rng, k);
     // A day at a time, so a run that dies stops costing.
     for (let left = horizon.minutes; left > 0 && !s.dead; left -= 1440) advance(s, world, Math.min(1440, left));

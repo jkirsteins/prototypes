@@ -5,7 +5,6 @@
  * headless harness, the tests).
  */
 import type { World } from "../world/gen";
-import type { SolvedWorld } from "../world/solve";
 import { forecast, type ForecastRow, type HorizonId } from "./forecast";
 import { current } from "./record";
 import type { GameState } from "./types";
@@ -15,8 +14,14 @@ export interface ForecastView { id: number; rows: Partial<Record<HorizonId, View
 
 export type ForecastRequest =
   | { kind: "forecast"; id: number; state: GameState }
-  /** The solved arrays the main thread already has, so the worker never solves the world a second time. */
-  | { kind: "world"; seed: number; solved: SolvedWorld };
+  /**
+   * The seed alone. The main thread reads this same seed's solved arrays for
+   * the whole session, so sending them along would mean two live copies of
+   * one solved world and a main-thread copy paid at every call; the worker
+   * gets its own instead, from the cache solve.worker's own copy already
+   * wrote to disk, or a local solve on the rare seed nothing has written yet.
+   */
+  | { kind: "world"; seed: number };
 export interface ForecastReply { kind: "row"; id: number; row: ForecastRow }
 
 export function emptyView(): ForecastView {
@@ -57,7 +62,7 @@ export function noteMonthRow(state: GameState, row: ForecastRow): boolean {
 
 export interface Forecaster {
   request(state: GameState): void;
-  /** The world the forecast runs in, sent on as arrays where a worker holds its own copy. */
+  /** The world the forecast runs in; a worker is told the seed and builds its own copy rather than being sent this thread's. */
   setWorld(world: World): void;
   view(): ForecastView;
   /** Called with each row from the latest request as it lands. */
@@ -85,10 +90,13 @@ export function createForecaster(world: World, worker?: Worker, runs?: number): 
         }
       }
     },
-    // The arrays are copied, not transferred: the main thread reads the same world all run.
+    // Only the seed crosses to the worker: the main thread reads this same
+    // world's arrays for the map all run, so a copy sent along would sit
+    // beside them rather than instead of them, and posting it would block
+    // this thread on cloning ~44 MB before the message even queues.
     setWorld(w) {
       if (worker) {
-        const msg: ForecastRequest = { kind: "world", seed: w.seed, solved: w.solved };
+        const msg: ForecastRequest = { kind: "world", seed: w.seed };
         worker.postMessage(msg);
       } else {
         active = w;

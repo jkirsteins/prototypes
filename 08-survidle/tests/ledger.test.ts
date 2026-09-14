@@ -43,6 +43,18 @@ describe("the ledger", () => {
     expect(today(state)).toBe(d2);
   });
 
+  it("drops a day once it falls outside weekBefore's own window, and never a day still inside it", () => {
+    const { state } = newGame(1);
+    for (let day = 2; day <= 12; day++) {
+      state.minute = (day - 1) * 1440 - START_MINUTE_OF_DAY;
+      today(state);
+    }
+    // weekBefore(ledger, 12) reads days 5..11: day 12 itself plus those seven
+    // is the least the ledger may hold without shorting that read.
+    expect(state.ledger.map((d) => d.day)).toEqual([5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(weekBefore(state.ledger, 12).days).toBe(7);
+  });
+
   it("credits yield, intake, burn and time onto today's record", () => {
     const { state } = newGame(1);
     const kit = today(state).yield.kit;
