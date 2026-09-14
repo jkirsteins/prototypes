@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { newGame } from "../src/sim/newgame";
 import { orderByHand } from "../src/sim/ladder";
+import { removeOrderByHand } from "../src/sim/orders";
 import { regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { calendar } from "../src/sim/calendar";
@@ -91,5 +92,43 @@ describe("a planned build", () => {
     expect(html).toContain("vedbod");
     expect(html).toContain("planned");
     expect(html).toContain("logs");
+  });
+
+  it("leaves no trace when the order is struck off before any work is done, the way it did before an order raised the entry", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const cal = calendar(state.minute, state.startDoy);
+    const st = regionState(state, world, state.player.region);
+    const req = { task: "build", arg: "vedbod", until: { kind: "once" }, deliver: "camp", where: { cell: st.campCell! } } as const;
+    const order = orderByHand(state, world, cal, new Rng(1), req, "job");
+    // removeOrderByHand is the mutator behind the "order-remove" UI action (main.ts), not a lower-level helper.
+    removeOrderByHand(state, world, cal, new Rng(2), order.id);
+    expect(siteAt(st, st.campCell!)?.build.vedbod).toBeUndefined();
+    expect(campHtml(state, world, cal)).not.toContain("vedbod");
+  });
+
+  it("keeps real progress when the order behind it is struck off", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const cal = calendar(state.minute, state.startDoy);
+    const st = regionState(state, world, state.player.region);
+    const req = { task: "build", arg: "vedbod", until: { kind: "once" }, deliver: "camp", where: { cell: st.campCell! } } as const;
+    const order = orderByHand(state, world, cal, new Rng(1), req, "job");
+    // Stands in for minutes the survivor actually banked before the order was struck off: sunk work, not a plan.
+    siteFor(st, st.campCell!).build.vedbod = 42;
+    removeOrderByHand(state, world, cal, new Rng(2), order.id);
+    expect(siteAt(st, st.campCell!)!.build.vedbod).toBe(42);
+  });
+
+  it("keeps the entry while a second order still wants the same structure", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const cal = calendar(state.minute, state.startDoy);
+    const st = regionState(state, world, state.player.region);
+    const req = { task: "build", arg: "vedbod", until: { kind: "once" }, deliver: "camp", where: { cell: st.campCell! } } as const;
+    const first = orderByHand(state, world, cal, new Rng(1), req, "job");
+    orderByHand(state, world, cal, new Rng(2), req, "job");
+    removeOrderByHand(state, world, cal, new Rng(3), first.id);
+    expect(siteAt(st, st.campCell!)?.build.vedbod).toBe(0);
   });
 });

@@ -71,7 +71,7 @@ import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
 import { campSite, regionState, siteFor } from "./regionstate";
 import { check, setAside } from "./tasks";
-import { isWorkIntent, type GameState, type IntentRequest, type ItemId, type Order, type OrderKind, type Site, type StructureId, type TaskId, type Verdict, type WorkOrder } from "./types";
+import { isWorkIntent, isWorkOrder, type GameState, type IntentRequest, type ItemId, type Order, type OrderKind, type Site, type StructureId, type TaskId, type Verdict, type WorkOrder } from "./types";
 import { campWaterCapacity } from "./water";
 import { FOOTPRINT_M2 } from "./yard";
 
@@ -128,7 +128,21 @@ export function addOrder(state: GameState, world: World, req: IntentRequest, kin
 /** A care row is never struck off: it is filtered out of removal the same way it is filtered out of every "given" path, since nothing ever gives it and nothing ever takes it away. */
 export function removeOrder(state: GameState, world: World, id: number): void {
   const st = regionState(state, world, state.player.region);
+  const gone = st.orders.find((o) => o.id === id && !isCareRow(o));
   st.orders = st.orders.filter((o) => o.id !== id || isCareRow(o));
+  // A build order raises its site entry at placement (addOrder), so striking
+  // the order off has to be able to lower it again: a planned entry (still
+  // at zero, nothing built yet) with no other order left wanting it is the
+  // same as an order that was never given, and leaves the same no trace.
+  // Real progress is sunk work and outlives the order that started it, and
+  // an entry another surviving order still names is still owed to that
+  // order, so neither is touched here.
+  if (gone && isWorkOrder(gone) && gone.req.task === "build" && gone.req.arg) {
+    const site = campSite(st);
+    const sid = gone.req.arg as StructureId;
+    const stillWanted = st.orders.some((o) => isWorkOrder(o) && o.req.task === "build" && o.req.arg === sid);
+    if (site && (site.build[sid] ?? 0) === 0 && !stillWanted) delete site.build[sid];
+  }
 }
 
 /**
