@@ -3,7 +3,7 @@ import { cellAt, regionAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
-import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty } from "./inventory";
+import { addItem, ageStacks, pile, pileAt, qty, removeItem, tidyPiles, totalQty, TRACE_KG } from "./inventory";
 import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepFieldFire, stepSmoke, wetWood } from "./fire";
 import { recordOpportunityEvent, KEPT_DAYS } from "./opportunities";
 import {
@@ -394,6 +394,16 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     // log: once a day with the day's total, never once a minute.
     if (st.wettedKg >= 1) log(state, `${fmtKg(st.wettedKg)} of firewood stood out in the rain at ${r.name} and is wet through.`, "bad");
     st.wettedKg = 0;
+    // The rack holds only so much; raw meat that cannot fit sits in the pile
+    // untouched instead of drying, until there is room again. Read at the
+    // daily roll rather than the fire and thaw checks above, which run every
+    // minute and would turn one full rack into a line every tick it stays full.
+    const rackSite = campSite(st);
+    const rackRoomGone = rackSite?.structures.dryingRack && st.rack.kg >= rackCapacity(rackSite) - TRACE_KG;
+    const strandedMeat = st.campCell === null ? 0 : qty(pileAt(state, st.campCell), "rawMeat");
+    if (rackRoomGone && strandedMeat > TRACE_KG) {
+      log(state, `The rack at ${r.name} is full, and ${fmtKg(strandedMeat)} of raw meat waits its turn.`, "bad");
+    }
   }
 }
 
