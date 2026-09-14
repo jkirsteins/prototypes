@@ -7,7 +7,7 @@ import { cellAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
 import { coveredWoodKg, woodOnHandKg } from "./camp";
 import type { Calendar } from "./calendar";
-import { addItem, pile, qty, removeItem, TRACE_KG } from "./inventory";
+import { addItem, pile, pileCells, qty, removeItem, TRACE_KG } from "./inventory";
 import { BARK_DRY_RATIO, STRUCTURES } from "./items";
 import { campSite, regionState, siteAt, touchedRegions } from "./regionstate";
 import { cellOf } from "./position";
@@ -269,8 +269,7 @@ export function dryWood(state: GameState, dt: number, who: Presence | null, worl
     dryBudget([state.player.pack], 2, dt);
     dryBudget([state.player.pack], 2, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }
-  for (const k of Object.keys(state.piles)) {
-    const cell = Number(k);
+  for (const cell of pileCells(state, "wetFirewood")) {
     const inv = state.piles[cell];
     if (!inv || qty(inv, "wetFirewood") <= TRACE_KG) continue;
     if (!dryAt(cell)) continue;
@@ -293,8 +292,7 @@ export function dryWood(state: GameState, dt: number, who: Presence | null, worl
 export const RAIN_WET_KG_PER_HOUR = 1;
 
 export function wetWood(state: GameState, world: World, dt: number): void {
-  for (const key of Object.keys(state.piles)) {
-    const cell = Number(key);
+  for (const cell of pileCells(state, "firewood")) {
     const inv = state.piles[cell];
     if (!inv || qty(inv, "firewood") <= TRACE_KG) continue;
     if (localWeather(state, world, cell).precip === "none") continue;

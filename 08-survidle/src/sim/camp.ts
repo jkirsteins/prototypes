@@ -3,7 +3,7 @@ import { cellAt, regionAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
-import { addItem, ageStacks, pile, pileAt, qty, removeItem, tidyPiles, totalQty, TRACE_KG } from "./inventory";
+import { addItem, ageStacks, pile, pileAt, pileCells, qty, removeItem, tidyPiles, totalQty, TRACE_KG } from "./inventory";
 import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepFieldFire, stepSmoke, wetWood } from "./fire";
 import { recordOpportunityEvent, KEPT_DAYS } from "./opportunities";
 import {
@@ -150,16 +150,20 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
   }
   dryWood(state, dt, who, world);
   wetWood(state, world, dt);
-  for (const k of Object.keys(state.piles)) {
-    const cell = Number(k);
+  spoilPiles(state, world, dt, who);
+  // Nobody is carrying a pack with nobody home.
+  if (who) reportSpoil(state, ageStacks(state.player.pack, dt, ambient), " in {your} pack");
+  tidyPiles(state);
+}
+
+/** Ages every pile's perishables by dt: the live perishable index rather than every cell state.piles has ever held, most of which by the time a run is old hold nothing that can spoil. */
+export function spoilPiles(state: GameState, world: World, dt: number, who: Presence | null): void {
+  for (const cell of pileCells(state, "perishable")) {
     const inv = state.piles[cell];
     if (!inv || !PERISHABLES.some((id) => inv.stacks[id]?.length)) continue;
     const region = cellAt(world, cell).region;
     reportSpoil(state, ageStacks(inv, dt, localWeather(state, world, cell).temperatureC), region === who?.region ? "" : ` at ${regionAt(world, region).name}`);
   }
-  // Nobody is carrying a pack with nobody home.
-  if (who) reportSpoil(state, ageStacks(state.player.pack, dt, ambient), " in {your} pack");
-  tidyPiles(state);
 }
 
 function reportSpoil(state: GameState, lost: ReturnType<typeof ageStacks>, where: string) {
@@ -409,7 +413,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
 
 /** Past two thirds of its life a lean-to needs re-roofing, a rack relashing, a hut a new roof; the camp panel says so. */
 export function needsMending(site: Site | null, id: DecayingId): boolean {
-  return site !== null && site.structures[id] && (site.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
+  return Boolean(site?.structures[id]) && (site?.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
 }
 
 /**
