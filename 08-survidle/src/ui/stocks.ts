@@ -6,7 +6,7 @@
  * The caps here are the simulation's own: the roofs a camp has raised, the
  * litres its vessels hold, the kilos a back can carry. None is invented.
  */
-import { kcalPerPersonDay } from "../sim/rates";
+import { kcalPerPersonDay, stockCauses } from "../sim/rates";
 import { coveredWoodKg, woodOnHandKg } from "../sim/camp";
 import { pileAt, qty, weight } from "../sim/inventory";
 import { FOODS, type FoodId } from "../sim/items";
@@ -15,6 +15,10 @@ import type { GameState, ItemId, StockGroupId } from "../sim/types";
 import { PACK_COMFORTABLE_KG } from "../units";
 import { campWaterCapacity } from "../sim/water";
 import type { World } from "../world/gen";
+import type { Calendar } from "../sim/calendar";
+import { esc } from "./render";
+import type { UiState } from "./render";
+import { formatRate } from "./rate";
 
 const FOOD_IDS = Object.keys(FOODS) as FoodId[];
 
@@ -73,4 +77,36 @@ export function capReason(state: GameState, world: World, g: StockGroup): string
   if (g.id === "wood") return "over cover it takes the rain; a vedbod holds 1,050 kg more";
   if (g.id === "water") return "the vessels are full; a water trough holds 20 l more";
   return "the pack is at what a back carries comfortably";
+}
+
+/** A group's held figure in its own unit, with no false precision on a rate's worth of digits. */
+function held(value: number, unit: StockGroup["unit"]): string {
+  if (unit === "days") return `${value.toFixed(1)} days`;
+  if (unit === "l") return `${value.toFixed(1)} l`;
+  return value >= 10 ? `${Math.round(value)} kg` : `${value.toFixed(1)} kg`;
+}
+
+/**
+ * The strip across the top: what the camp holds, what it can hold, and
+ * which way each is going. One string, so setPanel morphs it and a still
+ * minute rewrites nothing.
+ *
+ * Held reads in the group's own unit (`g.unit`); the rate reads in the
+ * group's rate unit (`g.rateUnit`), which differs from the held unit only
+ * for food - the larder is counted in person-days, but its rate stays
+ * kcal/hour so a cold snap or a hard day of work shows up before it has
+ * quietly cost a whole day.
+ */
+export function stocksHtml(state: GameState, world: World, cal: Calendar, ui: Pick<UiState, "rateDisplay">): string {
+  const causes = stockCauses(state, world, cal);
+  const cells = GROUPS.map((g) => {
+    const cap = groupCap(state, world, g);
+    const amount = held(groupHeld(state, world, g), g.unit);
+    const of = cap === null ? "" : ` <span class="dim">of ${held(cap, g.unit)}</span>`;
+    const perHour = causes[g.id].reduce((a, c) => a + c.perHour, 0);
+    const rate = formatRate(perHour, g.rateUnit, ui.rateDisplay);
+    const sign = perHour > 0 ? "good" : perHour < 0 ? "bad" : "dim";
+    return `<button type="button" class="stock" data-stock="${g.id}" aria-expanded="false"><span class="lbl">${esc(g.label)}</span> <b>${amount}</b>${of} <span class="${sign}">${esc(rate)}</span></button>`;
+  }).join("");
+  return cells;
 }

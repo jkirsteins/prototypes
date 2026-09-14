@@ -445,6 +445,41 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 #mapinventory b { color: var(--text); }
 #mapinventory:empty { display: none; }
 
+/* The stocks strip: what the camp holds, what it can hold, and which way
+   each is moving, spanning the page above the columns. The same panel
+   background and border as a column, because it is read the same way. */
+#stocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 10px 10px 0;
+  padding: 8px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+#stocks:empty { display: none; }
+.stock {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 5px;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+.stock .lbl { color: var(--dim); }
+
+/* Two rows of two rather than trailing off the edge of the strip; each
+   group's own spans wrap onto a second line before any of them is cut off
+   or the strip scrolls sideways. */
+@media (max-width: 700px) {
+  .stock { flex: 1 1 calc(50% - 10px); }
+}
+
 /* Map */
 /* min-width: 0 lets the grid track shrink below the map's natural width;
    without it the fixed 792px grid would widen #app itself once `.col`

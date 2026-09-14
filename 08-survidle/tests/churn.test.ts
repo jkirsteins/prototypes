@@ -28,6 +28,7 @@ import { levelAt, mapHtml, mapKey, mapTargetAtPoint } from "../src/ui/map";
 import { tipHtml, tipKey } from "../src/ui/tip";
 import { campHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, logHtml, skillsHtml, statsHtml, taskHtml, travelHtml, weatherHtml, weatherKey } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
+import { stocksHtml } from "../src/ui/stocks";
 import { fillShare } from "../src/ui/bars";
 import { emptyView } from "../src/sim/forecaster";
 import { feltTemperature } from "../src/sim/player";
@@ -79,6 +80,9 @@ const BUDGET: Record<string, number> = {
   journal: 5,
   log: 5,
   map: MINUTE,
+  // The strip reads the same burn-today rate the stats panel does, so it
+  // turns over on the same clock: about once a game minute, not per frame.
+  stocks: MINUTE,
 };
 
 function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]): Record<string, string> {
@@ -87,6 +91,7 @@ function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<ty
   const ambient = ambientTemperature(cal, state.weather);
   return {
     stats: statsHtml(state, world, cal, ambient, ui),
+    stocks: stocksHtml(state, world, cal, ui),
     gear: gearHtml(state, feltTemperature(state, world, ambient)),
     skills: skillsHtml(state),
     camp: campHtml(state, world, cal),

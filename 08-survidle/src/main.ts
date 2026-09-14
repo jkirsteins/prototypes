@@ -52,6 +52,7 @@ import type { SubtabId } from "./ui/purpose";
 import { levelAt, LEVELS, legendHtml, mapAggregateAtPoint, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, type TargetResolution, viewOrigin } from "./ui/map";
 import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { loadRateDisplay, saveRateDisplay, type RateDisplay } from "./ui/rate";
+import { stocksHtml } from "./ui/stocks";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
@@ -303,6 +304,7 @@ function render(nowMs = performance.now()) {
     return;
   }
   const ambient = ambientTemperature(cal, localWeather(state, world));
+  setPanel("stocks", stocksHtml(state, world, cal, ui));
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("camp", campHtml(state, world, cal));
   setPanel("maptravel", placesHtml(state, world, cal, ui.travelDisplay));
