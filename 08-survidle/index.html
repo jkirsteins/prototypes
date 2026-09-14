@@ -11,8 +11,14 @@
     <div id="loading" hidden><div class="bar"><i></i></div><p>raising the land</p></div>
     <!-- Stocks span the page above the columns: what the camp holds, what it
          can hold, and which way each is moving. The map's own inventory strip
-         answers a different question and stays where it is. -->
-    <div id="stocks"></div>
+         answers a different question and stays where it is. Positioned so
+         the opened panel can anchor under the strip rather than the page. -->
+    <div id="stockswrap">
+      <div id="stocks"></div>
+      <!-- One element, in the markup from the start, so it is shown and
+           hidden rather than created and destroyed under the pointer. -->
+      <div id="stockpanel" hidden></div>
+    </div>
     <!-- Left is info, middle is interactive, right is the queue. The left
          column is read-only but for the away slider, which only changes what
          is being read beside it. -->

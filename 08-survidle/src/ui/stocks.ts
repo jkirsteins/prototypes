@@ -6,13 +6,15 @@
  * The caps here are the simulation's own: the roofs a camp has raised, the
  * litres its vessels hold, the kilos a back can carry. None is invented.
  */
-import { kcalPerPersonDay, stockCauses } from "../sim/rates";
+import { kcalPerPersonDay, stockCauses, TASK_YIELD } from "../sim/rates";
 import { coveredWoodKg, woodOnHandKg } from "../sim/camp";
-import { pileAt, qty, weight } from "../sim/inventory";
-import { FOODS, type FoodId } from "../sim/items";
+import { pileAt, qty, TRACE_KG, weight } from "../sim/inventory";
+import { COVER_M3, FOODS, type FoodId, itemLabel, STACKED_KG_PER_M3 } from "../sim/items";
+import { cellOf } from "../sim/position";
 import { campSite, regionState } from "../sim/regionstate";
+import { woodLeft, woodPatchFull, woodPatchLeft } from "../sim/stocks";
 import type { GameState, ItemId, StockGroupId } from "../sim/types";
-import { PACK_COMFORTABLE_KG } from "../units";
+import { fmtKg, PACK_COMFORTABLE_KG } from "../units";
 import { campWaterCapacity } from "../sim/water";
 import type { World } from "../world/gen";
 import type { Calendar } from "../sim/calendar";
@@ -74,7 +76,7 @@ export function groupCap(state: GameState, world: World, g: StockGroup): number 
 export function capReason(state: GameState, world: World, g: StockGroup): string {
   const cap = groupCap(state, world, g);
   if (cap === null || groupHeld(state, world, g) < cap) return "";
-  if (g.id === "wood") return "over cover it takes the rain; a vedbod holds 1,050 kg more";
+  if (g.id === "wood") return `wood beyond what is covered gets rained on; a vedbod raises the cover by ${(COVER_M3.vedbod! * STACKED_KG_PER_M3).toLocaleString("en-US")} kg`;
   if (g.id === "water") return "the vessels are full; a water trough holds 20 l more";
   return "the pack is at what a back carries comfortably";
 }
@@ -96,8 +98,13 @@ function held(value: number, unit: StockGroup["unit"]): string {
  * for food - the larder is counted in person-days, but its rate stays
  * kcal/hour so a cold snap or a hard day of work shows up before it has
  * quietly cost a whole day.
+ *
+ * `aria-expanded` follows `ui.stockOpen` rather than a hardcoded "false":
+ * a button's own group can be the one whose panel is open. The field is
+ * optional here so a caller that never opens a group - a test rendering
+ * the strip alone - need not carry it.
  */
-export function stocksHtml(state: GameState, world: World, cal: Calendar, ui: Pick<UiState, "rateDisplay">): string {
+export function stocksHtml(state: GameState, world: World, cal: Calendar, ui: Pick<UiState, "rateDisplay"> & Partial<Pick<UiState, "stockOpen">>): string {
   const causes = stockCauses(state, world, cal);
   const cells = GROUPS.map((g) => {
     const cap = groupCap(state, world, g);
@@ -106,7 +113,59 @@ export function stocksHtml(state: GameState, world: World, cal: Calendar, ui: Pi
     const perHour = causes[g.id].reduce((a, c) => a + c.perHour, 0);
     const rate = formatRate(perHour, g.rateUnit, ui.rateDisplay);
     const sign = perHour > 0 ? "good" : perHour < 0 ? "bad" : "dim";
-    return `<button type="button" class="stock" data-stock="${g.id}" aria-expanded="false"><span class="lbl">${esc(g.label)}</span> <b>${amount}</b>${of} <span class="${sign}">${esc(rate)}</span></button>`;
+    const open = g.id === ui.stockOpen;
+    return `<button type="button" class="stock" data-stock="${g.id}" aria-expanded="${open}"><span class="lbl">${esc(g.label)}</span> <b>${amount}</b>${of} <span class="${sign}">${esc(rate)}</span></button>`;
   }).join("");
   return cells;
+}
+
+/**
+ * One group, opened. The members it is made of, the signed causes behind
+ * its rate, what the work in hand has not banked yet, and - for wood - the
+ * stand the store is coming out of.
+ *
+ * The last line names what the sum counted, because a projection that does
+ * not say what it left out is a number to trust rather than a reading to use.
+ */
+export function stockPanelHtml(state: GameState, world: World, cal: Calendar, ui: Pick<UiState, "rateDisplay">, id: StockGroupId): string {
+  const g = GROUPS.find((x) => x.id === id)!;
+  const st = regionState(state, world, state.player.region);
+  const inv = pileAt(state, st.campCell);
+
+  const members = g.members
+    .filter((item) => qty(inv, item) > TRACE_KG)
+    .map((item) => esc(itemLabel(item, qty(inv, item))))
+    .join(", ");
+
+  const causes = stockCauses(state, world, cal)[id];
+  const rows = causes
+    .map((c) => `<div class="cause"><span>${esc(c.label)}</span><span>${esc(formatRate(c.perHour, g.rateUnit, ui.rateDisplay))}</span>${c.note ? `<small class="dim">${esc(c.note)}</small>` : ""}</div>`)
+    .join("");
+  const sum = causes.reduce((a, c) => a + c.perHour, 0);
+
+  // What the work in hand will bank when it ends: the task's own yield less
+  // the share of it already run. Felling banks four logs at the end of an
+  // hour, so this is the task bar read in kilograms.
+  const t = state.task;
+  const yielder = t && id === "wood" ? TASK_YIELD[t.id] : undefined;
+  const left = t && yielder ? yielder(state, world).kg * (1 - Math.min(1, t.progress / Math.max(1, t.duration))) : 0;
+  const coming = left > TRACE_KG ? `<div class="dim">${esc(fmtKg(left))} coming from the work in hand</div>` : "";
+
+  // Felling draws one patch down and succeeds the ground to a clearing when
+  // it is empty. The store going up and the stand going down are one act.
+  const here = cellOf(state, world);
+  const stand = id === "wood"
+    ? `<div class="dim">this patch: ${Math.round(woodPatchLeft(st, world, here))} stems left of ${Math.round(woodPatchFull(world, here))}. This region: ${Math.round(woodLeft(st, world, state.player.region))}.</div>`
+    : "";
+
+  const reason = capReason(state, world, g);
+  const at = reason ? `<div class="bad">at its cap: ${esc(reason)}</div>` : "";
+
+  return `<div class="stockpanel" data-stockpanel="${id}">
+<div><b>${esc(g.label)}</b> ${members ? esc(members) : '<span class="dim">nothing here</span>'}</div>
+${at}${rows}
+<div class="sum"><b>${esc(formatRate(sum, g.rateUnit, ui.rateDisplay))}</b></div>
+${coming}${stand}
+<small class="dim">Counts the work in hand, the fire, the producers, the body and the weather. Nothing else.</small>
+</div>`;
 }

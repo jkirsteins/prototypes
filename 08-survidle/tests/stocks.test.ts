@@ -5,7 +5,8 @@ import { ITEM_KG } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import type { ItemId } from "../src/sim/types";
-import { GROUPS, groupCap, groupHeld, stocksHtml } from "../src/ui/stocks";
+import { startTask } from "../src/sim/tasks";
+import { GROUPS, groupCap, groupHeld, stockPanelHtml, stocksHtml } from "../src/ui/stocks";
 import { siteCamp } from "./siting-helpers";
 
 describe("the group table", () => {
@@ -55,5 +56,29 @@ describe("the toolbar", () => {
     siteCamp(state, world);
     const html = stocksHtml(state, world, calendar(state.minute, state.startDoy), { rateDisplay: "game" });
     expect(html).not.toContain("width:");
+  });
+});
+
+describe("the expanded group", () => {
+  it("lists the members, the causes, and what the stand has left", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell!), "firewood", 12);
+    addItem(pile(state, st.campCell!), "stick", 4);
+    const html = stockPanelHtml(state, world, calendar(state.minute, state.startDoy), { rateDisplay: "game" }, "wood");
+    expect(html).toContain("firewood");
+    expect(html).toContain("sticks");
+    expect(html).toContain("this patch");
+  });
+
+  it("says what the work in hand has not banked yet", () => {
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell!), "log", 1);
+    startTask(state, world, calendar(state.minute, state.startDoy), "split");
+    const html = stockPanelHtml(state, world, calendar(state.minute, state.startDoy), { rateDisplay: "game" }, "wood");
+    expect(html).toContain("coming");
   });
 });

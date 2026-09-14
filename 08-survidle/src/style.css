@@ -447,7 +447,10 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 
 /* The stocks strip: what the camp holds, what it can hold, and which way
    each is moving, spanning the page above the columns. The same panel
-   background and border as a column, because it is read the same way. */
+   background and border as a column, because it is read the same way.
+   Positioned so the opened group's panel can anchor under the strip
+   rather than off the page. */
+#stockswrap { position: relative; }
 #stocks {
   display: flex;
   flex-wrap: wrap;
@@ -472,6 +475,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   cursor: pointer;
 }
 .stock .lbl { color: var(--dim); }
+.stock[aria-expanded="true"] .lbl { color: var(--accent); }
 
 /* Two rows of two rather than trailing off the edge of the strip; each
    group's own spans wrap onto a second line before any of them is cut off
@@ -479,6 +483,28 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 @media (max-width: 700px) {
   .stock { flex: 1 1 calc(50% - 10px); }
 }
+
+/* The opened group: what it is made of, the signed causes behind its rate,
+   and, for wood, the stand the store is coming out of. Anchored under the
+   strip the way #maptip hangs off the map, one element shown and hidden
+   rather than rebuilt while a hand is over it. */
+#stockpanel {
+  position: absolute;
+  z-index: 5;
+  left: 10px;
+  right: 10px;
+  top: 100%;
+  margin-top: 4px;
+  padding: 6px 9px;
+  background: rgba(12, 15, 20, 0.94);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(2px);
+  font-size: 12px;
+}
+#stockpanel[hidden] { display: none; }
+#stockpanel .cause { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+#stockpanel .cause small { flex-basis: 100%; }
+#stockpanel .sum { margin-top: 3px; padding-top: 3px; border-top: 1px solid var(--line); }
 
 /* Map */
 /* min-width: 0 lets the grid track shrink below the map's natural width;

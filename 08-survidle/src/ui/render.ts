@@ -9,7 +9,7 @@ import { DEFAULT_RATE_DISPLAY, type RateDisplay } from "./rate";
 import { DEFAULT_TRAVEL_DISPLAY, type TravelDisplay } from "./travel";
 import type { AwaySummary } from "../sim/save";
 import type { WildlifeStartleEvent } from "../sim/wildlife-encounter";
-import type { GameState, IntentRequest, ItemId, OpportunityNotice, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
+import type { GameState, IntentRequest, ItemId, OpportunityNotice, OrderKind, OrderWhen, Rung, SpotId, StockGroupId, TaskId, UntilChoice } from "../sim/types";
 import type { OpportunityCatalogUi } from "./opportunity-catalog";
 
 /** What the screen remembers that the game does not. */
@@ -58,6 +58,8 @@ export interface UiState {
   welcome: boolean;
   /** The settings panel (sound, and the play-data beacon) is open. */
   settings: boolean;
+  /** The stock group whose panel is open, from hover, focus or a tap. */
+  stockOpen: StockGroupId | null;
   /** Survivor index whose entry is expanded in the cemetery, or null for none. */
   cemeteryOpen: number | null;
   /** The cemetery's "leave this world" button is showing its confirm step. */
@@ -162,7 +164,7 @@ export function simulationPaused(state: GameState, ui: UiState): boolean {
 export function newUiState(): UiState {
   return {
     panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, cloudShadows: DEFAULT_CLOUD_SHADOWS, rateDisplay: DEFAULT_RATE_DISPLAY, selected: null, hover: null, destination: null, away: null, confirmAbandon: false, confirmCamp: false,
-    cemetery: false, manual: false, teach: null, opportunityCatalog: { open: false, category: "survival", page: 0, detail: null }, opportunityPresentation: null, recognition: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
+    cemetery: false, manual: false, teach: null, opportunityCatalog: { open: false, category: "survival", page: 0, detail: null }, opportunityPresentation: null, recognition: null, welcome: false, settings: false, stockOpen: null, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false, regions: false },
     hurry: newHurry(), speedHistory: newSpeedHistory(), wildlifeStartles: [], wildlifeStartleIds: new Set(), mapViewport: null,
   };

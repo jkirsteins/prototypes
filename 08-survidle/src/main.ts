@@ -34,7 +34,7 @@ import { recordOpportunityEvent } from "./sim/opportunities";
 import { canPersist, inspectSave } from "./sim/world-version";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
-import type { GameState, ItemId, OpportunityEvent, OpportunityKey, TaskId } from "./sim/types";
+import type { GameState, ItemId, OpportunityEvent, OpportunityKey, StockGroupId, TaskId } from "./sim/types";
 import { insertWalkAtTop } from "./sim/walkorders";
 import { ambientTemperature, localWeather } from "./sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture, type WeatherShotName } from "./sim/weather-scenarios";
@@ -52,7 +52,7 @@ import type { SubtabId } from "./ui/purpose";
 import { levelAt, LEVELS, legendHtml, mapAggregateAtPoint, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, type TargetResolution, viewOrigin } from "./ui/map";
 import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { loadRateDisplay, saveRateDisplay, type RateDisplay } from "./ui/rate";
-import { stocksHtml } from "./ui/stocks";
+import { stockPanelHtml, stocksHtml } from "./ui/stocks";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
@@ -289,6 +289,17 @@ function renderTip(cal = calendar(state.minute, state.startDoy)) {
     }
   }
 }
+/**
+ * The opened stock group, on its own so a hover or a tap can draw it at
+ * once instead of waiting up to a render interval. `setPanel` itself skips
+ * the write when the group's own reading has not moved, so drawing it
+ * unconditionally here costs nothing on a still frame.
+ */
+function renderStockPanel(cal = calendar(state.minute, state.startDoy)) {
+  const panel = document.getElementById("stockpanel")!;
+  setHidden(panel, ui.stockOpen === null);
+  if (ui.stockOpen !== null) setPanel("stockpanel", stockPanelHtml(state, world, cal, ui, ui.stockOpen));
+}
 // Match the existing layout breakpoint; content height never changes page size.
 function opportunityPageSize(): number { return window.matchMedia("(max-width: 700px)").matches ? 6 : 8; }
 let opportunityOpener: HTMLElement | null = null;
@@ -305,6 +316,7 @@ function render(nowMs = performance.now()) {
   }
   const ambient = ambientTemperature(cal, localWeather(state, world));
   setPanel("stocks", stocksHtml(state, world, cal, ui));
+  renderStockPanel(cal);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("camp", campHtml(state, world, cal));
   setPanel("maptravel", placesHtml(state, world, cal, ui.travelDisplay));
@@ -1163,6 +1175,47 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
       clearTarget();
       renderTip();
     }
+  });
+}
+// The opened stock group: hover and focus show it, leaving either clears
+// it, and a click toggles it so a phone can tap. One element in the markup,
+// shown and hidden - the same pattern #maptip uses for the board.
+{
+  const stocks = document.getElementById("stocks")!;
+  const stockBtn = (ev: Event) => (ev.target as HTMLElement | null)?.closest?.("[data-stock]") as HTMLElement | null;
+  stocks.addEventListener("pointerover", (ev) => {
+    const btn = stockBtn(ev);
+    if (!btn) return;
+    ui.stockOpen = btn.dataset.stock as StockGroupId;
+    renderStockPanel();
+  });
+  stocks.addEventListener("pointerout", (ev) => {
+    const from = stockBtn(ev);
+    const to = (ev.relatedTarget as HTMLElement | null)?.closest?.("[data-stock]");
+    if (from && from !== to) {
+      ui.stockOpen = null;
+      renderStockPanel();
+    }
+  });
+  stocks.addEventListener("focusin", (ev) => {
+    const btn = stockBtn(ev);
+    if (!btn) return;
+    ui.stockOpen = btn.dataset.stock as StockGroupId;
+    renderStockPanel();
+  });
+  stocks.addEventListener("focusout", (ev) => {
+    const to = (ev.relatedTarget as HTMLElement | null)?.closest?.("[data-stock]");
+    if (!to) {
+      ui.stockOpen = null;
+      renderStockPanel();
+    }
+  });
+  stocks.addEventListener("click", (ev) => {
+    const btn = stockBtn(ev);
+    if (!btn) return;
+    const id = btn.dataset.stock as StockGroupId;
+    ui.stockOpen = ui.stockOpen === id ? null : id;
+    renderStockPanel();
   });
 }
 render();
