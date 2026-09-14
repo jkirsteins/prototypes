@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { addItem, pile } from "../src/sim/inventory";
 import { ITEM_KG } from "../src/sim/items";
@@ -56,6 +57,26 @@ describe("the toolbar", () => {
     siteCamp(state, world);
     const html = stocksHtml(state, world, calendar(state.minute, state.startDoy), { rateDisplay: "game" });
     expect(html).not.toContain("width:");
+  });
+
+  // Food is the one group where g.unit and g.rateUnit diverge: the larder
+  // is held in person-days but its rate stays kcal/hour. Every other group
+  // reads the same either way, so only this one can catch a regression back
+  // to g.unit for the rate.
+  it("holds the larder in days but rates it in kcal, since food is the one group where the two units differ", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell!), "berries", 5);
+    // The body's burn-today rate reads zero in the instant newGame lands
+    // (nothing has been burned yet today), which would format as "steady"
+    // regardless of unit and defeat this test's own point.
+    advance(state, world, 30);
+    const html = stocksHtml(state, world, calendar(state.minute, state.startDoy), { rateDisplay: "game" });
+    const food = html.slice(html.indexOf('data-stock="food"'));
+    expect(food).toMatch(/[\d.]+ days/);
+    expect(food).toContain("kcal/h");
+    expect(food).not.toContain("days/h");
   });
 });
 

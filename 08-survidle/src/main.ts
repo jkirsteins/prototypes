@@ -266,6 +266,18 @@ let hoverTarget: MapTarget | null = null;
 let lastMapKey = "";
 let lastWeatherKey = "";
 /**
+ * The three separate claims on the stocks strip's open group. `ui.stockOpen`
+ * (what the panels actually read) is derived from these by `syncStockOpen`
+ * rather than written by a handler directly, because a mouse leaving a
+ * hovered button must not close a group a tab still holds focus on, and a
+ * tap toggling its own claim must not be undone by a browser that also
+ * hands the tapped button native keyboard focus. A tap outranks focus,
+ * which outranks a bare hover.
+ */
+let stockTap: StockGroupId | null = null;
+let stockFocus: StockGroupId | null = null;
+let stockHover: StockGroupId | null = null;
+/**
  * Shows or hides an element only when that changes it. `hidden` set to the
  * value it already holds still records a mutation and invalidates style,
  * and this runs for every pane on every render.
@@ -299,6 +311,11 @@ function renderStockPanel(cal = calendar(state.minute, state.startDoy)) {
   const panel = document.getElementById("stockpanel")!;
   setHidden(panel, ui.stockOpen === null);
   if (ui.stockOpen !== null) setPanel("stockpanel", stockPanelHtml(state, world, cal, ui, ui.stockOpen));
+}
+/** Recomputes `ui.stockOpen` from the tap, focus and hover claims and draws it. */
+function syncStockOpen() {
+  ui.stockOpen = stockTap ?? stockFocus ?? stockHover;
+  renderStockPanel();
 }
 // Match the existing layout breakpoint; content height never changes page size.
 function opportunityPageSize(): number { return window.matchMedia("(max-width: 700px)").matches ? 6 : 8; }
@@ -1177,45 +1194,67 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     }
   });
 }
-// The opened stock group: hover and focus show it, leaving either clears
-// it, and a click toggles it so a phone can tap. One element in the markup,
-// shown and hidden - the same pattern #maptip uses for the board.
+// The opened stock group: a mouse hover or a keyboard focus shows it,
+// leaving either restores whatever the other still claims rather than
+// closing outright, and a click toggles its own claim so a phone can tap.
+// One element in the markup, shown and hidden - the same pattern #maptip
+// uses for the board.
 {
   const stocks = document.getElementById("stocks")!;
   const stockBtn = (ev: Event) => (ev.target as HTMLElement | null)?.closest?.("[data-stock]") as HTMLElement | null;
+  // Touch is excluded from both ends of hover, not just the leaving half
+  // #map's own pointerout/pointerleave guard against (ev.pointerType ===
+  // "touch"): there a stray touch only ever clears a hover nothing else
+  // reads, but here a touch's synthetic pointerover would otherwise open a
+  // group hover never lets go of again (its matching pointerout is the
+  // very thing being excluded), standing in for the tap even after the tap
+  // itself toggles off.
   stocks.addEventListener("pointerover", (ev) => {
+    if (ev.pointerType === "touch") return;
     const btn = stockBtn(ev);
     if (!btn) return;
-    ui.stockOpen = btn.dataset.stock as StockGroupId;
-    renderStockPanel();
+    stockHover = btn.dataset.stock as StockGroupId;
+    syncStockOpen();
   });
   stocks.addEventListener("pointerout", (ev) => {
+    if (ev.pointerType === "touch") return;
     const from = stockBtn(ev);
     const to = (ev.relatedTarget as HTMLElement | null)?.closest?.("[data-stock]");
     if (from && from !== to) {
-      ui.stockOpen = null;
-      renderStockPanel();
+      stockHover = null;
+      syncStockOpen();
     }
   });
   stocks.addEventListener("focusin", (ev) => {
     const btn = stockBtn(ev);
     if (!btn) return;
-    ui.stockOpen = btn.dataset.stock as StockGroupId;
-    renderStockPanel();
+    stockFocus = btn.dataset.stock as StockGroupId;
+    syncStockOpen();
   });
   stocks.addEventListener("focusout", (ev) => {
     const to = (ev.relatedTarget as HTMLElement | null)?.closest?.("[data-stock]");
     if (!to) {
-      ui.stockOpen = null;
-      renderStockPanel();
+      stockFocus = null;
+      syncStockOpen();
     }
   });
   stocks.addEventListener("click", (ev) => {
     const btn = stockBtn(ev);
     if (!btn) return;
     const id = btn.dataset.stock as StockGroupId;
-    ui.stockOpen = ui.stockOpen === id ? null : id;
-    renderStockPanel();
+    if (stockTap === id) {
+      // Closing this tap's own claim. Many browsers also hand a clicked
+      // button native keyboard focus, which would otherwise outrank hover
+      // and leave the panel stuck open on a claim the tap itself never
+      // made, so that claim is dropped with it. A live hover is left
+      // alone: untouched, it is what keeps the panel open through a mouse
+      // click on a button already being hovered.
+      stockTap = null;
+      if (stockFocus === id) stockFocus = null;
+    } else {
+      stockTap = id;
+    }
+    syncStockOpen();
   });
 }
 render();
