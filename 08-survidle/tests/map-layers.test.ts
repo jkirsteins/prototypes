@@ -153,7 +153,7 @@ describe("the map's compositing layers", () => {
     expect(weatherGlyphChar(17, 12, 34, "snow", 0)).toMatch(/[.*+]/);
     expect(rule(".grid .c.wx-cloud, .grid .c.wx-fog, .grid .c.wx-rain, .grid .c.wx-snowing"))
       .toContain("pointer-events: auto");
-    expect(rule(".effects")).toContain("pointer-events: none");
+    expect(rule(".scroll-x > .effects")).toContain("pointer-events: none");
     expect(rule(".grid .c .cell-signal")).toContain("z-index: var(--map-signal)");
   });
 
@@ -239,6 +239,59 @@ describe("the map's compositing layers", () => {
       expect(z(cue)).toBeGreaterThan(z(map.querySelector(".walk")!));
       expect(z(cue)).toBeLessThan(z(map.querySelector(".maptools")!));
       expect(getComputedStyle(cue).pointerEvents).toBe("none");
+    } finally {
+      sheet.remove();
+      map.remove();
+    }
+  });
+
+  it("keeps the effects canvas inside the grid's own isolated stacking context, under the route, the marks and a startle", () => {
+    // happy-dom implements neither elementsFromPoint nor real layout
+    // (getBoundingClientRect returns all zeros here), so this cannot hit-test
+    // a screen point the way a real browser can. What it can prove is the
+    // two facts that decide paint order under the CSS stacking rules once a
+    // screen point is off the table: the canvas sits inside the very
+    // isolation: isolate boundary the route, the marks and the startle cue
+    // share, rather than outside it - the actual defect, since a sibling of
+    // #mapdyn is compared in a different context and its z-index does
+    // nothing there - and its resolved z-index is the lowest of the four
+    // within that shared context.
+    expect(document.elementsFromPoint).toBeUndefined();
+    const { state, world } = newGame(79);
+    const ui = newUiState();
+    ui.zoom = 0;
+    enqueueWildlifeStartle(ui, {
+      id: "order-startle", subjectId: 998,
+      source: { xM: state.player.xM, yM: state.player.yM },
+      bearingRad: 0, distanceM: 45, uncertaintyM: 0,
+      perception: { kind: "heard", identification: "unknown", uncertaintyM: 0 },
+      terrain: "spruce", body: "light", group: "group", logText: "Something crashes away.",
+    }, 1000);
+    const sheet = document.createElement("style");
+    sheet.textContent = css;
+    document.head.append(sheet);
+    const map = document.createElement("div");
+    map.id = "mapdyn";
+    map.innerHTML = mapHtml(world, state, ui, calendar(state.minute, state.startDoy), 1100);
+    document.body.append(map);
+    try {
+      const scrollX = map.querySelector(".scroll-x")!;
+      const effects = map.querySelector("#effects")!;
+      const grid = map.querySelector(".grid")!;
+      const walk = map.querySelector(".walk")!;
+      const player = map.querySelector(".mk-player")!;
+      const startle = map.querySelector(".wildlife-startle")!;
+      expect(getComputedStyle(scrollX).isolation).toBe("isolate");
+      // The regression this guards: a sibling of #mapdyn would fail every
+      // one of these three, since it would sit outside .scroll-x entirely.
+      expect(effects.parentElement).toBe(scrollX);
+      expect(grid.parentElement).toBe(scrollX);
+      expect(walk.parentElement).toBe(grid);
+      expect(startle.parentElement).toBe(grid);
+      const z = (element: Element) => Number(getComputedStyle(element).zIndex);
+      expect(z(effects)).toBeLessThan(z(walk));
+      expect(z(walk)).toBeLessThan(z(player));
+      expect(z(player)).toBeLessThan(z(startle));
     } finally {
       sheet.remove();
       map.remove();
@@ -341,8 +394,8 @@ describe("the map's compositing layers", () => {
     // the main thread the same handful of fillRect calls whether it is one
     // cell or two hundred, rather than an element and a running animation
     // per cell per ripple.
-    expect(rule(".effects")).toContain("position: absolute");
-    expect(rule(".effects")).toContain("pointer-events: none");
+    expect(rule(".scroll-x > .effects")).toContain("position: absolute");
+    expect(rule(".scroll-x > .effects")).toContain("pointer-events: none");
     // A test aid: ?shimmer= scales the wall clock updateEffects reads, so the
     // pattern keeps its shape and only its speed changes.
     expect(readFileSync("src/main.ts", "utf8")).toContain('params.get("shimmer")');

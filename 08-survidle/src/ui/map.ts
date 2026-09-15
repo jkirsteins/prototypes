@@ -734,25 +734,33 @@ function reducedMotionEffects(): boolean {
   return typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function ensureEffectsCanvasBox(canvas: HTMLCanvasElement, grid: HTMLElement, mapEl: HTMLElement, cssW: number, cssH: number): CanvasRenderingContext2D | null {
+/**
+ * Sizes the backing buffer in device pixels and sets a transform whose
+ * translation is the grid's own offset inside the canvas's box, so every
+ * draw call below can still use plain cell coordinates (`gx * px`,
+ * `gy * line`) regardless of where the grid actually sits.
+ *
+ * The canvas fills `.scroll-x` (`inset: 0` in the stylesheet, the same
+ * technique `.shade` uses), which can be wider or taller than the grid it
+ * draws once the grid is centred in a bigger panel - `place-items: center`
+ * is what centres it, and a canvas has no way to ask that layout where it
+ * put things except by measuring.
+ */
+function ensureEffectsCanvasBox(canvas: HTMLCanvasElement, grid: HTMLElement): CanvasRenderingContext2D | null {
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
   const dpr = (typeof window !== "undefined" ? window.devicePixelRatio : 1) || 1;
-  // The grid is centred inside the map panel and can be narrower than it, so
-  // the canvas is positioned over the grid's own box rather than the panel's.
-  const gridRect = grid.getBoundingClientRect();
-  const mapRect = mapEl.getBoundingClientRect();
-  const left = Math.round(gridRect.left - mapRect.left);
-  const top = Math.round(gridRect.top - mapRect.top);
-  if (canvas.style.left !== `${left}px`) canvas.style.left = `${left}px`;
-  if (canvas.style.top !== `${top}px`) canvas.style.top = `${top}px`;
-  if (canvas.style.width !== `${cssW}px`) canvas.style.width = `${cssW}px`;
-  if (canvas.style.height !== `${cssH}px`) canvas.style.height = `${cssH}px`;
-  const pixelW = Math.max(1, Math.round(cssW * dpr));
-  const pixelH = Math.max(1, Math.round(cssH * dpr));
+  const boxW = canvas.clientWidth || grid.clientWidth;
+  const boxH = canvas.clientHeight || grid.clientHeight;
+  const pixelW = Math.max(1, Math.round(boxW * dpr));
+  const pixelH = Math.max(1, Math.round(boxH * dpr));
   if (canvas.width !== pixelW) canvas.width = pixelW;
   if (canvas.height !== pixelH) canvas.height = pixelH;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const canvasRect = canvas.getBoundingClientRect();
+  const gridRect = grid.getBoundingClientRect();
+  const offsetX = gridRect.left - canvasRect.left;
+  const offsetY = gridRect.top - canvasRect.top;
+  ctx.setTransform(dpr, 0, 0, dpr, dpr * offsetX, dpr * offsetY);
   return ctx;
 }
 
@@ -819,16 +827,20 @@ export function updateEffects(root: ParentNode = document): void {
   const model = currentEffects;
   const canvas = root.querySelector<HTMLCanvasElement>("#effects");
   const grid = root.querySelector<HTMLElement>("#mapdyn .grid");
-  const mapEl = root.querySelector<HTMLElement>("#map");
-  if (!model || !canvas || !grid || !mapEl) return;
+  if (!model || !canvas || !grid) return;
   const frozen = reducedMotionEffects();
   if (frozen && effectsFrozenKey === model.key) return;
   effectsFrozenKey = model.key;
-  const cssW = model.cols * model.px;
-  const cssH = model.rows * model.line;
-  const ctx = ensureEffectsCanvasBox(canvas, grid, mapEl, cssW, cssH);
+  const ctx = ensureEffectsCanvasBox(canvas, grid);
   if (!ctx) return;
-  ctx.clearRect(0, 0, cssW, cssH);
+  // The grid-offset transform ensureEffectsCanvasBox just set would clear
+  // only the grid's own corner of a canvas box that can be bigger than the
+  // grid, so this clears the whole backing buffer in device pixels first
+  // and restores that transform for the draws that follow.
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
   // ?shimmer= on the page sets this on the root to speed the wall clock up
   // for a screenshot or a test; the water layer is the only one it scales,
   // since it is the only one whose speed the stylesheet ever exposed.
@@ -1779,7 +1791,15 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // snow filters. Their anonymous identity and start time survive movement.
     return `<i aria-hidden="true" class="wildlife-startle ${event.perception.kind}${edge}" data-startle="${key}" style="--wildlife-start:${startedAtMs}ms;left:${Number(x.toFixed(2))}px;top:${Number(y.toFixed(2))}px">!</i>`;
   });
-  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}${animalMarkup.join("")}${startleMarkup.join("")}</div><i class="shade"></i></div>${tools}`);
+  // The canvas sits beside .grid rather than inside it, as a direct child of
+  // the isolated .scroll-x - the same stacking context .shade, the route
+  // line and every mark's z-index already share, so its own z-index (below,
+  // in style.css) is actually compared against theirs instead of against a
+  // context outside the isolation boundary. Keyed by id so a rebuild reuses
+  // the live node rather than tearing down its backing buffer; it carries no
+  // width or height attribute for the morph to fight over, since main.ts
+  // sets those as device pixels through the canvas.width/height properties.
+  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}${animalMarkup.join("")}${startleMarkup.join("")}</div><canvas id="effects" class="effects" aria-hidden="true"></canvas><i class="shade"></i></div>${tools}`);
   currentEffects = {
     cols: l.w, rows: l.h, px: l.px, line: l.line, font: l.font,
     seed: world.seed, zoom: z,

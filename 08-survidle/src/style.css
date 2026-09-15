@@ -515,18 +515,6 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   --map-startle: 5;
   --map-control: 6;
 }
-/* Water shimmer, cloud shadow and weather motion: painted above the grid's
-   own cells, at the layer their per-cell elements used to occupy - mapdyn's
-   own --map-weather, mirrored here as a literal because this canvas sits
-   beside mapdyn rather than inside it and so cannot read its custom
-   properties. Never takes the pointer, which the grid underneath still
-   owns; main.ts sizes and positions it over the grid's current box every
-   render tick. */
-.effects {
-  position: absolute;
-  z-index: 2;
-  pointer-events: none;
-}
 /* The world moves under the survivor; the viewport never pans. A fixed-size
    grid is centred and clipped, while any spare area carries the same grain
    as unknown ground instead of exposing the panel as a black bar. */
@@ -569,6 +557,18 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
      the cells selectable in the browser this was noticed in. */
   -webkit-user-select: none;
   user-select: none;
+}
+/* Water shimmer, cloud shadow and weather motion: mapHtml's own markup, a
+   direct child of .scroll-x so it shares this element's isolated stacking
+   context - the same one the route line, every mark and .shade itself
+   already share - and its --map-weather is therefore actually comparable
+   to their z-index rather than compared in some other context outside the
+   isolation boundary. Filled to the panel's own box, like .shade, since a
+   canvas has no layout of its own to size itself by; main.ts reads the
+   grid's offset inside that box every render tick rather than assuming the
+   two coincide. Never takes the pointer, which the grid underneath owns. */
+.scroll-x > .effects {
+  position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none;
 }
 /* The atmosphere covers the whole viewport, including synthetic unexplored padding. */
 .scroll-x > .shade {
