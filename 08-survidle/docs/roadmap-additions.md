@@ -1594,14 +1594,47 @@ browser used to do and the main thread now does: about 12 ms a draw for
 it is why the honest figure for the migration is 21 percent and not the
 10 percent an earlier reading gave while the canvas was mis-sized.
 
-Two sizing bugs got through the whole markup suite on the way, and both
-are worth remembering because neither is visible in markup. A canvas is a
-replaced element, so `inset: 0` with an auto width leaves it at its
-intrinsic 300 by 150 instead of stretching; and its backing buffer is a
+Three sizing bugs got through the whole markup suite on the way, and all
+three are worth remembering because none of them is visible in markup. A
+canvas is a replaced element, so `inset: 0` with an auto width leaves it
+at its intrinsic 300 by 150 instead of stretching; its backing buffer is a
 pair of attributes, so a morph that strips attributes the new markup does
-not carry will blank it on every rebuild. The shots harness now asserts
-the box against its host and the buffer against the box in device pixels,
-in a real browser, because that is the only place either is observable.
+not carry will blank it on every rebuild; and the board is not the panel's
+visible box.
+
+That third one survived the fix for the first two and the check written
+alongside them, because the check compared the canvas against its host's
+**visible** box and that comparison passed. `.scroll-x` clips a board
+taller than itself - 504 px of grid in a 262 px panel at the closest rung,
+which is the stylesheet's stated intent, "a fixed-size grid is centred and
+clipped". The intent also says the viewport never pans, and no game
+control pans it. The browser does. The grid is a focusable `role="grid"`
+whose 36 rows are walked by arrow-key inspection, and focusing a clipped
+cell scrolls it into view whatever `overflow: hidden` says: forty presses
+of the down arrow put the panel at `scrollTop` 243, and every layer
+absolutely positioned inside it went with it. Measured there, all seven
+live water cells the player was looking at fell outside the canvas
+entirely - `painted 0, off-buffer 7`. The night shade and the hour's tint
+had gone the same 243 px, so the scrolled board also lost its darkening.
+
+The fix is one measurement published as two inherited custom properties,
+`--board-w` and `--board-h`, which the canvas, the shade and the tint all
+size from - the tint being a pseudo element with no handle for JS to size
+directly. They are set on the panel rather than on the scroller because
+`setPanel` morphs the panel's children, and an inline style on the
+scroller itself would be dropped for a frame on every map rebuild. The
+cover is measured from the grid and the panel and never from the panel's
+own `scrollHeight`, because an absolutely positioned child counts towards
+that and a layer sized from its own contribution ratchets itself bigger
+every frame.
+
+The lesson for the check, rather than for the code: an assertion that
+compares a layer against the box it already has will pass for the same
+reason the bug exists. The shots harness now asserts the canvas against
+the **board** - the visible box or the grid's full extent, whichever is
+bigger - and then scrolls the panel to its limit and asserts the canvas
+still spans what the player can see. Reverted against the unfixed code it
+fails on the first scenario with `782x262 over a board of 792x504`.
 
 The conclusion the numbers force: the game draws a continuously animated
 scene through a document, and a document is the wrong instrument for that.

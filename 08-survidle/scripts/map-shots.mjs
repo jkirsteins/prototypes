@@ -138,19 +138,30 @@ async function main() {
         maxCloudShadowAlpha: Math.max(0, ...effects.shadow.map((cell) => cell.alpha)),
         overlayHidden: document.querySelector('#overlay').hidden,
         // The effects canvas has to cover the board it draws on, and a
-        // canvas can fail that two ways a markup test cannot see. It is a
+        // canvas can fail that three ways a markup test cannot see. It is a
         // replaced element, so inset alone leaves it at its intrinsic
-        // 300 by 150 unless a width and height are stated; and its backing
+        // 300 by 150 unless a width and height are stated; its backing
         // buffer is a pair of attributes a morph will strip if the markup
-        // does not carry them. Either one leaves the water shimmering in a
-        // corner and the rest of the board still.
+        // does not carry them; and the board is not the panel's visible
+        // box, because the panel clips a taller grid and scrolls it when
+        // arrow-key inspection focuses a clipped cell. Any of the three
+        // leaves water the player is looking at with no shimmer on it.
         effectsBox: (() => {
           const canvas = document.querySelector('#effects');
           const host = document.querySelector('#mapdyn .scroll-x');
-          if (!canvas || !host) return null;
+          const grid = document.querySelector('#mapdyn .grid');
+          if (!canvas || !host || !grid) return null;
           const dpr = window.devicePixelRatio || 1;
+          const hostRect = host.getBoundingClientRect();
+          const gridRect = grid.getBoundingClientRect();
+          // The board: the visible box, or the grid's own extent in the
+          // panel's scrolled content coordinates where the grid is bigger.
+          const right = gridRect.right - hostRect.left - host.clientLeft + host.scrollLeft;
+          const bottom = gridRect.bottom - hostRect.top - host.clientTop + host.scrollTop;
           return {
             cssWidth: Math.round(canvas.clientWidth), cssHeight: Math.round(canvas.clientHeight),
+            wantWidth: Math.max(Math.round(host.clientWidth), Math.ceil(right)),
+            wantHeight: Math.max(Math.round(host.clientHeight), Math.ceil(bottom)),
             hostWidth: Math.round(host.clientWidth), hostHeight: Math.round(host.clientHeight),
             bufferWidth: canvas.width, bufferHeight: canvas.height,
             wantBufferWidth: Math.max(1, Math.round(canvas.clientWidth * dpr)),
@@ -176,8 +187,8 @@ async function main() {
     assert(facts.snowConditionGlyphs === 0, `${name}: meadow terrain was replaced by a snow condition glyph`);
     assert(facts.maxCloudShadowAlpha <= 0.14, `${name}: cloud shadow exceeded the 14 percent ceiling (${facts.maxCloudShadowAlpha})`);
     assert(facts.effectsBox !== null, `${name}: no effects canvas on the board`);
-    assert(facts.effectsBox.cssWidth === facts.effectsBox.hostWidth && facts.effectsBox.cssHeight === facts.effectsBox.hostHeight,
-      `${name}: the effects canvas does not cover the board (${facts.effectsBox.cssWidth}x${facts.effectsBox.cssHeight} over ${facts.effectsBox.hostWidth}x${facts.effectsBox.hostHeight})`);
+    assert(facts.effectsBox.cssWidth === facts.effectsBox.wantWidth && facts.effectsBox.cssHeight === facts.effectsBox.wantHeight,
+      `${name}: the effects canvas does not cover the board (${facts.effectsBox.cssWidth}x${facts.effectsBox.cssHeight} over a board of ${facts.effectsBox.wantWidth}x${facts.effectsBox.wantHeight}, panel ${facts.effectsBox.hostWidth}x${facts.effectsBox.hostHeight})`);
     assert(facts.effectsBox.bufferWidth === facts.effectsBox.wantBufferWidth && facts.effectsBox.bufferHeight === facts.effectsBox.wantBufferHeight,
       `${name}: the effects canvas's backing buffer is not its box in device pixels (${facts.effectsBox.bufferWidth}x${facts.effectsBox.bufferHeight}, wanted ${facts.effectsBox.wantBufferWidth}x${facts.effectsBox.wantBufferHeight})`);
     if (name === "approaching-rain" || name === "windward-lee") {
@@ -192,6 +203,30 @@ async function main() {
         `${name}: safe ice did not replace liquid depth colors (${facts.safeIceBackgrounds.join(', ')})`);
     }
     if (name === "valley-fog" || name === "obscured") assert(facts.fog > 0, `${name}: simulation produced no fog cells`);
+    // Covering the board is only worth asserting because the panel scrolls:
+    // check the state itself rather than trusting the arithmetic above. A
+    // pixel of tolerance is the panel's own rounding - a viewport laid out
+    // at 261.72 px reports a 262 px client box and one more pixel of scroll
+    // range than its content has, and the sliver that exposes is panel
+    // background below the last glyph row, not board.
+    const scrolledCover = await evalJs(`(() => {
+      const host = document.querySelector('#mapdyn .scroll-x');
+      const canvas = document.querySelector('#effects');
+      if (!host || !canvas) return null;
+      const before = [host.scrollLeft, host.scrollTop];
+      host.scrollLeft = host.scrollWidth; host.scrollTop = host.scrollHeight;
+      const h = host.getBoundingClientRect(), c = canvas.getBoundingClientRect();
+      const out = {
+        scrolled: [Math.round(host.scrollLeft), Math.round(host.scrollTop)],
+        top: Math.round(c.top - h.top), left: Math.round(c.left - h.left),
+        bottom: Math.round(c.bottom - h.bottom), right: Math.round(c.right - h.right),
+      };
+      host.scrollLeft = before[0]; host.scrollTop = before[1];
+      return out;
+    })()`);
+    assert(scrolledCover !== null, `${name}: no effects canvas to scroll`);
+    assert(scrolledCover.top <= 1 && scrolledCover.left <= 1 && scrolledCover.bottom >= -1 && scrolledCover.right >= -1,
+      `${name}: the effects canvas scrolled off the board (at scroll ${scrolledCover.scrolled.join(',')} it sat ${scrolledCover.top} from the top, ${scrolledCover.bottom} from the bottom)`);
     const image = await send("Page.captureScreenshot", { format: "png", clip: { ...facts.box, scale: 2 } });
     const imageBytes = Buffer.from(image.result.data, "base64");
     writeFileSync(`${OUT}/${name}.png`, imageBytes);

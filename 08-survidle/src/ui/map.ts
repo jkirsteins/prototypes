@@ -735,16 +735,55 @@ function reducedMotionEffects(): boolean {
 }
 
 /**
+ * How much of `.scroll-x` an overlay has to cover to cover the board: the
+ * panel's own visible box, or the grid's full extent where the grid is
+ * taller or wider and the panel clips it.
+ *
+ * `inset: 0` gives an overlay the visible box alone, which looks right
+ * until something scrolls the panel. The stylesheet says the viewport
+ * never pans, and no game control pans it - but the grid is a focusable
+ * `role="grid"` whose 36 rows are walked by arrow-key inspection, and
+ * focusing a clipped cell makes the browser scroll it into view whatever
+ * `overflow: hidden` says. An overlay sized to the visible box is
+ * absolutely positioned inside that scroller, so it scrolls away with it:
+ * measured at the closest rung, a board 504 px tall in a 262 px panel put
+ * the whole effects canvas and the whole night shade 243 px above the
+ * viewport, leaving the water the player was looking at with no shimmer
+ * and the night with no darkening.
+ *
+ * Measured from the host and the grid, never from the host's own
+ * `scrollWidth`/`scrollHeight`: an absolutely positioned child counts
+ * towards those, so sizing one from them would let it ratchet itself
+ * bigger every frame.
+ */
+function boardCover(host: HTMLElement, grid: HTMLElement): { w: number; h: number } {
+  // The grid's far edge in the panel's own scrolled content coordinates,
+  // taken from the fractional rects and rounded up. `offsetWidth` and
+  // `offsetHeight` are whole pixels and round the wrong way here: a panel
+  // laid out at 261.72 px puts the grid's bottom at a fraction the integer
+  // properties lose, and the lost fraction is a bare strip along the edge
+  // of the board at the scroll limit.
+  const hostRect = host.getBoundingClientRect();
+  const gridRect = grid.getBoundingClientRect();
+  const right = gridRect.right - hostRect.left - host.clientLeft + host.scrollLeft;
+  const bottom = gridRect.bottom - hostRect.top - host.clientTop + host.scrollTop;
+  return {
+    w: Math.max(host.clientWidth, Math.ceil(right)),
+    h: Math.max(host.clientHeight, Math.ceil(bottom)),
+  };
+}
+
+/**
  * Sizes the backing buffer in device pixels and sets a transform whose
  * translation is the grid's own offset inside the canvas's box, so every
  * draw call below can still use plain cell coordinates (`gx * px`,
  * `gy * line`) regardless of where the grid actually sits.
  *
- * The canvas fills `.scroll-x` (`inset: 0` in the stylesheet, the same
- * technique `.shade` uses), which can be wider or taller than the grid it
- * draws once the grid is centred in a bigger panel - `place-items: center`
- * is what centres it, and a canvas has no way to ask that layout where it
- * put things except by measuring.
+ * The canvas covers the board area `--board-w`/`--board-h` hand it, which
+ * can be wider or taller than the grid it draws once the grid is centred
+ * in a bigger panel - `place-items: center` is what centres it, and a
+ * canvas has no way to ask that layout where it put things except by
+ * measuring.
  */
 function ensureEffectsCanvasBox(canvas: HTMLCanvasElement, grid: HTMLElement): CanvasRenderingContext2D | null {
   const ctx = canvas.getContext("2d");
@@ -826,8 +865,21 @@ function drawShadows(ctx: CanvasRenderingContext2D, model: EffectsModel): void {
 export function updateEffects(root: ParentNode = document): void {
   const model = currentEffects;
   const canvas = root.querySelector<HTMLCanvasElement>("#effects");
+  const host = root.querySelector<HTMLElement>("#mapdyn .scroll-x");
   const grid = root.querySelector<HTMLElement>("#mapdyn .grid");
-  if (!model || !canvas || !grid) return;
+  if (!model || !canvas || !host || !grid) return;
+  // Every layer over the board is sized from this one pair of properties:
+  // the canvas, the night shade and the hour's tint, which is a pseudo
+  // element with no handle for JS to size directly. They go on the panel
+  // rather than on `.scroll-x` because `setPanel` morphs the panel's
+  // children and would drop an inline style from the scroller itself,
+  // blanking the cover for a frame on every map rebuild.
+  const cover = boardCover(host, grid);
+  const panel = root.querySelector<HTMLElement>("#mapdyn");
+  if (panel) {
+    if (panel.style.getPropertyValue("--board-w") !== `${cover.w}px`) panel.style.setProperty("--board-w", `${cover.w}px`);
+    if (panel.style.getPropertyValue("--board-h") !== `${cover.h}px`) panel.style.setProperty("--board-h", `${cover.h}px`);
+  }
   const frozen = reducedMotionEffects();
   if (frozen && effectsFrozenKey === model.key) return;
   effectsFrozenKey = model.key;

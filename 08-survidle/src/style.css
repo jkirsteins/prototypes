@@ -570,14 +570,23 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 /* A canvas is a replaced element, so inset alone leaves it at its intrinsic
    300 by 150 rather than stretching it: width and height have to be stated
    or it draws into a corner of the board and the rest of the water never
-   moves. */
+   moves.
+
+   100% is the wrong box, and is only the fallback here. Every layer over
+   the board is absolutely positioned inside a panel that clips a taller
+   board, so 100% is the visible box and scrolls away with the panel when
+   arrow-key inspection focuses a clipped cell - taking the shimmer, the
+   night shade and the hour's tint off the screen together. `boardCover` in
+   map.ts measures the board every tick and publishes it as --board-w and
+   --board-h; see the reasoning there. */
 .scroll-x > .effects {
-  position: absolute; inset: 0; width: 100%; height: 100%;
+  position: absolute; inset: 0; width: var(--board-w, 100%); height: var(--board-h, 100%);
   z-index: var(--map-weather); pointer-events: none;
 }
 /* The atmosphere covers the whole viewport, including synthetic unexplored padding. */
 .scroll-x > .shade {
-  position: absolute; inset: 0; z-index: var(--map-shade); pointer-events: none;
+  position: absolute; inset: 0; width: var(--board-w, 100%); height: var(--board-h, 100%);
+  z-index: var(--map-shade); pointer-events: none;
   background: #000;
   opacity: calc(1 - var(--bright));
   transition: opacity 0.5s linear;
@@ -638,12 +647,14 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 /* The light of the hour, laid over the glyphs. */
 .scroll-x::after {
   content: ""; position: absolute; inset: 0; z-index: var(--map-shade); pointer-events: none;
+  width: var(--board-w, 100%); height: var(--board-h, 100%);
   background: var(--tint); opacity: var(--tint-a);
   mix-blend-mode: hard-light;
   transition: background 0.5s linear, opacity 0.5s linear;
 }
 .scroll-x::before {
   content: ""; position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none;
+  width: var(--board-w, 100%); height: var(--board-h, 100%);
 }
 /* Local atmosphere. Every glyph carries the simulation sample at its own
    coordinate. Fog, cloud and precipitation motion are drawn on the effects
