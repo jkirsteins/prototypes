@@ -567,8 +567,13 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
    canvas has no layout of its own to size itself by; main.ts reads the
    grid's offset inside that box every render tick rather than assuming the
    two coincide. Never takes the pointer, which the grid underneath owns. */
+/* A canvas is a replaced element, so inset alone leaves it at its intrinsic
+   300 by 150 rather than stretching it: width and height have to be stated
+   or it draws into a corner of the board and the rest of the water never
+   moves. */
 .scroll-x > .effects {
-  position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none;
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  z-index: var(--map-weather); pointer-events: none;
 }
 /* The atmosphere covers the whole viewport, including synthetic unexplored padding. */
 .scroll-x > .shade {
