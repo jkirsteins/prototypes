@@ -459,9 +459,14 @@ different directions, with wavelengths of 4, 2.5 and 6 cells and periods of
 each wave comes from its position, with up to a radian of seeded jitter, and
 each wave peaks at its own seeded brightness, so neighbours move together
 without the sheet sliding as one texture. Each wave is an overlay in the
-cell's lit blue whose opacity the compositor animates, so a lake costs the
-main thread no paint; at the two close zoom rungs the peak is halved so a
-big cell does not wash out its detail glyphs. Ice, marked cells and
+cell's lit blue whose opacity is animated; at the two close zoom rungs the
+peak is halved so a big cell does not wash out its detail glyphs. Three
+overlays per water cell is not free, whatever the compositor does with the
+opacity itself: measured on a live page, disabling the shimmer alone drops
+style recalculation from 3.59 to 0.52 seconds per thirty, and the whole
+frame from 37 to 15 percent of a core. It is the single most expensive
+thing the game draws, and moving it to the effects canvas is what the
+render-surface migration is for. Ice, marked cells and
 remembered water lie still, and reduced motion turns it off. `?shimmer=2`
 is a test aid that runs all three waves twice as fast; it is not a game
 feature.

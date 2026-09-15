@@ -1549,11 +1549,30 @@ being asked of it, in headless Chrome with no GPU:
 Style recalculation costs three and a half times everything the simulation
 and the panels do together. The JS heap sits between 18 and 21 MB and
 collects cleanly, so what Safari ran out of is not the heap: it is the
-document. The page holds 14,279 elements, of which 4,226 are SVG star
+document. The page held 14,279 elements, of which 4,226 were SVG star
 circles, 567 are water-shimmer overlays at three per water cell, and 192 are
-cloud shadows. `prefers-reduced-motion` changes almost nothing, because the
-stars carry transitions rather than animations and the reduced-motion block
-only names animations.
+cloud shadows.
+
+The first reading blamed the star field, and that was wrong. Stage one
+removed all 4,226 of those circles - the element count fell to 9,626 and the
+animated count from 5,203 to 828 - and style recalculation did not move:
+3.40 s to 3.59 s per 30 s, with script rising from 0.94 s to 1.62 s because
+a canvas draw costs JS. Stage one's win is element count and memory, which
+is what the browser ran out of, and not recalculation.
+
+Isolating the real cause rather than guessing a second time:
+
+| what was disabled | recalc per 30 s | total task |
+| --- | ---: | ---: |
+| nothing | 3.59 s | 37% of a core |
+| every animation and transition | 0.01 s | 11% |
+| the water shimmer alone, 567 elements | 0.52 s | 15% |
+
+**The water shimmer carries about 86 percent of all style recalculation in
+this game.** Three stacked overlay elements per water cell, each animating.
+Everything else that moves costs about half a second between them. That
+makes the effects layer, which owns the shimmer, the stage that actually
+pays, and it is the reason to build it next rather than last.
 
 The conclusion the numbers force: the game draws a continuously animated
 scene through a document, and a document is the wrong instrument for that.
@@ -1622,12 +1641,15 @@ Each stage should be shippable and separately measurable, and the profile
 should be re-read after each rather than at the end.
 
 1. **The sky canvas first.** It is self-contained, purely decorative, has no
-   hit testing and no state, and it is the largest single cost. It proves
-   the pattern on the easiest surface.
+   hit testing and no state, so it proves the pattern on the easiest
+   surface. It was expected to be the largest single cost and was not; what
+   it removed was four thousand elements and their memory.
 2. **The effects canvas next**, taking the water shimmer, the cloud shadows
    and the precipitation ripples off the map cells. This removes the
    per-cell overlay elements while the map itself stays a document, so it
-   can be judged on its own.
+   can be judged on its own. The measurements above make this the stage
+   that carries the win: the shimmer alone is 86 percent of the
+   recalculation, so this is where the frame is bought back.
 3. **The static map canvas last**, because it carries the hit testing, the
    glyph drawing and the theming, and it is the stage that can regress the
    feel of the game. By the time it starts, the two cheaper stages will have
