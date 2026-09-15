@@ -1574,6 +1574,35 @@ Everything else that moves costs about half a second between them. That
 makes the effects layer, which owns the shimmer, the stage that actually
 pays, and it is the reason to build it next rather than last.
 
+### What the first two stages actually bought
+
+Measured on a settled page, seed 17, once both stages had landed and the
+effects canvas was drawing the whole board rather than a corner of it:
+
+| | before | after |
+| --- | ---: | ---: |
+| style recalculation per 30 s | 3.40 s | 0.15 s |
+| total frame cost | 38% of a core | 21% |
+| script per 30 s | 0.94 s | 3.79 s |
+| animated elements | 5,203 | 41 |
+| DOM elements | 14,279 | 8,833 |
+
+Recalculation is gone, which was the point, and the frame is a little
+under twice as cheap. Script trebled, because a canvas draw is work the
+browser used to do and the main thread now does: about 12 ms a draw for
+2,592 cells. That is the next thing to optimise rather than a defect, and
+it is why the honest figure for the migration is 21 percent and not the
+10 percent an earlier reading gave while the canvas was mis-sized.
+
+Two sizing bugs got through the whole markup suite on the way, and both
+are worth remembering because neither is visible in markup. A canvas is a
+replaced element, so `inset: 0` with an auto width leaves it at its
+intrinsic 300 by 150 instead of stretching; and its backing buffer is a
+pair of attributes, so a morph that strips attributes the new markup does
+not carry will blank it on every rebuild. The shots harness now asserts
+the box against its host and the buffer against the box in device pixels,
+in a real browser, because that is the only place either is observable.
+
 The conclusion the numbers force: the game draws a continuously animated
 scene through a document, and a document is the wrong instrument for that.
 Every moving pixel costs a style resolution on an element that also carries
