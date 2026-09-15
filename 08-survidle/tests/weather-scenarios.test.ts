@@ -109,7 +109,8 @@ describe("simulation-backed weather screenshot fixtures", () => {
     // to be a per-patch glyph and not a sheet laid over the map.
     const shot = weatherShotFixture("valley-fog");
     const html = mapHtml(shot.world, shot.state, { ...newUiState(), zoom: shot.definition.zoom }, shot.cal);
-    expect(html).toContain("fog-ripple");
+    // Fog is a canvas glyph now (map.ts, drawGlyphs), one per foggy cell in the model.
+    expect(effectsSnapshot()!.glyph.some((cell) => cell.kind === "fog")).toBe(true);
     expect(html).not.toContain('class="fog-field"');
   });
 

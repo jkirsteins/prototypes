@@ -86,20 +86,16 @@ async function main() {
     const facts = await evalJs(`(() => {
       const cells = [...document.querySelectorAll('#mapdyn .c')];
       const weatherValues = new Set(cells.map((cell) => cell.style.getPropertyValue('--wx-fog') + ':' + cell.style.getPropertyValue('--wx-fall')));
-      const fogCells = cells.filter((cell) => cell.classList.contains('wx-fog'));
-      const cloudyCells = cells.filter((cell) => cell.classList.contains('wx-cloud'));
       const glyphWeatherCells = cells.filter((cell) => cell.classList.contains('wx-glyph'));
       const safeIceCells = cells.filter((cell) => cell.matches('.t-water.ice-safe:not(.mk)'));
       const waterTerrain = cells.filter((cell) => cell.matches('.t-water:not(.mk)')).map((cell) => cell.querySelector('.terrain-visual')?.textContent ?? '');
       const snowyMeadowTerrain = cells.filter((cell) => cell.matches('.ground-snow.t-meadow:not(.mk)')).map((cell) => cell.querySelector('.terrain-visual')?.textContent ?? '');
       const ordinaryCells = cells.filter((cell) => !cell.matches('.bl, .br, .bt, .bb'));
-      const cloudShadowAlphas = [...document.querySelectorAll('#mapdyn .cloud-shadow')].map((shadow) => {
-        const color = getComputedStyle(shadow).backgroundColor;
-        const channels = color.match(/[0-9.]+/g) ?? [];
-        return channels.length === 4 ? Number(channels[3]) : 1;
-      });
-      const cloudShadowColors = [...new Set([...document.querySelectorAll('#mapdyn .cloud-shadow')]
-        .map((shadow) => getComputedStyle(shadow).backgroundColor))];
+      // Water shimmer, cloud shadow and weather motion are canvas draw calls
+      // now (map.ts, drawWaterShimmer/drawShadows/drawGlyphs); the model they
+      // draw from is what this harness reads instead of per-cell elements.
+      const effects = window.survidle.effects;
+      const glyphKinds = effects.glyph.reduce((counts, cell) => { counts[cell.kind] = (counts[cell.kind] ?? 0) + 1; return counts; }, {});
       const visibilityFootprint = cells
         .filter((cell) => cell.dataset.mapCell && !cell.matches('.fog, .void, .dim, .memory'))
         .map((cell) => cell.dataset.mapCell)
@@ -115,6 +111,9 @@ async function main() {
         rain: cells.filter((cell) => cell.classList.contains('wx-rain')).length,
         snow: cells.filter((cell) => cell.classList.contains('wx-snowing')).length,
         fog: cells.filter((cell) => cell.classList.contains('wx-fog')).length,
+        // A mark stays legible over its own weather, so a fogged cell that
+        // also carries one draws no canvas glyph for it (map.ts, mapHtml).
+        fogEligible: cells.filter((cell) => cell.classList.contains('wx-fog') && !cell.classList.contains('mk')).length,
         groundSnow: cells.filter((cell) => cell.classList.contains('ground-snow')).length,
         safeIce: safeIceCells.length,
         safeIceBackgrounds: [...new Set(safeIceCells.map((cell) => getComputedStyle(cell).backgroundColor))],
@@ -122,31 +121,21 @@ async function main() {
         snowConditionGlyphs: snowyMeadowTerrain.filter((glyphs) => glyphs.includes('*')).length,
         safeIceTerrainGlyphs: safeIceCells.filter((cell) => /[~-]/.test(cell.querySelector('.terrain-visual')?.textContent ?? '')).length,
         weatherValues: weatherValues.size,
-        fogFields: document.querySelectorAll('#mapdyn .fog-field').length,
-        fogGlyphCells: fogCells.filter((cell) => cell.querySelectorAll('.fog-ripple').length === 4).length,
-        fogGrayWashes: fogCells.filter((cell) => /(^|, )linear-gradient/.test(getComputedStyle(cell.querySelector('.cell-weather')).backgroundImage)).length,
-        fogWeatherBorders: fogCells.filter((cell) => getComputedStyle(cell.querySelector('.cell-weather')).borderStyle !== 'none').length,
-        fogCompositingLeaks: fogCells.filter((cell) => {
-          const style = getComputedStyle(cell);
-          return style.filter !== 'none' || style.opacity !== '1';
-        }).length,
+        fogGlyphModelCells: glyphKinds.fog ?? 0,
         explorationFeathers: cells.filter((cell) => cell.classList.contains('fog-edge')).length,
-        weatherGlyphOverlaps: glyphWeatherCells.filter((cell) => [...cell.querySelectorAll('.weather-ripple')]
-          .filter((glyph) => getComputedStyle(glyph).display !== 'none' && Number(getComputedStyle(glyph).opacity) > 0.001).length > 1).length,
+        weatherGlyphModelCells: effects.glyph.length,
         weatherTerrainLeaks: glyphWeatherCells.filter((cell) => !cell.matches('.mk, .has-map-signal') &&
           getComputedStyle(cell.querySelector('.terrain-visual')).visibility !== 'hidden').length,
-        weatherGradientCells: glyphWeatherCells.filter((cell) => getComputedStyle(cell.querySelector('.cell-weather')).backgroundImage !== 'none').length,
         cloudMode: document.querySelector('#mapdyn .grid').classList.contains('cloud-shadows') ? 'shadows' : 'glyphs',
-        cloudy: cloudyCells.length,
-        cloudShadowCells: cloudyCells.filter((cell) => cell.querySelector('.cloud-shadow')).length,
-        cloudGlyphCells: cloudyCells.filter((cell) => cell.querySelectorAll('.cloud-ripple').length === 4).length,
+        cloudy: cells.filter((cell) => cell.classList.contains('wx-cloud')).length,
+        cloudShadowModelCells: effects.shadow.length,
+        cloudGlyphModelCells: glyphKinds.cloud ?? 0,
         hiddenLiveWeather: cells.filter((cell) => cell.classList.contains('wx-local') && cell.matches('.fog, .memory, .dim')).length,
         ordinaryCellBorders: ordinaryCells.filter((cell) => {
           const style = getComputedStyle(cell);
           return [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => width !== '0px');
         }).length,
-        maxCloudShadowAlpha: Math.max(0, ...cloudShadowAlphas),
-        cloudShadowColors,
+        maxCloudShadowAlpha: Math.max(0, ...effects.shadow.map((cell) => cell.alpha)),
         overlayHidden: document.querySelector('#overlay').hidden,
         box: (() => { const r = document.querySelector('#mapdyn .scroll-x').getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }; })(),
       };
@@ -156,22 +145,16 @@ async function main() {
     assert(facts.unknown > 0 && facts.unknownWithTerrain === 0, `${name}: unknown terrain was revealed`);
     assert(facts.hiddenLiveWeather === 0, `${name}: live weather appeared outside known currently visible ground`);
     assert(facts.explorationFeathers === 0, `${name}: exploration edge retained a soft feather layer`);
-    assert(facts.weatherGlyphOverlaps === 0, `${name}: more than one atmospheric ASCII state was visible in a cell`);
     assert(facts.weatherTerrainLeaks === 0, `${name}: atmospheric and terrain glyphs were stacked in a cell`);
-    assert(facts.weatherGradientCells === 0, `${name}: weather retained a non-ASCII gradient texture`);
     if (facts.fog > 0) {
-      assert(facts.fogFields === 0, `${name}: fog escaped into a map-level display layer`);
-      assert(facts.fogGlyphCells === facts.fog, `${name}: fog cell omitted its ASCII animation states`);
-      assert(facts.fogGrayWashes === 0, `${name}: fog cell retained a rectangular gray wash`);
-      assert(facts.fogWeatherBorders === 0, `${name}: atmospheric fog drew a cell border`);
-      assert(facts.fogCompositingLeaks === 0, `${name}: discovery shading leaked onto cell-owned weather`);
+      assert(facts.fogGlyphModelCells === facts.fogEligible, `${name}: fog cell omitted its canvas glyph`);
     }
     assert(facts.cloudMode === "shadows", `${name}: cloud shadows were not enabled by default`);
-    assert(facts.cloudGlyphCells === 0, `${name}: default cloud mode also drew cloud glyphs`);
+    assert(facts.cloudGlyphModelCells === 0, `${name}: default cloud mode also drew cloud glyphs`);
     assert(facts.ordinaryCellBorders === 0, `${name}: ordinary map cells retained distinct borders`);
     assert(facts.waterConditionGlyphs === 0, `${name}: water terrain was replaced by an ice condition glyph`);
     assert(facts.snowConditionGlyphs === 0, `${name}: meadow terrain was replaced by a snow condition glyph`);
-    assert(facts.maxCloudShadowAlpha <= 0.14, `${name}: cloud shadow exceeded the 14 percent ceiling (${facts.maxCloudShadowAlpha}; ${facts.cloudShadowColors.join(', ')})`);
+    assert(facts.maxCloudShadowAlpha <= 0.14, `${name}: cloud shadow exceeded the 14 percent ceiling (${facts.maxCloudShadowAlpha})`);
     if (name === "approaching-rain" || name === "windward-lee") {
       assert(facts.weatherValues > 1, `${name}: local weather did not vary across the view`);
     }
@@ -211,7 +194,7 @@ async function main() {
     }
     if (name === "sunny-clouds") {
       assert(facts.rain === 0 && facts.snow === 0 && facts.fog === 0, "sunny-clouds: dry reference contained precipitation or fog");
-      assert(facts.cloudy > 0 && facts.cloudShadowCells === facts.cloudy, "sunny-clouds: broken clouds did not cast cell-owned shadows");
+      assert(facts.cloudy > 0 && facts.cloudShadowModelCells === facts.cloudy, "sunny-clouds: broken clouds did not cast cell-owned shadows");
       const shadowSignature = await evalJs(`[...document.querySelectorAll('#mapdyn .c.wx-cloud')]
         .map((cell) => cell.dataset.mapCell + ':' + cell.style.getPropertyValue('--wx-shadow'))
         .join('|')`);
@@ -228,7 +211,7 @@ async function main() {
       writeFileSync(`${OUT}/sunny-cloud-shadows-b.png`, Buffer.from(frameB.result.data, "base64"));
     }
     if (name === "approaching-rain") {
-      assert(facts.cloudy > 0 && facts.cloudShadowCells === facts.cloudy, "approaching-rain: clouds did not cast cell-owned shadows");
+      assert(facts.cloudy > 0 && facts.cloudShadowModelCells === facts.cloudy, "approaching-rain: clouds did not cast cell-owned shadows");
       const shadowImage = await send("Page.captureScreenshot", { format: "png", clip: { ...facts.box, scale: 2 } });
       writeFileSync(`${OUT}/cloud-shadows.png`, Buffer.from(shadowImage.result.data, "base64"));
       await evalJs(`(() => {
@@ -239,11 +222,14 @@ async function main() {
       const flavorFacts = await evalJs(`(() => {
         const grid = document.querySelector('#mapdyn .grid');
         const clouds = [...grid.querySelectorAll('.c.wx-cloud')];
+        const effects = window.survidle.effects;
         return {
           mode: grid.classList.contains('cloud-glyphs') ? 'glyphs' : 'shadows',
-          shadows: grid.querySelectorAll('.cloud-shadow').length,
-          glyphCells: clouds.filter((cell) => cell.querySelectorAll('.cloud-ripple').length === 4).length,
-          eligible: clouds.filter((cell) => !cell.matches('.wx-fog, .wx-rain, .wx-snowing')).length,
+          shadows: effects.shadow.length,
+          glyphCells: effects.glyph.filter((cell) => cell.kind === 'cloud').length,
+          // A mark stays legible over its own weather, so a cloudy cell that
+          // also carries one draws no canvas glyph for it (map.ts, mapHtml).
+          eligible: clouds.filter((cell) => !cell.matches('.wx-fog, .wx-rain, .wx-snowing, .mk')).length,
           stored: localStorage.getItem('survidle.map.cloud-shadows'),
           minute: window.survidle.state.minute,
           visible: window.survidle.weatherShot.visibleCells,
@@ -256,7 +242,7 @@ async function main() {
       })()`);
       assert(flavorFacts.mode === "glyphs", "approaching-rain: settings toggle did not select ASCII cloud flavor");
       assert(flavorFacts.shadows === 0, "approaching-rain: cloud shadows remained in ASCII flavor mode");
-      assert(flavorFacts.eligible > 0 && flavorFacts.glyphCells === flavorFacts.eligible, "approaching-rain: eligible cloud cells omitted ASCII animation states");
+      assert(flavorFacts.eligible > 0 && flavorFacts.glyphCells === flavorFacts.eligible, "approaching-rain: eligible cloud cells omitted their canvas glyph");
       assert(flavorFacts.stored === "false", "approaching-rain: cloud display preference was not persisted");
       assert(flavorFacts.minute === facts.minute, "approaching-rain: cloud setting changed simulation time");
       assert(flavorFacts.visible === facts.visible, "approaching-rain: cloud setting changed visibility");
@@ -268,8 +254,21 @@ async function main() {
       assert(await evalJs("document.querySelector('#mapdyn .grid').classList.contains('cloud-shadows')"), "approaching-rain: could not restore default cloud shadows");
     }
     if (name === "valley-fog") {
-      const rippleStyles = `(() => [...document.querySelectorAll('.fog-ripple')].slice(0, 32).map((ripple) => { const style = getComputedStyle(ripple); return style.opacity + ':' + style.transform; }).join('|'))()`;
-      const before = await evalJs(rippleStyles);
+      // Fog motion is a canvas draw now (map.ts, drawGlyphs): sample the
+      // pixels under a strip of the model's own fog cells rather than a
+      // ripple element's computed style.
+      const fogPixels = `(() => {
+        const canvas = document.getElementById('effects');
+        const ctx = canvas.getContext('2d');
+        const dpr = canvas.width / canvas.getBoundingClientRect().width || 1;
+        const cells = window.survidle.effects.glyph.filter((cell) => cell.kind === 'fog').slice(0, 32);
+        return cells.map((cell) => {
+          const x = Math.round((cell.gx * window.survidle.effects.px + window.survidle.effects.px / 2) * dpr);
+          const y = Math.round((cell.gy * window.survidle.effects.line + window.survidle.effects.line / 2) * dpr);
+          return [...ctx.getImageData(Math.max(0, x - 2), Math.max(0, y - 2), 4, 4).data].join(',');
+        }).join('|');
+      })()`;
+      const before = await evalJs(fogPixels);
       const unchanged = { minute: await evalJs("window.survidle.state.minute"), footprint: facts.visibilityFootprint };
       await send("Page.startScreencast", { format: "png", everyNthFrame: 1 });
       const frameA = await nextEvent("Page.screencastFrame");
@@ -278,7 +277,7 @@ async function main() {
       writeFileSync(`${OUT}/fog-frame-a.png`, frameABytes);
       await sleep(3200);
       await evalJs("new Promise((resolveFrame) => requestAnimationFrame(() => requestAnimationFrame(resolveFrame)))");
-      const after = await evalJs(rippleStyles);
+      const after = await evalJs(fogPixels);
       const frameB = await nextEvent("Page.screencastFrame");
       await send("Page.screencastFrameAck", { sessionId: frameB.params.sessionId });
       await send("Page.stopScreencast");
@@ -291,7 +290,7 @@ async function main() {
         .sort((a, b) => Number(a) - Number(b))
         .join(',')`);
       assert(animatedFootprint === unchanged.footprint, "fog animation changed the live visibility footprint");
-      assert(before !== after, "fog ripple computed style did not animate");
+      assert(before !== after, "fog canvas pixels did not animate");
       assert(!frameABytes.equals(frameBBytes), `fog animation frames were byte-identical (${before} -> ${after})`);
     }
       results.push(facts);

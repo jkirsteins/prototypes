@@ -10,7 +10,7 @@ import { visibleCells } from "../src/sim/sight";
 import { ensureGround } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
 import { activateWildlife } from "../src/sim/wildlife-agents";
-import { cloudGlyphHtml, effectsSnapshot, fogGlyphHtml, mapHtml, precipitationGlyphHtml, WATER_LIT, WATER_RIPPLES, waterRippleDelaysS, waterRipplePeak, waterRipplePhases } from "../src/ui/map";
+import { effectsSnapshot, type EffectsWeatherKind, mapHtml, WATER_LIT, WATER_RIPPLES, waterRippleDelaysS, waterRipplePeak, waterRipplePhases, weatherGlyphChar } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState } from "../src/ui/render";
 import { cellAt, neighbours, regionPeek } from "../src/world/gen";
 import { cellIdx, chunkIndexOf, residentChunk } from "../src/world/cells";
@@ -145,66 +145,49 @@ describe("the map's compositing layers", () => {
     expect(rule(".maptools")).toContain("z-index: var(--map-control)");
   });
 
-  it("renders precipitation as cell-owned ASCII without taking the pointer", () => {
-    const rain = rule(".grid .c.wx-rain .cell-weather");
-    const snow = rule(".grid .c.wx-snowing .cell-weather");
-    expect(rain).not.toContain("gradient");
-    expect(snow).not.toContain("gradient");
-    expect(precipitationGlyphHtml(17, 12, 34, "rain")).toMatch(/[/'|]/);
-    expect(precipitationGlyphHtml(17, 12, 34, "snow")).toMatch(/[.*+]/);
+  it("renders precipitation as a canvas glyph without taking the pointer off the cell", () => {
+    // No more markup, so no more gradients or borders to rule out on it; the
+    // canvas glyph is one fillText call, and the cell underneath still owns
+    // hover and click.
+    expect(weatherGlyphChar(17, 12, 34, "rain", 0)).toMatch(/[/'|]/);
+    expect(weatherGlyphChar(17, 12, 34, "snow", 0)).toMatch(/[.*+]/);
     expect(rule(".grid .c.wx-cloud, .grid .c.wx-fog, .grid .c.wx-rain, .grid .c.wx-snowing"))
       .toContain("pointer-events: auto");
-    expect(rule(".grid .c .cell-weather")).toContain("z-index: var(--map-weather)");
-    expect(rule(".grid .c .cell-weather")).toContain("pointer-events: none");
+    expect(rule(".effects")).toContain("pointer-events: none");
     expect(rule(".grid .c .cell-signal")).toContain("z-index: var(--map-signal)");
   });
 
   it("stops local map and sky weather motion when reduced motion is requested", () => {
-    const reduced = rule("@media (prefers-reduced-motion: reduce)");
-    expect(reduced).toContain(".weather-ripple");
-    expect(reduced).toContain(".fog-ripple");
-    expect(reduced).toContain(".cloud-ripple");
-    expect(reduced).toContain("animation: none");
-    expect(readFileSync("src/style.css", "utf8")).toContain(".weather-ripple:not(:first-child), .fog-ripple:not(:first-child), .cloud-ripple:not(:first-child) { display: none; }");
+    // Both canvases check prefers-reduced-motion themselves where they draw
+    // (sky.ts, map.ts) rather than through a CSS switch, since a canvas has
+    // no per-element animation for a media query to reach.
+    const stylesheet = readFileSync("src/style.css", "utf8");
+    expect(stylesheet).not.toContain(".weather-ripple");
+    expect(stylesheet).not.toContain(".fog-ripple");
+    expect(stylesheet).not.toContain(".cloud-ripple");
+    expect(readFileSync("src/ui/map.ts", "utf8")).toContain("prefers-reduced-motion: reduce");
   });
 
-  it("renders fog only as cell-owned same-colour ASCII ripples", () => {
-    const first = fogGlyphHtml(17, 12, 34);
-    expect(first).toBe(fogGlyphHtml(17, 12, 34));
-    expect(first).toContain("fog-ripple");
-    expect(new Set(first.match(/[.:~=]/g))).toHaveLength(4);
-    expect(first).toContain("--fog-phase:");
-    expect(first.match(/fog-ripple-/g)).toHaveLength(4);
-    const fogPhases = [...first.matchAll(/--fog-phase:-(\d+)ms/g)].map((match) => Number(match[1]));
-    expect(fogPhases[3] - fogPhases[0]).toBe(9000);
-    const clouds = cloudGlyphHtml(17, 12, 34);
-    const cloudPhases = [...clouds.matchAll(/--cloud-phase:-(\d+)ms/g)].map((match) => Number(match[1]));
-    expect(cloudPhases[3] - cloudPhases[0]).toBe(12000);
-    const fog = rule(".grid .c.wx-fog .cell-weather");
-    expect(fog).toContain("color: var(--fog-glyph)");
-    expect(fog).not.toContain("border");
-    expect(fog).not.toContain("box-shadow");
-    expect(fog).not.toContain("background-size");
-    const fogRipple = rule(".grid .c.wx-fog .fog-ripple");
-    expect(fogRipple).toContain("color: inherit");
-    expect(fogRipple).toContain("animation: map-weather-ripple 12s step-end infinite");
-    expect(rule(".grid .c.wx-cloud .cloud-ripple")).toContain("animation: map-weather-ripple 16s step-end infinite");
-    const stylesheet = readFileSync("src/style.css", "utf8");
-    expect(stylesheet).not.toContain(".grid .c.wx-cloud .cell-weather {");
-    expect(stylesheet).not.toContain(".grid .c.memory {");
-    expect(stylesheet).not.toContain(".grid .c.dim {");
+  it("cycles fog, cloud and precipitation through four seeded ASCII shapes, one at a time", () => {
+    // Deterministic by cell and seed, same as the ripple phase and peak
+    // functions: the same cell asked twice at the same moment draws the same
+    // shape, and the same cell moved along the grid still hits every shape.
+    const at = (kind: EffectsWeatherKind, ms: number) => weatherGlyphChar(17, 12, 34, kind, ms);
+    expect(at("fog", 500)).toBe(at("fog", 500));
+    const fogShapes = new Set(Array.from({ length: 12 }, (_, i) => at("fog", i * 3000)));
+    expect(fogShapes).toHaveLength(4);
+    for (const shape of fogShapes) expect(shape).toMatch(/[.:~=]/);
+    const cloudShapes = new Set(Array.from({ length: 16 }, (_, i) => weatherGlyphChar(17, 12, 34, "cloud", i * 4000)));
+    expect(cloudShapes).toHaveLength(4);
+    for (const shape of cloudShapes) expect(shape).toMatch(/[oO0~]/);
+    // Fog reads over cloud shadow and over every ripple, so a cell shows one
+    // weather glyph at a time; the terrain glyph a weather glyph replaces
+    // stays hidden underneath.
+    expect(rule(".grid .c.wx-glyph:not(.mk) > .cell-ground > .terrain-visual")).toContain("visibility: hidden");
     expect(rule(".grid .c.memory > .cell-ground, .grid .c.memory > .cell-signal"))
       .toContain("filter: brightness(0.58) saturate(0.45)");
     expect(rule(".grid .c.dim > .cell-ground, .grid .c.dim > .cell-signal"))
       .toContain("opacity: 0.45");
-    const fogMotion = stylesheet.match(/@keyframes map-weather-ripple[\s\S]*?\n}/)?.[0] ?? "";
-    expect(fogMotion).toContain("opacity:");
-    expect(fogMotion).not.toContain("transform:");
-
-    const snow = rule(".grid .c.wx-snowing .cell-weather");
-    expect(snow).not.toContain("gradient");
-    const rain = rule(".grid .c.wx-rain .cell-weather");
-    expect(rain).not.toContain("gradient");
   });
 
   it("never feathers exploration or stacks atmospheric glyphs over terrain glyphs", () => {
@@ -213,8 +196,6 @@ describe("the map's compositing layers", () => {
     expect(stylesheet).not.toContain("--fog-left");
     expect(rule(".grid .c.wx-glyph:not(.mk) > .cell-ground > .terrain-visual"))
       .toContain("visibility: hidden");
-    expect(rule(".grid .c.mk > .cell-weather")).toContain("display: none");
-    expect(rule(".grid .c .weather-ripple")).toContain("animation-timing-function: step-end");
   });
 
   it("keeps startles outside filtered, dimmed and clipped cells above signals and below controls", () => {

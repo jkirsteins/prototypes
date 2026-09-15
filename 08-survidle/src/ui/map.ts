@@ -835,45 +835,67 @@ export function updateEffects(root: ParentNode = document): void {
   const shimmerSpeed = typeof getComputedStyle !== "undefined"
     ? Number(getComputedStyle(document.documentElement).getPropertyValue("--water-shimmer-speed")) || 1
     : 1;
-  const nowS = frozen ? 0 : (performance.now() / 1000) * shimmerSpeed;
-  drawWaterShimmer(ctx, model, nowS);
+  const nowMs = frozen ? 0 : performance.now();
+  drawWaterShimmer(ctx, model, (nowMs / 1000) * shimmerSpeed);
   drawShadows(ctx, model);
+  drawGlyphs(ctx, model, nowMs);
 }
 
 let effectsFrozenKey: string | null = null;
 
-/** Presentation-only fog motion. Density and location still come exclusively from the atmosphere sample. */
-export function fogGlyphHtml(seed: number, x: number, y: number): string {
-  const shapes = [".", ":", "~", "="];
-  const phase = phaseHash(seed, x, y, 97) % 12000;
-  const order = phaseHash(seed, x, y, 101) % shapes.length;
-  return shapes.map((_, i) => {
-    const shape = shapes[(i + order) % shapes.length];
-    return `<span class="weather-ripple fog-ripple fog-ripple-${i}" style="--fog-phase:-${phase + i * 3000}ms">${shape}</span>`;
-  }).join("");
+/**
+ * Fog, cloud and precipitation motion: presentation only, cycling through
+ * four ASCII shapes one at a time. Density and location still come
+ * exclusively from the atmosphere sample; this only decides which of the
+ * four shapes a cell shows at a given moment, the way the stylesheet's
+ * `map-weather-ripple` keyframe used to step through four sibling spans -
+ * each held for a quarter of its period, in an order and at a starting
+ * phase seeded per cell so neighbours are not all mid-step together.
+ */
+const FOG_SHAPES = [".", ":", "~", "="] as const;
+const CLOUD_SHAPES = ["o", "O", "0", "~"] as const;
+const RAIN_SHAPES = ["/", "'", "|", "/"] as const;
+const SNOW_SHAPES = ["*", ".", "+", "*"] as const;
+const WEATHER_GLYPH_COLOR: Record<EffectsWeatherKind, string> = { fog: "#c6cfd6", cloud: "#8896a5", rain: "#aac8f0", snow: "#f4f7fb" };
+interface WeatherGlyphSpec { shapes: readonly string[]; periodMs: number; phaseSalt: number; orderSalt: number }
+const WEATHER_GLYPH_SPEC: Record<EffectsWeatherKind, WeatherGlyphSpec> = {
+  fog: { shapes: FOG_SHAPES, periodMs: 12000, phaseSalt: 97, orderSalt: 101 },
+  cloud: { shapes: CLOUD_SHAPES, periodMs: 16000, phaseSalt: 109, orderSalt: 113 },
+  rain: { shapes: RAIN_SHAPES, periodMs: 6000, phaseSalt: 127, orderSalt: 137 },
+  snow: { shapes: SNOW_SHAPES, periodMs: 10000, phaseSalt: 131, orderSalt: 139 },
+};
+
+/** Which of a weather glyph's four shapes is showing at this wall-clock moment. */
+export function weatherGlyphChar(seed: number, x: number, y: number, kind: EffectsWeatherKind, nowMs: number): string {
+  const spec = WEATHER_GLYPH_SPEC[kind];
+  const n = spec.shapes.length;
+  const phase = phaseHash(seed, x, y, spec.phaseSalt) % spec.periodMs;
+  const order = phaseHash(seed, x, y, spec.orderSalt) % n;
+  const stepMs = spec.periodMs / n;
+  const sinceStart = (nowMs + phase) % spec.periodMs;
+  const active = (n - Math.floor(sinceStart / stepMs)) % n;
+  return spec.shapes[(active + order) % n];
 }
 
-/** Presentation-only cloud motion for players who prefer clouds drawn instead of cast as shadows. */
-export function cloudGlyphHtml(seed: number, x: number, y: number): string {
-  const shapes = ["o", "O", "0", "~"];
-  const phase = phaseHash(seed, x, y, 109) % 16000;
-  const order = phaseHash(seed, x, y, 113) % shapes.length;
-  return shapes.map((_, i) => {
-    const shape = shapes[(i + order) % shapes.length];
-    return `<span class="weather-ripple cloud-ripple cloud-ripple-${i}" style="--cloud-phase:-${phase + i * 4000}ms">${shape}</span>`;
-  }).join("");
-}
-
-/** Falling weather uses the same single-state-at-a-time animation as fog and clouds. */
-export function precipitationGlyphHtml(seed: number, x: number, y: number, kind: "rain" | "snow"): string {
-  const shapes = kind === "rain" ? ["/", "'", "|", "/"] : ["*", ".", "+", "*"];
-  const period = kind === "rain" ? 6000 : 10000;
-  const phase = phaseHash(seed, x, y, kind === "rain" ? 127 : 131) % period;
-  const order = phaseHash(seed, x, y, kind === "rain" ? 137 : 139) % shapes.length;
-  return shapes.map((_, i) => {
-    const shape = shapes[(i + order) % shapes.length];
-    return `<span class="weather-ripple precip-ripple precip-${kind}-${i}" style="--weather-phase:-${phase + i * period / 4}ms">${shape}</span>`;
-  }).join("");
+/**
+ * Fog, cloud and precipitation glyphs: one character per cell, drawn where
+ * the terrain glyph is hidden (`wx-glyph`), replacing it rather than
+ * sitting over it - the same trade the document made when it hid
+ * `.terrain-visual` under a weather glyph.
+ */
+function drawGlyphs(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: number): void {
+  if (!model.glyph.length) return;
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `${model.font}px ui-monospace, Menlo, "SF Mono", Consolas, monospace`;
+  for (const cell of model.glyph) {
+    ctx.globalAlpha = cell.alpha;
+    ctx.fillStyle = cell.color;
+    const char = weatherGlyphChar(model.seed, cell.cx, cell.cy, cell.kind, nowMs);
+    ctx.fillText(char, cell.gx * model.px + model.px / 2, cell.gy * model.line + model.line / 2);
+  }
+  ctx.restore();
 }
 
 function glyphHtml(glyph: string): string {
@@ -1672,16 +1694,26 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       content = `<span class="cell-ground"><span class="terrain-visual">${content}</span></span>`;
     }
     if (weather && (weather.cloud >= 0.15 || weather.fog >= 0.05 || weather.rainMmPerHour >= 0.05 || weather.snowCmPerHour >= 0.05)) {
-      let weatherGlyphs = weather.fog >= 0.05 ? fogGlyphHtml(world.seed, cx, cy) : "";
-      if (!weatherGlyphs && weather.precipMmPerHour >= 0.05 && weather.precip !== "none") {
-        weatherGlyphs = precipitationGlyphHtml(world.seed, cx, cy, weather.precip);
+      // Same precedence as the fall: fog reads over precipitation, and cloud
+      // motion only where the shadow wash is off, so a cell never shows two
+      // weather glyphs at once. `fall` above is this cell's own clamped
+      // precipitation rate.
+      const kind: EffectsWeatherKind | null = weather.fog >= 0.05 ? "fog"
+        : weather.precipMmPerHour >= 0.05 && weather.precip !== "none" ? weather.precip
+          : !ui.cloudShadows && weather.cloud >= 0.15 ? "cloud" : null;
+      if (kind) {
+        cls.push("wx-glyph");
+        // A mark - the player, a fire, a camp - stays legible over its own
+        // weather: the glyph is not drawn where a mark already owns the cell,
+        // the way `.mk > .cell-weather { display: none }` used to read.
+        if (!cls.includes("mk")) {
+          const color = WEATHER_GLYPH_COLOR[kind];
+          const fall = Math.min(1, weather.precipMmPerHour / 7.5);
+          const alpha = kind === "fog" ? weather.fog * 0.7 : kind === "cloud" ? weather.cloud * 0.62 : kind === "rain" ? fall * 0.82 : fall * 0.9;
+          effectsGlyph.push({ gx, gy, cx, cy, kind, color, alpha });
+        }
       }
-      if (!weatherGlyphs && !ui.cloudShadows && weather.cloud >= 0.15) {
-        weatherGlyphs = cloudGlyphHtml(world.seed, cx, cy);
-      }
-      if (weatherGlyphs) cls.push("wx-glyph");
       if (ui.cloudShadows && weather.cloud >= 0.15) effectsShadow.push({ gx, gy, alpha: weather.cloud * CLOUD_SHADOW_CAP });
-      if (weatherGlyphs) content += `<i class="cell-weather" aria-hidden="true">${weatherGlyphs}</i>`;
     }
     // Open water in sight catches the light: three waves, drawn on the
     // effects canvas rather than as per-cell overlays, so the cell's own

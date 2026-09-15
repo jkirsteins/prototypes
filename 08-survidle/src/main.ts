@@ -49,7 +49,7 @@ import { opportunityPanelHtml } from "./ui/opportunity-panel";
 import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { levelAt, LEVELS, legendHtml, mapAggregateAtPoint, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, type TargetResolution, updateEffects, viewOrigin } from "./ui/map";
+import { effectsSnapshot, levelAt, LEVELS, legendHtml, mapAggregateAtPoint, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, type TargetResolution, updateEffects, viewOrigin } from "./ui/map";
 import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { loadRateDisplay, saveRateDisplay, type RateDisplay } from "./ui/rate";
 import { stockPanelHtml, stocksHtml } from "./ui/stocks";
@@ -1268,6 +1268,7 @@ declare global {
   interface Window { survidle: {
     get state(): GameState; get world(): World; advance(minutes: number): void; speed: number;
     cacheStats(): WorldCacheStats;
+    get effects(): ReturnType<typeof import("./ui/map").effectsSnapshot>;
     weatherShot: null | { name: WeatherShotName; visibleCells: number };
     startleSetup?(scenario: import("../scripts/startle-seeds").StartleScenario): Promise<void>;
     startleStep?(): void;
@@ -1281,6 +1282,7 @@ declare global {
 window.survidle = {
   get state() { return state; },
   get world() { return world; },
+  get effects() { return effectsSnapshot(); },
   advance(minutes: number) { advance(state, world, minutes); render(); },
   speed,
   // A reading of how much fine ground the run has had to build. It counts
