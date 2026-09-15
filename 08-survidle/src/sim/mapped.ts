@@ -60,8 +60,13 @@ export function coarseKnown(state: GameState, cell: number): boolean {
  */
 export type MapKnowledge = KnowledgeLevel | "farParent" | "farAggregate";
 
-export function knowledgeAtLevel(state: GameState, cell: number): MapKnowledge {
-  const fine = knowledgeAt(state.knowledge, cell);
+/**
+ * `fine` defaults to a fresh read, but the map draws thousands of these a
+ * frame and almost always already holds the fine level from its own
+ * per-glyph knowledge tally - passing it in skips a second read of the same
+ * bit for the same patch.
+ */
+export function knowledgeAtLevel(state: GameState, cell: number, fine: KnowledgeLevel = knowledgeAt(state.knowledge, cell)): MapKnowledge {
   if (fine !== "unknown") return fine;
   const coarse = coarseAt(state.knowledge, cell);
   return coarse === "parent" ? "farParent" : coarse === "aggregate" ? "farAggregate" : "unknown";

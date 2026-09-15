@@ -15,7 +15,7 @@
 import type { Calendar } from "../sim/calendar";
 import { fuelTotal, hasEmbers, roofed } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
-import { knowledgeAt } from "../sim/fineknowledge";
+import { knowledgeAt, type KnowledgeLevel } from "../sim/fineknowledge";
 import { coarseKnowledgeGen, isKnown, knowledgeAtLevel, knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
@@ -494,11 +494,36 @@ function addKnownPatch(state: GameState, world: World, out: GlyphSummary, x: num
   out.maxElevationM = Math.max(out.maxElevationM, elevationM);
 }
 
-/** Whether every one of a parent's thirty-six patches is known. Bit reads only. */
+/**
+ * Whether every one of a parent's thirty-six patches is known, cached per
+ * world and invalidated by the fine knowledge generation counter: knowing a
+ * patch only ever raises its level, so a parent once found fully known stays
+ * fully known forever and is never rescanned, while a parent still short of
+ * it is rescanned only when that counter has moved since its last check.
+ */
+const parentKnownCache = new WeakMap<World, Map<number, { gen: number; known: boolean }>>();
+
 function parentFullyKnown(state: GameState, world: World, px: number, py: number): boolean {
   const x0 = px * FINE_PER_PARENT;
   const y0 = py * FINE_PER_PARENT;
   if (x0 + FINE_PER_PARENT > world.w || y0 + FINE_PER_PARENT > world.h) return false;
+  let cache = parentKnownCache.get(world);
+  if (!cache) {
+    cache = new Map();
+    parentKnownCache.set(world, cache);
+  }
+  const stride = Math.ceil(world.w / FINE_PER_PARENT) + 1;
+  const key = py * stride + px;
+  const gen = knowledgeGen();
+  const cached = cache.get(key);
+  if (cached && (cached.known || cached.gen === gen)) return cached.known;
+  const known = scanParentKnown(state, world, x0, y0);
+  cache.set(key, { gen, known });
+  return known;
+}
+
+/** The 36-patch bit scan `parentFullyKnown` caches. Separated so it can return the moment one patch is unknown, without a labelled loop. */
+function scanParentKnown(state: GameState, world: World, x0: number, y0: number): boolean {
   for (let y = y0; y < y0 + FINE_PER_PARENT; y++) {
     for (let x = x0; x < x0 + FINE_PER_PARENT; x++) {
       if (!isKnown(state, cellIdx(world, x, y))) return false;
@@ -723,10 +748,17 @@ export interface GlyphGround {
   far: boolean;
 }
 
-/** A patch's own knowledge: 0 unknown, 1 dim (only the journal has it), 2 known this life. */
-function cellKnowledge(state: GameState, world: World, x: number, y: number): 0 | 1 | 2 {
+/**
+ * A patch's own knowledge, both as the map's three-tier read (0 unknown, 1
+ * dim - only the journal has it, 2 known this life) and the raw fine level
+ * underneath it. A fogged sample needs the raw level again to check for far
+ * country; handing it back here saves that caller from reading the same
+ * patch's knowledge bit a second time.
+ */
+function cellKnowledge(state: GameState, world: World, x: number, y: number): { tier: 0 | 1 | 2; level: KnowledgeLevel } {
   const level = knowledgeAt(state.knowledge, cellIdx(world, x, y));
-  return level === "unknown" ? 0 : level === "inherited" ? 1 : 2;
+  const tier: 0 | 1 | 2 = level === "unknown" ? 0 : level === "inherited" ? 1 : 2;
+  return { tier, level };
 }
 
 /**
@@ -769,32 +801,37 @@ function glyphGround(state: GameState, world: World, visible: Set<number> | null
   const knowledge: KnowledgeComposition = { samples: 0, visible: 0, remembered: 0, inherited: 0, unknown: 0, far: 0 };
   let knownAny = 0;
   let knownBright = 0;
-  const farTerrain = emptyTerrainCounts();
+  // Samples whose country was read from a distance but whose own patch was
+  // not: which terrain they name is read only once the block's own majority,
+  // below, says the block draws as far country at all. Peeking it eagerly
+  // for every fogged sample on screen would touch a chunk for blocks that
+  // read as known, or as plain fog, and then throw the reading away.
+  let farCandidates: Array<{ x: number; y: number; aggregate: boolean }> | null = null;
   for (let j = step >> 1; j < z; j += step) {
     for (let i = step >> 1; i < z; i += step) {
       const x = x0 + i;
       const y = y0 + j;
       if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
       knowledge.samples++;
-      const k = cellKnowledge(state, world, x, y);
-      if (k === 0) {
+      const cell = cellIdx(world, x, y);
+      const { tier, level } = cellKnowledge(state, world, x, y);
+      if (tier === 0) {
         knowledge.unknown++;
-        // The solved terrain, read through the peek that never builds a chunk:
-        // far country is exactly the ground no chunk has been made for. Which
-        // terrain that is depends on the grain the claim was made at: a patch
-        // proved only as part of a 900 m aggregate draws that aggregate's one
-        // ground, so the picture is never finer than what was seen.
-        const level = knowledgeAtLevel(state, cellIdx(world, x, y));
-        if (level === "farParent" || level === "farAggregate") {
+        // Whether the country round this patch has been read from a
+        // distance is a bit lookup, cheap enough to check for every fogged
+        // sample; which terrain that reading found is the part deferred.
+        const mapLevel = knowledgeAtLevel(state, cell, level);
+        if (mapLevel === "farParent" || mapLevel === "farAggregate") {
           knowledge.far++;
-          farTerrain[level === "farAggregate" ? aggregateTerrain(world, x, y) : terrainPeek(world, x, y)]++;
+          farCandidates ??= [];
+          farCandidates.push({ x, y, aggregate: mapLevel === "farAggregate" });
         }
         continue;
       }
       knownAny++;
-      if (k === 2) {
+      if (tier === 2) {
         knownBright++;
-        if (visible?.has(cellIdx(world, x, y))) knowledge.visible++;
+        if (visible?.has(cell)) knowledge.visible++;
         else knowledge.remembered++;
       } else knowledge.inherited++;
     }
@@ -807,7 +844,18 @@ function glyphGround(state: GameState, world: World, visible: Set<number> | null
     // on, and it draws the solve's own terrain: no summary, since summarising
     // is reading the patches, which is the one thing this ground has not had.
     const far = knowledge.far / Math.max(1, knowledge.samples) > BLOCK_MAJORITY;
-    return { terrain: far ? dominantByPriority(farTerrain) : "water", region, seen, knowledge, summary: null, far };
+    let terrain: Terrain = "water";
+    if (far && farCandidates) {
+      // The solved terrain, read through the peek that never builds a chunk:
+      // far country is exactly the ground no chunk has been made for. Which
+      // terrain that is depends on the grain the claim was made at: a patch
+      // proved only as part of a 900 m aggregate draws that aggregate's one
+      // ground, so the picture is never finer than what was seen.
+      const farTerrain = emptyTerrainCounts();
+      for (const c of farCandidates) farTerrain[c.aggregate ? aggregateTerrain(world, c.x, c.y) : terrainPeek(world, c.x, c.y)]++;
+      terrain = dominantByPriority(farTerrain);
+    }
+    return { terrain, region, seen, knowledge, summary: null, far };
   }
   if (z === 1) return { terrain: terrainPeek(world, x0, y0), region, seen, knowledge, summary: null, far: false };
   const summary = glyphSummary(state, world, x0, y0, z);
