@@ -231,11 +231,11 @@ describe("local weather presentation", () => {
     expect(root.querySelector(".wx-word")?.textContent).toContain("rain");
     expect(root.querySelector(".wx-wind")?.textContent).toContain("W 36 km/h");
     expect(root.querySelector(".wx-visibility")?.textContent).toContain("fog");
-    const sky = root.querySelector<SVGElement>("svg.sky")!;
-    expect(sky.style.getPropertyValue("--wind-x")).toBe("36.00");
-    expect(sky.style.getPropertyValue("--wind-y")).toBe("0.00");
-    expect(sky.style.getPropertyValue("--wind-speed")).toBe("36.00");
-    expect(sky.classList).toContain("rain");
+    const sky = root.querySelector<HTMLCanvasElement>("canvas.sky")!;
+    expect(sky.dataset.skyWindX).toBe("36.00");
+    expect(sky.dataset.skyWindY).toBe("0.00");
+    expect(sky.dataset.skyWindSpeed).toBe("36.00");
+    expect(sky.dataset.skyPrecip).toBe("rain");
   });
 
   it.each([
@@ -257,7 +257,7 @@ describe("local weather presentation", () => {
     expect(player.classList).toContain(shown);
     expect(player.classList).not.toContain(hidden);
     expect(root.querySelector(".wx-word")?.textContent).toContain(phase);
-    expect(root.querySelector("svg.sky")?.classList).toContain(phase);
+    expect(root.querySelector<HTMLCanvasElement>("canvas.sky")?.dataset.skyPrecip).toBe(phase);
   });
 
   it("preserves the authoritative liquid-equivalent rate for heavy snow in the sky", () => {
@@ -274,7 +274,7 @@ describe("local weather presentation", () => {
     const light = updateSky(state, cal, -5, root);
     const clearLight = lighting(cal, air({ temperatureC: -5, cloud: 0 }), -5);
 
-    expect(root.querySelector("#sky-fall")?.getAttribute("opacity")).toBe("1.00");
+    expect(root.querySelector<HTMLCanvasElement>("canvas.sky")?.dataset.skyFallOpacity).toBe("1.00");
     expect(root.querySelector(".wx-word")?.textContent).toContain("heavy snow");
     expect(light.brightness).toBeCloseTo(clearLight.brightness * 0.85, 5);
   });

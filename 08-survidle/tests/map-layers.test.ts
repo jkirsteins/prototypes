@@ -164,7 +164,6 @@ describe("the map's compositing layers", () => {
     expect(reduced).toContain(".weather-ripple");
     expect(reduced).toContain(".fog-ripple");
     expect(reduced).toContain(".cloud-ripple");
-    expect(reduced).toContain(".sky-cloud");
     expect(reduced).toContain("animation: none");
     expect(readFileSync("src/style.css", "utf8")).toContain(".weather-ripple:not(:first-child), .fog-ripple:not(:first-child), .cloud-ripple:not(:first-child) { display: none; }");
   });

@@ -335,30 +335,16 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 #clock .clockrow { display: flex; gap: 14px; align-items: center; justify-content: space-between; }
 #clock .line { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
 #clock .big { font-size: 16px; color: #fff; }
+/* The sky is a canvas now: one paint, not thousands of elements with their
+   own transitions and keyframes. Motion (drift, fall, the meteor streak) is
+   drawn from a clock inside sky.ts, gated on prefers-reduced-motion there
+   rather than through CSS, so there is nothing sky-specific left to name
+   here. */
 .sky { flex: 0 0 auto; border: 1px solid var(--line); display: block; }
-.sky circle, .sky stop { transition: cx 0.3s linear, cy 0.3s linear, opacity 0.5s, stop-color 0.5s; }
-.sky #sky-stars, .sky #sky-milky-way, .sky .sky-constellation, .sky #sky-perseids { transition: opacity 0.8s; }
-.sky #sky-far, .sky #sky-mid, .sky #sky-near { transition: fill 0.8s; }
-.sky-meteor {
-  stroke: rgba(244, 247, 255, 0.92);
-  stroke-width: 0.9;
-  stroke-linecap: round;
-  opacity: 0;
-  animation: sky-meteor 12s linear infinite;
-  animation-delay: var(--meteor-delay);
-}
-@keyframes sky-meteor {
-  0%, 76% { opacity: 0; transform: translate(0, 0); }
-  78% { opacity: 0.95; }
-  86% { opacity: 0; transform: translate(-32px, 32px); }
-  100% { opacity: 0; transform: translate(-32px, 32px); }
-}
 @media (prefers-reduced-motion: reduce) {
-  .sky-meteor, .weather-ripple, .fog-ripple, .cloud-ripple, .water-live .water-ripple, .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
+  .weather-ripple, .fog-ripple, .cloud-ripple, .water-live .water-ripple { animation: none; }
   .weather-ripple:not(:first-child), .fog-ripple:not(:first-child), .cloud-ripple:not(:first-child) { display: none; }
   .weather-ripple:first-child, .fog-ripple:first-child, .cloud-ripple:first-child { opacity: var(--wx-glyph-opacity); }
-  .sky-meteor { opacity: 0; }
-  .sky-meteor:first-child { opacity: 0.72; }
 }
 
 
@@ -1296,27 +1282,6 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .wx-rate { letter-spacing: 0; text-transform: none; color: rgba(255, 255, 255, 0.45); }
 .wx-rate.hurrying { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .speed-history path { transition: none; } }
-
-/* What the air is doing, drawn rather than named. Cloud drifts, and what
-   falls out of it falls: snow wanders down, rain goes straight and fast,
-   and a storm leans both of them over and hurries them along. */
-.sky-cloud rect { opacity: 0.9; }
-.sky-cloud { animation: sky-drift var(--cloud-duration, 120s) linear infinite; }
-@keyframes sky-drift { from { transform: translate(0, 0); } to { transform: translate(var(--cloud-drift-x, -240px), var(--cloud-drift-y, 0)); } }
-
-#sky-fall .sky-drop { transform: translate(var(--x), var(--y)); }
-#sky-fall line { stroke: rgba(255, 255, 255, 0.5); stroke-width: 1.1; opacity: 0; }
-#sky-fall circle { fill: rgba(255, 255, 255, 0.85); opacity: 0; }
-.sky.rain #sky-fall line { opacity: 1; animation: sky-rain var(--fall-duration, 0.9s) linear infinite; animation-delay: calc(var(--n) * -0.9s); }
-.sky.snow #sky-fall circle { opacity: 1; animation: sky-snow var(--snow-duration, 6s) linear infinite; animation-delay: calc(var(--n) * -6s); }
-@keyframes sky-rain { from { transform: translate(0, -20px); } to { transform: translate(var(--fall-drift-x, -52px), 220px); } }
-/* Each flake wanders its own way down: one shared sideways drift made snow
-   march in step, which is the one thing snow never does. */
-@keyframes sky-snow { from { transform: translate(0, -20px); } to { transform: translate(calc(var(--fall-drift-x, 0px) + var(--sx, 10px)), 220px); } }
-
-@media (prefers-reduced-motion: reduce) {
-  .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
-}
 
 /* A place is one button, and what it costs is inside it: a name in a button
    beside a sentence saying "from here" spent two thirds of the row on words
