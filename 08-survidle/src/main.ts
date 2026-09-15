@@ -49,7 +49,7 @@ import { opportunityPanelHtml } from "./ui/opportunity-panel";
 import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { levelAt, LEVELS, legendHtml, mapAggregateAtPoint, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, type TargetResolution, viewOrigin } from "./ui/map";
+import { levelAt, LEVELS, legendHtml, mapAggregateAtPoint, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, type TargetResolution, updateEffects, viewOrigin } from "./ui/map";
 import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { loadRateDisplay, saveRateDisplay, type RateDisplay } from "./ui/rate";
 import { stockPanelHtml, stocksHtml } from "./ui/stocks";
@@ -328,6 +328,7 @@ function render(nowMs = performance.now()) {
   const cal = calendar(state.minute, state.startDoy);
   if (weatherShotName) {
     setPanel("mapdyn", mapHtml(world, state, ui, cal));
+    updateEffects();
     document.getElementById("overlay")!.hidden = true;
     return;
   }
@@ -382,6 +383,7 @@ function render(nowMs = performance.now()) {
   updateBars(state, world, document, { hurry: ui.hurry, speed });
   updateFills(state);
   updateSky(state, cal, ambient);
+  updateEffects();
 
   // The settings panel is static markup with its own listeners (the slider must
   // not be redrawn mid-drag), so it is shown and hidden rather than rewritten.

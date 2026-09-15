@@ -496,10 +496,26 @@ function addKnownPatch(state: GameState, world: World, out: GlyphSummary, x: num
 
 /**
  * Whether every one of a parent's thirty-six patches is known, cached per
- * world and invalidated by the fine knowledge generation counter: knowing a
- * patch only ever raises its level, so a parent once found fully known stays
- * fully known forever and is never rescanned, while a parent still short of
- * it is rescanned only when that counter has moved since its last check.
+ * world and invalidated by the fine knowledge generation counter.
+ *
+ * The invariant this leans on is narrower than "knowledge only rises":
+ * `demoteFog` (landing.ts, run on a heir's landing) calls `dimAll`, which
+ * calls `inheritKnowledge` (fineknowledge.ts), and that DOES lower a
+ * patch's level - `seen`/`visited` both collapse to `inherited`. Levels are
+ * not monotonic. What is: `inheritKnowledge` remaps any nonzero two-bit
+ * slot to a nonzero one, never to zero, so `isKnown` (`knowledgeAt(...) !==
+ * "unknown"`, bit nonzero, not which tier) never flips true to false. That
+ * is the one thing this cache actually needs, and it is why a parent once
+ * found fully known can be trusted forever without a rescan. A future
+ * writer that zeroes a previously-known bit - a "forget this region"
+ * mechanic, say - would break that invariant and this cache with it.
+ *
+ * The cache is a WeakMap keyed on `World`. `beginAgain` (landing.ts, the
+ * death-to-heir path, which is what calls `demoteFog`) reuses the same
+ * `World` object, so that is exactly the path this cache must survive, and
+ * does. Leaving a world, or a fresh load, goes through `newWorld`, which
+ * always returns a new object, so those start with an empty cache with
+ * nothing to invalidate.
  */
 const parentKnownCache = new WeakMap<World, Map<number, { gen: number; known: boolean }>>();
 
@@ -660,6 +676,151 @@ export function waterRippleDelaysS(seed: number, x: number, y: number, zoom: num
     return delay >= WATER_RIPPLES[i].periodS ? 0 : delay;
   }) as [number, number, number];
 }
+
+// ---------------------------------------------------------------------------
+// The effects model: what mapHtml found that moves on its own clock, kept
+// as plain data rather than as markup. `updateEffects` below turns it into
+// canvas draw calls every render tick, at the wall clock's own pace, without
+// mapHtml having to run again in between. The three water colours mirror
+// the stylesheet's --water-lit custom properties, since a canvas has no
+// custom properties of its own to read per cell.
+// ---------------------------------------------------------------------------
+
+export const WATER_LIT = { rest: "#24468f", shallow: "#3160b0", deep: "#1a3474" } as const;
+/** At the closest rung a glyph is one patch in a big box, and a peak that reads as a glint on an 11px glyph reads as a flat wash there. */
+const WATER_FINE_GAIN = 0.5;
+
+/** A cubic ease, 0 to 1 to 0 across its input: the same shape a two-keyframe CSS animation interpolates by default. */
+function easeInOut(t: number): number {
+  const x = t < 0 ? 0 : t > 1 ? 1 : t;
+  return x * x * (3 - 2 * x);
+}
+
+export interface EffectsWaterCell { gx: number; gy: number; cx: number; cy: number; lit: string }
+export interface EffectsShadowCell { gx: number; gy: number; alpha: number }
+export type EffectsWeatherKind = "fog" | "cloud" | "rain" | "snow";
+export interface EffectsGlyphCell { gx: number; gy: number; cx: number; cy: number; kind: EffectsWeatherKind; color: string; alpha: number }
+
+/**
+ * Everything the effects canvas draws for one built map: the water cells
+ * that shimmer, the cells under cloud shadow, and the cells showing fog,
+ * cloud or precipitation motion instead of their terrain glyph. Built once
+ * per `mapHtml` call - which is itself only rebuilt when the map's own key
+ * changes - and redrawn every render tick against the wall clock, so an
+ * unmoving minute costs `mapHtml` nothing extra and the shimmer still runs.
+ */
+export interface EffectsModel {
+  cols: number; rows: number; px: number; line: number; font: number;
+  seed: number; zoom: number;
+  water: EffectsWaterCell[];
+  shadow: EffectsShadowCell[];
+  glyph: EffectsGlyphCell[];
+  /** Water alone sat inside the cell's own stacking context and so still dimmed under the night shade; everything else painted above it and did not. Applied only to the water layer below. */
+  brightness: number;
+  /** Everything above except the wall clock, so reduced motion can tell an unmoving picture from a moved one. */
+  key: string;
+}
+
+let currentEffects: EffectsModel | null = null;
+
+/** The model the last `mapHtml` call built, for a test to check against the document it rendered alongside. */
+export function effectsSnapshot(): EffectsModel | null {
+  return currentEffects;
+}
+
+function reducedMotionEffects(): boolean {
+  return typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function ensureEffectsCanvasBox(canvas: HTMLCanvasElement, grid: HTMLElement, mapEl: HTMLElement, cssW: number, cssH: number): CanvasRenderingContext2D | null {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const dpr = (typeof window !== "undefined" ? window.devicePixelRatio : 1) || 1;
+  // The grid is centred inside the map panel and can be narrower than it, so
+  // the canvas is positioned over the grid's own box rather than the panel's.
+  const gridRect = grid.getBoundingClientRect();
+  const mapRect = mapEl.getBoundingClientRect();
+  const left = Math.round(gridRect.left - mapRect.left);
+  const top = Math.round(gridRect.top - mapRect.top);
+  if (canvas.style.left !== `${left}px`) canvas.style.left = `${left}px`;
+  if (canvas.style.top !== `${top}px`) canvas.style.top = `${top}px`;
+  if (canvas.style.width !== `${cssW}px`) canvas.style.width = `${cssW}px`;
+  if (canvas.style.height !== `${cssH}px`) canvas.style.height = `${cssH}px`;
+  const pixelW = Math.max(1, Math.round(cssW * dpr));
+  const pixelH = Math.max(1, Math.round(cssH * dpr));
+  if (canvas.width !== pixelW) canvas.width = pixelW;
+  if (canvas.height !== pixelH) canvas.height = pixelH;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return ctx;
+}
+
+/**
+ * Three overlapping waves per water cell, summed by additive blending the
+ * way three stacked translucent CSS overlays summed: each ripple's opacity
+ * rises and falls across its own period with the cell's own seeded phase
+ * and peak (`waterRipplePeak`, `waterRippleDelaysS`), so neighbours move
+ * together and the sheet never slides as one texture. Wall clock, never the
+ * simulation's; a cell not in `model.water` was excluded upstream in
+ * `mapHtml` for being remembered, marked, frozen or out of sight, and stays
+ * still here too.
+ */
+function drawWaterShimmer(ctx: CanvasRenderingContext2D, model: EffectsModel, nowS: number): void {
+  if (!model.water.length) return;
+  const gain = (model.zoom === 1 ? WATER_FINE_GAIN : 1) * model.brightness;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const cell of model.water) {
+    const delays = waterRippleDelaysS(model.seed, cell.cx, cell.cy, model.zoom);
+    const x = cell.gx * model.px;
+    const y = cell.gy * model.line;
+    for (let i = 0; i < WATER_RIPPLES.length; i++) {
+      const period = WATER_RIPPLES[i].periodS;
+      const t = (((nowS + delays[i]) % period) + period) % period;
+      const wave = t / period <= 0.5 ? easeInOut((t / period) * 2) : easeInOut((1 - t / period) * 2);
+      const peak = waterRipplePeak(model.seed, cell.cx, cell.cy, i);
+      const alpha = peak * wave * gain;
+      if (alpha <= 0.002) continue;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = cell.lit;
+      ctx.fillRect(x, y, model.px, model.line);
+    }
+  }
+  ctx.restore();
+}
+
+/**
+ * Redraws the effects canvas against the current wall clock. Cheap to call
+ * every render tick: the model itself is rebuilt only when `mapHtml` is,
+ * this just positions the canvas over the grid's current box and repaints
+ * from data already on hand. Reduced motion draws one frame per model and
+ * then does nothing until the model itself changes, rather than continuing
+ * to redraw a picture nothing asked to move.
+ */
+export function updateEffects(root: ParentNode = document): void {
+  const model = currentEffects;
+  const canvas = root.querySelector<HTMLCanvasElement>("#effects");
+  const grid = root.querySelector<HTMLElement>("#mapdyn .grid");
+  const mapEl = root.querySelector<HTMLElement>("#map");
+  if (!model || !canvas || !grid || !mapEl) return;
+  const frozen = reducedMotionEffects();
+  if (frozen && effectsFrozenKey === model.key) return;
+  effectsFrozenKey = model.key;
+  const cssW = model.cols * model.px;
+  const cssH = model.rows * model.line;
+  const ctx = ensureEffectsCanvasBox(canvas, grid, mapEl, cssW, cssH);
+  if (!ctx) return;
+  ctx.clearRect(0, 0, cssW, cssH);
+  // ?shimmer= on the page sets this on the root to speed the wall clock up
+  // for a screenshot or a test; the water layer is the only one it scales,
+  // since it is the only one whose speed the stylesheet ever exposed.
+  const shimmerSpeed = typeof getComputedStyle !== "undefined"
+    ? Number(getComputedStyle(document.documentElement).getPropertyValue("--water-shimmer-speed")) || 1
+    : 1;
+  const nowS = frozen ? 0 : (performance.now() / 1000) * shimmerSpeed;
+  drawWaterShimmer(ctx, model, nowS);
+}
+
+let effectsFrozenKey: string | null = null;
 
 /** Presentation-only fog motion. Density and location still come exclusively from the atmosphere sample. */
 export function fogGlyphHtml(seed: number, x: number, y: number): string {
@@ -1306,6 +1467,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const playerConditions = conditionsWithGround(state, world, playerCell, playerGround);
   const light = lighting(cal, playerConditions, playerConditions.temperatureC);
   const lit = `--bright:${light.brightness.toFixed(3)};--sat:${light.saturation.toFixed(3)};--tint:${light.tint};--tint-a:${light.alpha.toFixed(3)}`;
+  // Fed by the cell loop below and handed to updateEffects once the grid is
+  // built, so the shimmer, cloud shadow and weather motion draw as canvas
+  // arithmetic every render tick instead of as elements the loop emits here.
+  const effectsWater: EffectsWaterCell[] = [];
+  const effectsShadow: EffectsShadowCell[] = [];
+  const effectsGlyph: EffectsGlyphCell[] = [];
   parts.push(`<div class="scroll-x${cal.isNight ? " night" : ""}" style="--px:${l.px}px;--line:${l.line}px;${lit}"><div class="grid season-${cal.season}${z === 1 ? " fine" : ""} ${ui.cloudShadows ? "cloud-shadows" : "cloud-glyphs"}${cal.isNight ? " night" : ""}" role="grid" tabindex="0" aria-label="Map. Use arrow keys to inspect cells." style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px">`);
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
@@ -1496,13 +1663,13 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (ui.cloudShadows && weather.cloud >= 0.15) content += `<i class="cloud-shadow" aria-hidden="true"></i>`;
       if (weatherGlyphs) content += `<i class="cell-weather" aria-hidden="true">${weatherGlyphs}</i>`;
     }
-    // Open water in sight catches the light: three overlays, one per ripple,
-    // whose opacity the compositor animates off the main thread. Each delay
-    // is a function of the cell and the seed, so the same cell writes the
-    // same markup on every render and the morph has nothing to change.
+    // Open water in sight catches the light: three waves, drawn on the
+    // effects canvas rather than as per-cell overlays, so the cell's own
+    // markup never changes from one shimmering frame to the next.
     if (cls.includes("t-water") && seen === 2 && !cls.includes("memory") && !cls.includes("mk") && !cls.includes("ice-thin") && !cls.includes("ice-safe")) {
       cls.push("water-live");
-      content += waterRippleDelaysS(world.seed, cx, cy, z).map((delay, i) => `<i class="water-ripple water-ripple-${i + 1}" style="--water-delay:-${delay}s;--water-peak:${waterRipplePeak(world.seed, cx, cy, i)}" aria-hidden="true"></i>`).join("");
+      const lit = cls.includes("deep-0") ? WATER_LIT.shallow : cls.includes("deep-2") ? WATER_LIT.deep : WATER_LIT.rest;
+      effectsWater.push({ gx, gy, cx, cy, lit });
     }
     const style = styles.length ? ` style="${styles.join(";")}"` : "";
     parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${style}>${content}</span>`);
@@ -1561,5 +1728,17 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     return `<i aria-hidden="true" class="wildlife-startle ${event.perception.kind}${edge}" data-startle="${key}" style="--wildlife-start:${startedAtMs}ms;left:${Number(x.toFixed(2))}px;top:${Number(y.toFixed(2))}px">!</i>`;
   });
   parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}${animalMarkup.join("")}${startleMarkup.join("")}</div><i class="shade"></i></div>${tools}`);
+  currentEffects = {
+    cols: l.w, rows: l.h, px: l.px, line: l.line, font: l.font,
+    seed: world.seed, zoom: z,
+    water: effectsWater, shadow: effectsShadow, glyph: effectsGlyph,
+    brightness: light.brightness,
+    key: [
+      effectsWater.map((c) => `${c.gx}.${c.gy}.${c.lit}`).join(","),
+      effectsShadow.map((c) => `${c.gx}.${c.gy}.${c.alpha}`).join(","),
+      effectsGlyph.map((c) => `${c.gx}.${c.gy}.${c.kind}.${c.color}.${c.alpha}`).join(","),
+      light.brightness.toFixed(3),
+    ].join("|"),
+  };
   return parts.join("");
 }

@@ -10,7 +10,7 @@ import { visibleCells } from "../src/sim/sight";
 import { ensureGround } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
 import { activateWildlife } from "../src/sim/wildlife-agents";
-import { cloudGlyphHtml, fogGlyphHtml, mapHtml, precipitationGlyphHtml, WATER_RIPPLES, waterRipplePeak, waterRipplePhases } from "../src/ui/map";
+import { cloudGlyphHtml, effectsSnapshot, fogGlyphHtml, mapHtml, precipitationGlyphHtml, WATER_LIT, WATER_RIPPLES, waterRippleDelaysS, waterRipplePeak, waterRipplePhases } from "../src/ui/map";
 import { enqueueWildlifeStartle, newUiState } from "../src/ui/render";
 import { cellAt, neighbours, regionPeek } from "../src/world/gen";
 import { cellIdx, chunkIndexOf, residentChunk } from "../src/world/cells";
@@ -356,27 +356,16 @@ describe("the map's compositing layers", () => {
     // Rippling, faked for the eye: three smooth sine waves crossing the sheet
     // in different directions, summed per cell. Wall clock, never simulation
     // minutes, and a re-render writes the same attributes again.
-    // Each ripple is an overlay whose opacity the compositor animates, so a
-    // lake costs the main thread nothing per frame.
-    expect(rule(".grid .c.water-live")).toContain("isolation: isolate");
-    const overlay = rule(".grid .c.water-live .water-ripple");
-    expect(overlay).toContain("z-index: -1");
-    expect(overlay).toContain("pointer-events: none");
-    expect(overlay).toContain("will-change: opacity");
-    expect(overlay).toContain("animation: water-ripple 5s ease-in-out infinite");
-    // A test aid: ?shimmer= scales the speed through one root property; the delay scales with it so the pattern keeps its shape.
-    expect(overlay).toContain("animation-delay: calc(var(--water-delay) / var(--water-shimmer-speed, 1))");
+    // Drawn on the effects canvas, not as per-cell overlays: a lake costs
+    // the main thread the same handful of fillRect calls whether it is one
+    // cell or two hundred, rather than an element and a running animation
+    // per cell per ripple.
+    expect(rule(".effects")).toContain("position: absolute");
+    expect(rule(".effects")).toContain("pointer-events: none");
+    // A test aid: ?shimmer= scales the wall clock updateEffects reads, so the
+    // pattern keeps its shape and only its speed changes.
     expect(readFileSync("src/main.ts", "utf8")).toContain('params.get("shimmer")');
-    for (const [i, ripple] of WATER_RIPPLES.entries()) {
-      expect(rule(`.grid .c.water-live .water-ripple-${i + 1}`)).toContain(`animation-duration: calc(${ripple.periodS}s / var(--water-shimmer-speed, 1))`);
-    }
-    const frames = css.match(/@keyframes water-ripple[\s\S]*?\n}/)?.[0] ?? "";
-    expect(frames).toContain("0%, 100% { opacity: 0; }");
-    expect(frames).toContain("50% { opacity: calc(var(--water-peak, 0.4) * var(--water-gain, 1)); }");
-    // At the closest rung a glyph is one patch in a big box, and the same peak reads as a wash there.
-    expect(rule(".grid.fine .c.water-live .water-ripple")).toContain("--water-gain: 0.5");
-    expect(frames).not.toContain("background");
-    expect(frames).not.toContain("transform");
+    expect(readFileSync("src/ui/map.ts", "utf8")).toContain("--water-shimmer-speed");
     // Neighbours are near each other in phase: one drawn cell east moves each
     // ripple by its own step, so the light travels instead of blinking, and a
     // coarse block keeps the same step per drawn cell.
@@ -393,7 +382,6 @@ describe("the map's compositing layers", () => {
     }
     expect(waterRipplePhases(17, 12, 34, 1)).toEqual(waterRipplePhases(17, 12, 34, 1));
     for (const p of waterRipplePhases(17, 12, 34, 1)) { expect(p).toBeGreaterThanOrEqual(0); expect(p).toBeLessThan(turn); }
-    expect(rule("@media (prefers-reduced-motion: reduce)")).toContain(".water-live");
     // Each depth band shimmers within its own palette.
     expect(rule(".grid .c.t-water")).toContain("--water-rest: #0a1633");
     expect(rule(".grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0")).toContain("--water-rest: #102047");
@@ -417,23 +405,28 @@ describe("the map's compositing layers", () => {
     expect(mapHtml(world, state, ui, cal)).toBe(first);
     const root = document.createElement("div");
     root.innerHTML = first;
+    // The document still marks which cells qualify, so the canvas model and
+    // the class the cell carries can be checked against each other.
     const liveCells = [...root.querySelectorAll<HTMLElement>(".c.water-live")];
     expect(liveCells.length).toBeGreaterThan(20);
+    const model = effectsSnapshot()!;
+    expect(model).not.toBeNull();
+    expect(model.water.length).toBe(liveCells.length);
     for (const [i, ripple] of WATER_RIPPLES.entries()) {
-      const delays = liveCells.map((el) => {
-        const overlays = el.querySelectorAll<HTMLElement>(".water-ripple");
-        expect(overlays).toHaveLength(3);
-        return Number(overlays[i].style.getPropertyValue("--water-delay").match(/^-(\d+(?:\.\d+)?)s$/)?.[1]);
-      });
+      const delays = model.water.map((c) => waterRippleDelaysS(model.seed, c.cx, c.cy, model.zoom)[i]);
       for (const delay of delays) expect(delay).toBeGreaterThanOrEqual(0);
       for (const delay of delays) expect(delay).toBeLessThan(ripple.periodS);
       expect(new Set(delays).size).toBeGreaterThan(5);
-      // Each overlay peaks at its own brightness, so the sum is light on water and not one sheet sliding.
-      const peaks = liveCells.map((el) => Number(el.querySelectorAll<HTMLElement>(".water-ripple")[i].style.getPropertyValue("--water-peak")));
+      // Each wave peaks at its own brightness, so the sum is light on water and not one sheet sliding.
+      const peaks = model.water.map((c) => waterRipplePeak(model.seed, c.cx, c.cy, i));
       for (const peak of peaks) { expect(peak).toBeGreaterThanOrEqual(0.25); expect(peak).toBeLessThanOrEqual(0.5); }
       expect(new Set(peaks).size).toBeGreaterThan(5);
     }
     expect(waterRipplePeak(17, 12, 34, 0)).toBe(waterRipplePeak(17, 12, 34, 0));
+    // Each water cell in the model carries one of the three lit colours the
+    // stylesheet's --water-lit custom properties name, chosen by the same
+    // depth class the cell itself carries.
+    for (const c of model.water) expect([WATER_LIT.rest, WATER_LIT.shallow, WATER_LIT.deep]).toContain(c.lit);
     for (const el of liveCells) {
       expect(el.classList.contains("t-water")).toBe(true);
       for (const still of ["mk", "memory", "dim", "ice-thin", "ice-safe"]) expect(el.classList.contains(still)).toBe(false);
@@ -446,7 +439,7 @@ describe("the map's compositing layers", () => {
     root.innerHTML = mapHtml(frozen.world, frozen.state, newUiState(), frozen.cal);
     expect(root.querySelectorAll(".t-water.ice-safe").length).toBeGreaterThan(20);
     expect(root.querySelector(".water-live")).toBeNull();
-    expect(root.innerHTML).not.toContain("water-ripple");
+    expect(effectsSnapshot()!.water).toHaveLength(0);
   });
 
   it("makes the visual harness select simulation fixtures without injecting presentation state", () => {

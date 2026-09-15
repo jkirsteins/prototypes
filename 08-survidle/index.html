@@ -42,6 +42,13 @@
       <main id="center" class="col">
         <section id="map" class="panel">
           <div id="mapdyn"></div>
+          <!-- Water shimmer, cloud shadow and weather motion: everything on
+               the map that moves on its own clock, drawn here instead of as
+               per-cell elements. Positioned over the grid by main.ts, kept
+               outside mapdyn's own markup so a map rebuild never touches its
+               backing buffer, and never taking the pointer, which the grid
+               underneath still owns. -->
+          <canvas id="effects" class="effects" aria-hidden="true"></canvas>
           <!-- Camp stores stay visible on the map; a non-empty cell under
                the pointer joins them while it is highlighted. -->
           <div id="mapinventory"></div>

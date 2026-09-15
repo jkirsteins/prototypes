@@ -342,7 +342,10 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
    here. */
 .sky { flex: 0 0 auto; border: 1px solid var(--line); display: block; }
 @media (prefers-reduced-motion: reduce) {
-  .weather-ripple, .fog-ripple, .cloud-ripple, .water-live .water-ripple { animation: none; }
+  /* The effects canvas (map.ts, updateEffects) checks the same media query
+     itself and stops redrawing rather than reading a CSS switch, since a
+     canvas has no per-element animation for this block to reach. */
+  .weather-ripple, .fog-ripple, .cloud-ripple { animation: none; }
   .weather-ripple:not(:first-child), .fog-ripple:not(:first-child), .cloud-ripple:not(:first-child) { display: none; }
   .weather-ripple:first-child, .fog-ripple:first-child, .cloud-ripple:first-child { opacity: var(--wx-glyph-opacity); }
 }
@@ -518,6 +521,18 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   --map-signal: 4;
   --map-startle: 5;
   --map-control: 6;
+}
+/* Water shimmer, cloud shadow and weather motion: painted above the grid's
+   own cells, at the layer their per-cell elements used to occupy - mapdyn's
+   own --map-weather, mirrored here as a literal because this canvas sits
+   beside mapdyn rather than inside it and so cannot read its custom
+   properties. Never takes the pointer, which the grid underneath still
+   owns; main.ts sizes and positions it over the grid's current box every
+   render tick. */
+.effects {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
 }
 /* The world moves under the survivor; the viewport never pans. A fixed-size
    grid is centred and clipped, while any spare area carries the same grain
@@ -1510,41 +1525,12 @@ button.act small.gives, span.act small.gives,
    colour. */
 .grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; --water-rest: #102047; --water-lit: #3160b0; }
 .grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; --water-rest: #060d20; --water-lit: #1a3474; }
-/* Light on open water: rippling, faked for the eye. Three smooth waves
-   cross the sheet in different directions, with different wavelengths and
-   speeds, and each cell shows their sum. A cell's start in each wave comes
-   from its position, so neighbours move together and the light travels and
-   spreads rather than blinking in place; three directions crossing means
-   no stripe.
-
-   Each wave is an overlay in the cell's lit blue whose opacity swells and
-   fades. Opacity is the one thing here the compositor animates by itself,
-   so a lake of two hundred cells costs the main thread nothing per frame;
-   a colour computed in place repainted every cell every frame and starved
-   the page. The overlay sits below the glyph inside the cell's own
-   stacking context. Wall clock, never the simulation's; remembered water
-   and ice lie still. */
-.grid .c.water-live { position: relative; isolation: isolate; }
-.grid .c.water-live .water-ripple {
-  position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  background: var(--water-lit);
-  opacity: 0;
-  will-change: opacity;
-  animation: water-ripple 5s ease-in-out infinite;
-  /* ?shimmer= on the page sets the speed factor on the root; the delay scales with it so the pattern keeps its shape. */
-  animation-delay: calc(var(--water-delay) / var(--water-shimmer-speed, 1));
-}
-.grid .c.water-live .water-ripple-1 { animation-duration: calc(5s / var(--water-shimmer-speed, 1)); }
-.grid .c.water-live .water-ripple-2 { animation-duration: calc(3.75s / var(--water-shimmer-speed, 1)); }
-.grid .c.water-live .water-ripple-3 { animation-duration: calc(8s / var(--water-shimmer-speed, 1)); }
-/* At the closest rung a glyph is one patch in a large box, and a peak that
-   reads as a glint on an 11 px glyph reads as a flat wash there. Half the gain
-   keeps the ~ and = legible. */
-.grid.fine .c.water-live .water-ripple { --water-gain: 0.5; }
-@keyframes water-ripple {
-  0%, 100% { opacity: 0; }
-  50% { opacity: calc(var(--water-peak, 0.4) * var(--water-gain, 1)); }
-}
+/* Light on open water: rippling, faked for the eye, drawn on the effects
+   canvas (map.ts, drawWaterShimmer) rather than as per-cell overlays. The
+   `.water-live` class still marks which cells qualify - seen this life,
+   liquid, unmarked - so the canvas model and the document agree on which
+   cells shimmer without either reading the other's markup. Remembered
+   water and ice lie still, upstream of this class, not through it. */
 /* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
    depth palette. Thin ice remains dark and uncertain; safe ice forms the
    lighter continuous sheet. Marks still own their whole cell. */
