@@ -1796,9 +1796,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   // line and every mark's z-index already share, so its own z-index (below,
   // in style.css) is actually compared against theirs instead of against a
   // context outside the isolation boundary. Keyed by id so a rebuild reuses
-  // the live node rather than tearing down its backing buffer; it carries no
-  // width or height attribute for the morph to fight over, since main.ts
-  // sets those as device pixels through the canvas.width/height properties.
+  // the live node rather than tearing down its backing buffer; this markup
+  // never states a width or height, and morphAttrs (render.ts) knows to
+  // leave a canvas's alone rather than read that silence as an instruction
+  // to remove the device-pixel size main.ts wrote onto the live element.
   parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}${animalMarkup.join("")}${startleMarkup.join("")}</div><canvas id="effects" class="effects" aria-hidden="true"></canvas><i class="shade"></i></div>${tools}`);
   currentEffects = {
     cols: l.w, rows: l.h, px: l.px, line: l.line, font: l.font,

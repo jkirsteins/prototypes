@@ -238,13 +238,25 @@ function sameKind(a: Node, b: Node): boolean {
  * written straight onto the element on each render by bars.ts, and the markup
  * never mentions it. Clearing a style the markup does not carry would wipe
  * those every time a panel changed. A style the markup does state still wins.
+ *
+ * A canvas's width and height are the second exception, for the same
+ * reason: they are its backing buffer, not decoration, sized in device
+ * pixels by whatever draws to it rather than stated in markup. Markup that
+ * never mentions them is not an instruction to remove them - unlike an
+ * ordinary element's width or height, clearing one here reallocates (and
+ * blanks) the buffer, which is a real cost paid on every rebuild of
+ * whatever panel the canvas happens to sit in, not just a lost attribute.
+ * A width or height the markup does state still wins, same as style.
  */
 function morphAttrs(from: Element, to: Element): void {
   for (const attr of [...to.attributes]) {
     if (from.getAttribute(attr.name) !== attr.value) from.setAttribute(attr.name, attr.value);
   }
+  const isCanvas = from.tagName === "CANVAS";
   for (const attr of [...from.attributes]) {
-    if (attr.name !== "style" && !to.hasAttribute(attr.name)) from.removeAttribute(attr.name);
+    if (attr.name === "style") continue;
+    if (isCanvas && (attr.name === "width" || attr.name === "height") && !to.hasAttribute(attr.name)) continue;
+    if (!to.hasAttribute(attr.name)) from.removeAttribute(attr.name);
   }
   // A field's value follows the state only while nobody is in it: what is half-typed is the player's.
   const tag = from.tagName;

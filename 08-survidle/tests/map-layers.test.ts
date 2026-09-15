@@ -11,7 +11,7 @@ import { ensureGround } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
 import { activateWildlife } from "../src/sim/wildlife-agents";
 import { effectsSnapshot, type EffectsWeatherKind, mapHtml, WATER_LIT, WATER_RIPPLES, waterRippleDelaysS, waterRipplePeak, waterRipplePhases, weatherGlyphChar } from "../src/ui/map";
-import { enqueueWildlifeStartle, newUiState } from "../src/ui/render";
+import { enqueueWildlifeStartle, newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { cellAt, neighbours, regionPeek } from "../src/world/gen";
 import { cellIdx, chunkIndexOf, residentChunk } from "../src/world/cells";
 import { CHANNEL_STREAM } from "../src/world/refine";
@@ -248,14 +248,17 @@ describe("the map's compositing layers", () => {
   it("keeps the effects canvas inside the grid's own isolated stacking context, under the route, the marks and a startle", () => {
     // happy-dom implements neither elementsFromPoint nor real layout
     // (getBoundingClientRect returns all zeros here), so this cannot hit-test
-    // a screen point the way a real browser can. What it can prove is the
-    // two facts that decide paint order under the CSS stacking rules once a
-    // screen point is off the table: the canvas sits inside the very
-    // isolation: isolate boundary the route, the marks and the startle cue
-    // share, rather than outside it - the actual defect, since a sibling of
-    // #mapdyn is compared in a different context and its z-index does
-    // nothing there - and its resolved z-index is the lowest of the four
-    // within that shared context.
+    // a screen point the way a real browser can. What it checks instead - the
+    // canvas sits inside the same isolation: isolate boundary as the route,
+    // the marks and the startle cue rather than outside it (the actual
+    // defect: a sibling of #mapdyn is compared in a different context and
+    // its z-index does nothing there), and its resolved z-index is the
+    // lowest of the four within that shared context - is a correct
+    // regression guard for the markup as it stands today, not a general
+    // proof of paint order: an equal z-index later in DOM order, an
+    // intervening positioned and z-indexed ancestor, or a transform,
+    // filter, opacity, will-change or mix-blend-mode anywhere between them
+    // would all defeat it, and none of that is checked here.
     expect(document.elementsFromPoint).toBeUndefined();
     const { state, world } = newGame(79);
     const ui = newUiState();
@@ -296,6 +299,36 @@ describe("the map's compositing layers", () => {
       sheet.remove();
       map.remove();
     }
+  });
+
+  it("keeps a rebuilt effects canvas's backing buffer intact across a map rebuild", () => {
+    // The canvas's width and height are its backing buffer, set as device
+    // pixels through the JS properties (main.ts, ensureEffectsCanvasBox) and
+    // never stated in mapHtml's own markup. Before morphAttrs (render.ts)
+    // learned to leave a canvas's width and height alone the way it already
+    // leaves style alone, a rebuild read that silence as an instruction to
+    // remove them, resetting both to the 300x150 default and blanking the
+    // bitmap - confirmed over CDP in real headless Chrome. happy-dom models
+    // canvas width/height attribute-to-property reflection faithfully
+    // (removing the attribute really does reset the property here), so this
+    // pins the fix directly rather than needing a real browser.
+    resetPanels();
+    document.body.innerHTML = '<div id="mapdyn"></div>';
+    const { state, world } = newGame(79);
+    const ui = newUiState();
+    ui.zoom = 0;
+    const cal = calendar(state.minute, state.startDoy);
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1000));
+    const canvas = document.querySelector<HTMLCanvasElement>("#effects")!;
+    canvas.width = 999;
+    canvas.height = 777;
+    // A different frame, so setPanel's own same-html shortcut cannot mask a
+    // morph that never actually ran against the canvas.
+    ui.cloudShadows = !ui.cloudShadows;
+    setPanel("mapdyn", mapHtml(world, state, ui, cal, 2000));
+    expect(document.querySelector("#effects")).toBe(canvas);
+    expect(canvas.width).toBe(999);
+    expect(canvas.height).toBe(777);
   });
 
   it("keeps player and camp signals above routes without lifting ordinary animals", () => {
