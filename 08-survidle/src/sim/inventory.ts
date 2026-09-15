@@ -108,6 +108,37 @@ export function pileCells(state: GameState, category: PileCategory): number[] {
   return [...ensurePileIndex(state)[category]].sort((a, b) => a - b);
 }
 
+/**
+ * Test-only trip-wire: compares whichever live index already exists for
+ * this state - built by an earlier pileCells read or mutation, untouched
+ * here - against a fresh scan of state.piles, and throws naming the first
+ * mismatch. A plain object cannot refuse a raw write straight onto
+ * inv.stacks or inv.items, so a future bypass of addItem, removeItem,
+ * addAgedStack, ageStacks or pile() cannot be made impossible; this is how
+ * it is instead made to fail loudly the moment a test calls it, rather than
+ * silently skipping a pile some loop should have visited. Does nothing if
+ * no index has been built yet for this state - call pileCells, or make any
+ * mutation, first, the same way real play would have.
+ */
+export function assertPileIndexConsistent(state: GameState): void {
+  const idx = pileIndexes.get(state);
+  if (!idx) return;
+  for (const category of Object.keys(idx) as PileCategory[]) {
+    const truth = new Set<number>();
+    for (const key of Object.keys(state.piles)) {
+      const cell = Number(key);
+      const inv = state.piles[cell];
+      if (inv && classify(inv)[category]) truth.add(cell);
+    }
+    const live = idx[category];
+    const missing = [...truth].filter((cell) => !live.has(cell));
+    const extra = [...live].filter((cell) => !truth.has(cell));
+    if (missing.length || extra.length) {
+      throw new Error(`pile index out of sync for "${category}": missing ${missing.join(", ") || "none"}, stale ${extra.join(", ") || "none"}`);
+    }
+  }
+}
+
 export function weight(inv: Inventory): number {
   let kg = 0;
   for (const k of Object.keys(inv.items) as ItemId[]) kg += (inv.items[k] ?? 0) * ITEM_KG[k];
@@ -139,6 +170,22 @@ export function addItem(inv: Inventory, item: ItemId, n: number): void {
     return;
   }
   inv.items[item] = (inv.items[item] ?? 0) + n;
+  reindexPile(inv);
+}
+
+/**
+ * Adds one perishable stack at a specific age rather than fresh: what a
+ * transfer of already-ageing food (a pack laid down at death, a carcass
+ * moved whole) has to preserve, since addItem always starts a stack at age
+ * zero. This is the one other place, besides addItem, allowed to push
+ * straight onto inv.stacks - every caller moving a pile's perishables
+ * anywhere reaches for this or addItem rather than touching stacks
+ * directly, so the live index never has to be reindexed by hand.
+ */
+export function addAgedStack(inv: Inventory, item: PerishableId, kg: number, age: number): void {
+  if (kg <= 0) return;
+  if (!inv.stacks[item]) inv.stacks[item] = [];
+  inv.stacks[item].push({ kg, age });
   reindexPile(inv);
 }
 

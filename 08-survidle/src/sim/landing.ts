@@ -13,7 +13,7 @@ import { ensureCareRows } from "./bodyorder";
 import { calendar, coastOpen, fmtDate, START_DOY } from "./calendar";
 import { fmtWorldDate } from "./epitaph";
 import { rebaseOpportunityContextClock } from "./opportunity-context";
-import { addItem, pile } from "./inventory";
+import { addAgedStack, addItem, pile } from "./inventory";
 import { STRUCTURES } from "./items";
 import { log } from "./log";
 import { dimAll, mapRegion } from "./mapped";
@@ -26,7 +26,7 @@ import { current, newRecord, worldDate } from "./record";
 import { campSite, DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
 import { CARRY_SHARE, carrySkills, level, SKILL_IDS, SKILL_NAMES } from "./skills";
 import { resetTeaching } from "./teach";
-import type { GameState, ItemId, LifeEvent, LifeRecord, Person, RegionState, WorldDate } from "./types";
+import type { GameState, ItemId, LifeEvent, LifeRecord, PerishableId, Person, RegionState, WorldDate } from "./types";
 import { rebaseWeather } from "./weather";
 
 export const GAP_MIN_DAYS = 90;
@@ -90,10 +90,7 @@ export function layDownPack(state: GameState, world: World): void {
     delete p.pack.items[k];
   }
   for (const [k, stacks] of Object.entries(p.pack.stacks)) {
-    for (const s of stacks ?? []) {
-      to.stacks[k as keyof typeof to.stacks] ??= [];
-      to.stacks[k as keyof typeof to.stacks]!.push({ ...s });
-    }
+    for (const s of stacks ?? []) addAgedStack(to, k as PerishableId, s.kg, s.age);
     delete p.pack.stacks[k as keyof typeof p.pack.stacks];
   }
   for (const t of p.tools) addItem(to, t.id, 1);

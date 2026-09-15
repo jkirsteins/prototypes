@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { bodyRowOf, campRowOf, isBodyRow, isCampRow, isCareRow } from "../src/sim/bodyorder";
 import { calendar, COAST_OPEN_FROM, COAST_OPEN_TO, coastOpen } from "../src/sim/calendar";
-import { addItem, herePile, pile, qty } from "../src/sim/inventory";
+import { addItem, assertPileIndexConsistent, herePile, pile, pileCells, qty } from "../src/sim/inventory";
+import { spoilPiles } from "../src/sim/camp";
 import { setSkillLevel } from "../src/sim/horizon";
 import { giveOrder } from "../src/sim/ladder";
-import { beginAgain, demoteFog, land, landingCell, landingDate } from "../src/sim/landing";
+import { beginAgain, demoteFog, land, landingCell, landingDate, layDownPack } from "../src/sim/landing";
 import { markKnown } from "../src/sim/mapped";
 import { fmtName } from "../src/sim/names";
 import { newGame } from "../src/sim/newgame";
@@ -22,6 +23,7 @@ import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { PATCH_KM } from "../src/world/spatial";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
 
 describe("the gap", () => {
   it("opens the coast a month after the mean crosses zero in spring and closes when it crosses in autumn", () => {
@@ -89,6 +91,48 @@ describe("the landing", () => {
     for (const id of Object.keys(state.discovered)) expect(discovery(state, Number(id))).toBe(DIM);
     expect(state.survivors).toHaveLength(1);
     expect(state.landing!.name.first.length).toBeGreaterThan(0);
+  });
+
+  it("lays down a pack of nothing but perishables where the body fell, and that food still spoils on schedule", () => {
+    // The bypass this guards against only shows with no plain items and no
+    // tools in the pack: either one calls addItem on its own and happens to
+    // reindex the whole pile as a side effect, which is exactly the
+    // incidental behaviour that must not be the thing standing between this
+    // food and ever spoiling.
+    testAtmosphere({ temperatureC: 10 });
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    // A real session has built and read the live index countless times
+    // before any particular death - a bypass has to stay caught against an
+    // index that already exists, not be hidden by the one-time lazy build
+    // a state that had never touched a pile before would get for free.
+    addItem(pile(state, cellOf(state, world) + 1), "stone", 1);
+    pileCells(state, "perishable");
+    state.player.tools = [];
+    state.player.pack.items = {};
+    addItem(state.player.pack, "rawMeat", 3);
+    const deathCell = cellOf(state, world);
+    die(state, "starved");
+    layDownPack(state, world);
+
+    expect(Object.keys(state.player.pack.items)).toHaveLength(0);
+    expect(state.player.tools).toHaveLength(0);
+    const dropped = pile(state, deathCell);
+    expect(qty(dropped, "rawMeat")).toBeCloseTo(3, 6);
+    // The exact finding: with no addItem call anywhere in layDownPack's run,
+    // nothing would have reindexed this cell, and it would be invisible to
+    // every loop that walks the perishable category.
+    expect(pileCells(state, "perishable")).toContain(deathCell);
+    assertPileIndexConsistent(state);
+
+    // 36 hours (rawMeat's SPOIL_HOURS) of warm spoilage passes must clear it
+    // out, the same as it would for any other perishable pile - proving the
+    // spoilage loop actually walks this cell rather than the index merely
+    // claiming it does.
+    spoilPiles(state, world, 36 * 60 + 1, null);
+    expect(qty(pile(state, deathCell), "rawMeat")).toBe(0);
+    expect(pileCells(state, "perishable")).not.toContain(deathCell);
+    assertPileIndexConsistent(state);
   });
 
   it("reads the old camp from where the survivor built, not from wherever they died", () => {

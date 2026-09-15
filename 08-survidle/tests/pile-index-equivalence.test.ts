@@ -10,11 +10,13 @@ import { describe, expect, it } from "vitest";
 import { newGame } from "../src/sim/newgame";
 import { cellAt, type World } from "../src/world/gen";
 import {
-  addItem, ageStacks, pile, pileCells, qty, removeItem, tidyPiles, TRACE_KG,
+  addItem, ageStacks, assertPileIndexConsistent, pile, pileCells, qty, removeItem, tidyPiles, TRACE_KG,
 } from "../src/sim/inventory";
 import { dryWood, RAIN_WET_KG_PER_HOUR, wetWood } from "../src/sim/fire";
 import { coveredWoodKg, spoilPiles, woodOnHandKg } from "../src/sim/camp";
+import { layDownPack } from "../src/sim/landing";
 import { campSite, regionState, touchedRegions } from "../src/sim/regionstate";
+import { cellOf } from "../src/sim/position";
 import { localWeather } from "../src/sim/weather";
 import { BARK_DRY_RATIO } from "../src/sim/items";
 import { PERISHABLES, type GameState, type Inventory, type ItemId } from "../src/sim/types";
@@ -191,6 +193,23 @@ describe("the live-pile index reproduces the full-scan result", () => {
     // Rain: wets exposed firewood, dries nothing.
     testRain(3, 6);
     for (let i = 0; i < 8; i++) tick(30);
+    assertPileIndexConsistent(newState);
+
+    // A death mid-run: the pack holds nothing but a perishable - no plain
+    // items, no tools - the exact case that left a dropped pile invisible
+    // to the spoilage loop when the transfer bypassed addItem. Applied
+    // identically to both runs; layDownPack itself is unaffected by which
+    // scan the drying/wetting/spoilage passes use, so this checks that the
+    // pile it creates is picked up by both the same way afterward.
+    const deathCell = cellOf(oldState, world);
+    for (const s of [oldState, newState]) {
+      s.player.tools = [];
+      s.player.pack.items = {};
+      addItem(s.player.pack, "rawMeat", 2);
+      layDownPack(s, world);
+    }
+    expect(pileCells(newState, "perishable")).toContain(deathCell);
+    assertPileIndexConsistent(newState);
 
     // Fully empty a pile that had firewood, so it drops out of every
     // category and (once tidied) out of state.piles entirely.
@@ -212,6 +231,7 @@ describe("the live-pile index reproduces the full-scan result", () => {
       expect(newState.regions[id].wettedKg).toBeCloseTo(oldState.regions[id].wettedKg, 9);
     }
     expect(newState.player.pack).toEqual(oldState.player.pack);
+    assertPileIndexConsistent(newState);
   });
 
   it("keeps pileCells for every category exactly in step with a fresh scan of state.piles, checkpoint by checkpoint", () => {
