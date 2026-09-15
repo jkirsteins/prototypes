@@ -137,6 +137,26 @@ async function main() {
         }).length,
         maxCloudShadowAlpha: Math.max(0, ...effects.shadow.map((cell) => cell.alpha)),
         overlayHidden: document.querySelector('#overlay').hidden,
+        // The effects canvas has to cover the board it draws on, and a
+        // canvas can fail that two ways a markup test cannot see. It is a
+        // replaced element, so inset alone leaves it at its intrinsic
+        // 300 by 150 unless a width and height are stated; and its backing
+        // buffer is a pair of attributes a morph will strip if the markup
+        // does not carry them. Either one leaves the water shimmering in a
+        // corner and the rest of the board still.
+        effectsBox: (() => {
+          const canvas = document.querySelector('#effects');
+          const host = document.querySelector('#mapdyn .scroll-x');
+          if (!canvas || !host) return null;
+          const dpr = window.devicePixelRatio || 1;
+          return {
+            cssWidth: Math.round(canvas.clientWidth), cssHeight: Math.round(canvas.clientHeight),
+            hostWidth: Math.round(host.clientWidth), hostHeight: Math.round(host.clientHeight),
+            bufferWidth: canvas.width, bufferHeight: canvas.height,
+            wantBufferWidth: Math.max(1, Math.round(canvas.clientWidth * dpr)),
+            wantBufferHeight: Math.max(1, Math.round(canvas.clientHeight * dpr)),
+          };
+        })(),
         box: (() => { const r = document.querySelector('#mapdyn .scroll-x').getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }; })(),
       };
     })()`);
@@ -155,6 +175,11 @@ async function main() {
     assert(facts.waterConditionGlyphs === 0, `${name}: water terrain was replaced by an ice condition glyph`);
     assert(facts.snowConditionGlyphs === 0, `${name}: meadow terrain was replaced by a snow condition glyph`);
     assert(facts.maxCloudShadowAlpha <= 0.14, `${name}: cloud shadow exceeded the 14 percent ceiling (${facts.maxCloudShadowAlpha})`);
+    assert(facts.effectsBox !== null, `${name}: no effects canvas on the board`);
+    assert(facts.effectsBox.cssWidth === facts.effectsBox.hostWidth && facts.effectsBox.cssHeight === facts.effectsBox.hostHeight,
+      `${name}: the effects canvas does not cover the board (${facts.effectsBox.cssWidth}x${facts.effectsBox.cssHeight} over ${facts.effectsBox.hostWidth}x${facts.effectsBox.hostHeight})`);
+    assert(facts.effectsBox.bufferWidth === facts.effectsBox.wantBufferWidth && facts.effectsBox.bufferHeight === facts.effectsBox.wantBufferHeight,
+      `${name}: the effects canvas's backing buffer is not its box in device pixels (${facts.effectsBox.bufferWidth}x${facts.effectsBox.bufferHeight}, wanted ${facts.effectsBox.wantBufferWidth}x${facts.effectsBox.wantBufferHeight})`);
     if (name === "approaching-rain" || name === "windward-lee") {
       assert(facts.weatherValues > 1, `${name}: local weather did not vary across the view`);
     }
