@@ -655,11 +655,10 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 }
 .grid .c.wx-glyph:not(.mk) > .cell-ground > .terrain-visual { visibility: hidden; }
 .grid .c.mk > .cell-weather { display: none; }
-.grid .c .cloud-shadow {
-  position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none;
-  background: rgb(0 0 0 / var(--wx-shadow));
-  transition: background 0.5s linear;
-}
+/* The cloud's shadow is drawn on the effects canvas (map.ts, drawShadows),
+   capped at CLOUD_SHADOW_CAP so terrain glyphs stay readable under it. The
+   cell still carries --wx-shadow, since it is the number the canvas model
+   is built from and other rules key off the same weather facts. */
 .grid .c .cell-signal {
   display: block; position: relative; z-index: var(--map-signal);
 }

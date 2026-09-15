@@ -9,7 +9,7 @@ import type { AtmosphereSample, LocalGroundWeather } from "../src/sim/types";
 import { ensureGround } from "../src/sim/weather";
 import { cellIdx, regionPeek } from "../src/world/gen";
 import { LATTICE, LATTICE_W } from "../src/world/terrain";
-import { cloudGlyphHtml, levelAt, mapHtml, mapKey, viewOrigin } from "../src/ui/map";
+import { cloudGlyphHtml, CLOUD_SHADOW_CAP, effectsSnapshot, levelAt, mapHtml, mapKey, viewOrigin } from "../src/ui/map";
 import { weatherHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
 import { lighting, updateSky } from "../src/ui/sky";
@@ -201,9 +201,14 @@ describe("local weather presentation", () => {
     const shadowCell = shadow.querySelector<HTMLElement>(".c.wx-cloud:not(.mk)")!;
     expect(shadow.querySelector(".grid")?.classList).toContain("cloud-shadows");
     expect([...shadowCell.children].some((child) => child.classList.contains("cell-ground"))).toBe(true);
-    expect([...shadowCell.children].some((child) => child.classList.contains("cloud-shadow"))).toBe(true);
+    // The wash itself is a canvas draw call now (map.ts, drawShadows), not a
+    // child element; the cell still carries the number it is built from.
     expect(shadowCell.style.getPropertyValue("--wx-shadow")).toBe("0.140");
     expect(shadowCell.querySelector(".cloud-ripple")).toBeNull();
+    const shadowModel = effectsSnapshot()!;
+    expect(shadowModel.shadow.length).toBeGreaterThan(0);
+    for (const cell of shadowModel.shadow) expect(cell.alpha).toBeLessThanOrEqual(CLOUD_SHADOW_CAP);
+    expect(shadowModel.shadow.some((cell) => Math.abs(cell.alpha - 0.14) < 0.001)).toBe(true);
 
     ui.cloudShadows = false;
     const flavor = document.createElement("div");

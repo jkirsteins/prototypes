@@ -689,6 +689,8 @@ export function waterRippleDelaysS(seed: number, x: number, y: number, zoom: num
 export const WATER_LIT = { rest: "#24468f", shallow: "#3160b0", deep: "#1a3474" } as const;
 /** At the closest rung a glyph is one patch in a big box, and a peak that reads as a glint on an 11px glyph reads as a flat wash there. */
 const WATER_FINE_GAIN = 0.5;
+/** The most a cloud's shadow ever washes a cell: full cover reads as this, never past it, so terrain glyphs stay readable underneath. */
+export const CLOUD_SHADOW_CAP = 0.14;
 
 /** A cubic ease, 0 to 1 to 0 across its input: the same shape a two-keyframe CSS animation interpolates by default. */
 function easeInOut(t: number): number {
@@ -789,6 +791,23 @@ function drawWaterShimmer(ctx: CanvasRenderingContext2D, model: EffectsModel, no
 }
 
 /**
+ * The cloud's shadow: a flat black wash, capped so terrain glyphs stay
+ * readable under full cover. Not time-animated - cloud cover only moves as
+ * the weather itself does, which is what changes `model.shadow` between one
+ * `mapHtml` rebuild and the next - so this reads as one paint per cell
+ * rather than a running loop.
+ */
+function drawShadows(ctx: CanvasRenderingContext2D, model: EffectsModel): void {
+  if (!model.shadow.length) return;
+  ctx.save();
+  for (const cell of model.shadow) {
+    ctx.fillStyle = `rgba(0, 0, 0, ${cell.alpha})`;
+    ctx.fillRect(cell.gx * model.px, cell.gy * model.line, model.px, model.line);
+  }
+  ctx.restore();
+}
+
+/**
  * Redraws the effects canvas against the current wall clock. Cheap to call
  * every render tick: the model itself is rebuilt only when `mapHtml` is,
  * this just positions the canvas over the grid's current box and repaints
@@ -818,6 +837,7 @@ export function updateEffects(root: ParentNode = document): void {
     : 1;
   const nowS = frozen ? 0 : (performance.now() / 1000) * shimmerSpeed;
   drawWaterShimmer(ctx, model, nowS);
+  drawShadows(ctx, model);
 }
 
 let effectsFrozenKey: string | null = null;
@@ -1660,7 +1680,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         weatherGlyphs = cloudGlyphHtml(world.seed, cx, cy);
       }
       if (weatherGlyphs) cls.push("wx-glyph");
-      if (ui.cloudShadows && weather.cloud >= 0.15) content += `<i class="cloud-shadow" aria-hidden="true"></i>`;
+      if (ui.cloudShadows && weather.cloud >= 0.15) effectsShadow.push({ gx, gy, alpha: weather.cloud * CLOUD_SHADOW_CAP });
       if (weatherGlyphs) content += `<i class="cell-weather" aria-hidden="true">${weatherGlyphs}</i>`;
     }
     // Open water in sight catches the light: three waves, drawn on the

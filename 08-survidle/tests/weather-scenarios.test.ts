@@ -1,6 +1,6 @@
 import { knowledgeCounts } from "../src/sim/fineknowledge";
 import { describe, expect, it } from "vitest";
-import { mapHtml } from "../src/ui/map";
+import { effectsSnapshot, mapHtml } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { conditionsAt, iceMode, patchGroundModifiers } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture, weatherShotSimulation } from "../src/sim/weather-scenarios";
@@ -45,7 +45,8 @@ describe("simulation-backed weather screenshot fixtures", () => {
     const fixture = weatherShotFixture("sunny-clouds");
     const root = document.createElement("div");
     root.innerHTML = mapHtml(fixture.world, fixture.state, { ...newUiState(), zoom: fixture.definition.zoom }, fixture.cal);
-    expect(root.querySelectorAll(".cloud-shadow").length).toBeGreaterThan(0);
+    // The wash is a canvas draw now (map.ts, drawShadows), not an element.
+    expect(effectsSnapshot()!.shadow.length).toBeGreaterThan(0);
     expect(root.querySelector(".wx-rain, .wx-snowing")).toBeNull();
     expect(root.querySelector(".ground-snow")).toBeNull();
   });
