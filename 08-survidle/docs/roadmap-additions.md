@@ -1677,3 +1677,30 @@ that the picture did not change.
   are positioned DOM overlays and are a natural fit for the effects layer.
 - Whether the region borders belong to the static layer or want their own,
   given they change on discovery rather than on movement.
+
+## A cheap pre-filter for the Do panel's search
+
+**Raised** 2026-09-15, out of the performance work on the render surface.
+
+The Do panel's filter box used to run a real pathfind for every candidate
+row on every tick, measured at 6,634 ms a call against 0.03 ms when the box
+was empty, which is twice the whole frame budget spent for ever while any
+text sat in the box. That is fixed: the route is cached and the cheap
+legality check runs fresh, so a row's reason is never stale. What remains
+is about 25 to 30 ms a tick while text is held, which is a quarter of the
+frame budget and is accepted rather than solved.
+
+The route cache keeps a floored game-minute in its key, and that is
+deliberate and evidenced: over a full game-day with position and knowledge
+fixed, a row's distance never changes but its walking time drifts
+continuously through the light term in `baseWalkSpeed`, by enough that
+dropping the key would show a walk time wrong by a third all night. So the
+misses are honest work, not a missing invalidation.
+
+The remaining cost is that every candidate row is built before anything
+knows whether the typed text can match it. A cheap pre-filter - narrow the
+candidates by name against the filter text first, and only then build the
+rows that survive - would collapse the work without touching the cache or
+the legality check. It is worth doing when the filter box next feels slow,
+and it is not worth doing before the effects canvas, which is a far larger
+share of the frame.
