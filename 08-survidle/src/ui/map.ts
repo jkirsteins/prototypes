@@ -129,6 +129,7 @@ export function legendHtml(): string {
     `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +
     `<span class="memory-key">muted: remembered, faint: inherited</span>` +
     `<span class="far-key">flat and pale: seen from afar, never walked</span>` +
+    `<span class="part-key">pale on dark: partly seen</span>` +
     `<span class="fog-key">dark: never been there</span>`
   );
 }
@@ -1534,6 +1535,13 @@ export interface GlyphGround {
   /** The block's real terrain and relief, computed only where the block reads as known. */
   summary: GlyphSummary | null;
   /**
+   * A block read in part: some of its patches known, fewer than the
+   * majority a known block wants. It draws the ground those patches show,
+   * pale on the dark, so a step of sight at the block rungs never vanishes
+   * into a fog it does not deserve.
+   */
+  partial: boolean;
+  /**
    * Ground nobody has read patch by patch, whose country was seen from a
    * vantage. It draws the solved terrain rather than fog, and never the detail
    * or the weather that only a read patch earns.
@@ -1638,6 +1646,11 @@ function glyphGround(state: GameState, world: World, visible: Set<number> | null
     // is reading the patches, which is the one thing this ground has not had.
     const far = knowledge.far / Math.max(1, knowledge.samples) > BLOCK_MAJORITY;
     let terrain: Terrain = "water";
+    // Known in part: the ground the known patches show, read from them alone.
+    if (!far && knownAny > 0 && z > 1) {
+      const summary = glyphSummary(state, world, x0, y0, z);
+      if (summary.samples > 0) return { terrain: dominantByPriority(summary.terrainCounts), region, seen, knowledge, summary, partial: true, far: false };
+    }
     if (far && farCandidates) {
       // The solved terrain, read through the peek that never builds a chunk:
       // far country is exactly the ground no chunk has been made for. Which
@@ -1648,11 +1661,11 @@ function glyphGround(state: GameState, world: World, visible: Set<number> | null
       for (const c of farCandidates) farTerrain[c.aggregate ? aggregateTerrain(world, c.x, c.y) : terrainPeek(world, c.x, c.y)]++;
       terrain = dominantByPriority(farTerrain);
     }
-    return { terrain, region, seen, knowledge, summary: null, far };
+    return { terrain, region, seen, knowledge, summary: null, partial: false, far };
   }
-  if (z === 1) return { terrain: terrainPeek(world, x0, y0), region, seen, knowledge, summary: null, far: false };
+  if (z === 1) return { terrain: terrainPeek(world, x0, y0), region, seen, knowledge, summary: null, partial: false, far: false };
   const summary = glyphSummary(state, world, x0, y0, z);
-  return { terrain: dominantByPriority(summary.terrainCounts), region, seen, knowledge, summary, far: false };
+  return { terrain: dominantByPriority(summary.terrainCounts), region, seen, knowledge, summary, partial: false, far: false };
 }
 
 export interface LightSource { cell: number; reach: number }
@@ -2124,6 +2137,7 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
     const reg = regions[i];
     const seen = reg >= 0 ? seenAt[i] : 0;
     const far = reg >= 0 && (groundAtGlyph[i]?.far ?? false);
+    const partial = reg >= 0 && (groundAtGlyph[i]?.partial ?? false);
     const named = reg >= 0 && discovery(state, reg) > 0;
     const cls = ["c"];
     let glyph = " ";
@@ -2144,7 +2158,7 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
     }
     if (reg < 0) {
       cls.push("void");
-    } else if (seen === 0 && !far) {
+    } else if (seen === 0 && !far && !partial) {
       cls.push("fog");
       // The outline still shows through: where the country you are in ends and
       // what adjoins it, on ground nobody has walked. The class says which of
@@ -2167,6 +2181,24 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
       cls.push(`t-${t}`, "far");
       glyph = presentation.glyph;
       terrainLabel = `${presentation.heading}, seen from afar`;
+    } else if (partial) {
+      // A block read in part: the ground its known patches show, pale on
+      // the dark, with the region's outline through it the way fog carries
+      // one. At 300 m a glyph is thirty-six patches, and a survivor's sight
+      // reaches a few of them long before it reaches most; without this a
+      // step into new country drew nothing until the block was half read.
+      const t = terrains[i];
+      const presentation = aggregatePresentation(t, "lake", "inherited", null);
+      cls.push(`t-${t}`, "part");
+      glyph = presentation.glyph;
+      terrainLabel = `${presentation.heading}, partly seen`;
+      if (drawBorders && near.has(reg)) {
+        if (gx > 0 && ownsEdge(reg, regions[i - 1])) cls.push("bl");
+        if (gx < l.w - 1 && ownsEdge(reg, regions[i + 1])) cls.push("br");
+        if (gy > 0 && ownsEdge(reg, regions[i - l.w])) cls.push("bt");
+        if (gy < l.h - 1 && ownsEdge(reg, regions[i + l.w])) cls.push("bb");
+        cls.push(reg === cur ? "edge-cur" : discovery(state, reg) === VISITED ? "edge-known" : "edge-unknown");
+      }
     } else {
       const t = terrains[i];
       cls.push(`t-${t}`);

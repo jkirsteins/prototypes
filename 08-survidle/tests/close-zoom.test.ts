@@ -368,10 +368,12 @@ describe("drawing known aggregates", () => {
     expect(glyphsWith(draw(world, state, open(3)), "!fog", "!void").length).toBeGreaterThan(0);
     const wide = draw(world, state, open(4));
     const after = worldCacheStats(world);
-    // Sixteen glyphs of known ground drawn, and not one patch of the world
-    // behind them built to draw it. Before the parents were gated on
-    // knowledge this cost nine chunks and 82,944 generated patches.
-    expect(glyphsWith(wide, "!fog", "!void").length).toBe(16);
+    // Sixteen glyphs of known ground drawn, the partly known blocks round
+    // their edge drawn pale, and not one patch of the world behind them
+    // built to draw it. Before the parents were gated on knowledge this
+    // cost nine chunks and 82,944 generated patches.
+    expect(glyphsWith(wide, "!fog", "!void", "!part").length).toBe(16);
+    expect(glyphsWith(wide, "part").length).toBeGreaterThan(0);
     expect(after.fineChunkBuilds).toBe(before.fineChunkBuilds);
     expect(after.generatedPatches).toBe(before.generatedPatches);
   });

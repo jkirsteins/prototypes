@@ -255,11 +255,18 @@ export function glyphStyle(grid: GridLook, tokens: readonly string[]): GlyphStyl
     alpha = 0.3;
     fg = filtered(fg, 0.85, 0.3);
   }
+  // Known in part: the ground's own letter, paled, on the dark of the
+  // unknown round it; edges through it the way fog carries them.
+  if (has("part") && !mark) {
+    alpha = 0.6;
+    fg = filtered(fg, 0.9, 0.55);
+    bg = FOG_BG;
+  }
   // The height, in the snow's own range, on the letter alone.
   if (!mark && snow && tone !== 1) fg = filtered(fg, tone === 0 ? 0.82 : 1.18, 1);
 
   // Edges: which side this glyph owns of a region line, in whose colour.
-  const edge = fog
+  const edge = fog || has("part")
     ? has("edge-cur") ? "rgba(230, 194, 41, 0.38)" : has("edge-known") ? "rgba(59, 111, 209, 0.38)" : "#39404e"
     : has("cur") ? ACCENT : BORDER;
   const border = {

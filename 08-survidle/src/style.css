@@ -595,6 +595,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .legend .fog-key { color: #4a5160; }
 .legend .memory-key { color: #777d86; }
 .legend .far-key { color: #5b6270; }
+.legend .part-key { color: #6a7382; }
 
 /* The legend's sample of the walk line; the walk itself is drawn on the canvas in the same two strokes. */
 polyline.walk-ahead, polyline.walk-behind { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
