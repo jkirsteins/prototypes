@@ -884,10 +884,21 @@ export function unknownBearDen(state: GameState, cal: Calendar): WildlifeSubject
   return state.wildlife.subjects.find((subject) => subject.species === "bear" && subject.region === state.player.region && subject.denCell !== null && !state.wildlife.knownDens[subject.denCell] && wildlifeMembers(subject) > 0) ?? null;
 }
 
-export function visibleWildlife(state: GameState, world: World, cal: Calendar): WildlifeSubject[] {
+/**
+ * The subjects standing on ground the survivor can see right now.
+ *
+ * `visible` is the survivor's current viewshed, for a caller that already
+ * holds one. Working it out is the expensive half of a frame - a contrast
+ * pass over every candidate patch - and the map asks this question six
+ * times while building one picture, from the same cell, for the same
+ * minute. Left to compute its own, this ran the pass six times over. A
+ * caller that passes nothing still gets an exact answer computed here, so
+ * the meaning of the function does not depend on who is asking.
+ */
+export function visibleWildlife(state: GameState, world: World, cal: Calendar, visible?: ReadonlySet<number>): WildlifeSubject[] {
   if (state.wildlife.activeRegion !== state.player.region) return [];
-  const visible = visibleCells(state, world, cal, cellOf(state, world));
-  return state.wildlife.subjects.filter((s) => s.region === state.player.region && s.active !== null && visible.has(s.active.cell));
+  const seen = visible ?? visibleCells(state, world, cal, cellOf(state, world));
+  return state.wildlife.subjects.filter((s) => s.region === state.player.region && s.active !== null && seen.has(s.active.cell));
 }
 
 /** One cheap life-history pass for persistent subjects, whether spatial or dormant. */

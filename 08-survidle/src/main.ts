@@ -59,7 +59,7 @@ import {
   manualHtml, oldWorldHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
-import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, newUiState, resetPanels, rowRequest, setPanel, setWhenField, simulationPaused, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
+import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, heldQuery, newUiState, resetPanels, rowRequest, setPanel, setWhenField, simulationPaused, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
 import { advanceHurry, hurryClick, hurryKind, newHurry } from "./ui/hurry";
 import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
@@ -388,7 +388,7 @@ function render(nowMs = performance.now()) {
   // The settings panel is static markup with its own listeners (the slider must
   // not be redrawn mid-drag), so it is shown and hidden rather than rewritten.
   setHidden(document.getElementById("settings"), !ui.settings);
-  const travelSelect = document.querySelector<HTMLSelectElement>("[data-display=travel]");
+  const travelSelect = heldQuery<HTMLSelectElement>(document, "[data-display=travel]");
   if (travelSelect && travelSelect.value !== ui.travelDisplay) travelSelect.value = ui.travelDisplay;
   const cloudShadows = document.querySelector<HTMLInputElement>("[data-display=cloud-shadows]");
   if (cloudShadows && cloudShadows.checked !== ui.cloudShadows) cloudShadows.checked = ui.cloudShadows;
@@ -1277,6 +1277,7 @@ declare global {
     opportunityEvent?(event: OpportunityEvent): void;
     placeAtPatch?(patch: number): void;
     reveal?(patch: number, radiusPatches: number): void;
+    effectsBench?(iterations?: number): { msPerDraw: number; water: number; shadow: number; glyph: number; iterations: number };
   } }
 }
 window.survidle = {
@@ -1335,6 +1336,25 @@ if (import.meta.env.DEV) {
   window.survidle.placeAtPatch = (patch) => {
     placeAtPatch(state, world, patch);
     render();
+  };
+  // What a draw of the effects canvas costs, measured the only place it can
+  // be: a real browser with a real 2d context. The redraw budget in the
+  // shots harness reads this, and so does anyone optimising the draw - a
+  // number from a profiler's flame graph moves with the profiler, this does
+  // not. It draws the picture that is already on screen, over and over, so
+  // it measures the draw and nothing around it.
+  window.survidle.effectsBench = (iterations = 200) => {
+    const model = effectsSnapshot();
+    const runs = Math.max(1, Math.floor(iterations));
+    for (let i = 0; i < 20; i++) updateEffects();
+    const t0 = performance.now();
+    for (let i = 0; i < runs; i++) updateEffects();
+    const msPerDraw = (performance.now() - t0) / runs;
+    return {
+      msPerDraw: Math.round(msPerDraw * 1000) / 1000,
+      water: model?.water.length ?? 0, shadow: model?.shadow.length ?? 0, glyph: model?.glyph.length ?? 0,
+      iterations: runs,
+    };
   };
   window.survidle.reveal = (patch, radiusPatches) => {
     const { x, y } = patchXY(patch);

@@ -14,6 +14,7 @@ import { sleepiness } from "../sim/sleep";
 import { fmtDuration, fmtRealSeconds, realSecondsFor } from "../units";
 import type { World } from "../world/gen";
 import { type HurryState, realSecondsLeft } from "./hurry";
+import { domGeneration, heldQueryAll } from "./render";
 import { sleepForecast } from "./sleep";
 
 /** The frame loop's clock: what it adds to the one scale, so a bar can say how long the wait really is. */
@@ -30,11 +31,56 @@ export interface FrameClock {
  * queue - and two elements sharing one id left this writing to whichever it
  * happened to find first.
  */
+/**
+ * The elements each bar name writes to, found once per root and held until
+ * a morph moves them.
+ *
+ * Every name here is written on every frame, and each write used to be its
+ * own document-wide attribute query. Thirteen bars is three dozen sweeps of
+ * an 8,700 element page, sixty times a second. One sweep gathers all three
+ * attributes instead, and `domGeneration` says when it is stale.
+ */
+interface BarIndex { gen: number; sentinel: HTMLElement | null; bars: Map<string, HTMLElement[]>; vals: Map<string, HTMLElement[]>; trends: Map<string, HTMLElement[]> }
+const barIndexes = new WeakMap<ParentNode, BarIndex>();
+
+function barIndex(root: ParentNode): BarIndex {
+  const held = barIndexes.get(root);
+  // The generation catches a morph; the sentinel catches markup replaced
+  // wholesale in the same task, which a counter cannot see - a test
+  // assigning innerHTML and calling straight through to here is exactly
+  // that, and found this.
+  // An index that found nothing is never held: with no sentinel there is
+  // nothing to notice its markup arriving, and a root with no bars at all is
+  // a test's empty page rather than anything the game renders.
+  if (held && held.gen === domGeneration() && held.sentinel !== null && held.sentinel.isConnected) return held;
+  const index: BarIndex = { gen: domGeneration(), sentinel: null, bars: new Map(), vals: new Map(), trends: new Map() };
+  const group = (selector: string, attribute: string, into: Map<string, HTMLElement[]>) => {
+    for (const el of root.querySelectorAll<HTMLElement>(selector)) {
+      const name = el.getAttribute(attribute);
+      if (name === null) continue;
+      index.sentinel ??= el;
+      const list = into.get(name);
+      if (list) list.push(el);
+      else into.set(name, [el]);
+    }
+  };
+  group("[data-bar]", "data-bar", index.bars);
+  group("[data-val]", "data-val", index.vals);
+  group("[data-trend]", "data-trend", index.trends);
+  barIndexes.set(root, index);
+  return index;
+}
+
+const NO_ELEMENTS: HTMLElement[] = [];
+
 function setBar(id: string, frac: number, text?: string, root: ParentNode = document): void {
   const width = `${Math.max(0, Math.min(100, frac * 100)).toFixed(1)}%`;
-  for (const fill of root.querySelectorAll<HTMLElement>(`[data-bar="${id}"]`)) fill.style.width = width;
+  const index = barIndex(root);
+  for (const fill of index.bars.get(id) ?? NO_ELEMENTS) {
+    if (fill.style.width !== width) fill.style.width = width;
+  }
   if (text === undefined) return;
-  for (const val of root.querySelectorAll<HTMLElement>(`[data-val="${id}"]`)) {
+  for (const val of index.vals.get(id) ?? NO_ELEMENTS) {
     if (val.textContent !== text) val.textContent = text;
   }
 }
@@ -66,7 +112,7 @@ function setTrend(id: string, minute: number, frac: number, root: ParentNode): v
   const dir = span <= 0 || Math.abs(delta) < TREND_DEADBAND ? "steady" : delta > 0 ? "up" : "down";
   const perHour = span > 0 ? Math.abs(delta) * 100 * (60 / span) : 0;
   const title = dir === "steady" ? "steady" : `${dir === "up" ? "rising" : "falling"} ${perHour < 1 ? perHour.toFixed(1) : Math.round(perHour)}% an hour`;
-  for (const el of root.querySelectorAll<HTMLElement>(`[data-trend="${id}"]`)) {
+  for (const el of barIndex(root).trends.get(id) ?? NO_ELEMENTS) {
     if (el.dataset.dir !== dir) el.dataset.dir = dir;
     if (el.title !== title) el.title = title;
   }
@@ -102,7 +148,10 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   // a well-provisioned one later - so it is written here on every render rather
   // than baked into the markup (tests/churn.test.ts).
   const hungerMark = kcalBar?.querySelector<HTMLElement>('[data-mark="hunger"]');
-  if (hungerMark) hungerMark.style.left = `${((line / KCAL_FULL) * 100).toFixed(1)}%`;
+  if (hungerMark) {
+    const left = `${((line / KCAL_FULL) * 100).toFixed(1)}%`;
+    if (hungerMark.style.left !== left) hungerMark.style.left = left;
+  }
   // A meal is over in one simulated minute, and a bar that refills silently
   // is the whole of what the player could not see. The fill is left to flash
   // for a moment wherever the reserve rose.
@@ -213,9 +262,10 @@ export function fillShare(state: GameState, spec: string): number | null {
  * it holds still. tests/churn.test.ts holds the line.
  */
 export function updateFills(state: GameState, root: ParentNode = document): void {
-  for (const fill of root.querySelectorAll<HTMLElement>("[data-fill]")) {
+  for (const fill of heldQueryAll<HTMLElement>(root, "[data-fill]")) {
     const share = fillShare(state, fill.dataset.fill ?? "");
     if (share === null) continue;
-    fill.style.width = `${Math.max(0, Math.min(100, share * 100)).toFixed(1)}%`;
+    const width = `${Math.max(0, Math.min(100, share * 100)).toFixed(1)}%`;
+    if (fill.style.width !== width) fill.style.width = width;
   }
 }

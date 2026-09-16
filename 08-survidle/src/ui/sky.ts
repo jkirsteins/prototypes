@@ -37,6 +37,7 @@ import {
 import type { AtmosphereSample, GameState, Weather } from "../sim/types";
 import { forecastText, localStorm, stormNow } from "../sim/weather";
 import { clamp } from "../units";
+import { heldQuery, heldQueryAll } from "./render";
 
 export const SKY_W = 220;
 export const SKY_H = 64;
@@ -506,10 +507,49 @@ const CLOUD_SCRATCH_H = 480;
 const cloudScratch = document.createElement("canvas");
 cloudScratch.width = CLOUD_SCRATCH_W;
 cloudScratch.height = CLOUD_SCRATCH_H;
-/** One layer is composited here in isolation before being laid onto `cloudScratch`, or the haze fill drawn first would be eaten by the next layer's own destination-in mask. */
-const cloudLayerScratch = document.createElement("canvas");
-cloudLayerScratch.width = CLOUD_SCRATCH_W;
-cloudLayerScratch.height = CLOUD_SCRATCH_H;
+/**
+ * One layer is composited here in isolation before being laid onto
+ * `cloudScratch`, or the haze fill drawn first would be eaten by the next
+ * layer's own destination-in mask.
+ *
+ * One per layer, and kept between frames. What the compositing produces - a
+ * tint cut to the mask's shape - changes only when the hour changes the
+ * tint or a resize changes the box. What changes every frame is where the
+ * result is *drawn*, which is a source offset on the copy below. Rebuilding
+ * it per frame meant clearing 960 by 480, filling it, and rescaling the
+ * mask bitmap over it, twice, sixty times a second: measured at 1.47 s per
+ * 20 s, the single most expensive thing on the main thread.
+ */
+interface CloudLayer { canvas: HTMLCanvasElement; mask: HTMLCanvasElement | null; key: string }
+const cloudLayers: [CloudLayer, CloudLayer] = [newCloudLayer(), newCloudLayer()];
+
+function newCloudLayer(): CloudLayer {
+  const canvas = document.createElement("canvas");
+  canvas.width = CLOUD_SCRATCH_W;
+  canvas.height = CLOUD_SCRATCH_H;
+  return { canvas, mask: null, key: "" };
+}
+
+/** The tinted, mask-cut layer for one cloud deck, rebuilt only when it would differ. */
+function cloudLayerBitmap(slot: 0 | 1, mask: HTMLCanvasElement, tint: string, w: number, h: number): HTMLCanvasElement | null {
+  const layer = cloudLayers[slot];
+  const key = `${tint}|${Math.round(w)}|${Math.round(h)}`;
+  if (layer.key === key && layer.mask === mask) return layer.canvas;
+  const ctx = layer.canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, CLOUD_SCRATCH_W, CLOUD_SCRATCH_H);
+  ctx.fillStyle = tint;
+  ctx.globalAlpha = 0.9;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = "destination-in";
+  ctx.globalAlpha = 1;
+  ctx.drawImage(mask, 0, 0, w, h);
+  ctx.globalCompositeOperation = "source-over";
+  layer.mask = mask;
+  layer.key = key;
+  return layer.canvas;
+}
 
 const METEOR_LOOP_S = 12;
 const METEOR_FLASH_START = 0.76;
@@ -703,8 +743,7 @@ function drawMoon(ctx: CanvasRenderingContext2D, pos: BodyPos, cal: Calendar, op
 function drawClouds(ctx: CanvasRenderingContext2D, g: SkyGeom, model: SkyModel, cover: number, low: string, high: string, windX: number, windY: number, windSpeed: number, elapsedS: number, frozen: boolean): void {
   if (cover <= 0) return;
   const scratchCtx = cloudScratch.getContext("2d");
-  const layerCtx = cloudLayerScratch.getContext("2d");
-  if (!scratchCtx || !layerCtx) return;
+  if (!scratchCtx) return;
   scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
   scratchCtx.clearRect(0, 0, CLOUD_SCRATCH_W, CLOUD_SCRATCH_H);
   scratchCtx.fillStyle = low;
@@ -717,24 +756,18 @@ function drawClouds(ctx: CanvasRenderingContext2D, g: SkyGeom, model: SkyModel, 
   const driftY = windY * CLOUD_DRIFT_Y_PER_WIND;
   const ox = t * driftX;
   const oy = t * driftY;
-  const drawLayer = (mask: HTMLCanvasElement | null, tint: string, w: number, h: number) => {
+  const drawLayer = (slot: 0 | 1, mask: HTMLCanvasElement | null, tint: string, w: number, h: number) => {
     if (!mask) return;
     // Built at its own full width, untranslated - a rect wider than the sky
     // is visible, panned behind a fixed window, exactly as the CSS
-    // transform used to pan the SVG rect behind its unmoving viewBox.
-    layerCtx.setTransform(1, 0, 0, 1, 0, 0);
-    layerCtx.clearRect(0, 0, CLOUD_SCRATCH_W, CLOUD_SCRATCH_H);
-    layerCtx.fillStyle = tint;
-    layerCtx.globalAlpha = 0.9;
-    layerCtx.fillRect(0, 0, w, h);
-    layerCtx.globalCompositeOperation = "destination-in";
-    layerCtx.globalAlpha = 1;
-    layerCtx.drawImage(mask, 0, 0, w, h);
-    layerCtx.globalCompositeOperation = "source-over";
-    scratchCtx.drawImage(cloudLayerScratch, -ox, -oy, g.w, h, 0, 0, g.w, h);
+    // transform used to pan the SVG rect behind its unmoving viewBox. The
+    // panning is this copy's source offset; the layer itself is the same
+    // bitmap until the hour retints it.
+    const layer = cloudLayerBitmap(slot, mask, tint, w, h);
+    if (layer) scratchCtx.drawImage(layer, -ox, -oy, g.w, h, 0, 0, g.w, h);
   };
-  drawLayer(model.cloudLow, low, g.w * 2, g.groundY);
-  drawLayer(model.cloudHigh, high, g.w * 2, g.groundY * 0.72);
+  drawLayer(0, model.cloudLow, low, g.w * 2, g.groundY);
+  drawLayer(1, model.cloudHigh, high, g.w * 2, g.groundY * 0.72);
   ctx.save();
   ctx.globalAlpha = cover;
   ctx.drawImage(cloudScratch, 0, 0, g.w, g.groundY, 0, 0, g.w, g.groundY);
@@ -811,18 +844,28 @@ function drawMeteors(ctx: CanvasRenderingContext2D, model: SkyModel, visible: bo
 export function updateSky(state: GameState, cal: Calendar, ambient: number, root: ParentNode = document): Lighting {
   // Every sky on the page, at whatever shape each was drawn: the game
   // widget and the gallery's cards are the same picture and must agree.
-  const skies = [...root.querySelectorAll<HTMLCanvasElement>("canvas.sky")];
+  const skies = heldQueryAll<HTMLCanvasElement>(root, "canvas.sky");
   for (const canvas of skies) dressSky(canvas, state, cal, ambient);
   const localAir = skies.length ? skyAtmosphere(skies[0]) : null;
   const light = lighting(cal, localAir ?? state.weather, localAir?.temperatureC ?? ambient);
-  const grid = root.querySelector<HTMLElement>("#map .scroll-x");
+  const grid = heldQuery<HTMLElement>(root, "#map .scroll-x");
   if (grid) {
-    grid.style.setProperty("--bright", light.brightness.toFixed(3));
-    grid.style.setProperty("--sat", light.saturation.toFixed(3));
-    grid.style.setProperty("--tint", light.tint);
-    grid.style.setProperty("--tint-a", light.alpha.toFixed(3));
+    // Compared before written. These four are custom properties on the
+    // scroller, so every one of the board's 2,592 cells inherits them, and
+    // writing a property invalidates that subtree's style whether or not the
+    // value changed. The light moves over minutes, not frames, so almost
+    // every one of these writes was asking the engine to re-resolve the
+    // whole board for an identical answer.
+    setVar(grid, "--bright", light.brightness.toFixed(3));
+    setVar(grid, "--sat", light.saturation.toFixed(3));
+    setVar(grid, "--tint", light.tint);
+    setVar(grid, "--tint-a", light.alpha.toFixed(3));
   }
   return light;
+}
+
+function setVar(el: HTMLElement, name: string, value: string): void {
+  if (el.style.getPropertyValue(name) !== value) el.style.setProperty(name, value);
 }
 
 function skyAtmosphere(canvas: HTMLCanvasElement): AtmosphereSample | null {

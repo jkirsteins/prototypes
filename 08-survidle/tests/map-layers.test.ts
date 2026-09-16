@@ -490,6 +490,14 @@ describe("the map's compositing layers", () => {
       expect(new Set(peaks).size).toBeGreaterThan(5);
     }
     expect(waterRipplePeak(17, 12, 34, 0)).toBe(waterRipplePeak(17, 12, 34, 0));
+    // The draw reads these off the cell rather than working them out per
+    // frame, so what the cell carries has to be what the helpers say. A
+    // precompute that drifts from its source would move the shimmer's
+    // pattern with nothing else changing.
+    for (const c of model.water) {
+      expect(c.delays).toEqual(waterRippleDelaysS(model.seed, c.cx, c.cy, model.zoom));
+      expect(c.peaks).toEqual([0, 1, 2].map((i) => waterRipplePeak(model.seed, c.cx, c.cy, i)));
+    }
     // Each water cell in the model carries one of the three lit colours the
     // stylesheet's --water-lit custom properties name, chosen by the same
     // depth class the cell itself carries.

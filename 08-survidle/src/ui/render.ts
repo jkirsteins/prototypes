@@ -219,11 +219,27 @@ function keyOf(el: Element): string | null {
   if (el.classList.contains("micro-mark") && el.hasAttribute("data-wildlife-id")) {
     return `${el.tagName}[wildlifeId=${el.getAttribute("data-wildlife-id")}]`;
   }
-  const data = Object.entries((el as HTMLElement).dataset ?? {})
-    .map(([k, v]) => `${k}=${v}`)
-    .sort()
-    .join(",");
-  return data ? `${el.tagName}[${data}]` : null;
+  // A map cell is its coordinate, and nothing else. The general key below
+  // is every data attribute the element carries, which for a cell includes
+  // `data-map-info` - the whole of its hover text. That made the key both
+  // enormous and *content*: when the weather changed a cell's reading, its
+  // key changed with it, so the morph could not recognise the cell it
+  // already had and replaced all 2,592 of them instead of writing the
+  // attributes that differed. The board rebuilds about once a game minute,
+  // and this was most of the 150 to 220 ms hitch when it did.
+  const mx = el.getAttribute("data-map-x");
+  if (mx !== null) return `${el.tagName}[${mx}.${el.getAttribute("data-map-y")}]`;
+  // Everything else keeps the general rule, read off the attributes rather
+  // than through `dataset`, whose live proxy is the expensive part.
+  let data = "";
+  const names: string[] = [];
+  for (const attr of el.attributes) {
+    if (attr.name.startsWith("data-")) names.push(attr.name);
+  }
+  if (!names.length) return null;
+  names.sort();
+  for (const name of names) data += `${data ? "," : ""}${name}=${el.getAttribute(name)}`;
+  return `${el.tagName}[${data}]`;
 }
 
 function sameKind(a: Node, b: Node): boolean {
@@ -249,14 +265,23 @@ function sameKind(a: Node, b: Node): boolean {
  * A width or height the markup does state still wins, same as style.
  */
 function morphAttrs(from: Element, to: Element): void {
-  for (const attr of [...to.attributes]) {
+  // Indexed rather than spread. Both collections are live, and copying them
+  // allocated two arrays for every element walked - on a board of 2,592
+  // cells that is five thousand arrays per rebuild, which was half the cost
+  // of the morph. Writing to `from` cannot disturb `to`, so the first pass
+  // reads forward; the second removes from `from` and so reads backward.
+  const wanted = to.attributes;
+  for (let i = 0; i < wanted.length; i++) {
+    const attr = wanted[i];
     if (from.getAttribute(attr.name) !== attr.value) from.setAttribute(attr.name, attr.value);
   }
   const isCanvas = from.tagName === "CANVAS";
-  for (const attr of [...from.attributes]) {
-    if (attr.name === "style") continue;
-    if (isCanvas && (attr.name === "width" || attr.name === "height") && !to.hasAttribute(attr.name)) continue;
-    if (!to.hasAttribute(attr.name)) from.removeAttribute(attr.name);
+  const held = from.attributes;
+  for (let i = held.length - 1; i >= 0; i--) {
+    const name = held[i].name;
+    if (name === "style") continue;
+    if (isCanvas && (name === "width" || name === "height") && !to.hasAttribute(name)) continue;
+    if (!to.hasAttribute(name)) from.removeAttribute(name);
   }
   // A field's value follows the state only while nobody is in it: what is half-typed is the player's.
   const tag = from.tagName;
@@ -329,11 +354,82 @@ export function setPanel(id: string, html: string, root: ParentNode = document):
   const parsed = document.createElement("template");
   parsed.innerHTML = html;
   morphChildren(el, parsed.content);
+  domGen++;
   return true;
+}
+
+/**
+ * How many times a panel's nodes have actually been morphed.
+ *
+ * A morph is the only thing on the game's page that adds or removes an
+ * element - everything else shows, hides or rewrites one in place - so a
+ * reader that holds elements it found by selector can keep them until this
+ * number moves, and re-find them when it does. `updateBars` is that reader:
+ * it wrote thirteen bars by running two document-wide attribute queries
+ * each, every frame, which measured 0.85 s per 20 s on a page of 8,700
+ * elements.
+ */
+export function domGeneration(): number {
+  return domGen;
+}
+let domGen = 0;
+
+/**
+ * An element found by selector and held until a morph could have moved it.
+ *
+ * For the handful of elements the frame loop writes to on every tick. They
+ * are found by attribute or by descendant selector, which means a sweep of
+ * the page each time, and the answer is the same until `setPanel` rebuilds
+ * the panel holding them. A miss is remembered too: an element that is not
+ * there is not there until the markup changes either.
+ */
+const heldQueries = new WeakMap<ParentNode, { gen: number; found: Map<string, Element> }>();
+
+/**
+ * Two things have to be true for a held element to still be the answer: no
+ * morph since it was found, and the element still in the document. The
+ * generation covers this page, where `setPanel` is the only thing that adds
+ * or removes an element. `isConnected` covers everything else that can
+ * replace markup wholesale in the same task - a test assigning `innerHTML`,
+ * most of all - which no counter can see coming.
+ *
+ * A miss is never held. Every selector here names an element that is
+ * normally present, so caching absence would buy nothing and would be the
+ * one case neither check above could invalidate.
+ */
+function stale(entry: { gen: number } | undefined, sentinel: Element | null): boolean {
+  return !entry || entry.gen !== domGen || (sentinel !== null && !sentinel.isConnected);
+}
+
+export function heldQuery<T extends Element>(root: ParentNode, selector: string): T | null {
+  const entry = heldQueries.get(root);
+  const known = entry?.found.get(selector) ?? null;
+  if (!stale(entry, known) && known) return known as T;
+  const fresh = stale(entry, known) ? { gen: domGen, found: new Map<string, Element>() } : entry!;
+  heldQueries.set(root, fresh);
+  const el = root.querySelector<T>(selector);
+  if (el) fresh.found.set(selector, el);
+  return el;
+}
+
+const heldLists = new WeakMap<ParentNode, { gen: number; found: Map<string, Element[]> }>();
+
+/** The same, for a selector that matches several elements. */
+export function heldQueryAll<T extends Element>(root: ParentNode, selector: string): T[] {
+  const entry = heldLists.get(root);
+  const known = entry?.found.get(selector);
+  const gone = stale(entry, known?.[0] ?? null);
+  if (!gone && known) return known as T[];
+  const fresh = gone ? { gen: domGen, found: new Map<string, Element[]>() } : entry!;
+  heldLists.set(root, fresh);
+  const list = [...root.querySelectorAll<T>(selector)];
+  if (list.length) fresh.found.set(selector, list);
+  return list;
 }
 
 export function resetPanels(): void {
   last.clear();
+  domGen++;
 }
 
 /** Clamps and commits the open row's number field to at least 1; shared by the input and change listeners so a keystroke and a blur agree. */

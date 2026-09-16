@@ -543,7 +543,9 @@ describe("large animal agents", () => {
     ui.zoom = 0;
     const html = mapHtml(world, state, ui, calendar(state.minute, state.startDoy));
     expect(html).toContain("mk-den");
-    expect(html).toMatch(/data-map-info="[^"]*known bear den/);
+    // The cell's reading lives in aria-label, which is what announces it; it
+    // used to be duplicated into a data-map-info attribute that nothing read.
+    expect(html).toMatch(/aria-label="[^"]*known bear den/);
   });
 
   it("keeps a known bear den huntable throughout the modeled denning season", () => {

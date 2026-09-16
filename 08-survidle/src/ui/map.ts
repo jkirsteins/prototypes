@@ -29,7 +29,7 @@ import { FINE_PER_PARENT, PATCH_KM, PATCH_M, type PatchId } from "../world/spati
 import { passable, type RouteConditions } from "../world/route";
 import { routeConditions, survivorRoute, survivorRouteCandidates } from "../sim/routing";
 import { aggregateTerrain } from "../sim/sight";
-import { activeWildlifeStartles, esc, type UiState } from "./render";
+import { activeWildlifeStartles, domGeneration, esc, type UiState } from "./render";
 import { elevationAt, GROUND_CHANGE_GLYPH, offshoreAt, STREAM_MARK, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
 import { lighting } from "./sky";
@@ -269,7 +269,7 @@ function featuresIn(state: GameState, world: World, cal: Calendar | null, box: M
   for (const k of Object.keys(state.wildlife.knownDens)) add(Number(k), "known bear den", MARKS.den);
   add(cellOf(state, world), "you", MARKS.you);
   if (cal) {
-    for (const subject of visibleWildlife(state, world, cal)) {
+    for (const subject of visibleWildlife(state, world, cal, currentViewshed(state, world, cal, cellOf(state, world)).cells)) {
       if (!subject.active) continue;
       const recognized = state.wildlife.recognized[subject.id];
       const count = wildlifeMembers(subject);
@@ -698,10 +698,26 @@ function easeInOut(t: number): number {
   return x * x * (3 - 2 * x);
 }
 
-export interface EffectsWaterCell { gx: number; gy: number; cx: number; cy: number; lit: string }
+/**
+ * `delays` and `peaks` are `waterRippleDelaysS` and `waterRipplePeak` for
+ * this cell, worked out once when the model is built. They are functions of
+ * the seed, the cell and the zoom - never of the clock - so recomputing
+ * them per cell per frame was six hashes, three sines, three cosines and
+ * two array allocations, sixty times a second, for numbers that could not
+ * have changed.
+ */
+export interface EffectsWaterCell {
+  gx: number; gy: number; cx: number; cy: number; lit: string;
+  delays: readonly [number, number, number];
+  peaks: readonly [number, number, number];
+}
 export interface EffectsShadowCell { gx: number; gy: number; alpha: number }
 export type EffectsWeatherKind = "fog" | "cloud" | "rain" | "snow";
-export interface EffectsGlyphCell { gx: number; gy: number; cx: number; cy: number; kind: EffectsWeatherKind; color: string; alpha: number }
+/** `phase` and `order` are this cell's seeded standing in its shape cycle, constant for the model's life like the water cells' above. */
+export interface EffectsGlyphCell {
+  gx: number; gy: number; cx: number; cy: number; kind: EffectsWeatherKind; color: string; alpha: number;
+  phase: number; order: number;
+}
 
 /**
  * Everything the effects canvas draws for one built map: the water cells
@@ -735,6 +751,30 @@ function reducedMotionEffects(): boolean {
 }
 
 /**
+ * The four elements a draw touches, found once per morph.
+ *
+ * Four selectors a frame, two of them descendant selectors over the map
+ * panel, is work that answers the same way until a panel is rebuilt -
+ * which is exactly what `domGeneration` counts.
+ */
+interface EffectsSurfaces { gen: number; canvas: HTMLCanvasElement; host: HTMLElement; grid: HTMLElement; panel: HTMLElement | null }
+const effectsSurfaceCache = new WeakMap<ParentNode, EffectsSurfaces>();
+
+function effectsSurfaces(root: ParentNode): EffectsSurfaces | null {
+  const held = effectsSurfaceCache.get(root);
+  // A morph moves the generation; anything that replaces the markup
+  // wholesale in one task leaves the canvas we held detached instead.
+  if (held && held.gen === domGeneration() && held.canvas.isConnected) return held;
+  const canvas = root.querySelector<HTMLCanvasElement>("#effects");
+  const host = root.querySelector<HTMLElement>("#mapdyn .scroll-x");
+  const grid = root.querySelector<HTMLElement>("#mapdyn .grid");
+  if (!canvas || !host || !grid) return null;
+  const found: EffectsSurfaces = { gen: domGeneration(), canvas, host, grid, panel: root.querySelector<HTMLElement>("#mapdyn") };
+  effectsSurfaceCache.set(root, found);
+  return found;
+}
+
+/**
  * How much of `.scroll-x` an overlay has to cover to cover the board: the
  * panel's own visible box, or the grid's full extent where the grid is
  * taller or wider and the panel clips it.
@@ -763,15 +803,27 @@ function boardCover(host: HTMLElement, grid: HTMLElement): { w: number; h: numbe
   // laid out at 261.72 px puts the grid's bottom at a fraction the integer
   // properties lose, and the lost fraction is a bare strip along the edge
   // of the board at the scroll limit.
+  // Held between frames. A morph moves these edges and `domGeneration`
+  // counts it; anything else that moves them shows up in the panel's own
+  // box, which is what the key reads. Those two reads are not a layout
+  // flush of their own - `updateSky` has already forced one by the time
+  // this runs - and measuring four rects a frame for an answer that
+  // changes on a zoom was 0.16 s per 20 s.
+  const key = `${domGeneration()}:${host.clientWidth}:${host.clientHeight}`;
+  const held = boardCovers.get(host);
+  if (held && held.key === key) return held.cover;
   const hostRect = host.getBoundingClientRect();
   const gridRect = grid.getBoundingClientRect();
   const right = gridRect.right - hostRect.left - host.clientLeft + host.scrollLeft;
   const bottom = gridRect.bottom - hostRect.top - host.clientTop + host.scrollTop;
-  return {
+  const cover = {
     w: Math.max(host.clientWidth, Math.ceil(right)),
     h: Math.max(host.clientHeight, Math.ceil(bottom)),
   };
+  boardCovers.set(host, { key, cover });
+  return cover;
 }
+const boardCovers = new WeakMap<HTMLElement, { key: string; cover: { w: number; h: number } }>();
 
 /**
  * Sizes the backing buffer in device pixels and sets a transform whose
@@ -818,19 +870,24 @@ function drawWaterShimmer(ctx: CanvasRenderingContext2D, model: EffectsModel, no
   const gain = (model.zoom === 1 ? WATER_FINE_GAIN : 1) * model.brightness;
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
+  let fill = "";
   for (const cell of model.water) {
-    const delays = waterRippleDelaysS(model.seed, cell.cx, cell.cy, model.zoom);
     const x = cell.gx * model.px;
     const y = cell.gy * model.line;
     for (let i = 0; i < WATER_RIPPLES.length; i++) {
       const period = WATER_RIPPLES[i].periodS;
-      const t = (((nowS + delays[i]) % period) + period) % period;
+      const t = (((nowS + cell.delays[i]) % period) + period) % period;
       const wave = t / period <= 0.5 ? easeInOut((t / period) * 2) : easeInOut((1 - t / period) * 2);
-      const peak = waterRipplePeak(model.seed, cell.cx, cell.cy, i);
-      const alpha = peak * wave * gain;
+      const alpha = cell.peaks[i] * wave * gain;
       if (alpha <= 0.002) continue;
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = cell.lit;
+      // Water has three colours across the board and neighbours share one,
+      // so the string only rarely differs from the last cell's; assigning
+      // fillStyle reparses the colour every time it is set.
+      if (fill !== cell.lit) {
+        ctx.fillStyle = cell.lit;
+        fill = cell.lit;
+      }
       ctx.fillRect(x, y, model.px, model.line);
     }
   }
@@ -864,10 +921,9 @@ function drawShadows(ctx: CanvasRenderingContext2D, model: EffectsModel): void {
  */
 export function updateEffects(root: ParentNode = document): void {
   const model = currentEffects;
-  const canvas = root.querySelector<HTMLCanvasElement>("#effects");
-  const host = root.querySelector<HTMLElement>("#mapdyn .scroll-x");
-  const grid = root.querySelector<HTMLElement>("#mapdyn .grid");
-  if (!model || !canvas || !host || !grid) return;
+  const surfaces = effectsSurfaces(root);
+  if (!model || !surfaces) return;
+  const { canvas, host, grid, panel } = surfaces;
   // Every layer over the board is sized from this one pair of properties:
   // the canvas, the night shade and the hour's tint, which is a pseudo
   // element with no handle for JS to size directly. They go on the panel
@@ -875,7 +931,6 @@ export function updateEffects(root: ParentNode = document): void {
   // children and would drop an inline style from the scroller itself,
   // blanking the cover for a frame on every map rebuild.
   const cover = boardCover(host, grid);
-  const panel = root.querySelector<HTMLElement>("#mapdyn");
   if (panel) {
     if (panel.style.getPropertyValue("--board-w") !== `${cover.w}px`) panel.style.setProperty("--board-w", `${cover.w}px`);
     if (panel.style.getPropertyValue("--board-h") !== `${cover.h}px`) panel.style.setProperty("--board-h", `${cover.h}px`);
@@ -896,9 +951,7 @@ export function updateEffects(root: ParentNode = document): void {
   // ?shimmer= on the page sets this on the root to speed the wall clock up
   // for a screenshot or a test; the water layer is the only one it scales,
   // since it is the only one whose speed the stylesheet ever exposed.
-  const shimmerSpeed = typeof getComputedStyle !== "undefined"
-    ? Number(getComputedStyle(document.documentElement).getPropertyValue("--water-shimmer-speed")) || 1
-    : 1;
+  const shimmerSpeed = shimmerScale();
   const nowMs = frozen ? 0 : performance.now();
   drawWaterShimmer(ctx, model, (nowMs / 1000) * shimmerSpeed);
   drawShadows(ctx, model);
@@ -906,6 +959,21 @@ export function updateEffects(root: ParentNode = document): void {
 }
 
 let effectsFrozenKey: string | null = null;
+
+/**
+ * `?shimmer=` is a screenshot and test aid that main.ts writes onto the
+ * root element once, at load, and nothing changes afterwards - so this asks
+ * the cascade once rather than on every frame. `getComputedStyle` is not a
+ * cheap question to ask sixty times a second.
+ */
+let shimmerScaleRead: number | null = null;
+function shimmerScale(): number {
+  if (shimmerScaleRead !== null) return shimmerScaleRead;
+  shimmerScaleRead = typeof getComputedStyle !== "undefined"
+    ? Number(getComputedStyle(document.documentElement).getPropertyValue("--water-shimmer-speed")) || 1
+    : 1;
+  return shimmerScaleRead;
+}
 
 /**
  * Fog, cloud and precipitation motion: presentation only, cycling through
@@ -929,16 +997,35 @@ const WEATHER_GLYPH_SPEC: Record<EffectsWeatherKind, WeatherGlyphSpec> = {
   snow: { shapes: SNOW_SHAPES, periodMs: 10000, phaseSalt: 131, orderSalt: 139 },
 };
 
+/**
+ * Which shape is showing, for a cell whose standing in the cycle is already
+ * known. The draw holds `phase` and `order` on the cell, so this is the
+ * whole of what a glyph costs per frame; `weatherGlyphChar` below is the
+ * same function reached from a seed and a coordinate, and the two share
+ * this body so the drawn shape and the tested one cannot drift apart.
+ */
+function glyphShapeAt(spec: WeatherGlyphSpec, phase: number, order: number, nowMs: number): string {
+  const n = spec.shapes.length;
+  const active = (n - Math.floor(((nowMs + phase) % spec.periodMs) / (spec.periodMs / n))) % n;
+  return spec.shapes[(active + order) % n];
+}
+
+/**
+ * A weather cell's fixed standing in its shape cycle: where it starts and
+ * which shape it starts on, both seeded by the cell. The model carries this
+ * so the draw does not hash it per cell per frame, and
+ * `weatherGlyphChar` reaches it the same way, so the number the model holds
+ * and the number the tested function uses are the one computation.
+ */
+export function weatherGlyphStanding(seed: number, x: number, y: number, kind: EffectsWeatherKind): { phase: number; order: number } {
+  const spec = WEATHER_GLYPH_SPEC[kind];
+  return { phase: phaseHash(seed, x, y, spec.phaseSalt) % spec.periodMs, order: phaseHash(seed, x, y, spec.orderSalt) % spec.shapes.length };
+}
+
 /** Which of a weather glyph's four shapes is showing at this wall-clock moment. */
 export function weatherGlyphChar(seed: number, x: number, y: number, kind: EffectsWeatherKind, nowMs: number): string {
-  const spec = WEATHER_GLYPH_SPEC[kind];
-  const n = spec.shapes.length;
-  const phase = phaseHash(seed, x, y, spec.phaseSalt) % spec.periodMs;
-  const order = phaseHash(seed, x, y, spec.orderSalt) % n;
-  const stepMs = spec.periodMs / n;
-  const sinceStart = (nowMs + phase) % spec.periodMs;
-  const active = (n - Math.floor(sinceStart / stepMs)) % n;
-  return spec.shapes[(active + order) % n];
+  const standing = weatherGlyphStanding(seed, x, y, kind);
+  return glyphShapeAt(WEATHER_GLYPH_SPEC[kind], standing.phase, standing.order, nowMs);
 }
 
 /**
@@ -953,11 +1040,19 @@ function drawGlyphs(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: n
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = `${model.font}px ui-monospace, Menlo, "SF Mono", Consolas, monospace`;
+  let alpha = Number.NaN;
+  let fill = "";
   for (const cell of model.glyph) {
-    ctx.globalAlpha = cell.alpha;
-    ctx.fillStyle = cell.color;
-    const char = weatherGlyphChar(model.seed, cell.cx, cell.cy, cell.kind, nowMs);
-    ctx.fillText(char, cell.gx * model.px + model.px / 2, cell.gy * model.line + model.line / 2);
+    if (alpha !== cell.alpha) {
+      ctx.globalAlpha = cell.alpha;
+      alpha = cell.alpha;
+    }
+    if (fill !== cell.color) {
+      ctx.fillStyle = cell.color;
+      fill = cell.color;
+    }
+    const shape = glyphShapeAt(WEATHER_GLYPH_SPEC[cell.kind], cell.phase, cell.order, nowMs);
+    ctx.fillText(shape, cell.gx * model.px + model.px / 2, cell.gy * model.line + model.line / 2);
   }
   ctx.restore();
 }
@@ -1241,6 +1336,17 @@ function currentViewshed(state: GameState, world: World, cal: Calendar, cell: nu
   return viewshedCache;
 }
 
+/**
+ * The survivor's current viewshed, held for the game minute it belongs to.
+ * The contrast pass behind it is the most expensive thing a frame can ask
+ * for, and the hover surface asks the same question the map already
+ * answered, so this is the door for anyone outside this module who needs
+ * the set rather than a fresh computation of it.
+ */
+export function viewshedNow(state: GameState, world: World, cal: Calendar, cell: number): ReadonlySet<number> {
+  return currentViewshed(state, world, cal, cell).cells;
+}
+
 function projectedViewshed(cache: ViewshedCache, x0: number, y0: number, cellsPerGlyph: number, width: number, height: number): string {
   const projectionKey = `${x0}:${y0}:${cellsPerGlyph}:${width}:${height}`;
   const cached = cache.projections.get(projectionKey);
@@ -1272,7 +1378,10 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const cell = cellOf(state, world);
   const discoveredSum = Object.values(state.discovered).reduce((a, b) => a + b, 0);
   const z = level.finePerGlyph;
-  const animals = z <= ANIMAL_GLYPH_PATCHES ? visibleWildlife(state, world, cal)
+  // Hoisted above the wildlife pass, which needs the same set: this is the
+  // frame's one viewshed, held for the game minute it belongs to.
+  const shed = currentViewshed(state, world, cal, cell);
+  const animals = z <= ANIMAL_GLYPH_PATCHES ? visibleWildlife(state, world, cal, shed.cells)
     .filter((subject) => subject.active && (subject.active.cell % world.w) >= x0 && (subject.active.cell % world.w) < x0 + level.w * z && Math.floor(subject.active.cell / world.w) >= y0 && Math.floor(subject.active.cell / world.w) < y0 + level.h * z)
     .map((s) => {
       const point = z === 1 ? metricPointForWildlife(state, world, s) : null;
@@ -1291,7 +1400,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
     return `${a.cloud >= 0.15 ? 1 : 0}${a.precip === "rain" ? 1 : 0}${a.precip === "snow" ? 1 : 0}${a.fog >= 0.05 ? 1 : 0}${(ground?.snowCm ?? 0) > SNOW_SHOWN_CM ? 1 : 0}${(ground?.snowCm ?? 0) > DEEP_SNOW_CM ? 1 : 0}${iceMode({ iceCm: ground?.iceCm ?? 0 })}`;
   }).join(";");
   const viewRange = z === 1 ? sightRangeCells(state, world, cal, cell) : "";
-  const viewshed = projectedViewshed(currentViewshed(state, world, cal, cell), x0, y0, z, level.w, level.h);
+  const viewshed = projectedViewshed(shed, x0, y0, z, level.w, level.h);
   const startles = activeWildlifeStartles(ui, nowMs).map((cue) => cue.key).join(",");
   const viewport = startles && ui.mapViewport ? Object.values(ui.mapViewport).join(",") : "";
   return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${ui.destination}|cs${ui.cloudShadows ? 1 : 0}|wx${weatherMinute}:${localWeather}|${cal.isNight}|${marks}|${route}|${piles}|${carcasses}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${coarseKnowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|vis${viewshed}|${animals}|${startles}|${viewport}`;
@@ -1389,7 +1498,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   // (animalMarkup below), so only the block rungs put a letter on the glyph.
   const animalAt = new Map<number, WildlifeSubject[]>();
   if (z <= ANIMAL_GLYPH_PATCHES) {
-    for (const subject of visibleWildlife(state, world, cal)) {
+    for (const subject of visibleWildlife(state, world, cal, currentVisible)) {
       const g = subject.active ? toGlyph(subject.active.cell) : -1;
       if (g >= 0) {
         if (z > 1) animalAt.set(g, [...(animalAt.get(g) ?? []), subject]);
@@ -1774,7 +1883,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
           const color = WEATHER_GLYPH_COLOR[kind];
           const fall = Math.min(1, weather.precipMmPerHour / 7.5);
           const alpha = kind === "fog" ? weather.fog * 0.7 : kind === "cloud" ? weather.cloud * 0.62 : kind === "rain" ? fall * 0.82 : fall * 0.9;
-          effectsGlyph.push({ gx, gy, cx, cy, kind, color, alpha });
+          effectsGlyph.push({ gx, gy, cx, cy, kind, color, alpha, ...weatherGlyphStanding(world.seed, cx, cy, kind) });
         }
       }
       if (ui.cloudShadows && weather.cloud >= 0.15) effectsShadow.push({ gx, gy, alpha: weather.cloud * CLOUD_SHADOW_CAP });
@@ -1785,14 +1894,18 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (cls.includes("t-water") && seen === 2 && !cls.includes("memory") && !cls.includes("mk") && !cls.includes("ice-thin") && !cls.includes("ice-safe")) {
       cls.push("water-live");
       const lit = cls.includes("deep-0") ? WATER_LIT.shallow : cls.includes("deep-2") ? WATER_LIT.deep : WATER_LIT.rest;
-      effectsWater.push({ gx, gy, cx, cy, lit });
+      effectsWater.push({
+        gx, gy, cx, cy, lit,
+        delays: waterRippleDelaysS(world.seed, cx, cy, z),
+        peaks: [waterRipplePeak(world.seed, cx, cy, 0), waterRipplePeak(world.seed, cx, cy, 1), waterRipplePeak(world.seed, cx, cy, 2)],
+      });
     }
     const style = styles.length ? ` style="${styles.join(";")}"` : "";
-    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${mapCell}${act}${style}>${content}</span>`);
+    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}"${mapCell}${act}${style}>${content}</span>`);
   }
   const animalMarkup: string[] = [];
   if (z === 1) {
-    for (const animal of visibleWildlife(state, world, cal)) {
+    for (const animal of visibleWildlife(state, world, cal, currentVisible)) {
       const point = metricPointForWildlife(state, world, animal);
       if (!point) continue;
       const x = (point.xM / PATCH_M - x0) * l.px;

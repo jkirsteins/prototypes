@@ -1636,6 +1636,112 @@ bigger - and then scrolls the panel to its limit and asserts the canvas
 still spans what the player can see. Reverted against the unfixed code it
 fails on the first scenario with `782x262 over a board of 792x504`.
 
+### Where the frame time actually went
+
+**Measured** 2026-09-16, seed 42 day 200, a settled landed run at 300 m per
+glyph in headless Chrome at 1440x900. Three runs per figure, median taken;
+the spread between runs was under half a point.
+
+| per 30 s | before | after |
+| --- | ---: | ---: |
+| total main-thread task time | 10.3 s | 5.6 s |
+| of that, script | 7.2 s | 2.45 s |
+| style recalculation | 0.73 s | 0.71 s |
+| **share of one core** | **34.4%** | **18.8%** |
+
+And what a player feels, from frame-to-frame delays over the same window:
+
+| | before | after |
+| --- | ---: | ---: |
+| median frame | 16.6 ms | 16.7 ms |
+| 95th percentile | 38.9 ms | 21.1 ms |
+| 99th percentile | 75.0 ms | 58.0 ms |
+| **frames over 33 ms** | **272** | **30** |
+| worst frame | 228 ms | 150 ms |
+
+The median frame was always 60 Hz. What was wrong was the spread: about one
+frame in six took longer than two display refreshes. That is now one in
+fifty-seven.
+
+**The plan in this document aimed at the wrong thing.** It named the effects
+draw as the next target, at "roughly 12 ms per draw". A bench that draws the
+settled picture over and over (`window.survidle.effectsBench`, a development
+door beside `placeAtPatch`) measures that draw at **0.27 ms** - about 0.6 s
+of a 30 s window, under 6% of the script time. The 12 ms figure was a
+profiler reading that had swept in the forced layout around the draw, not
+the draw. Optimising it further would have bought almost nothing, which is
+why the first thing done here was to profile rather than to start on the
+list.
+
+What the profile actually found, each fixed in the commit this section
+accompanies:
+
+- **A viewshed computed six times a frame.** `mapKey` and `mapHtml` between
+  them asked `visibleWildlife` for the visible subjects six times while
+  building one picture, and each call ran its own contrast pass over every
+  candidate patch - the most expensive question a frame can ask. The map
+  already held a cached viewshed for the same cell and minute a few lines
+  away. Passing it in: **1.7 s per 30 s**.
+- **A cloud deck retinted every frame.** The sky rebuilt both cloud layers
+  from scratch sixty times a second - clear 960 by 480, fill it, rescale the
+  mask bitmap over it, twice - when the only thing that changes per frame is
+  where the finished layer is *drawn*. The tint changes with the hour. Held
+  between frames: **1.5 s per 30 s**, and all 17 sky reference shots come out
+  byte-identical.
+- **Thirteen bars, thirty-nine document sweeps.** Every bar wrote itself by
+  running `querySelectorAll` for its fill, its value and its trend, on every
+  frame, across a page of 8,705 elements. One sweep now indexes all three by
+  name: **0.8 s per 30 s**.
+- **A morph key made of content.** `keyOf` built a node's identity from every
+  data attribute it carried, which for a map cell included `data-map-info` -
+  the whole of its hover text. So when the weather changed a cell's reading,
+  its key changed with it, the morph could not recognise the cell it already
+  had, and all 2,592 were replaced instead of updated. A cell is now keyed by
+  its coordinate. `data-map-info` itself turned out to be read by nothing but
+  one test, and duplicated `aria-label` exactly, so it is gone.
+
+Three smaller ones came with these: writes to `--bright`, `--sat`, `--tint`
+and `--tint-a` are compared before being made (they are inherited by all
+2,592 cells, so writing an unchanged value asked the engine to re-resolve
+the whole board), `?shimmer=` is read from the cascade once rather than
+through `getComputedStyle` every frame, and the water and weather cells
+carry their seeded phases and peaks on the model instead of rehashing them
+per cell per frame.
+
+**What was tried and taken back out**, because measurement did not support
+it: caching the effects canvas's transform and box (no gain, and a stale
+transform is a real hazard), and repainting the sky at 20 Hz while only the
+cloud deck is moving (0.4%, inside the noise, and it changed when the sky
+draws - a test that called `updateSky` twice in a row and expected two
+pictures caught it). A change at the noise floor is not worth the behaviour
+it alters.
+
+### What is left, and why it needs stage three
+
+The count of long tasks did not move: about 19 per 30 s, the worst still
+around 150 ms. They are all one thing. Once a game minute the map's key
+changes and its 2,592-cell panel is rebuilt and morphed, and the next
+reader of layout pays for the reflow that causes. Spread across
+`morphChildren`, `morphAttrs`, `setPanel` and the forced layout behind
+`ensureCanvasSize`, no single part is more than a fifth of it, so there is
+no remaining cut of that size to make in a document.
+
+That is the case for stage three, and it is now a sharper case than this
+document opened with: the steady per-frame cost is dealt with, and what is
+left is the cost of *being* a document at all - rebuilding and diffing
+thousands of elements for a picture that changes every second. A canvas map
+does not have a morph.
+
+### The instrument
+
+The figures above came from CDP's own counters (`Performance.getMetrics`)
+and its sampling profiler, driven by three throwaway harnesses, plus the
+`long-animation-frame` observer for attributing the spikes. None of that is
+in the tree. What is in the tree is `window.survidle.effectsBench(n)`,
+which reports what one effects draw costs in a real browser, because that
+is the one number a redraw budget would need and the one a flame graph
+reads differently every time.
+
 The conclusion the numbers force: the game draws a continuously animated
 scene through a document, and a document is the wrong instrument for that.
 Every moving pixel costs a style resolution on an element that also carries
