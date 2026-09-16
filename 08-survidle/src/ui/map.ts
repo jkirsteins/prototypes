@@ -1005,10 +1005,13 @@ export function updateEffects(root: ParentNode = document): void {
   drawShadows(ctx, model);
   drawGlyphs(ctx, model, nowMs);
   drawWalk(ctx, board);
+  // A herd's mark at the closest rung goes under the survivor and the
+  // camp: an animal walking through the survivor's patch is behind them,
+  // never over the `@`.
+  drawMarks(ctx, board, nowMs, frozen);
   drawLifted(ctx, board);
   drawPulses(ctx, model, nowMs);
   drawRecoils(ctx, board, nowMs);
-  drawMarks(ctx, board, nowMs, frozen);
   drawStartles(ctx, board, nowMs, frozen);
   drawPointed(ctx, model);
 }
@@ -1120,7 +1123,32 @@ function drawLifted(ctx: CanvasRenderingContext2D, board: MapModel): void {
       ctx.fillText(g.glyph, x + board.px / 2, y + board.line / 2);
       ctx.globalAlpha = 1;
     }
+    if (g.badge) drawBadge(ctx, board, g, x, y);
   }
+  ctx.restore();
+}
+
+/**
+ * The animal that shares the survivor's block at a wide rung, as a small
+ * letter in its own colour in the corner of the `@`. A glyph holds one
+ * mark and the survivor's wins, so without this an elk 100 m off at the
+ * 300 m rung had no sign on the board at all.
+ */
+function drawBadge(ctx: CanvasRenderingContext2D, board: MapModel, g: MapGlyph, x: number, y: number): void {
+  const badge = g.badge!;
+  const size = Math.max(7, Math.round(board.font * 0.55));
+  const w = Math.max(size + 2, Math.round(board.px * 0.55));
+  const h = size + 2;
+  const bx = x + board.px - w;
+  const by = y;
+  ctx.save();
+  ctx.fillStyle = badge.bg;
+  ctx.fillRect(bx, by, w, h);
+  ctx.font = `bold ${size}px ${BOARD_FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = badge.fg;
+  ctx.fillText(badge.glyph, bx + w / 2, by + h / 2 + 0.5);
   ctx.restore();
 }
 
@@ -2342,12 +2370,20 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
         peaks: [waterRipplePeak(world.seed, cx, cy, 0), waterRipplePeak(world.seed, cx, cy, 1), waterRipplePeak(world.seed, cx, cy, 2)],
       });
     }
+    // At a block rung the survivor's glyph can also hold an animal; the
+    // survivor's mark wins the glyph, and the animal rides as a badge.
+    const sharing = m?.cls === "mk-player" ? animalAt.get(i)?.[0] : undefined;
+    const badge = sharing
+      ? { glyph: ANIMAL_GLYPH[sharing.species], bg: state.wildlife.recognized[sharing.id] ? WILDLIFE_BG[sharing.colour] ?? "#b7ad87" : "#b7ad87", fg: "#111" }
+      : undefined;
+    if (sharing) cls.push("with-animal");
     glyphs.push({
       gx, gy, classes: cls, glyph, signal: cls.includes("mk"), info, region: reg,
       mapCell: cx >= 0 && cy >= 0 && cx < world.w && cy < world.h ? cellIdx(world, cx, cy) : null,
       act: named,
       fd: current && lightRing !== undefined ? flickerDelay(i) : undefined,
       wildlifeId: animalId ?? undefined, wildlifeStart: animalRecoil ?? undefined,
+      badge,
     });
   }
   const marks: MapMark[] = [];

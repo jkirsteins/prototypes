@@ -86,11 +86,13 @@ describe("the map's compositing layers", () => {
   it("puts weather over the shaded ground and under routes, light, and essential marks", () => {
     // The stack is the order the one canvas is painted in (map.ts,
     // updateEffects): the board, then the shade and the tint, then the
-    // weather, then the walk, then the marks that stay legible in the dark,
-    // the pulses, the animals, the cues, and the pointed glyph last.
+    // weather, then the walk, then the animals at their metre positions,
+    // then the marks that stay legible in the dark over them (so the
+    // survivor is never under a herd), the pulses, the cues, and the
+    // pointed glyph last.
     const source = readFileSync("src/ui/map.ts", "utf8");
     const body = source.slice(source.indexOf("export function updateEffects("), source.indexOf("let effectsFrozenKey"));
-    const order = ["drawBoardImage(", "drawLight(", "drawWaterShimmer(", "drawShadows(", "drawGlyphs(", "drawWalk(", "drawLifted(", "drawPulses(", "drawRecoils(", "drawMarks(", "drawStartles(", "drawPointed("];
+    const order = ["drawBoardImage(", "drawLight(", "drawWaterShimmer(", "drawShadows(", "drawGlyphs(", "drawWalk(", "drawMarks(", "drawLifted(", "drawPulses(", "drawRecoils(", "drawStartles(", "drawPointed("];
     const at = order.map((call) => body.indexOf(call));
     for (const [i, position] of at.entries()) expect(position, order[i]).toBeGreaterThan(i === 0 ? -1 : at[i - 1]);
     expect(rule(".scroll-x")).toContain("isolation: isolate");

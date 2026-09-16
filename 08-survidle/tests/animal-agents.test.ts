@@ -2,7 +2,7 @@ import { encodeKnowledge, setKnowledge } from "../src/sim/fineknowledge";
 import { SAVE_VERSION } from "../src/sim/world-version";
 import { afterEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { activateWildlife, claimHuntableAnimal, dailyWildlife, emptyWildlife, evaluateWildlifeDisturbance, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
+import { activateWildlife, CARRY_ACROSS_BORDER_M, claimHuntableAnimal, dailyWildlife, emptyWildlife, evaluateWildlifeDisturbance, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
 import { calendar, monthStartDoy } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
@@ -576,8 +576,35 @@ describe("large animal agents", () => {
     activateWildlife(state, world, new Rng(2));
 
     expect(state.wildlife.activeRegion).toBe(next);
-    expect(state.wildlife.subjects.filter((s) => s.region === old).every((s) => s.active === null)).toBe(true);
-    expect(state.wildlife.subjects.filter((s) => s.active !== null).every((s) => s.region === next)).toBe(true);
+    // The old region's animals near the survivor keep their positions across
+    // the border; the ones farther off collapse to the region's count.
+    const here = cellOf(state, world);
+    const metres = (a: number, b: number) => Math.hypot(a % world.w - b % world.w, Math.floor(a / world.w) - Math.floor(b / world.w)) * PATCH_M;
+    for (const s of state.wildlife.subjects.filter((s) => s.region === old)) {
+      if (s.active) expect(metres(s.active.cell, here)).toBeLessThanOrEqual(CARRY_ACROSS_BORDER_M);
+    }
+    expect(state.wildlife.subjects.filter((s) => s.active !== null && s.region === next).length).toBeGreaterThan(0);
+  });
+
+  it("keeps an animal of the region just left where it stood while the survivor is near it", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const old = state.player.region;
+    const subject = state.wildlife.subjects.find((s) => s.active && s.region === old)!;
+    // Stand beside it, then step into the neighbouring region without moving away.
+    const next = regionAt(world, old).neighbours[0].id;
+    state.player.region = next;
+    regionState(state, world, next);
+    const cell = subject.active!.cell;
+    state.player.xM = (cell % world.w + 1.5) * PATCH_M;
+    state.player.yM = (Math.floor(cell / world.w) + 0.5) * PATCH_M;
+    activateWildlife(state, world, new Rng(2));
+    expect(subject.active).not.toBeNull();
+    expect(subject.active!.cell).toBe(cell);
+    // Twelve hundred metres on, it is a count in its region again.
+    state.player.xM += CARRY_ACROSS_BORDER_M + PATCH_M;
+    activateWildlife(state, world, new Rng(3));
+    expect(subject.active).toBeNull();
   });
 
   it("moves on ten-minute detailed ticks and never in aggregate mode", () => {
@@ -997,6 +1024,23 @@ describe("animal recognition", () => {
     expect(marker!.x).toBeGreaterThan(0);
     expect(marker!.bg).toBe(WILDLIFE_BG[subject.colour]);
     expect(boardText(b)).toContain("Mora");
+
+    // At the 300 m rung the herd is a letter on its block; when that block
+    // is the survivor's own, the `@` keeps the glyph and the herd rides as
+    // a badge on it, in the same colour, so it does not vanish.
+    close.zoom = 2;
+    const mid = board(world, state, close, cal);
+    const you = cellOf(state, world);
+    const shares = Math.floor((subject.active!.cell % world.w) / mid.z) === Math.floor((you % world.w) / mid.z)
+      && Math.floor(Math.floor(subject.active!.cell / world.w) / mid.z) === Math.floor(Math.floor(you / world.w) / mid.z);
+    const player = glyphsWith(mid, "mk-player")[0];
+    if (shares) {
+      expect(player.classes).toContain("with-animal");
+      expect(player.badge?.bg).toBe(WILDLIFE_BG[subject.colour]);
+      expect(player.info).toContain("Mora");
+    } else {
+      expect(glyphsWith(mid, "mk-animal").some((g) => g.wildlifeId === subject.id)).toBe(true);
+    }
 
     close.zoom = 3;
     const far = board(world, state, close, cal);

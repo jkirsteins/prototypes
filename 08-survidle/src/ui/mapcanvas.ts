@@ -41,6 +41,8 @@ export interface MapGlyph {
   wildlifeId?: number;
   /** When a seen animal on this glyph recoiled, in wall-clock ms, for the effects layer's shake. */
   wildlifeStart?: number;
+  /** An animal sharing the survivor's block at a wide rung: its letter, drawn small in the glyph's corner. */
+  badge?: { glyph: string; bg: string; fg: string };
 }
 
 /** An animal at its own metre position at the closest rung, laid over the grid rather than in a glyph. */
