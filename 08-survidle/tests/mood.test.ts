@@ -8,7 +8,7 @@ import { statsHtml } from "../src/ui/panels";
 import { updateBars } from "../src/ui/bars";
 import { newUiState } from "../src/ui/render";
 import { ambientTemperature } from "../src/sim/weather";
-import { RESTED_AT, SLEEP_ONSET, SLEEPY_AT, WAKE_AT } from "../src/sim/sleep";
+import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, WAKE_AT } from "../src/sim/sleep";
 import { regionState } from "../src/sim/regionstate";
 import type { GameState, TaskId } from "../src/sim/types";
 import { css } from "./css";
@@ -144,30 +144,39 @@ describe("the mood on the screen", () => {
     expect(document.querySelector('[data-val="energy"]')?.textContent).toBe(String(Math.floor(RESTED_AT - 0.1)));
   });
 
-  it("shows Sleepiness separately with its live value and decision lines", () => {
+  it("reads alertness as the lower band of the Stamina bar, lower is worse, with the sleep lines on the band", () => {
     const { state, world } = newGame(17);
     state.player.energy = 100;
     state.player.sleepDebt = 40;
     const cal = calendar(state.minute, state.startDoy);
     document.body.innerHTML = statsHtml(state, world, cal, ambientTemperature(cal, state.weather), newUiState());
     updateBars(state, world);
-    const sleepiness = document.querySelector('[data-bar="sleepiness"]')?.parentElement;
-    expect(sleepiness?.textContent).toContain("Sleepiness");
-    expect(sleepiness?.querySelector('[data-val="sleepiness"]')?.textContent).toBe("50");
-    expect((sleepiness?.querySelector('[data-bar="sleepiness"]') as HTMLElement | null)?.style.width).toBe("49.5%");
-    expect(sleepiness?.innerHTML).toContain(`left:${WAKE_AT.toFixed(1)}%`);
-    expect(sleepiness?.innerHTML).toContain(`left:${SLEEPY_AT.toFixed(1)}%`);
-    expect(sleepiness?.innerHTML).toContain(`left:${SLEEP_ONSET.toFixed(1)}%`);
-    expect(sleepiness?.innerHTML).toContain("wakes below here");
-    expect(sleepiness?.innerHTML).toContain("falls asleep above here");
+    // One bar, not two: the old Sleepiness bar counted the wrong way up.
+    expect(document.querySelector('[data-bar="sleepiness"]')).toBeNull();
+    const bar = document.querySelector('[data-bar="alertness"]')?.parentElement;
+    expect(bar?.classList.contains("dual")).toBe(true);
+    expect(bar?.querySelector('[data-bar="energy"]')).not.toBeNull();
+    expect(bar?.textContent).toContain("Stamina");
+    expect(bar?.textContent).toContain("alert");
+    const sleepy = sleepiness(40, cal.hour);
+    expect(bar?.querySelector('[data-val="alertness"]')?.textContent).toBe(String(Math.round(100 - sleepy)));
+    expect((bar?.querySelector('[data-bar="alertness"]') as HTMLElement | null)?.style.width).toBe(`${(100 - sleepy).toFixed(1)}%`);
+    const band = [...(bar?.querySelectorAll(".mark.band") ?? [])].map((m) => `${(m as HTMLElement).style.left} ${m.getAttribute("title")}`);
+    expect(band).toEqual([
+      `${(100 - SLEEP_ONSET).toFixed(1)}% falls asleep below here`,
+      `${(100 - SLEEPY_AT).toFixed(1)}% sleepy below here`,
+      `${(100 - WAKE_AT).toFixed(1)}% wakes above here`,
+    ]);
+    const stamina = [...(bar?.querySelectorAll(".mark:not(.band)") ?? [])].map((m) => m.getAttribute("title"));
+    expect(stamina).toEqual(["stops work and rests below here", "rest ends here", "collapses below here"]);
     expect(document.querySelector('[data-val="energy"]')?.textContent).toBe("100");
 
     state.player.sleepDebt = 100;
     updateBars(state, world);
-    expect(sleepiness?.querySelector('[data-val="sleepiness"]')?.textContent).toBe("100");
+    expect(bar?.querySelector('[data-val="alertness"]')?.textContent).toBe("0");
   });
 
-  it("shows the practical sleep clock beside the Sleepiness bar", () => {
+  it("shows the practical sleep clock beside the Stamina bar", () => {
     const { state, world } = newGame(17);
     state.minute = 5 * 60;
     state.player.sleepDebt = 10;

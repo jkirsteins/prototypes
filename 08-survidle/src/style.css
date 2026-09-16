@@ -11,7 +11,7 @@
   --kcal: #d9a441;
   --warmth: #e0743a;
   --energy: #5aa9e6;
-  --sleepiness: #8f75c9;
+  --alertness: #8f75c9;
   --wet: #4a8fd9;
   --water: #3b7dd8;
   --fire: #ff8c3a;
@@ -241,7 +241,12 @@ small, .dim { color: var(--dim); }
 .bar.kcal .fill { background: var(--kcal); }
 .bar.warmth .fill { background: var(--warmth); }
 .bar.energy .fill { background: var(--energy); }
-.bar.sleepiness .fill { background: var(--sleepiness); }
+/* The dual bar: the upper fill is stamina, the lower band alertness, each
+   read against its own marks. The band's marks reach only the band, so a
+   line that means "falls asleep" is not read as a stamina line. */
+.bar.dual .fill.band { inset: 50% auto 0 0; background: var(--alertness); }
+.bar.dual .mark.band { top: 50%; }
+.bar.dual .mark:not(.band) { bottom: 50%; }
 .sleep-forecast { color: var(--dim); font-size: 10px; margin: 1px 0 3px; }
 .bar.wet .fill { background: var(--wet); }
 .bar.water .fill { background: var(--water); }

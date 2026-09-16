@@ -213,7 +213,7 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   your felt temperature can hold: ambient, plus clothing, fire and shelter
   at camp, plus activity, minus wetness. Below 20 warmth you lose health
   fast. Stamina drains through physical work. At 20 Stamina the survivor
-  collapses and must Rest to 55 before working again. Sleepiness is separate:
+  collapses and must Rest to 55 before working again. Sleepiness is separate, read as the alertness band under the Stamina fill:
   its pressure and the time of day determine when the survivor falls asleep
   and wakes. Sleep is automatic; Rest remains an explicit action.
 - **The elements.** Water is a reserve like food: drink at a shore, carry it

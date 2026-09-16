@@ -23,7 +23,7 @@ import { faceSvg } from "./face";
 import { liveFaceHtml, livePortraitState } from "./portrait";
 import { sleepForecast } from "./sleep";
 import { fmtName } from "../sim/names";
-import { sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "../sim/sleep";
+import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
 import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation, walkManner } from "../sim/player";
 import { campCellOf, cellOf, describeWhere, kmBetween, SPOT_WORDS } from "../sim/position";
@@ -72,17 +72,32 @@ import { activeEquipmentHtml } from "./equipment";
  * bars.ts writes its position each frame, since a share that changed in the
  * markup would redraw the panel sixty times a second (tests/churn.test.ts).
  */
-interface BarMark { at: number | string; title: string }
+interface BarMark { at: number | string; title: string; /** On the lower band of a dual bar. */ band?: boolean }
+
+function markHtml(k: BarMark): string {
+  const cls = k.band ? "mark band" : "mark";
+  return typeof k.at === "number"
+    ? `<div class="${cls}" style="left:${(k.at * 100).toFixed(1)}%" title="${esc(k.title)}"></div>`
+    : `<div class="${cls}" data-mark="${k.at}" title="${esc(k.title)}"></div>`;
+}
 
 function bar(id: string, cls: string, label: string, marks: BarMark[] = []): string {
-  const m = marks
-    .map((k) => (typeof k.at === "number"
-      ? `<div class="mark" style="left:${(k.at * 100).toFixed(1)}%" title="${esc(k.title)}"></div>`
-      : `<div class="mark" data-mark="${k.at}" title="${esc(k.title)}"></div>`))
-    .join("");
+  const m = marks.map(markHtml).join("");
   // The trend mark carries no direction in the markup: updateBars writes it
   // from the reading's own history, the way it writes the fill's width.
   return `<div class="bar readout ${cls}"><div class="fill" id="bar-${id}" data-bar="${id}"></div>${m}<span class="lbl"><span>${label}</span><span class="val"><i class="trend" data-trend="${id}"></i><b id="val-${id}" data-val="${id}"></b></span></span></div>`;
+}
+
+/**
+ * Two readings of one body on one bar, both lower-is-worse: the upper fill
+ * is the first, the lower band the second, each with its own marks, value
+ * and trend. Stamina and alertness share a bar this way, since they are
+ * read together (can they work; should they sleep) and each used to take a
+ * bar to itself with the second one counting the wrong way up.
+ */
+function dualBar(id: string, band: string, cls: string, label: string, bandLabel: string, marks: BarMark[]): string {
+  const m = marks.map(markHtml).join("");
+  return `<div class="bar readout dual ${cls}"><div class="fill" id="bar-${id}" data-bar="${id}"></div><div class="fill band" id="bar-${band}" data-bar="${band}"></div>${m}<span class="lbl"><span>${label} <span class="dim">/ ${bandLabel}</span></span><span class="val"><i class="trend" data-trend="${id}"></i><b id="val-${id}" data-val="${id}"></b><span class="dim">/</span><i class="trend" data-trend="${band}"></i><b id="val-${band}" data-val="${band}"></b></span></span></div>`;
 }
 
 /**
@@ -166,15 +181,14 @@ ${bar("kcal", "kcal", "Food", [{ at: "hunger", title: "eats below here" }])}
 ${bar("fat", "fat", "Fat", [{ at: marks.floor / marks.upper, title: "dies here" }, { at: marks.lower / marks.upper, title: "thin below here" }, { at: marks.upper / marks.upper, title: "well fed above here" }])}
 ${bar("water", "water", "Water", [{ at: THIRSTY_L / WATER_FULL, title: "thirsty below here" }])}
 ${bar("warmth", "warmth", "Warmth", [{ at: COLD_UNDER / 100, title: "goes to the fire below here" }, { at: 0.2, title: "hypothermia below here" }])}
-${bar("energy", "energy", "Stamina", [
-  { at: SPENT_AT / 100, title: "stops work below here" },
+${dualBar("energy", "alertness", "energy", "Stamina", "alert", [
+  { at: SPENT_AT / 100, title: "stops work and rests below here" },
+  { at: RESTED_AT / 100, title: "rest ends here" },
   { at: SLEEP_AT / 100, title: "collapses below here" },
   ...(resumeAt === null ? [] : [{ at: resumeAt / 100, title: "work resumes here after collapse" }]),
-])}
-${bar("sleepiness", "sleepiness", "Sleepiness", [
-  { at: WAKE_AT / 100, title: "wakes below here" },
-  { at: SLEEPY_AT / 100, title: "sleepy above here" },
-  { at: SLEEP_ONSET / 100, title: "falls asleep above here" },
+  { at: (100 - SLEEP_ONSET) / 100, title: "falls asleep below here", band: true },
+  { at: (100 - SLEEPY_AT) / 100, title: "sleepy below here", band: true },
+  { at: (100 - WAKE_AT) / 100, title: "wakes above here", band: true },
 ])}
 <div class="sleep-forecast" data-sleep-forecast>${esc(sleepForecast(state, world, cal))}</div>
 ${bar("wet", "wet", "Wet", [{ at: SOAKED_WETNESS / 100, title: "soaked above here" }])}

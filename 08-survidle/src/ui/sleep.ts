@@ -3,7 +3,7 @@ import { type Calendar, fmtClock } from "../sim/calendar";
 import { debtFallHalved, minutesToSleep, minutesUntilWake, sleepiness, SLEEPY_AT } from "../sim/sleep";
 import type { GameState } from "../sim/types";
 
-/** The practical clock readout of the same process drawn by the Sleepiness bar. */
+/** The practical clock readout of the same process drawn by the alertness band of the Stamina bar. */
 export function sleepForecast(state: GameState, world: World, cal: Calendar): string {
   const asleep = state.player.sleeping !== null || state.task?.id === "sleep";
   if (asleep) {

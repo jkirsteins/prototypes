@@ -167,8 +167,10 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   // body at 99.9 is still recovering, so the bar must not claim 100 while
   // the queue truthfully refuses work.
   setBar("energy", p.energy / 100, `${Math.floor(p.energy + 1e-9)}`, root);
-  const sleepy = sleepiness(p.sleepDebt, cal.hour);
-  setBar("sleepiness", sleepy / 100, `${Math.max(0, Math.min(100, Math.round(sleepy)))}`, root);
+  // The lower band of the Stamina bar: alertness, the sleepiness counted
+  // the way the rest of the panel counts, so that lower is worse everywhere.
+  const alert = 100 - Math.max(0, Math.min(100, sleepiness(p.sleepDebt, cal.hour)));
+  setBar("alertness", alert / 100, `${Math.round(alert)}`, root);
   const forecast = sleepForecast(state, world, cal);
   for (const line of root.querySelectorAll<HTMLElement>("[data-sleep-forecast]")) {
     if (line.textContent !== forecast) line.textContent = forecast;
@@ -177,7 +179,7 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   setBar("water", p.water / WATER_FULL, `${p.water.toFixed(1)} l`, root);
   const trends: [string, number][] = [
     ["health", p.health / 100], ["kcal", p.kcal / KCAL_FULL], ["fat", p.fat / fatUpper], ["warmth", p.warmth / 100],
-    ["energy", p.energy / 100], ["sleepiness", sleepy / 100], ["wet", p.wetness / 100], ["water", p.water / WATER_FULL],
+    ["energy", p.energy / 100], ["alertness", alert / 100], ["wet", p.wetness / 100], ["water", p.water / WATER_FULL],
   ];
   for (const [id, frac] of trends) setTrend(id, state.minute, frac, root);
 
