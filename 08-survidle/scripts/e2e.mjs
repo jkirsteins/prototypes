@@ -311,6 +311,31 @@ async function main() {
       check(later.player && Math.abs(later.player.gx - Math.floor(later.cols / 2)) <= 1, `50 m: the survivor left the middle glyph while walking: ${JSON.stringify(later.player)}`);
     }
 
+    // A survey, and the page must keep answering while it runs. The Do
+    // panel judges the survey row on every render tick, and a judgement that
+    // routed to every shore of the region froze the page with the task's
+    // countdown stuck the moment a survey was ordered.
+    await evalJs("(() => { const b = [...document.querySelectorAll('button')].find((b) => /Explore|Survey/.test(b.textContent) && b.dataset.act); b?.click(); })()");
+    await sleep(400);
+    const surveyed = await evalJs("(() => { const b = [...document.querySelectorAll('#doitems button')].find((b) => b.dataset.id === 'explore'); if (!b) return null; b.click(); return b.dataset.arg ?? ''; })()");
+    check(surveyed !== null, "the Do panel offers a survey to order");
+    if (surveyed !== null) {
+      const surveyStart = Date.now();
+      let worstMs = 0;
+      let stalled = false;
+      while (Date.now() - surveyStart < 20000) {
+        const t0 = Date.now();
+        const answer = await Promise.race([evalJs("window.survidle.state.task?.id ?? null"), sleep(4000).then(() => "stall")]);
+        if (answer === "stall") { stalled = true; break; }
+        worstMs = Math.max(worstMs, Date.now() - t0);
+        if (answer === null) break;
+        await dismissModals(send, evalJs);
+        await sleep(250);
+      }
+      check(!stalled, "surveying: the page stopped answering for four seconds");
+      if (!stalled) console.log(`surveying: the page answered every probe over ${Math.round((Date.now() - surveyStart) / 1000)} s, the slowest in ${worstMs} ms`);
+    }
+
     // The whole world, then night at the block rung.
     for (let i = 0; i < 5; i++) {
       const more = await evalJs(`Boolean(document.querySelector('.maptools [data-act=zoom][data-dir=out]:not([disabled])'))`);
