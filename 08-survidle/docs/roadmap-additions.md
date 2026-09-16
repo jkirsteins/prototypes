@@ -1826,6 +1826,42 @@ The harness is `npm run e2e` against `npm run dev`, and `docs/e2e/` is
 what it saw. `docs/map-shots/` and the `?weather-shot=` fixture mode are
 gone: the game has one way of being looked at, which is playing it.
 
+**Measured** 2026-09-16, the same seed, day and settled window as the
+figures above, three runs a figure, the DOM board against the one canvas:
+
+                                   DOM board   one canvas
+  main-thread task time per 30 s     5.6-6.0 s   5.9 s
+  of that, script                    2.4-2.5 s   2.26 s
+  of that, style recalculation       0.5-0.7 s   0.2 s
+  share of one core                  18.5-19.9%  19.8%
+
+  median frame                       16.7 ms     16.7 ms
+  95th percentile                    21 ms       21 ms
+  99th percentile                    57-60 ms    40 ms
+  worst frame                        146-203 ms  56-60 ms (149 once)
+  long tasks per 30 s                18-20       0-1
+  worst long task                    145-201 ms  51 ms
+
+  elements in the document           8,705       989
+
+The total did not move and the shape of it did. The nineteen long tasks
+a half-minute - every one the 2,592-cell panel being rebuilt and morphed
+once a game minute, the last thing the previous pass could not cut in a
+document - are gone: the worst thing the main thread does in thirty
+seconds is now one task of fifty milliseconds, and the 99th-percentile
+frame came down from three and a half refreshes to two and a half. What
+the total kept is the per-frame draw, which is larger than it was:
+copying the board under the light of the hour, then the shade, the tint
+and the overlays, every frame, in place of the compositor doing the
+layering for free. That is the trade the plan priced - a steady small
+cost every frame for the absence of the big one every minute - and the
+steady cost is where the next pass would look, starting with drawing the
+board's copy only when something above it moved.
+
+Heap over three minutes of the frame loop with the survivor walking,
+garbage collected before each sample: 108-109 MB throughout, 989
+elements throughout. Nothing grows.
+
 ### What the suite was actually spending
 
 **Measured** 2026-09-16. The fast suite took 11 minutes on this container
