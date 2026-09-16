@@ -30,7 +30,7 @@ it("combines completion, group completion, discoveries, and messages in one moda
     discovered: ["hunt:deer"], messages: ["A new path opens."],
   };
   const html = opportunityModalHtml(state, notice);
-  const lines = ["Completed: Track roe deer", "Group completed: Track animals", "New opportunity: Hunt roe deer", "A new path opens."];
+  const lines = ["Completed: Read roe deer sign", "Group completed: Track animals", "New opportunity: Hunt roe deer", "A new path opens."];
   for (const line of lines) expect(html).toContain(line);
   for (let i = 1; i < lines.length; i++) expect(html.indexOf(lines[i - 1])).toBeLessThan(html.indexOf(lines[i]));
   expect(html.match(/class="opportunity-modal"/g)).toHaveLength(1);

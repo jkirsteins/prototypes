@@ -384,7 +384,6 @@ function render(nowMs = performance.now()) {
   updateBars(state, world, document, { hurry: ui.hurry, speed });
   updateFills(state);
   setBoardLight(updateSky(state, cal, ambient));
-  updateEffects();
 
   // The settings panel is static markup with its own listeners (the slider must
   // not be redrawn mid-drag), so it is shown and hidden rather than rewritten.
@@ -510,6 +509,12 @@ function frame(now: number) {
     render(now);
     updateSpeedHistory(document, ui.speedHistory, now, GAME_MINUTES_PER_REAL_SECOND * ui.hurry.rate);
   }
+  // The map is the one thing drawn on every display frame: the water, the
+  // weather, the firelight and the cues move against the wall clock, and a
+  // shimmer redrawn ten times a second reads as a flicker or as nothing. A
+  // draw is under a millisecond (effectsBench), which sixty times a second
+  // is what the panels' render tick used to cost every hundred.
+  updateEffects();
   portraitMotion.frame(document, now, document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
   const cal = calendar(state.minute, state.startDoy);
   sounds.frame(state, world, cal, ambientTemperature(cal, localWeather(state, world)), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
@@ -1062,6 +1067,10 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     pointerType = ev.pointerType;
   });
   board.addEventListener("click", (ev) => {
+    // The zoom controls sit inside the map panel, over the board. A click
+    // on one of them is the button's, never the ground's under it: read as
+    // ground it ordered a walk there and swallowed the zoom.
+    if ((ev.target as HTMLElement | null)?.closest?.(".maptools")) return;
     // Touch keeps its first tap for inspecting the ground. A mouse click on
     // known ground in this region is an explicit destination in its own
     // right, whether or not generation happened to name that patch a place.

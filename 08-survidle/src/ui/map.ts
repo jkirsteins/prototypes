@@ -326,6 +326,26 @@ function knownCandidates(state: GameState, world: World, box: MapAggregate, cond
   return candidates.sort((a, b) => distanceToMiddle(world, box, a) - distanceToMiddle(world, box, b) || a - b);
 }
 
+/** The known patch nearest the block's middle, of any ground; null where nothing in the block is known. */
+function knownPatchNearMiddle(state: GameState, world: World, box: MapAggregate): PatchId | null {
+  const x1 = Math.min(world.w, box.x0 + box.size);
+  const y1 = Math.min(world.h, box.y0 + box.size);
+  let best: PatchId | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let y = Math.max(0, box.y0); y < y1; y++) {
+    for (let x = Math.max(0, box.x0); x < x1; x++) {
+      const patch = cellIdx(world, x, y);
+      if (!isKnown(state, patch)) continue;
+      const distance = distanceToMiddle(world, box, patch);
+      if (distance < bestDistance || (distance === bestDistance && best !== null && patch < best)) {
+        best = patch;
+        bestDistance = distance;
+      }
+    }
+  }
+  return best;
+}
+
 /**
  * The patch a block of nothing but fog means: the one nearest the middle
  * that stands on the frontier, with known ground next to it.
@@ -374,8 +394,13 @@ function resolveTarget(
     return marks.reduce((best, f) => (distanceToMiddle(world, box, f.patch) < distanceToMiddle(world, box, best.patch) ? f : best)).patch;
   }
   const candidates = knownCandidates(state, world, box, routeConditions(state, world));
+  // A pointer asks what the block is, not where a walk could end: a block of
+  // known open water has no patch to stand on and is still a lake the
+  // tooltip should name, so the reading falls back to the known patch
+  // nearest the middle whatever its ground, and to the frontier only where
+  // nothing in the block is known at all.
+  if (resolution === "geometric") return candidates[0] ?? knownPatchNearMiddle(state, world, box) ?? frontierCandidate(state, world, box);
   if (!candidates.length) return frontierCandidate(state, world, box);
-  if (resolution === "geometric") return candidates[0];
   const from = cellOf(state, world);
   if (candidates.includes(from)) return from;
   for (const patch of survivorRouteCandidates(state, world, from, candidates)

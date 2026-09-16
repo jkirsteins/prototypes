@@ -16,8 +16,8 @@ function memoryStorage(): Storage {
 
 describe("the rate component", () => {
   it("says the same number in game time and prints the real reading beside it", () => {
-    // 20 kg a game hour is 20 kg per real minute: the same digits, other words.
-    expect(formatRate(20, "kg", "game")).toBe("20 kg/h (20 kg per real min)");
+    // 20 kg a game hour is 20 kg per real minute: the same digits, so the game reading stands alone.
+    expect(formatRate(20, "kg", "game")).toBe("20 kg/h");
   });
 
   it("says the per-second reading in real time, which is the per-game-minute one", () => {
@@ -25,7 +25,7 @@ describe("the rate component", () => {
   });
 
   it("signs a fall and a rise, and says nothing is moving as nothing", () => {
-    expect(formatRate(-3, "kg", "game")).toBe("-3 kg/h (-3 kg per real min)");
+    expect(formatRate(-3, "kg", "game")).toBe("-3 kg/h");
     expect(formatRate(0, "kg", "game")).toBe("steady");
   });
 

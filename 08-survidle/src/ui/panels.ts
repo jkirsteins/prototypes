@@ -816,7 +816,7 @@ function activityStep(state: GameState, world: World, cal: Calendar): string {
  */
 const CARE_NEED_WORD = {
   sleep: "sleepy", storm: "storm coming", cold: "cold", hungry: "hungry",
-  thirsty: "thirsty", spent: "exhausted", home: "going home", fire: "the fire", snares: "the snares",
+  thirsty: "thirsty", spent: "recovering stamina", home: "going home", fire: "the fire", snares: "the snares",
 } as const;
 
 export function activity(state: GameState, world: World, cal: Calendar): Activity | null {

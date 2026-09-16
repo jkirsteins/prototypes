@@ -364,9 +364,11 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   bottom: 30px;
   max-width: min(480px, calc(100% - 12px));
   padding: 6px 9px;
-  background: rgba(12, 15, 20, 0.94);
+  /* Translucent: the ground it describes stays readable through it, and
+     the pointer passes through it to that ground (pointer-events below), so
+     a glyph under the box can still be clicked. */
+  background: rgba(12, 15, 20, 0.72);
   border: 1px solid var(--line);
-  backdrop-filter: blur(2px);
   font-size: 12px;
   pointer-events: none;
 }

@@ -69,7 +69,7 @@ const COLLECTION_OPPORTUNITIES: OpportunityDef[] = [
     const name = SPECIES_DEFS[species].name;
     const dress = `Dress ${/^[aeiou]/i.test(name) ? "an" : "a"} ${name} carcass`;
     return [
-      { key: `track:${species}`, title: `Track ${name}`, category: "wildlife", group: "track-animals", steps: one("sign", `Find fresh ${name} sign`, (event) => event.kind === "signFound" && event.species === species ? 1 : 0) },
+      { key: `track:${species}`, title: `Read ${name} sign`, category: "wildlife", group: "track-animals", steps: one("sign", `Find fresh ${name} sign`, (event) => event.kind === "signFound" && event.species === species ? 1 : 0) },
       { key: `hunt:${species}`, title: `Hunt ${name}`, category: "wildlife", group: "hunt-animals", prerequisites: [`track:${species}`], steps: one("kill", `Kill ${name}`, (event) => event.kind === "animalKilled" && event.species === species ? 1 : 0) },
       { key: `dress:${species}`, title: dress, category: "wildlife", group: "dress-carcasses", prerequisites: [`hunt:${species}`], steps: one("dress", dress, (event) => event.kind === "carcassDressed" && event.species === species ? 1 : 0) },
       { key: `recover:${species}`, title: `Bring ${name} meat to camp`, category: "wildlife", group: "recover-kills", prerequisites: [`dress:${species}`], steps: one("recover", `Bring ${name} meat to camp`, (event) => event.kind === "carcassRecovered" && event.species === species ? 1 : 0) },

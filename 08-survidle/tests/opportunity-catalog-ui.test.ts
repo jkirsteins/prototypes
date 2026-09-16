@@ -8,9 +8,9 @@ it("renders anonymous unknown rows without leaking their titles", () => {
   const { state } = newGame(3);
   discoverOpportunity(state.opportunities, "track:deer", 1, false);
   const html = opportunityCatalogHtml(state, { category: "wildlife", page: 0, detail: null });
-  expect(html).toContain("Track roe deer");
+  expect(html).toContain("Read roe deer sign");
   expect(html).toContain("Undiscovered opportunity");
-  expect(html).not.toContain("Track elk");
+  expect(html).not.toContain("Read elk sign");
   expect(html).not.toContain("track:elk");
   expect(html).not.toContain("Hunt animals");
   expect(html).toContain("Track animals: 0 / 6");

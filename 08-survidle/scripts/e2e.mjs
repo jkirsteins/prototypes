@@ -289,12 +289,17 @@ async function main() {
     }
 
     // Closer: two clicks on the corner's plus, then the same one-click walk at 50 m.
+    // The buttons sit over the board, and a click on one is never a walk order.
+    const ordersBefore = await evalJs("JSON.stringify(window.survidle.state.regions[window.survidle.state.player.region]?.orders.map((o) => o.id))");
+    const routeBefore = await evalJs("JSON.stringify(window.survidle.state.route?.target ?? null)");
     await clickSelector(send, evalJs, ".maptools [data-act=zoom][data-dir=in]");
     await sleep(300);
     await clickSelector(send, evalJs, ".maptools [data-act=zoom][data-dir=in]");
     await sleep(600);
     board = await evalJs(READ_BOARD);
     check(board.z === 1, `two zooms in reach 50 m per glyph, not ${board.z} patches`);
+    check(await evalJs("JSON.stringify(window.survidle.state.regions[window.survidle.state.player.region]?.orders.map((o) => o.id))") === ordersBefore, "a click on the zoom button ordered a walk");
+    check(await evalJs("JSON.stringify(window.survidle.state.route?.target ?? null)") === routeBefore, "a click on the zoom button changed the walk");
     paint = await evalJs(READ_PAINT);
     check(paint.painted > paint.of * 0.2, `the board is painted at 50 m (${paint.painted} of ${paint.of} samples)`);
     await saveShot(send, board, `50m`);
