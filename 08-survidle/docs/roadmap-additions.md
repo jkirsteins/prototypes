@@ -1732,6 +1732,71 @@ left is the cost of *being* a document at all - rebuilding and diffing
 thousands of elements for a picture that changes every second. A canvas map
 does not have a morph.
 
+### Stage three, as built
+
+**Decided** 2026-09-16, on the way in. The plan above left three open
+questions and one design freedom; this is what was chosen and why.
+
+The board becomes one canvas drawn from a model. `mapHtml` is split: a
+`buildMapModel` that works out, per glyph, everything the old markup
+carried - classes, glyph, borders, hover text, the patch and the action
+it stands for - and a `mapHtml` that is now only a serializer of that
+model into the old markup. The app never calls the serializer; it draws
+the model. The serializer stays because nineteen test files and about a
+hundred and fifty assertions read the map as markup, and the model is
+what they were really testing all along: a test that asserts `.c.t-water.
+memory` is asserting what the model said about that glyph, and it still
+does. Migrating those to model assertions is worth doing, and is not what
+makes the canvas correct.
+
+Colours come from the stylesheet, not from a table typed beside it. There
+are 138 rules for cells - terrain by tone by season by snow by ice by
+mark by night - and a hand copy of them would drift from the first edit.
+The canvas keeps a hidden probe: one `.grid` off screen carrying the same
+classes the live grid would, one `.c` inside it dressed in a glyph's
+classes with the same child structure, and `getComputedStyle` read once
+per distinct class list and cached. The stylesheet stays the single
+source of truth, and `layout.test.ts`, which pins those rules by
+selector, keeps its subject.
+
+What animates leaves the static layer. The night fire's flicker, the lit
+rings round it and the player mark's mood pulse were CSS keyframes on
+cells; on canvas they are per-frame draws on the effects layer, which
+already redraws from a model against the wall clock. The static layer
+draws nothing that moves, which is the budget the plan asked for.
+
+What the `.grid` element keeps: its box. Hit testing was already
+arithmetic over `getBoundingClientRect()` of the grid, the tooltip is a
+fixed panel that never positioned itself by a cell, and the board-cover
+measurement reads the same rect - so the grid stays as a sized, empty
+positioned box holding the board canvas, the route line and the few DOM
+overlays (wildlife micro-marks, startle cues) that were never cells.
+`role="grid"`, the 2,592 focusable cells and arrow-key inspection go, as
+the plan said they would; Escape stays.
+
+The route line stays SVG. It is one element with two polylines and it
+already draws from the model's coordinates; there is nothing to buy by
+moving it.
+
+### What the suite was actually spending
+
+**Measured** 2026-09-16. The fast suite took 11 minutes on this container
+against the 17 seconds `docs/testing.md` records for the author's machine,
+and one sight test took 103 seconds on its own. A CPU profile of that test
+put 60 of its 64 busy seconds under `regionAt`, reached from a helper
+that walks regions outward to find one with a spruce cell - and the cost
+was not the flood that builds a region but the copy the in-process cache
+kept of it, which read the region's lazy `spots` to copy them and so
+placed them: up to two dozen route searches per region walked past.
+Keeping spots lazy across the copy took the test from 96 to 38 seconds;
+persisting built regions to disk beside the solved worlds took a warm run
+to 15. `docs/testing.md` has the mechanism.
+
+The block-rung walk took two clicks - the first to disclose which patch
+the glyph resolved to, the second to order the walk - and the disclosure
+was already on show before either, from the pointer and the tooltip. One
+click walks at every rung now; touch keeps its tap to inspect.
+
 ### The instrument
 
 The figures above came from CDP's own counters (`Performance.getMetrics`)

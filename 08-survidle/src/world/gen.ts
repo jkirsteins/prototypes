@@ -11,7 +11,7 @@ import { type Cell, cellAt, cellIdx, inWorld, newWorld, regionOf, regionPeek, so
 import { regionName } from "./names";
 import { findRoute, passable, routeKm } from "./route";
 import type { SolvedWorld } from "./solve";
-import { rememberSolved, solvedFor } from "./solvecache";
+import { isRememberedSolved, rememberSolved, solvedFor } from "./solvecache";
 import { FINE_PER_PARENT, PATCH_KM, type PatchId, patchXY } from "./spatial";
 import { CELL_KM } from "../units";
 import { coastLineU, LATTICE, LATTICE_H, LATTICE_W, TERRAINS, WORLD_CELL_H, WORLD_CELL_W, WORLD_H, WORLD_W } from "./terrain";
@@ -81,18 +81,88 @@ export function generateWorld(seed: number, solved?: SolvedWorld): World {
 const builtRegions = new WeakMap<SolvedWorld, Map<string, RegionDef>>();
 
 /**
+ * Regions whose spots have actually been placed. `spots` is a lazy property
+ * (see `lazySpots`), and reading it to find out is the one thing that must
+ * not happen: placing spots is up to two dozen route searches.
+ */
+const spotsPlaced = new WeakSet<RegionDef>();
+
+/**
+ * Installs `spots` on a region as a property placed on first read and
+ * writable after, so the start can re-site its camp and hand back the spots
+ * placed around it. `onPlaced` lets a copy report its placement back to the
+ * shared entry it was copied from, so the next world made from this seed
+ * gets the spots without walking the routes again.
+ */
+function lazySpots(r: RegionDef, world: World, onPlaced?: (spots: Spot[]) => void): void {
+  let spots: Spot[] | undefined;
+  Object.defineProperty(r, "spots", {
+    enumerable: true,
+    configurable: true,
+    get: () => {
+      if (spots === undefined) {
+        spots = placeSpots(world, r);
+        spotsPlaced.add(r);
+        onPlaced?.(spots);
+      }
+      return spots;
+    },
+    set: (placed: Spot[]) => {
+      spots = placed;
+      spotsPlaced.add(r);
+    },
+  });
+}
+
+/**
  * Each world keeps its own region objects: the start region's camp moves to the
  * landing, and capacity is a number the caller may set. Only `cells` is handed
  * on as it stands - it is the one big array, and nothing writes to it.
+ *
+ * Spots stay lazy across the copy. They used to be read here to be copied,
+ * which placed them - two dozen route searches - for every region a test
+ * so much as walked past on its way to another: `regionsOutward` visits up
+ * to 120 regions to find one, and every one of them paid for spots nobody
+ * asked about. That was 60 of the 64 busy seconds in one sight test.
  */
-function ownCopy(r: RegionDef): RegionDef {
-  return {
-    ...r,
-    frac: { ...r.frac },
-    capacity: { ...r.capacity },
-    neighbours: r.neighbours.map((n) => ({ ...n })),
-    spots: r.spots.map((s) => ({ ...s })),
-  };
+function ownCopy(r: RegionDef, world: World, onPlaced?: (spots: Spot[]) => void): RegionDef {
+  // Field by field, never `{ ...r }`: a spread reads every enumerable
+  // property, and `spots` is a getter that places them.
+  const copy = {} as RegionDef;
+  for (const key of Object.keys(r) as (keyof RegionDef)[]) {
+    if (key !== "spots") (copy as unknown as Record<string, unknown>)[key] = r[key];
+  }
+  copy.frac = { ...r.frac };
+  copy.capacity = { ...r.capacity };
+  copy.neighbours = r.neighbours.map((n) => ({ ...n }));
+  if (spotsPlaced.has(r)) {
+    copy.spots = r.spots.map((s) => ({ ...s }));
+    spotsPlaced.add(copy);
+  } else {
+    lazySpots(copy, world, onPlaced);
+  }
+  return copy;
+}
+
+/**
+ * A store of built regions outside this process, for tests and scripts:
+ * the node disk cache installs one beside the solved worlds. A region is
+ * a flood over a lattice square of refined ground, and that ground is
+ * refined chunk by chunk on the way, which is what made every test file
+ * pay seconds for regions its subject merely walked past. The browser
+ * never installs one.
+ *
+ * Only a world whose solved arrays are the seed's own may read or write
+ * it: a hand-made fixture world shares a seed with the real one and has
+ * different ground, and its regions must stay its own.
+ */
+export interface RegionCache {
+  load(seed: number, id: number): RegionDef | null;
+  store(seed: number, region: RegionDef): void;
+}
+let regionCache: RegionCache | null = null;
+export function setRegionCache(cache: RegionCache | null): void {
+  regionCache = cache;
 }
 
 export function regionAt(world: World, id: number): RegionDef {
@@ -104,12 +174,23 @@ export function regionAt(world: World, id: number): RegionDef {
       builtRegions.set(world.solved, shared);
     }
     const key = `${world.seed}:${id}`;
-    const built = shared.get(key);
-    if (built) r = ownCopy(built);
-    else {
-      r = buildRegion(world, id);
-      shared.set(key, ownCopy(r));
+    let built = shared.get(key);
+    if (!built) {
+      const canonical = regionCache !== null && isRememberedSolved(world.seed, world.solved);
+      const stored = canonical ? regionCache!.load(world.seed, id) : null;
+      if (stored) {
+        built = stored;
+        lazySpots(built, world);
+      } else {
+        built = ownCopy(buildRegion(world, id), world);
+        if (canonical) regionCache!.store(world.seed, built);
+      }
+      shared.set(key, built);
     }
+    // A copy that places its spots hands them to the shared entry, so the
+    // routes are walked once per seed and process rather than once per world.
+    const entry = built;
+    r = ownCopy(entry, world, (placed) => { if (!spotsPlaced.has(entry)) entry.spots = placed.map((s) => ({ ...s })); });
     world.regions.set(id, r);
   }
   return r;
@@ -239,14 +320,9 @@ function buildRegion(world: World, id: number): RegionDef {
     spots: [],
     campCell,
   };
-  let spots: Spot[] | undefined;
   // Lazy, and writable: the start re-sites its own region's camp and hands back
   // the spots placed around it, which a getter alone would refuse.
-  Object.defineProperty(r, "spots", {
-    enumerable: true,
-    get: () => spots ??= placeSpots(world, r),
-    set: (placed: Spot[]) => { spots = placed; },
-  });
+  lazySpots(r, world);
   return r;
 }
 

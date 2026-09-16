@@ -1093,26 +1093,20 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     // known ground in this region is an explicit destination in its own
     // right, whether or not generation happened to name that patch a place.
     //
-    // A glyph at the block rungs stands for up to a few thousand patches, so
-    // the exact patch it resolves to is shown first and the click after it -
-    // on the same resolved patch - is what gives the order. At 50 m a glyph
-    // is the patch and there is nothing to disclose, so one click walks.
+    // A glyph at the block rungs stands for up to a few thousand patches,
+    // and the exact patch a click resolves to is already on show before the
+    // click: the pointer over the glyph marks it and the tooltip reads it
+    // out. So one click walks at every rung. It used to take two at the
+    // block rungs - the first to disclose the patch, the second to order
+    // the walk - and the second was a click on something already disclosed.
     const target = targetUnder(ev, "routed");
     const cell = target?.patch ?? null;
     if (cell === null || cell === cellOf(state, world)) return;
-    const disclosing = target!.aggregate.size > 1 && ui.destination !== cell;
     if (pointerType === "touch" && touchCell !== cell) {
       touchCell = cell;
       hoverTarget = target;
       ui.hover = cell;
       ui.destination = cell;
-      render();
-      return;
-    }
-    if (disclosing) {
-      ui.destination = cell;
-      hoverTarget = target;
-      ui.hover = cell;
       render();
       return;
     }

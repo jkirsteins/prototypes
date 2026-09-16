@@ -273,6 +273,25 @@ the fast suite takes about 2 min 20 s against 17 s warm, and the claim took
 roughly a quarter of the solving work out of that (317 s of test CPU
 against 396 s without it).
 
+Solved worlds were not the only thing every test file rebuilt. Regions
+are read off a solved world lazily - a flood over a lattice square of
+refined ground, which refines that ground chunk by chunk on the way - and
+vitest isolates every test file, so a helper like `regionsOutward` that
+walks up to 120 regions to find one rebuilt all of them in every file
+that called it. Worse, the copy the in-process region cache kept read the
+region's `spots` to copy them, and `spots` is a lazy property whose first
+read places them: up to two dozen route searches, paid for every region a
+test merely walked past. Measured in one sight test: 60 of 64 busy
+seconds. Two changes: the copy no longer reads `spots` (they stay lazy
+across the copy and are written back to the shared entry once placed),
+and `installNodeWorldCache()` also installs a region cache - one file per
+built region under `regions-<seed>-v<GENERATOR_VERSION>-r<REGION_FORMAT>/`,
+the cells as bytes and the rest as JSON, written under a part name and
+moved onto the real one. Only a world whose solved arrays are the seed's
+own reads or writes it: a fixture world that borrowed a seed keeps its
+own regions. `tests/sight.test.ts` on this container: 96 s before, 15 s
+warm after.
+
 `tests/slow/terrain-budget.test.ts` is the solve's own budget: it solves
 one full-size world with no cache and asserts under 20 seconds, run as
 part of `npm run test:slow` (`tests/slow/**/*.test.ts` is picked up by

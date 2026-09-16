@@ -29,3 +29,8 @@ export function solvedFor(seed: number, w: number, h: number): SolvedWorld {
 export function rememberSolved(s: SolvedWorld, seed: number): void {
   inProcess.set(`${seed}:${s.w}x${s.h}`, s);
 }
+
+/** Whether `s` is the solved world this process holds for `seed` - the real one, not a fixture that borrowed the seed. */
+export function isRememberedSolved(seed: number, s: SolvedWorld): boolean {
+  return inProcess.get(`${seed}:${s.w}x${s.h}`) === s;
+}
