@@ -41,7 +41,7 @@ import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, hasEmbers, lightingInRa
 import { recordOpportunityEvent } from "./opportunities";
 import { builtProtection, coverCeiling, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
-import { isKnown, knownShare, markWalked } from "./mapped";
+import { isKnown, knowledgeGen, knownShare, markWalked } from "./mapped";
 import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { seeFrom, vantageRevealCells } from "./sight";
@@ -930,9 +930,13 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!target) return { ...o, ok: false, why: "no such place" };
       const region = cellAt(world, target.cell).region;
       if (discovery(state, region) === 0) return { ...o, ok: false, why: "{you} {know} nothing of that country" };
-      const water = localWeather(state, world, at).iceCm < ICE_SHORE_CM ? nextSurveyWater(state, world, region, []) : null;
+      // Legality asks whether any water is left to read, not which shore
+      // wins or how to get there: the row is judged on every render tick,
+      // and routing to every unread shore from here took seconds a tick
+      // and froze the page for the length of a survey.
+      const water = localWeather(state, world, at).iceCm < ICE_SHORE_CM && unreadSurveyWater(state, world, region);
       if (knownShare(state, world, region) >= 1 && !water) return { ...o, ok: false, why: "{you} {know} that country" };
-      if (!water && !hasReachableFrontier(state, world, region, [here])) return { ...o, ok: false, why: "no reachable frontier" };
+      if (!water && !frontierReachable(state, world, region, here)) return { ...o, ok: false, why: "no reachable frontier" };
       // No duration is promised: how long it takes is how long the ground takes.
       return { ...o, duration: 0, detail: "maps the region and reads its waters" };
     }
@@ -1824,6 +1828,27 @@ function frontierCells(state: GameState, world: World, region: number, visited: 
   return out;
 }
 
+/**
+ * hasReachableFrontier, remembered while nothing it reads has changed: the
+ * survivor's patch, what is mapped, the ice, the region. The row is asked
+ * on every render tick and the answer can cost a route search.
+ */
+const frontierMemo = new WeakMap<GameState, Map<string, boolean>>();
+function frontierReachable(state: GameState, world: World, region: number, here: number): boolean {
+  const key = `${region}:${here}:${knowledgeGen()}:${walkIceMode(state, world, false)}`;
+  let memo = frontierMemo.get(state);
+  if (!memo) {
+    memo = new Map();
+    frontierMemo.set(state, memo);
+  }
+  const held = memo.get(key);
+  if (held !== undefined) return held;
+  const answer = hasReachableFrontier(state, world, region, [here]);
+  if (memo.size >= 16) memo.delete(memo.keys().next().value!);
+  memo.set(key, answer);
+  return answer;
+}
+
 /** Legality asks only whether a frontier exists, not which one wins a survey. */
 function hasReachableFrontier(state: GameState, world: World, region: number, visited: readonly number[]): boolean {
   const from = cellOf(state, world);
@@ -1971,6 +1996,11 @@ export function surveyWaters(world: World, region: number): SurveyWater[] {
   return systems;
 }
 
+/** Whether the region has a water system none of whose shores has been read. */
+function unreadSurveyWater(state: GameState, world: World, region: number): boolean {
+  return surveyWaters(world, region).some((system) => !system.shores.some((shore) => isRead(state, shore)));
+}
+
 function nextSurveyWater(state: GameState, world: World, region: number, handled: number[]): { key: number; shore: number; path: number[] } | null {
   const from = cellOf(state, world);
   const ice = walkIceMode(state, world, false);
@@ -1981,7 +2011,9 @@ function nextSurveyWater(state: GameState, world: World, region: number, handled
       continue;
     }
     let best: { shore: number; path: number[] } | null = null;
-    for (const shore of system.shores) {
+    // A shore nothing known leads to is settled by the connectivity pass,
+    // not by an exhaustive route search each.
+    for (const shore of exploreRouteCandidates(state, world, from, system.shores, region, ice)) {
       const path = exploreRoute(state, world, from, shore, region, ice);
       if (path && (!best || path.length < best.path.length)) best = { shore, path };
     }

@@ -116,6 +116,24 @@ describe("bounded exact survey ranking", () => {
     expect(filters).not.toHaveBeenCalled();
   });
 
+  it("judges the survey row on whether unread water exists, never by routing to its shores", () => {
+    const { state, world, region, cal } = fixture(false);
+    const terrain = world.fineChunks.get(0)!.terrain;
+    for (const [x, y] of [[12, 13], [12, 15]]) terrain[y * FINE_CHUNK + x] = TERRAIN_INDEX.water;
+    const routes = vi.spyOn(routing, "exploreRoute");
+    const filters = vi.spyOn(routing, "exploreRouteCandidates");
+    expect(tasks.check(state, world, cal, "explore", `region:${region.id}`).ok).toBe(true);
+    expect(routes).not.toHaveBeenCalled();
+    expect(filters).not.toHaveBeenCalled();
+  });
+
+  it("remembers whether the frontier is reachable while nothing it reads has changed", () => {
+    const { state, world, region, cal } = fixture(false);
+    const routes = vi.spyOn(routing, "exploreRoute");
+    for (let i = 0; i < 5; i++) expect(tasks.check(state, world, cal, "explore", `region:${region.id}`).ok).toBe(true);
+    expect(routes.mock.calls.length).toBe(1);
+  });
+
   it("rejects a disconnected frontier once without routing each candidate", () => {
     const { state, world, region, cal } = fixture(false);
     region.cells = region.cells.filter(cell => cell % world.w === 16);
