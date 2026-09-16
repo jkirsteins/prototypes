@@ -21,7 +21,7 @@ import type { World } from "../src/world/gen";
 import { refineChunk } from "../src/world/refine";
 import { FINE_PER_PARENT, PATCH_M, WORLD_FINE_W } from "../src/world/spatial";
 import { TERRAIN_INDEX } from "../src/world/terrain";
-import { mapHtml } from "../src/ui/map";
+import { board, boardText, glyphOfCell, type MapModel } from "./board";
 import { newUiState } from "../src/ui/render";
 import { testAtmosphere } from "./weather-helpers";
 import { flatWorld } from "./world-fixture";
@@ -135,19 +135,19 @@ describe("far country", () => {
     const { state, world } = newGame(1);
     const ui = newUiState();
     const cal = calendar(state.minute, state.startDoy);
-    const classesOf = (html: string, cell: number): string => {
-      const match = new RegExp(`<span class="([^"]*)"[^>]*data-map-cell="${cell}"`).exec(html);
-      if (!match) throw new Error(`cell ${cell} is not on the board`);
-      return match[1];
+    const classesOf = (b: MapModel, cell: number): string => {
+      const g = glyphOfCell(b, cell);
+      if (!g) throw new Error(`cell ${cell} is not on the board`);
+      return g.classes.join(" ");
     };
-    const before = mapHtml(world, state, ui, cal);
-    const fogged = [...before.matchAll(/<span class="c fog[^"]*"[^>]*data-map-cell="(\d+)"/g)].map((m) => Number(m[1]));
-    const known = [...before.matchAll(/<span class="c t-[^"]*"[^>]*data-map-cell="(\d+)"/g)].map((m) => Number(m[1]));
+    const before = board(world, state, ui, cal);
+    const fogged = before.glyphs.filter((g) => g.classes[1] === "fog" && g.mapCell !== null).map((g) => g.mapCell!);
+    const known = before.glyphs.filter((g) => g.classes[1]?.startsWith("t-") && g.mapCell !== null).map((g) => g.mapCell!);
     expect(fogged.length).toBeGreaterThan(0);
     expect(known.length).toBeGreaterThan(0);
 
     markCoarseKnown(state, fogged[0], "parent");
-    const after = mapHtml(world, state, ui, cal);
+    const after = board(world, state, ui, cal);
     const far = classesOf(after, fogged[0]);
     // Ground, in its terrain's own colour, and told apart from both fog and
     // ground the survivor has actually read.
@@ -155,7 +155,7 @@ describe("far country", () => {
     expect(far).toContain("far");
     expect(far).toMatch(/t-[a-z]+/);
     expect(classesOf(after, known[0])).not.toContain("far");
-    expect(after).toContain("seen from afar");
+    expect(boardText(after)).toContain("seen from afar");
   });
 
   it("carries the far country through a save, apart from the patches", () => {
@@ -180,12 +180,12 @@ describe("far country at its own grain", () => {
     const { state, world } = newGame(1);
     const ui = newUiState();
     const cal = calendar(state.minute, state.startDoy);
-    const classesOf = (html: string, cell: number): string => {
-      const match = new RegExp(`<span class="([^"]*)"[^>]*data-map-cell="${cell}"`).exec(html);
-      if (!match) throw new Error(`cell ${cell} is not on the board`);
-      return match[1];
+    const classesOf = (b: MapModel, cell: number): string => {
+      const g = glyphOfCell(b, cell);
+      if (!g) throw new Error(`cell ${cell} is not on the board`);
+      return g.classes.join(" ");
     };
-    const fogged = [...mapHtml(world, state, ui, cal).matchAll(/<span class="c fog[^"]*"[^>]*data-map-cell="(\d+)"/g)].map((m) => Number(m[1]));
+    const fogged = board(world, state, ui, cal).glyphs.filter((g) => g.classes[1] === "fog" && g.mapCell !== null).map((g) => g.mapCell!);
     // A parent whose own ground disagrees with its aggregate's, everywhere in
     // it: only there do the two grains draw a different glyph.
     const disagrees = (cell: number): boolean => {
@@ -201,9 +201,9 @@ describe("far country at its own grain", () => {
     if (cell === undefined) throw new Error("no fogged parent disagrees with its aggregate");
 
     markCoarseKnown(state, cell, "aggregate");
-    const coarse = classesOf(mapHtml(world, state, ui, cal), cell);
+    const coarse = classesOf(board(world, state, ui, cal), cell);
     markCoarseKnown(state, cell, "parent");
-    const parent = classesOf(mapHtml(world, state, ui, cal), cell);
+    const parent = classesOf(board(world, state, ui, cal), cell);
 
     expect(coarse).toContain("far");
     expect(parent).toContain("far");

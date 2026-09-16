@@ -144,18 +144,19 @@ async function capture(evalJs, send, shot) {
   const facts = await evalJs(`(() => {
     const state = window.survidle.state;
     const rect = document.querySelector('#map').getBoundingClientRect();
-    const count = (selector) => document.querySelectorAll(selector).length;
+    const model = window.survidle.mapModel;
+    const count = (token) => model.glyphs.filter((g) => g.classes.includes(token)).length;
     return {
       seed: state.seed,
       minute: Math.floor(state.minute),
       startDoy: state.startDoy,
       player: { xM: state.player.xM, yM: state.player.yM, region: state.player.region },
       zoom: document.querySelector('.maptools span').textContent,
-      renderedCells: count('#map .c'),
-      riverGlyphs: count('#map .c.t-river'),
-      waterGlyphs: count('#map .c.t-water'),
-      fogGlyphs: count('#map .c.unknown'),
-      cosmeticDetails: count('#map .micro-ground'),
+      renderedCells: model.glyphs.length,
+      riverGlyphs: count('t-river'),
+      waterGlyphs: count('t-water'),
+      fogGlyphs: count('fog'),
+      cosmeticDetails: 0,
       box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
     };
   })()`);

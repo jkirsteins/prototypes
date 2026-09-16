@@ -37,7 +37,6 @@ import { putOutTorch, startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, OpportunityEvent, OpportunityKey, StockGroupId, TaskId } from "./sim/types";
 import { insertWalkAtTop } from "./sim/walkorders";
 import { ambientTemperature, localWeather } from "./sim/weather";
-import { WEATHER_SHOTS, weatherShotFixture, type WeatherShotName } from "./sim/weather-scenarios";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars, updateFills } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
@@ -49,7 +48,8 @@ import { opportunityPanelHtml } from "./ui/opportunity-panel";
 import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { effectsSnapshot, levelAt, LEVELS, legendHtml, mapAggregateAtPoint, mapHtml, mapKey, type MapTarget, mapTargetAtClient, mapTargetAtPoint, mapViewportBounds, type TargetResolution, updateEffects, viewOrigin } from "./ui/map";
+import { effectsSnapshot, LEVELS, legendHtml, mapAggregateAtPoint, mapBoardHtml, mapKey, mapModelSnapshot, type MapTarget, mapTargetAtClient, mapViewportBounds, setBoardLight, setPointedGlyph, type TargetResolution, updateEffects } from "./ui/map";
+import { drawBoard } from "./ui/mapcanvas";
 import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { loadRateDisplay, saveRateDisplay, type RateDisplay } from "./ui/rate";
 import { stockPanelHtml, stocksHtml } from "./ui/stocks";
@@ -84,10 +84,6 @@ if (Number.isFinite(shimmerSpeed) && shimmerSpeed > 0) document.documentElement.
 const forcedSeed = params.get("seed");
 /** Test aid beside seed: the day of year the run begins on, for a summer or autumn pass. Not a game feature. */
 const forcedDay = params.get("day");
-const requestedWeatherShot = params.get("weather-shot");
-const weatherShotName = requestedWeatherShot && requestedWeatherShot in WEATHER_SHOTS
-  ? requestedWeatherShot as WeatherShotName
-  : null;
 // Anything that is not a day of year is no day of year: a blank or misspelt
 // ?day= leaves the run alone rather than opening it on 1 January in the snow.
 const forcedDayN = forcedDay === null || forcedDay.trim() === "" ? Number.NaN : Number(forcedDay);
@@ -290,6 +286,17 @@ function setHidden(el: HTMLElement | null, hidden: boolean) {
  * instead of waiting up to a render interval. Its text is guarded by its
  * own key so a pointer crossing one cell redraws it once.
  */
+/**
+ * Paints the board from the model the last build produced. The map's key is
+ * the picture's identity: a call with the same key draws nothing, so this
+ * is safe to call after every panel morph and costs a string compare on a
+ * still minute.
+ */
+function paintBoard(key: string): void {
+  const model = mapModelSnapshot();
+  if (model) drawBoard(model, key);
+}
+
 function renderTip(cal = calendar(state.minute, state.startDoy)) {
   const tip = document.getElementById("maptip")!;
   setHidden(tip, ui.hover === null);
@@ -322,16 +329,9 @@ function opportunityPageSize(): number { return window.matchMedia("(max-width: 7
 let opportunityOpener: HTMLElement | null = null;
 
 function render(nowMs = performance.now()) {
-  if (ui.wildlifeStartles.length) document.getElementById("mapdyn")!.style.setProperty("--wildlife-now", `${nowMs}ms`);
   // Arriving where you were looking ends the looking.
   if (ui.selected === state.player.region) ui.selected = null;
   const cal = calendar(state.minute, state.startDoy);
-  if (weatherShotName) {
-    setPanel("mapdyn", mapHtml(world, state, ui, cal));
-    updateEffects();
-    document.getElementById("overlay")!.hidden = true;
-    return;
-  }
   const ambient = ambientTemperature(cal, localWeather(state, world));
   setPanel("stocks", stocksHtml(state, world, cal, ui));
   renderStockPanel(cal);
@@ -359,7 +359,8 @@ function render(nowMs = performance.now()) {
     const key = mapKey(state, world, ui, cal, nowMs);
     if (key === lastMapKey) break;
     lastMapKey = key;
-    setPanel("mapdyn", mapHtml(world, state, ui, cal, nowMs));
+    setPanel("mapdyn", mapBoardHtml(world, state, ui, cal, nowMs));
+    paintBoard(key);
     if (!ui.wildlifeStartles.length) break;
   }
   setPanel("task", taskHtml(state, world, cal, ui.hurry));
@@ -382,7 +383,7 @@ function render(nowMs = performance.now()) {
   setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world, document, { hurry: ui.hurry, speed });
   updateFills(state);
-  updateSky(state, cal, ambient);
+  setBoardLight(updateSky(state, cal, ambient));
   updateEffects();
 
   // The settings panel is static markup with its own listeners (the slider must
@@ -463,7 +464,7 @@ function frame(now: number) {
     requestAnimationFrame(frame);
     return;
   }
-  if (!weatherShotName && !simulationPaused(state, ui)) {
+  if (!simulationPaused(state, ui)) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
@@ -487,22 +488,17 @@ function frame(now: number) {
     // dismisses it into an away report they never earned.
     lastReal = now;
   }
-  if (!weatherShotName) {
-    // One moment at a time, and never over an overlay that outranks it. A rung
-    // crossed inside an offline catch-up waits behind that catch-up's own away
-    // report; momentToOpen owns the whole rule.
-    if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
-    // Wildlife recognition waits behind an already open opportunity presentation.
-    if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.opportunityPresentation && ui.recognition === null) {
-      ui.recognition = state.wildlife.recognitionQueue[0] ?? null;
-    }
+  // One moment at a time, and never over an overlay that outranks it. A rung
+  // crossed inside an offline catch-up waits behind that catch-up's own away
+  // report; momentToOpen owns the whole rule.
+  if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
+  // Wildlife recognition waits behind an already open opportunity presentation.
+  if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.opportunityPresentation && ui.recognition === null) {
+    ui.recognition = state.wildlife.recognitionQueue[0] ?? null;
   }
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
-  // The one value the map reads every frame: the startle animations are
-  // paused CSS keyframes that sample this clock through their delay.
-  if (ui.wildlifeStartles.length) document.getElementById("mapdyn")!.style.setProperty("--wildlife-now", `${now}ms`);
   // State is rendered on its own clock. Nothing a panel shows moves faster
   // than a game minute, so drawing every panel on every display frame paid
   // a style pass and a layout sixty times a second for markup that had not
@@ -882,15 +878,6 @@ try {
   showLoading(`the world could not be made: ${err instanceof Error ? err.message : String(err)}`, 0);
   throw err;
 }
-const weatherShot = weatherShotName ? weatherShotFixture(weatherShotName) : null;
-if (weatherShot) {
-  state = weatherShot.state;
-  world = weatherShot.world;
-  ui.zoom = weatherShot.definition.zoom;
-  ui.welcome = false;
-  ui.teach = null;
-  ui.opportunityPresentation = null;
-}
 beacon.opened(state);
 // Built once world is real; the worker keeps its own copy keyed by seed, so a
 // later fresh() with a new world does not leave it stale.
@@ -1044,25 +1031,11 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
   const board = document.getElementById("mapdyn")!;
   let pointerType = "mouse";
   let touchCell: number | null = null;
-  let targetGlyph: HTMLElement | null = null;
-  const clearTarget = () => {
-    targetGlyph?.classList.remove("target");
-    targetGlyph = null;
-  };
-  const showTarget = (cell: number) => {
-    clearTarget();
-    const l = levelAt(ui.zoom);
-    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
-    const x = cell % world.w;
-    const y = Math.floor(cell / world.w);
-    const gx = Math.floor((x - x0) / l.finePerGlyph);
-    const gy = Math.floor((y - y0) / l.finePerGlyph);
-    if (gx < 0 || gy < 0 || gx >= l.w || gy >= l.h) return;
-    const glyph = document.querySelector<HTMLElement>("#mapdyn .grid")?.children.item(gy * l.w + gx);
-    if (!(glyph instanceof HTMLElement) || !glyph.classList.contains("c")) return;
-    glyph.classList.add("target");
-    targetGlyph = glyph;
-  };
+  // A row that names somewhere to go points at it while the pointer is on
+  // it. The mark is the effects layer's, drawn from the patch each frame,
+  // rather than a class on a cell: there are no cells to put one on.
+  const clearTarget = () => setPointedGlyph(null);
+  const showTarget = (cell: number) => setPointedGlyph(cell);
   const targetUnder = (ev: { clientX: number; clientY: number }, resolution: TargetResolution) => {
     const grid = board.querySelector<HTMLElement>(".grid");
     if (!grid) return null;
@@ -1130,37 +1103,14 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     ui.hover = null;
     renderTip();
   });
+  // Arrow-key inspection of cells went with the cells: the board is one
+  // canvas now, and the plan for it gave up keyboard navigation of the map
+  // (docs/roadmap-additions.md, "The architecture"). Escape still clears
+  // the pointer's reading.
   board.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape") {
-      hoverTarget = null;
-      ui.hover = null;
-      board.querySelector<HTMLElement>(".grid")?.focus();
-      render();
-      return;
-    }
-    const moves: Record<string, [number, number]> = {
-      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
-    };
-    const move = moves[ev.key];
-    if (!move) return;
-    const grid = board.querySelector<HTMLElement>(".grid");
-    if (!grid) return;
-    const active = document.activeElement instanceof HTMLElement && document.activeElement.matches(".c")
-      ? document.activeElement
-      : grid.querySelector<HTMLElement>(".mk-player") ?? grid.querySelector<HTMLElement>("[data-map-cell]");
-    if (!active) return;
-    const x = Number(active.dataset.mapX) + move[0];
-    const y = Number(active.dataset.mapY) + move[1];
-    const next = grid.querySelector<HTMLElement>(`[data-map-x="${x}"][data-map-y="${y}"][data-map-cell]`);
-    if (!next) return;
-    ev.preventDefault();
-    next.focus();
-    // The arrow keys land on a glyph, and a glyph at the block rungs is not
-    // a patch. Resolve it through its own middle so the keyboard reads out
-    // the patch a click on it would walk to.
-    const level = levelAt(ui.zoom);
-    hoverTarget = mapTargetAtPoint(world, state, ui, (x + 0.5) * level.px, (y + 0.5) * level.line, calendar(state.minute, state.startDoy));
-    ui.hover = hoverTarget?.patch ?? Number(next.dataset.mapCell);
+    if (ev.key !== "Escape") return;
+    hoverTarget = null;
+    ui.hover = null;
     render();
   });
 
@@ -1263,7 +1213,7 @@ declare global {
     get state(): GameState; get world(): World; advance(minutes: number): void; speed: number;
     cacheStats(): WorldCacheStats;
     get effects(): ReturnType<typeof import("./ui/map").effectsSnapshot>;
-    weatherShot: null | { name: WeatherShotName; visibleCells: number };
+    get mapModel(): ReturnType<typeof import("./ui/map").mapModelSnapshot>;
     startleSetup?(scenario: import("../scripts/startle-seeds").StartleScenario): Promise<void>;
     startleStep?(): void;
     startleAdvance?(minutes: number): void;
@@ -1272,18 +1222,20 @@ declare global {
     placeAtPatch?(patch: number): void;
     reveal?(patch: number, radiusPatches: number): void;
     effectsBench?(iterations?: number): { msPerDraw: number; water: number; shadow: number; glyph: number; iterations: number };
+    /** What a click at a screen point would resolve to, for a browser check that clicked and saw no walk. */
+    clickReading?(clientX: number, clientY: number): unknown;
   } }
 }
 window.survidle = {
   get state() { return state; },
   get world() { return world; },
   get effects() { return effectsSnapshot(); },
+  get mapModel() { return mapModelSnapshot(); },
   advance(minutes: number) { advance(state, world, minutes); render(); },
   speed,
   // A reading of how much fine ground the run has had to build. It counts
   // caches; it never fills or clears one, so asking does not change the run.
   cacheStats() { return worldCacheStats(world); },
-  weatherShot: weatherShot ? { name: weatherShotName!, visibleCells: weatherShot.visible.size } : null,
 };
 if (import.meta.env.DEV) {
   window.survidle.startleSetup = async (scenario) => {
@@ -1348,6 +1300,20 @@ if (import.meta.env.DEV) {
       msPerDraw: Math.round(msPerDraw * 1000) / 1000,
       water: model?.water.length ?? 0, shadow: model?.shadow.length ?? 0, glyph: model?.glyph.length ?? 0,
       iterations: runs,
+    };
+  };
+  window.survidle.clickReading = (clientX, clientY) => {
+    const grid = document.querySelector<HTMLElement>("#mapdyn .grid");
+    if (!grid) return { grid: null };
+    const cal = calendar(state.minute, state.startDoy);
+    const target = mapTargetAtClient(world, state, ui, clientX, clientY, grid.getBoundingClientRect(), cal, "routed");
+    const here = cellOf(state, world);
+    const cell = target?.patch ?? null;
+    return {
+      aggregate: target?.aggregate ?? null, patch: cell, here, known: cell === null ? null : isKnown(state, cell),
+      frontier: cell !== null && !isKnown(state, cell) ? frontierRoute(state, world, here, cell, "none") !== null : null,
+      route: state.route ? { target: state.route.target, ahead: state.route.path.length } : null,
+      orders: state.regions[state.player.region]?.orders.map((o) => ("req" in o ? `${o.req.task}:${o.req.arg}` : o.kind)) ?? [],
     };
   };
   window.survidle.reveal = (patch, radiusPatches) => {

@@ -11,7 +11,8 @@ import { demoteFog } from "../src/sim/landing";
 import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
 import { knowledgeAt } from "../src/sim/fineknowledge";
 import { newGame } from "../src/sim/newgame";
-import { glyphSummary, LEVELS, mapHtml } from "../src/ui/map";
+import { glyphSummary, LEVELS } from "../src/ui/map";
+import { board, glyphsWith, has } from "./board";
 import { newUiState } from "../src/ui/render";
 import { calendar } from "../src/sim/calendar";
 import { cellIdx } from "../src/world/gen";
@@ -50,17 +51,17 @@ describe("the parent-known cache across a demotion", () => {
     expect(parentZoom).toBeGreaterThanOrEqual(0);
     const ui = { ...newUiState(), zoom: parentZoom, welcome: false };
 
-    document.body.innerHTML = `<div id="map">${mapHtml(world, state, ui, CAL)}</div>`;
-    const knownBefore = document.querySelectorAll("#map .c.cur, #map .c.memory, #map .c.dim").length;
+    const knownOn = (b: ReturnType<typeof board>) => b.glyphs.filter((g) => has(g, "cur") || has(g, "memory") || has(g, "dim"));
+    const knownBefore = knownOn(board(world, state, ui, CAL)).length;
     expect(knownBefore).toBeGreaterThan(0);
 
     demoteFog(state);
 
-    document.body.innerHTML = `<div id="map">${mapHtml(world, state, ui, CAL)}</div>`;
     // Same known footprint, none of it fallen back to fog: a demotion dims
     // ground, it does not unknow it.
-    const knownAfter = document.querySelectorAll("#map .c.cur, #map .c.memory, #map .c.dim").length;
-    expect(knownAfter).toBe(knownBefore);
-    expect(document.querySelectorAll("#map .c.cur.fog, #map .c.memory.fog, #map .c.dim.fog").length).toBe(0);
+    const after = board(world, state, ui, CAL);
+    expect(knownOn(after).length).toBe(knownBefore);
+    expect(knownOn(after).filter((g) => has(g, "fog"))).toHaveLength(0);
+    expect(glyphsWith(after, "fog", "cur")).toHaveLength(0);
   });
 });

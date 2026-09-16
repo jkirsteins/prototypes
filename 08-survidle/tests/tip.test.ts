@@ -39,7 +39,9 @@ function pointOf(world: ReturnType<typeof newGame>["world"], state: ReturnType<t
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
-  return { x: ((x - x0) / l.finePerGlyph) * l.px + l.px / 2, y: ((y - y0) / l.finePerGlyph) * l.line + l.line / 2 };
+  // The glyph the cell falls in: at a block rung the origin is snapped to
+  // whole glyphs, so the cell can sit anywhere inside its block.
+  return { x: Math.floor((x - x0) / l.finePerGlyph) * l.px + l.px / 2, y: Math.floor((y - y0) / l.finePerGlyph) * l.line + l.line / 2 };
 }
 
 /**

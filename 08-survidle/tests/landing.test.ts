@@ -17,9 +17,9 @@ import { current } from "../src/sim/record";
 import { campSite, DIM, discovery, enterRegion, regionState, siteFor } from "../src/sim/regionstate";
 import { SKILL_IDS } from "../src/sim/skills";
 import { seasonalMean } from "../src/sim/weather";
-import { mapHtml } from "../src/ui/map";
+import { board, glyphsWith } from "./board";
 import { campHtml, tombstoneHtml } from "../src/ui/panels";
-import { newUiState, resetPanels, setPanel } from "../src/ui/render";
+import { newUiState, resetPanels } from "../src/ui/render";
 import { PATCH_KM } from "../src/world/spatial";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
@@ -181,20 +181,18 @@ describe("the dim map", () => {
     const ui = newUiState();
     addItem(herePile(state, world), "stone", 2);
 
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(1);
+    expect(glyphsWith(board(world, state, ui, cal), "pl").length).toBe(1);
 
     demoteFog(state);
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(0);
-    expect(document.querySelector("#map .c[title*='something lies here']")).toBeNull();
+    const dim = board(world, state, ui, cal);
+    expect(glyphsWith(dim, "pl").length).toBe(0);
+    expect(dim.glyphs.some((g) => g.info.includes("something lies here"))).toBe(false);
 
     enterRegion(state, world, state.player.region);
     // A real re-entry always comes with a look around (placeAt's seeFrom); enterRegion
     // alone only marks the region, so the ground underfoot is re-seen here by hand.
     markKnown(state, cellOf(state, world));
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(1);
+    expect(glyphsWith(board(world, state, ui, cal), "pl").length).toBe(1);
   });
 });
 

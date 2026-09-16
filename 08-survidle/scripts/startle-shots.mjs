@@ -6,9 +6,9 @@
  *     STARTLE_SHOTS_URL=http://127.0.0.1:5188/prototypes/08/ node scripts/startle-shots.mjs
  *
  * This is deliberately browser verification rather than a Vitest replacement.
- * It uses the development-only fixture harness, inspects the rendered DOM and
- * computed motion, saves three images, and fails if a tested UI contract does
- * not hold. Audio scheduling is covered by the focused test suite; a browser
+ * It uses the development-only fixture harness, reads the board model the
+ * canvas draws from and where the page lays it out, saves three images, and
+ * fails if a tested UI contract does not hold. Audio scheduling is covered by the focused test suite; a browser
  * cannot objectively establish that a sound is aesthetically recognisable.
  */
 import { spawn } from "node:child_process";
@@ -139,13 +139,19 @@ async function installAudioProbe(evalJs) {
 
 async function snapshot(evalJs) {
   return evalJs(`(() => {
-    const cues = [...document.querySelectorAll('.wildlife-startle')];
+    const model = window.survidle.mapModel;
     const log = window.survidle.state.log;
-    const rect = (element) => { const r = element.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
     const grid = document.querySelector('#mapdyn .grid');
     const viewport = document.querySelector('#mapdyn .scroll-x');
     const gr = grid.getBoundingClientRect();
     const vr = viewport.getBoundingClientRect();
+    // Where the canvas draws a thing, as a screen rect: a cue is 18 px of
+    // exclamation centred on its point, an animal is one glyph's box.
+    const cueRect = (cue) => ({ left: gr.left + cue.x - 6, top: gr.top + cue.y, right: gr.left + cue.x + 6, bottom: gr.top + cue.y + 18, width: 12, height: 18 });
+    const glyphRect = (gx, gy) => ({ left: gr.left + gx * model.px, top: gr.top + gy * model.line, right: gr.left + (gx + 1) * model.px, bottom: gr.top + (gy + 1) * model.line, width: model.px, height: model.line });
+    const markRect = (m) => ({ left: gr.left + m.x - model.px / 2, top: gr.top + m.y - model.line / 2, right: gr.left + m.x + model.px / 2, bottom: gr.top + m.y + model.line / 2, width: model.px, height: model.line });
+    const recoiling = [...model.marks.filter((m) => m.recoilAt !== undefined).map(markRect), ...model.glyphs.filter((g) => g.wildlifeStart !== undefined).map((g) => glyphRect(g.gx, g.gy))];
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const intersection = { left: Math.max(gr.left, vr.left), top: Math.max(gr.top, vr.top), right: Math.min(gr.right, vr.right), bottom: Math.min(gr.bottom, vr.bottom) };
     const active = window.survidle.state.wildlife.subjects.find((subject) => subject.id === 1)?.active;
     const cell = active ? active.cell : null;
@@ -156,17 +162,17 @@ async function snapshot(evalJs) {
     const terrain = chunk ? ['water', 'fell', 'rock', 'bog', 'spruce', 'pine', 'birch', 'meadow'][chunk.terrain[(y % 64) * 64 + (x % 64)]] : null;
     const region = chunk ? chunk.region[(y % 64) * 64 + (x % 64)] : null;
     return JSON.stringify({
-      cues: cues.map((cue) => ({ cls: cue.className, key: cue.dataset.startle, start: cue.style.getPropertyValue('--wildlife-start'), style: cue.getAttribute('style'), animation: getComputedStyle(cue).animationName, rect: rect(cue), owner: cue.closest('.c')?.dataset.mapCell ?? null })),
-      recoil: document.querySelectorAll('.mk-animal.wildlife-recoil').length,
-      animalRect: document.querySelector('.mk-animal.wildlife-recoil') ? rect(document.querySelector('.mk-animal.wildlife-recoil')) : null,
-      recoilAnimation: getComputedStyle(document.querySelector('.mk-animal.wildlife-recoil') ?? document.body).animationName,
-      animal: document.querySelectorAll('#mapdyn .mk-animal').length,
-      identityLeak: /data-wildlife-id|wildlife-(?:0|1|2|3|4|5)/.test(document.querySelector('#mapdyn').innerHTML),
+      cues: model.startles.map((cue) => ({ cls: 'wildlife-startle ' + cue.kind + (cue.edge ? ' edge bearing-' + cue.edge : ''), key: String(cue.key), start: cue.startedAtMs + 'ms', animation: reduced ? 'wildlife-startle-fade' : 'wildlife-startle', rect: cueRect(cue) })),
+      recoil: recoiling.length,
+      animalRect: recoiling[0] ?? null,
+      recoilAnimation: reduced || !recoiling.length ? 'none' : 'wildlife-recoil',
+      animal: model.marks.length + model.glyphs.filter((g) => g.classes.includes('mk-animal')).length,
+      identityLeak: model.marks.length > 0 || model.glyphs.some((g) => g.wildlifeId !== undefined),
       logCount: log.length,
       logText: log.at(-1)?.text ?? '',
       minute: window.survidle.state.minute + window.survidle.state.advanceCarry,
       escaped: window.survidle.state.wildlife.subjects.find((subject) => subject.id === 1)?.active?.escapeEpisode ?? 0,
-      edge: document.querySelectorAll('.wildlife-startle.edge').length,
+      edge: model.startles.filter((cue) => cue.edge !== null).length,
       zoom: document.querySelector('#mapdyn .maptools .dim')?.textContent ?? '',
       intersection,
       active: { cell, terrain, region, playerRegion: window.survidle.state.player.region },
@@ -372,20 +378,21 @@ async function main() {
     await waitFor(async () => Boolean(await evalJs("document.querySelector('[data-act=welcome-close]')")), "seed 9 welcome");
     await evalJs("document.querySelector('[data-act=welcome-close]').click()");
     await dismissOpportunities(evalJs);
-    await waitFor(async () => Boolean(await evalJs("document.querySelector('#mapdyn .mk-player')")), "seed 9 map");
+    await waitFor(async () => Boolean(await evalJs("window.survidle.mapModel?.glyphs.some((g) => g.classes.includes('mk-player'))")), "seed 9 map");
     await waitFor(async () => Number(await evalJs("window.survidle.state.minute")) >= 1, "seed 9 08:01 approach time");
-    assert(Number(await evalJs("document.querySelectorAll('#mapdyn .mk-animal').length")) === 0, "seed 9 exposed an animal before the heard-only walk");
+    assert(Number(await evalJs("window.survidle.mapModel.marks.length + window.survidle.mapModel.glyphs.filter((g) => g.classes.includes('mk-animal')).length")) === 0, "seed 9 exposed an animal before the heard-only walk");
     const heardTarget = JSON.parse(await evalJs(`(() => {
-      const player = document.querySelector('#mapdyn .mk-player');
-      const targetCell = Number(player.dataset.mapCell) + 1;
-      const target = document.querySelector('#mapdyn [data-map-cell="' + targetCell + '"]');
-      const r = target.getBoundingClientRect();
-      return JSON.stringify({ cell: targetCell, x: r.left + r.width / 2, y: r.top + r.height / 2 });
+      const model = window.survidle.mapModel;
+      const player = model.glyphs.find((g) => g.classes.includes('mk-player'));
+      const targetCell = player.mapCell + 1;
+      const target = model.glyphs.find((g) => g.mapCell === targetCell);
+      const gr = document.querySelector('#mapdyn .grid').getBoundingClientRect();
+      return JSON.stringify({ cell: targetCell, x: gr.left + (target.gx + 0.5) * model.px, y: gr.top + (target.gy + 0.5) * model.line });
     })()`));
     await send("Input.dispatchMouseEvent", { type: "mousePressed", x: heardTarget.x, y: heardTarget.y, button: "left", clickCount: 1 });
     await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: heardTarget.x, y: heardTarget.y, button: "left", clickCount: 1 });
     await waitFor(async () => await evalJs("window.survidle.state.task?.id === 'walk'"), "seed 9 walk order");
-    await waitFor(async () => Boolean(await evalJs("document.querySelector('.wildlife-startle.heard')")), "seed 9 natural heard-only startle", 15000);
+    await waitFor(async () => Boolean(await evalJs("window.survidle.mapModel?.startles.some((cue) => cue.kind === 'heard')")), "seed 9 natural heard-only startle", 15000);
     const naturalHeard = JSON.parse(await snapshot(evalJs));
     assert(naturalHeard.cues.length === 1 && naturalHeard.cues[0].cls.includes("heard") && naturalHeard.animal === 0 && !naturalHeard.identityLeak,
       "seed 9 natural heard-only event disclosed an animal or missed its cue");
@@ -404,27 +411,27 @@ async function main() {
     await evalJs("document.querySelector('[data-act=welcome-close]').click()");
     await dismissOpportunities(evalJs);
     await evalJs("document.querySelector('[data-act=zoom][data-dir=in]').click(); document.querySelector('[data-act=zoom][data-dir=in]').click()");
-    await waitFor(async () => Boolean(await evalJs("document.querySelector('#mapdyn [data-wildlife-id=\"1\"]')")), "seed 3 natural deer");
+    await waitFor(async () => Boolean(await evalJs("window.survidle.mapModel?.marks.some((m) => m.id === 1)")), "seed 3 natural deer");
     const calmInitial = JSON.parse(await evalJs(`(() => {
-      const animal = window.__naturalCalmAnimal = document.querySelector('#mapdyn [data-wildlife-id="1"]');
+      const mark = window.survidle.mapModel.marks.find((m) => m.id === 1);
       const active = window.survidle.state.wildlife.subjects.find(s => s.id === 1).active;
-      const r = animal.getBoundingClientRect();
+      const gr = document.querySelector('#mapdyn .grid').getBoundingClientRect();
       return JSON.stringify({ minute: window.survidle.state.minute, cell: active.cell, position: active.position,
-        destination: active.travel.destination, x: r.left + r.width / 2, y: r.top + r.height / 2 });
+        destination: active.travel.destination, x: gr.left + mark.x, y: gr.top + mark.y });
     })()`));
     await saveMap(send, evalJs, "natural-seed-3-travel-start");
     const calmTrace = [calmInitial];
     await waitFor(async () => {
       const sample = JSON.parse(await evalJs(`(() => {
-        const animal = document.querySelector('#mapdyn [data-wildlife-id="1"]');
+        const mark = window.survidle.mapModel.marks.find((m) => m.id === 1);
         const subject = window.survidle.state.wildlife.subjects.find(s => s.id === 1);
         const active = subject.active;
-        const r = animal?.getBoundingClientRect();
+        const gr = document.querySelector('#mapdyn .grid').getBoundingClientRect();
         return JSON.stringify({ minute: window.survidle.state.minute, cell: active.cell, position: active.position,
-          destination: active.travel?.destination ?? null, x: r ? r.left + r.width / 2 : null, y: r ? r.top + r.height / 2 : null,
-          sameNode: animal === window.__naturalCalmAnimal, alarm: active.alarm, episode: active.escapeEpisode,
+          destination: active.travel?.destination ?? null, x: mark ? gr.left + mark.x : null, y: mark ? gr.top + mark.y : null,
+          sameNode: Boolean(mark), alarm: active.alarm, episode: active.escapeEpisode,
           startleLogs: window.survidle.state.log.filter(entry => /startles|crashes away/.test(entry.text)).length,
-          cues: document.querySelectorAll('.wildlife-startle').length });
+          cues: window.survidle.mapModel.startles.length });
       })()`));
       calmTrace.push(sample);
       return sample.destination === null || sample.destination.xM !== calmInitial.destination.xM || sample.destination.yM !== calmInitial.destination.yM;

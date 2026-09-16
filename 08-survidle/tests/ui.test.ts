@@ -23,7 +23,8 @@ import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { ambientTemperature, conditionsAt, ensureGround } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars } from "../src/ui/bars";
-import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
+import { DEFAULT_ZOOM, LEVELS, mapBoardHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
+import { board, glyphOfCell, glyphsWith, has } from "./board";
 import { lighting } from "../src/ui/sky";
 import { doHtml } from "../src/ui/dopanel";
 import { campHtml, forecastHtml, rosterHtml, inventoryHtml, placesHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml, weatherHtml } from "../src/ui/panels";
@@ -178,27 +179,31 @@ describe("panels", () => {
     }
   });
 
-  it("the closest zoom draws one glyph per patch, and the grid carries its size for the stylesheet", () => {
+  it("the closest zoom draws one glyph per patch, and the grid's box is the board's size", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const cal = calendar(0);
     const ui = newUiState();
     ui.zoom = 0;
-    setPanel("map", mapHtml(world, state, ui, cal));
+    setPanel("map", mapBoardHtml(world, state, ui, cal));
     const l = LEVELS[0];
-    expect(document.querySelectorAll("#map .c").length).toBe(l.w * l.h);
+    const b = board(world, state, ui, cal);
+    expect(b.glyphs.length).toBe(l.w * l.h);
+    expect(b.cols).toBe(l.w);
+    expect(b.z).toBe(1);
     const grid = document.querySelector<HTMLElement>("#map .grid")!;
-    expect(grid.getAttribute("style")).toContain(`--cols:${l.w}`);
-    expect(grid.getAttribute("style")).toContain(`--px:${l.px}px`);
-    expect(document.querySelector("#map svg.walk")!.getAttribute("viewBox")).toBe(`0 0 ${l.w} ${l.h}`);
+    expect(grid.getAttribute("style")).toContain(`width:${l.w * l.px}px`);
+    expect(grid.getAttribute("style")).toContain(`height:${l.h * l.line}px`);
     expect(grid.classList).toContain("fine");
-    expect(document.querySelectorAll("#map .micro-ground").length).toBe(0);
+    // The grid holds nothing: the board is the canvas beside it.
+    expect(grid.children.length).toBe(0);
+    expect(document.querySelectorAll("#map canvas#effects").length).toBe(1);
   });
 
-  it("a rebuilt grid is born with the hour's light, so a zoom does not fade in from full day", () => {
+  it("a rebuilt board takes the hour's light from the frame, so a zoom does not fade in from full day", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
-    // Dusk, where the light is well away from the stylesheet's daylight defaults.
+    // Dusk, where the light is well away from daylight.
     const cal = calendar(19 * 60);
     // The map is lit by the air where the survivor stands, the same sample
     // updateSky reads, so the figures compared here come from that and not from
@@ -206,32 +211,30 @@ describe("panels", () => {
     const air = conditionsAt(state, world, cal, cellOf(state, world));
     const light = lighting(cal, air, air.temperatureC);
     expect(light.brightness).toBeLessThan(1);
-    setPanel("map", mapHtml(world, state, newUiState(), cal));
+    setPanel("map", mapBoardHtml(world, state, newUiState(), cal));
+    // The light is drawn onto the canvas every frame (map.ts, drawLight) and
+    // is no part of the markup: a rebuild carries nothing to fade from.
     const style = document.querySelector("#map .scroll-x")!.getAttribute("style")!;
-    // The same figures updateSky writes, so the first frame after a rebuild
-    // changes nothing and the 0.5 s transitions have nothing to animate.
-    expect(style).toContain(`--bright:${light.brightness.toFixed(3)}`);
-    expect(style).toContain(`--sat:${light.saturation.toFixed(3)}`);
-    expect(style).toContain(`--tint:${light.tint}`);
-    expect(style).toContain(`--tint-a:${light.alpha.toFixed(3)}`);
+    expect(style).not.toContain("--bright");
+    expect(style).not.toContain("--tint");
   });
 
-  it("the falling weather is on the grid it is built with, not toggled on a frame later", () => {
+  it("the falling weather is on the board it is built with, not toggled on a frame later", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const cal = calendar(12 * 60);
-    setPanel("map", mapHtml(world, state, newUiState(), cal));
+    setPanel("map", mapBoardHtml(world, state, newUiState(), cal));
     const viewport = document.querySelector("#map .scroll-x")!;
     expect(viewport.classList.contains("snowing")).toBe(false);
     expect(viewport.classList.contains("rain")).toBe(false);
-    expect(document.querySelectorAll("#map .c.wx-local").length).toBeGreaterThan(0);
+    expect(glyphsWith(board(world, state, newUiState(), cal), "wx-local").length).toBeGreaterThan(0);
   });
 
   it("the zoom buttons sit in the map's bottom left corner, drawn after the grid", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const cal = calendar(0);
-    setPanel("map", mapHtml(world, state, newUiState(), cal));
+    setPanel("map", mapBoardHtml(world, state, newUiState(), cal));
     const html = document.getElementById("map")!.innerHTML;
     expect(html.indexOf("maptools")).toBeGreaterThan(html.indexOf("scroll-x"));
     expect(document.querySelectorAll("#map .maptools [data-act=zoom]").length).toBe(2);
@@ -254,14 +257,12 @@ describe("panels", () => {
     expect(cellOf(state, world)).toBe(cell);
     expect(mapKey(state, world, ui, calendar(0))).toBe(centred);
 
-    setPanel("map", mapHtml(world, state, ui, calendar(0)));
-    const player = document.querySelector<HTMLElement>("#map .mk-player")!;
-    expect(player.classList.contains("c")).toBe(true);
-    expect(player.getAttribute("data-map-cell")).toBe(String(cell));
-    expect(player.querySelector("[data-visual-slot]")).toBeNull();
+    const player = glyphsWith(board(world, state, ui, calendar(0)), "mk-player")[0];
+    expect(player.classes[0]).toBe("c");
+    expect(player.mapCell).toBe(cell);
   });
 
-  it("renders one span per cell with region borders and the player marker on the player's cell", () => {
+  it("draws one glyph per cell with region borders and the player marker on the player's cell", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const cal = calendar(0);
@@ -270,13 +271,12 @@ describe("panels", () => {
     // camp otherwise stands on the one cell the dark landing saw, so it is walked
     // whole here first, the way a life lived at it would leave it.
     mapRegion(state, world, state.player.region);
-    setPanel("map", mapHtml(world, state, ui, cal));
-    const cells = document.querySelectorAll("#map .c");
-    expect(cells.length).toBe(LEVELS[ui.zoom].w * LEVELS[ui.zoom].h);
-    expect(document.querySelectorAll("#map .c.bl, #map .c.br, #map .c.bt, #map .c.bb").length).toBeGreaterThanOrEqual(50);
-    expect(document.querySelectorAll("#map .mk-player").length).toBe(1);
-    expect(document.querySelectorAll("#map .c.fog").length).toBeGreaterThan(100);
-    expect(document.querySelectorAll("#map .c.cur").length).toBeGreaterThan(50);
+    const b = board(world, state, ui, cal);
+    expect(b.glyphs.length).toBe(LEVELS[ui.zoom].w * LEVELS[ui.zoom].h);
+    expect(b.glyphs.filter((g) => has(g, "bl") || has(g, "br") || has(g, "bt") || has(g, "bb")).length).toBeGreaterThanOrEqual(50);
+    expect(glyphsWith(b, "mk-player").length).toBe(1);
+    expect(glyphsWith(b, "fog").length).toBeGreaterThan(100);
+    expect(glyphsWith(b, "cur").length).toBeGreaterThan(50);
   });
 
   it("distinguishes visible, remembered, inherited, and unknown ground at cell zoom", () => {
@@ -290,12 +290,12 @@ describe("panels", () => {
     const inherited = neighbours(world, remembered!).find((cell) => !visible.has(cell));
     expect(inherited).toBeDefined();
     setKnowledge(state.knowledge, inherited!, "inherited");
-    setPanel("map", mapHtml(world, state, ui, cal));
-    const cell = (index: number) => document.querySelector<HTMLElement>(`#map .c[data-map-cell="${index}"]`);
-    expect(cell(cellOf(state, world))?.classList.contains("memory")).toBe(false);
-    expect(cell(remembered!)?.classList.contains("memory")).toBe(true);
-    expect(cell(inherited!)?.classList.contains("dim")).toBe(true);
-    expect(document.querySelector("#map .c.fog")).not.toBeNull();
+    const b = board(world, state, ui, cal);
+    const cell = (index: number) => glyphOfCell(b, index);
+    expect(cell(cellOf(state, world))?.classes).not.toContain("memory");
+    expect(cell(remembered!)?.classes).toContain("memory");
+    expect(cell(inherited!)?.classes).toContain("dim");
+    expect(glyphsWith(b, "fog").length).toBeGreaterThan(0);
   });
 
   it("does not reveal a live camp fire through terrain occlusion", () => {
@@ -314,10 +314,10 @@ describe("panels", () => {
     state.minute = 15 * 60;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
-    setPanel("map", mapHtml(world, state, newUiState(), calendar(state.minute, state.startDoy)));
-    expect(document.querySelector("#map .mk-fire")).toBeNull();
-    expect(document.querySelector("#map .mk-camp, #map .mk-shelter")).not.toBeNull();
-    expect(document.querySelector("#map .lit-0, #map .lit-1, #map .lit-2")).toBeNull();
+    const b = board(world, state, newUiState(), calendar(state.minute, state.startDoy));
+    expect(glyphsWith(b, "mk-fire")).toHaveLength(0);
+    expect(glyphsWith(b, "mk-camp").length + glyphsWith(b, "mk-shelter").length).toBeGreaterThan(0);
+    expect(b.glyphs.filter((g) => has(g, "lit-0") || has(g, "lit-1") || has(g, "lit-2"))).toHaveLength(0);
   });
 
   it("shows a nearby camp fire itself through clear night even when the ground around it is dark", () => {
@@ -332,11 +332,10 @@ describe("panels", () => {
     state.minute = 15 * 60;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
-    setPanel("map", mapHtml(world, state, newUiState(), calendar(state.minute, state.startDoy)));
-    const fire = document.querySelector<HTMLElement>(`#map .mk-fire[data-map-cell="${camp}"]`);
-    expect(fire).not.toBeNull();
-    expect(fire?.classList.contains("lit-0")).toBe(true);
-    expect(fire?.classList.contains("memory")).toBe(false);
+    const fire = glyphOfCell(board(world, state, newUiState(), calendar(state.minute, state.startDoy)), camp);
+    expect(fire?.classes).toContain("mk-fire");
+    expect(fire?.classes).toContain("lit-0");
+    expect(fire?.classes).not.toContain("memory");
   });
 
   it("shows a distant night fire in clear air but hides it behind dense weather", () => {
@@ -356,16 +355,16 @@ describe("panels", () => {
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     testAtmosphere({ extinctionPerKm: 0.06 });
-    setPanel("map", mapHtml(world, state, newUiState(), calendar(state.minute, state.startDoy)));
-    const fire = document.querySelector<HTMLElement>(`#map .mk-fire[data-map-cell="${camp}"]`);
-    expect(fire).not.toBeNull();
-    expect(fire?.classList.contains("fire-far")).toBe(true);
-    expect(document.querySelector("#map .lit-0, #map .lit-1, #map .lit-2")).toBeNull();
+    const clear = board(world, state, newUiState(), calendar(state.minute, state.startDoy));
+    const fire = glyphOfCell(clear, camp);
+    expect(fire?.classes).toContain("mk-fire");
+    expect(fire?.classes).toContain("fire-far");
+    expect(clear.glyphs.filter((g) => has(g, "lit-0") || has(g, "lit-1") || has(g, "lit-2"))).toHaveLength(0);
 
     testAtmosphere({ extinctionPerKm: MAX_OPTICAL_DEPTH / 0.2 });
-    setPanel("map", mapHtml(world, state, newUiState(), calendar(state.minute, state.startDoy)));
-    expect(document.querySelector(`#map .mk-fire[data-map-cell="${camp}"]`)).toBeNull();
-    expect(document.querySelector("#map .mk-camp, #map .mk-shelter")).not.toBeNull();
+    const dense = board(world, state, newUiState(), calendar(state.minute, state.startDoy));
+    expect(glyphOfCell(dense, camp)?.classes).not.toContain("mk-fire");
+    expect(glyphsWith(dense, "mk-camp").length + glyphsWith(dense, "mk-shelter").length).toBeGreaterThan(0);
   });
 
   it("lets nearby firelight straddle an occlusion boundary without revealing the hidden ground", () => {
@@ -410,11 +409,11 @@ describe("panels", () => {
     state.minute = 15 * 60;
     state.weather.clear = false;
     const cal = { ...calendar(state.minute, state.startDoy), moonLight: 0 };
-    setPanel("map", mapHtml(world, state, newUiState(), cal));
-    const cell = (index: number) => document.querySelector<HTMLElement>(`#map .c[data-map-cell="${index}"]`);
-    expect(cell(scenario!.exposed)?.matches(".lit-1, .lit-2")).toBe(true);
-    expect(cell(scenario!.hidden)?.matches(".lit-1, .lit-2")).toBe(false);
-    expect(cell(scenario!.hidden)?.classList.contains("memory")).toBe(true);
+    const b = board(world, state, newUiState(), cal);
+    const ringed = (index: number) => { const g = glyphOfCell(b, index)!; return has(g, "lit-1") || has(g, "lit-2"); };
+    expect(ringed(scenario!.exposed)).toBe(true);
+    expect(ringed(scenario!.hidden)).toBe(false);
+    expect(glyphOfCell(b, scenario!.hidden)?.classes).toContain("memory");
   });
 
   it("draws the walk as a line, solid ahead and dashed behind, and marks cells with something lying on them", () => {
@@ -427,42 +426,37 @@ describe("panels", () => {
       const { x0, y0 } = viewOrigin(state, world, ui.zoom);
       return new Set(cells.map((c) => `${Math.floor((cellAt(world, c).x - x0) / z)},${Math.floor((cellAt(world, c).y - y0) / z)}`)).size;
     };
-    const points = (sel: string) => (document.querySelector(sel)!.getAttribute("points") ?? "").trim().split(/\s+/).filter(Boolean).length;
     mapRegion(state, world, state.player.region);
     const k1 = mapKey(state, world, ui, cal);
     // The farthest spot, so the walk is long enough to be caught three cells in.
     const far = regionAt(world, state.player.region).spots.filter((s) => s.id !== "camp").reduce((a, b) => (b.km > a.km ? b : a));
     startTask(state, world, cal, "walk", `spot:${far.id}`);
     expect(mapKey(state, world, ui, cal)).not.toBe(k1);
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.rt").length).toBe(0);
-    expect(document.querySelectorAll("#map svg.walk").length).toBe(1);
-    expect(points("#map polyline.walk-ahead")).toBe(glyphs([cellOf(state, world), ...state.route!.path]));
-    expect(points("#map polyline.walk-behind")).toBe(1);
+    let b = board(world, state, ui, cal);
+    expect(b.walk.ahead.length).toBe(glyphs([cellOf(state, world), ...state.route!.path]));
+    expect(b.walk.behind.length).toBe(1);
     const rng = new Rng(1);
     while (state.route && state.route.walked.length < 3) stepTask(state, world, calendar(state.minute), rng, 1);
     expect(state.route).not.toBeNull();
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(points("#map polyline.walk-behind")).toBe(glyphs([...state.route!.walked, cellOf(state, world)]));
-    expect(points("#map polyline.walk-ahead")).toBe(glyphs([cellOf(state, world), ...state.route!.path]));
+    b = board(world, state, ui, cal);
+    expect(b.walk.behind.length).toBe(glyphs([...state.route!.walked, cellOf(state, world)]));
+    expect(b.walk.ahead.length).toBe(glyphs([cellOf(state, world), ...state.route!.path]));
     stopTask(state, world);
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(points("#map polyline.walk-ahead")).toBe(0);
-    expect(points("#map polyline.walk-behind")).toBe(0);
+    b = board(world, state, ui, cal);
+    expect(b.walk.ahead.length).toBe(0);
+    expect(b.walk.behind.length).toBe(0);
     // Camp may already have a pile behind you; the stone adds one under your feet.
-    const piles = document.querySelectorAll("#map .c.pl").length;
+    const piles = glyphsWith(b, "pl").length;
     addItem(herePile(state, world), "stone", 2);
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(piles + 1);
+    expect(glyphsWith(board(world, state, ui, cal), "pl").length).toBe(piles + 1);
     const nb = neighbours(world, cellOf(state, world)).find((c) => cellAt(world, c).terrain !== "water" && !state.piles[c])!;
     placeAt(state, world, nb);
-    setPanel("map", mapHtml(world, state, ui, cal));
+    b = board(world, state, ui, cal);
     // The stone's cell is underlined with no marker on it; camp's pile sits under its x.
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(piles + 1);
-    expect(document.querySelectorAll("#map .c.pl:not(.mk)").length).toBe(1);
+    expect(glyphsWith(b, "pl").length).toBe(piles + 1);
+    expect(glyphsWith(b, "pl", "!mk").length).toBe(1);
     createCarcass(state, world, "deer", { meatKg: 12 });
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(piles + 2);
+    expect(glyphsWith(board(world, state, ui, cal), "pl").length).toBe(piles + 2);
   });
 
   it("marks this region's camp with an x whenever you are not on its glyph", () => {
@@ -471,23 +465,20 @@ describe("panels", () => {
     const cal = calendar(0);
     const ui = newUiState();
     const st = regionState(state, world, state.player.region);
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .mk-camp").length).toBe(0);
+    expect(glyphsWith(board(world, state, ui, cal), "mk-camp").length).toBe(0);
     const nb = neighbours(world, st.campCell!).find((c) => cellAt(world, c).terrain !== "water")!;
     placeAt(state, world, nb);
-    setPanel("map", mapHtml(world, state, ui, cal));
-    const camp = document.querySelectorAll<HTMLElement>("#map .mk-camp");
+    const camp = glyphsWith(board(world, state, ui, cal), "mk-camp");
     expect(camp.length).toBe(1);
-    expect(camp[0].textContent).toBe("x");
-    expect(camp[0].title).toBe("");
+    expect(camp[0].glyph).toBe("x");
     st.fire.lit = true;
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .mk-camp").length).toBe(0);
-    expect(document.querySelectorAll("#map .mk-fire").length).toBe(1);
+    let b = board(world, state, ui, cal);
+    expect(glyphsWith(b, "mk-camp").length).toBe(0);
+    expect(glyphsWith(b, "mk-fire").length).toBe(1);
     st.fire.lit = false;
     ui.zoom = ZOOMS.length - 1;
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .mk-camp").length).toBe(0);
+    b = board(world, state, ui, cal);
+    expect(glyphsWith(b, "mk-camp").length).toBe(0);
   });
 
   it("the middle strip shows speed up only when the button can act", () => {
@@ -656,16 +647,15 @@ describe("panels", () => {
     const thread = run.slice(0, 4);
     const untouched = run.slice(4);
     for (const c of thread) markKnown(state, c);
-    setPanel("map", mapHtml(world, state, ui, cal));
-    const glyphs = document.querySelectorAll("#map .c");
-    const glyphAt = (c: number): HTMLElement => {
+    const b = board(world, state, ui, cal);
+    const glyphAt = (c: number) => {
       const x = c % world.w;
       const y = Math.floor(c / world.w);
-      return glyphs[(y - y0) * l.w + (x - x0)] as HTMLElement;
+      return b.glyphs[(y - y0) * l.w + (x - x0)];
     };
-    for (const c of thread) expect(glyphAt(c).classList.contains("fog")).toBe(false);
-    for (const c of untouched) expect(glyphAt(c).classList.contains("fog")).toBe(true);
-    expect(thread.every((c) => !glyphAt(c).classList.contains("fog-edge"))).toBe(true);
+    for (const c of thread) expect(has(glyphAt(c), "fog")).toBe(false);
+    for (const c of untouched) expect(has(glyphAt(c), "fog")).toBe(true);
+    expect(thread.every((c) => !has(glyphAt(c), "fog-edge"))).toBe(true);
   });
 
   it("names black ground it has heard of without embedding controls in its hover surface", () => {
@@ -678,7 +668,7 @@ describe("panels", () => {
     expect(discovery(state, nbId)).toBe(SEEN);
     expect(knownShare(state, world, nbId)).toBe(0);
     const ui = newUiState();
-    setPanel("map", mapHtml(world, state, ui, cal));
+    const b = board(world, state, ui, cal);
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const l = LEVELS[ui.zoom];
     const cellInView = nb.cells.find((c) => {
@@ -689,13 +679,12 @@ describe("panels", () => {
     expect(cellInView).toBeDefined();
     const x = cellInView! % world.w;
     const y = Math.floor(cellInView! / world.w);
-    const glyph = document.querySelectorAll("#map .c")[(y - y0) * l.w + (x - x0)] as HTMLElement;
-    expect(glyph.classList.contains("fog")).toBe(true);
-    expect(glyph.title).toBe("");
+    const glyph = b.glyphs[(y - y0) * l.w + (x - x0)];
+    expect(has(glyph, "fog")).toBe(true);
     const tip = tipHtml(state, world, cal, cellInView!);
     expect(tip).toContain("Unknown ground");
     expect(tip).not.toContain("<button");
-    expect(glyph.getAttribute("data-act")).toBe("select");
+    expect(glyph.act).toBe(true);
   });
 
   it("the camp box shows camp water against its capacity", () => {

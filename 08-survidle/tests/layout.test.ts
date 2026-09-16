@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { buildHtml } from "../src/ui/build";
-import { GLYPH, legendHtml, MARKS, mapHtml, mapKey } from "../src/ui/map";
+import { GLYPH, legendHtml, MARKS, mapKey } from "../src/ui/map";
+import { glyphStyle } from "../src/ui/palette";
+import { board } from "./board";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { allOpportunityDefs, discoverOpportunity } from "../src/sim/opportunities";
@@ -9,15 +11,30 @@ import { opportunityCatalogHtml } from "../src/ui/opportunity-catalog";
 import { newUiState } from "../src/ui/render";
 import { css, rule } from "./css";
 
+const day = { season: "summer", night: false };
+
 describe("the map's own surface", () => {
   it("marks a region by a wash over it and never by a frame on each of its cells", () => {
     // A frame per cell repeats at cell scale what the wash and the region's
     // accent-coloured border already say once, and 69 of them read as graph
     // paper laid over the ground. Both the region stood in and the one picked.
-    for (const sel of [".grid .c.cur", ".grid .c.sel"]) {
-      expect(rule(sel)).toContain("box-shadow");
-      expect(rule(sel)).not.toContain("outline");
+    for (const token of ["cur", "sel"]) {
+      const look = glyphStyle(day, ["c", "t-meadow", token]);
+      expect(look.wash).not.toBeNull();
+      expect(look.border).toEqual({ l: null, r: null, t: null, b: null });
     }
+    // Only a real region edge draws a line, and the region stood in draws its own in the accent.
+    expect(glyphStyle(day, ["c", "t-meadow", "cur", "bl"]).border.l).toBe("#e6c229");
+  });
+
+  it("has no stylesheet behind the board at all", () => {
+    // Every glyph's look is the palette's (palette.ts); the cells the rules
+    // used to dress are gone, and a rule for them would be a rule nothing reads.
+    expect(css).not.toMatch(/\.grid \.c\b/);
+    expect(css).not.toMatch(/\.grid\.night/);
+    expect(css).not.toContain(".wildlife-startle");
+    expect(css).not.toContain(".micro-mark");
+    expect(css).not.toContain("@keyframes flicker");
   });
 
   it("puts the grid beyond text selection in the browsers that spell it differently", () => {
@@ -29,11 +46,15 @@ describe("the map's own surface", () => {
   });
 
   it("draws space beyond the world like unexplored ground instead of a black bar", () => {
-    expect(css).toContain(".grid .c.fog, .grid .c.void");
-    expect(css).toContain(".grid .c.fog::before, .grid .c.void::before");
-    expect(rule(".grid .c.dim > .cell-ground, .grid .c.dim > .cell-signal")).toContain("opacity");
-    expect(css).toContain(".scroll-x > .shade");
-    expect(css).toContain(".scroll-x::after");
+    const fog = glyphStyle(day, ["c", "fog"]);
+    const beyond = glyphStyle(day, ["c", "void"]);
+    expect(beyond.bg).toBe(fog.bg);
+    expect(beyond.dot).toBe(fog.dot);
+    expect(fog.dot).not.toBeNull();
+    // Inherited ground is the letter dimmed, not the cell.
+    expect(glyphStyle(day, ["c", "t-meadow", "dim"]).alpha).toBeLessThan(1);
+    // The panel's own grain continues the map behind a small board.
+    expect(rule(".scroll-x")).toContain("radial-gradient");
   });
 });
 
@@ -271,12 +292,15 @@ describe("what survives the night sheet", () => {
     // Where you are, where camp is and the line of your walk are what you would
     // know in the dark without looking. The fire is over it because it is the
     // light, and its own cell already rises at the close rungs; banked coals
-    // are the same light at a lower wattage.
-    const lifted = rule(".grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire, .grid .c.mk-coals");
-    expect(lifted).toContain("z-index: var(--map-signal)");
-    // The blanket lift on every mark is what put a shore at full daylight
-    // brightness at midnight.
-    expect(rule(".grid .c.mk")).not.toContain("z-index");
+    // are the same light at a lower wattage. The lift is a redraw of those
+    // glyphs over the shade (map.ts, drawLifted); a blanket lift on every
+    // mark is what put a shore at full daylight brightness at midnight.
+    const source = readFileSync("src/ui/map.ts", "utf8");
+    const lifted = source.slice(source.indexOf("function drawLifted("), source.indexOf("const RECOIL_MS"));
+    for (const mark of ["mk-player", "mk-camp", "mk-fire", "mk-coals"]) expect(lifted).toContain(`"${mark}"`);
+    expect(lifted).not.toContain('"mk"');
+    expect(lifted).not.toContain("mk-shelter");
+    expect(lifted).not.toContain("mk-seep");
   });
 
   it("marks only what the survivor built or found, never ground the world always had", () => {
@@ -297,8 +321,9 @@ describe("the year on the map", () => {
     // One date in each season of the run's first year.
     for (const doy of [100, 190, 280, 20]) {
       const cal = calendar(12 * 60, doy);
-      const html = mapHtml(world, state, ui, cal);
-      expect(html).toContain(`grid season-${cal.season}`);
+      const b = board(world, state, ui, cal);
+      expect(b.season).toBe(cal.season);
+      expect(b.gridClasses).toContain(`season-${cal.season}`);
       seen.add(cal.season);
     }
     expect([...seen].sort()).toEqual(["autumn", "spring", "summer", "winter"]);
@@ -307,43 +332,52 @@ describe("the year on the map", () => {
     expect(mapKey(state, world, ui, spring)).not.toBe(mapKey(state, world, ui, autumn));
   });
 
-  it("lets snow beat the season by selector, not by where the rules sit in the file", () => {
-    // Snow is on the ground or it is not, whatever the month says. A later edit
-    // that moves a block must not silently flip which one wins.
-    expect(css).toContain(".grid.season-winter .c:not(.mk):not(.ground-snow)");
-    expect(css).toContain(".grid.season-autumn .c:not(.mk):not(.ground-snow)");
+  it("lets snow beat the season, whatever the month says", () => {
+    // Snow is on the ground or it is not, whatever the month says.
+    const winter = { season: "winter", night: false };
+    const autumn = { season: "autumn", night: false };
+    expect(glyphStyle(winter, ["c", "t-birch", "ground-snow"]).fg).toBe(glyphStyle(day, ["c", "t-birch", "ground-snow"]).fg);
+    expect(glyphStyle(autumn, ["c", "t-birch", "ground-snow"]).fg).toBe(glyphStyle(day, ["c", "t-birch", "ground-snow"]).fg);
+    // And without snow the season shows: the bare birch is gold in autumn and bare wood in winter.
+    expect(glyphStyle(autumn, ["c", "t-birch"]).fg).toBe("#f0b93f");
+    expect(glyphStyle(winter, ["c", "t-birch"]).fg).toBe("#8a7256");
   });
 
   it("keeps the evergreens green under snow, and buries them only once it is deep", () => {
     // Snow in the needles lifts and cools the green; it does not replace it.
-    expect(rule(".grid .c:not(.mk).ground-snow.t-spruce")).toContain("#6f9e78");
+    expect(glyphStyle(day, ["c", "t-spruce", "ground-snow"]).fg).toBe("#6f9e78");
     // The bare birch takes the colour of the snow around it straight away.
-    expect(rule(".grid .c:not(.mk).ground-snow.t-birch")).toContain("#9fb8c8");
+    expect(glyphStyle(day, ["c", "t-birch", "ground-snow"]).fg).toBe("#9fb8c8");
     // Past DEEP_SNOW_CM there is more snow than tree to see.
-    expect(rule(".grid .c:not(.mk).ground-snow-deep.t-spruce")).toContain("#c3d6dd");
+    expect(glyphStyle(day, ["c", "t-spruce", "ground-snow", "ground-snow-deep"]).fg).toBe("#c3d6dd");
   });
 
-  it("lets snow flatten the relief, by selector rather than by file order", () => {
-    // A tone rule sits later in the file than the snow rules at equal
-    // specificity, so without the guard a toned tree would keep its green
-    // under snow while its untoned neighbour went white.
-    expect(css).toContain(".grid .c:not(.mk):not(.ground-snow).t-spruce.tone-0");
-    expect(css).toContain(".grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0");
+  it("lets snow flatten the relief", () => {
+    // A toned tree under snow goes the snow's colour like its untoned
+    // neighbour, with the height left on the letter's brightness alone.
+    const plain = glyphStyle(day, ["c", "t-spruce", "ground-snow"]);
+    const toned = glyphStyle(day, ["c", "t-spruce", "ground-snow", "tone-0"]);
+    expect(toned.bg).toBe(plain.bg);
+    expect(toned.fg).not.toBe(glyphStyle(day, ["c", "t-spruce", "tone-0"]).fg);
+    // Depth is bare water's alone: ice has no shallows.
+    expect(glyphStyle(day, ["c", "t-water", "deep-0", "ice-safe"]).bg).toBe(glyphStyle(day, ["c", "t-water", "ice-safe"]).bg);
   });
 });
 
 describe("a mark owns its whole cell", () => {
-  it("lets no conditional ground rule touch one", () => {
-    // Every rule that paints ground under a condition - a tone, a depth, a
-    // season, snow - carries more classes than the mark rules do and so wins on
-    // specificity. Miss one and the @ takes the ground's colour on the cells it
-    // matches and its own back on the cells it does not: a survivor who
-    // flickers as they walk, and a camp that comes and goes.
-    const conditional = css
-      .split("\n")
-      .filter((line) => /^\.grid[.:]/.test(line) && / \.c[.:]/.test(line) && line.includes("{"))
-      .filter((line) => /\.t-\w+|\.tone-|\.deep-/.test(line));
-    expect(conditional.length).toBeGreaterThan(15);
-    for (const line of conditional) expect(line).toContain(".c:not(.mk)");
+  it("lets no conditional ground look touch one", () => {
+    // Whatever the ground under a mark is doing - a tone, a depth, a season,
+    // snow - the mark keeps its own colours. Miss one and the @ takes the
+    // ground's colour on the cells it matches and its own back on the cells
+    // it does not: a survivor who flickers as they walk, and a camp that
+    // comes and goes.
+    const you = glyphStyle(day, ["c", "t-meadow", "mk", "mk-player", "mood-idle"]);
+    for (const grid of [day, { season: "autumn", night: false }, { season: "winter", night: true }]) {
+      for (const ground of [["t-meadow", "tone-0"], ["t-meadow", "tone-2", "turned"], ["t-water", "deep-2"], ["t-spruce", "ground-snow", "tone-2"], ["t-birch"]]) {
+        const look = glyphStyle(grid, ["c", ...ground, "mk", "mk-player", "mood-idle"]);
+        expect(look.bg, `${grid.season} ${ground.join(" ")}`).toBe(you.bg);
+        expect(look.fg, `${grid.season} ${ground.join(" ")}`).toBe(you.fg);
+      }
+    }
   });
 });

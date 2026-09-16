@@ -37,7 +37,7 @@ import {
 import type { AtmosphereSample, GameState, Weather } from "../sim/types";
 import { forecastText, localStorm, stormNow } from "../sim/weather";
 import { clamp } from "../units";
-import { heldQuery, heldQueryAll } from "./render";
+import { heldQueryAll } from "./render";
 
 export const SKY_W = 220;
 export const SKY_H = 64;
@@ -847,25 +847,9 @@ export function updateSky(state: GameState, cal: Calendar, ambient: number, root
   const skies = heldQueryAll<HTMLCanvasElement>(root, "canvas.sky");
   for (const canvas of skies) dressSky(canvas, state, cal, ambient);
   const localAir = skies.length ? skyAtmosphere(skies[0]) : null;
-  const light = lighting(cal, localAir ?? state.weather, localAir?.temperatureC ?? ambient);
-  const grid = heldQuery<HTMLElement>(root, "#map .scroll-x");
-  if (grid) {
-    // Compared before written. These four are custom properties on the
-    // scroller, so every one of the board's 2,592 cells inherits them, and
-    // writing a property invalidates that subtree's style whether or not the
-    // value changed. The light moves over minutes, not frames, so almost
-    // every one of these writes was asking the engine to re-resolve the
-    // whole board for an identical answer.
-    setVar(grid, "--bright", light.brightness.toFixed(3));
-    setVar(grid, "--sat", light.saturation.toFixed(3));
-    setVar(grid, "--tint", light.tint);
-    setVar(grid, "--tint-a", light.alpha.toFixed(3));
-  }
-  return light;
-}
-
-function setVar(el: HTMLElement, name: string, value: string): void {
-  if (el.style.getPropertyValue(name) !== value) el.style.setProperty(name, value);
+  // The board takes this light on its canvas (map.ts, setBoardLight); nothing
+  // on the page reads it as a style any more.
+  return lighting(cal, localAir ?? state.weather, localAir?.temperatureC ?? ambient);
 }
 
 function skyAtmosphere(canvas: HTMLCanvasElement): AtmosphereSample | null {

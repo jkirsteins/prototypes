@@ -584,43 +584,20 @@ worth a run when the reference player, the lineage or the landing moves.
 Every browser pass runs at 1440 by 900 and at 390 wide against
 `docs/ux.md`.
 
-Weather reference screenshots need the development server in one shell, then
-`npm run shots` in another. Headless Chrome writes the following seed 17
-simulation states to `docs/map-shots/`; the minute is elapsed game time and x/y
-are 50 m patch coordinates:
-
-| shot | minute | x | y | simulated feature |
-| --- | ---: | ---: | ---: | --- |
-| clear | 1,440 | 10,179 | 5,283 | clear comparison above rock |
-| sunny-clouds | 170,160 | 4,203 | 5,703 | dry midsummer sun under a broken cloud field |
-| approaching-rain | 86,760 | 6,243 | 903 | rain-band edge |
-| local-rain | 108,720 | 7,968 | 792 | 10.34 mm/h rain core |
-| persisted-snow | 480,480 | 5,235 | 5,187 | falling snow over retained ground snow |
-| frozen-water | 481,200 | 1,053 | 303 | safe winter ice over coastal water |
-| valley-fog | 19,560 | 8,595 | 6,219 | dry fog in a local bog depression |
-| windward-lee | 3,960 | 4,203 | 5,703 | terrain-modified extinction gradient |
-| obscured | 480,480 | 10,179 | 5,283 | dense snow and fog at the clear comparison rock |
-
-The URL only selects a catalog entry. Normal `GameState`, `WeatherWorld`,
-`visibleCells` and `mapHtml` generate every class, variable, glyph and known
-cell. The harness asserts unknown ground remains unrevealed, fog remains owned
-by its simulation cells without gray washes or weather borders, every
-non-boundary cell has zero computed border width, cloud shadows remain at or
-below 14 percent black, live weather never appears on unknown or remembered-only
-ground, and the obscured footprint is smaller than clear at the same location.
-It captures the approaching rain fixture with the real
-settings checkbox in both default cloud-shadow mode and optional ASCII-cloud
-mode, and verifies that the toggle changes neither simulation time nor the
-visibility footprint. Fog and cloud opacity come from sampled density;
-deterministic coordinate hashes only choose the phase and order of same-colour
-ASCII ripple glyphs. Reduced-motion mode freezes those glyphs.
-The sunny-cloud pair advances the normal simulation by 60 game minutes and
-captures the resulting cloud-shadow field before and after; it does not assign
-or modify rendering classes.
-The valley cell stands at 108 m; its west, east, north and south samples 6 km
-away are at 509, 457, 388 and 506 m. `fog-frame-a.png`
-and `fog-frame-b.png` hold the same frozen simulation minute and visibility
-footprint 3.2 real seconds apart; only presentation animation continues.
+The browser check plays the real game. Run the development server in one
+shell and `npm run e2e` in another: headless Chrome opens seed 42 on day
+200, lands through the real candidate and landing controls, clicks the
+board with real mouse events at real screen coordinates, presses the real
+zoom buttons and lets night fall, and writes what it saw to `docs/e2e/`.
+Every image is a screenshot of the page as the player sees it, and every
+reading is taken from the model the canvas drew and from the canvas itself
+- never from a fixture world, an off-screen copy of the board or a
+synthetic click on a glyph. It holds the game to: one click on known
+ground orders a walk at the block rung and at 50 m; while walking at a
+block rung the view origin moves only by whole glyphs and the glyphs
+between moves change only where sight reaches something new; the survivor
+is drawn in the middle of the visible panel throughout; the board is
+painted at every rung and at night; and the page throws nothing.
 
 `scripts/mapstats.ts` prints a downsampled view of the whole world and its
 terrain shares, plus the full-resolution water kinds, stream count, rock

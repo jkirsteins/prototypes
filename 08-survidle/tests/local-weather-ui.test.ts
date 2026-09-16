@@ -9,7 +9,8 @@ import type { AtmosphereSample, LocalGroundWeather } from "../src/sim/types";
 import { ensureGround } from "../src/sim/weather";
 import { cellIdx, regionPeek } from "../src/world/gen";
 import { LATTICE, LATTICE_W } from "../src/world/terrain";
-import { CLOUD_SHADOW_CAP, effectsSnapshot, levelAt, mapHtml, mapKey, viewOrigin } from "../src/ui/map";
+import { CLOUD_SHADOW_CAP, effectsSnapshot, levelAt, mapBoardHtml, mapKey, viewOrigin } from "../src/ui/map";
+import { board, glyphOfCell, glyphsWith } from "./board";
 import { weatherHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
 import { lighting, updateSky } from "../src/ui/sky";
@@ -51,7 +52,7 @@ describe("local weather presentation", () => {
     const samples = vi.spyOn(climate, "sampleAtmosphere").mockReturnValue(air());
 
     const cal = calendar(state.minute, state.startDoy);
-    mapHtml(world, state, ui, cal);
+    board(world, state, ui, cal);
     const renderCalls = samples.mock.calls.slice();
     const currentMinute = state.minute + state.weather.elapsedMinutes;
     const historicalSamples = renderCalls.filter(([, , minute]) => minute < currentMinute).length;
@@ -140,36 +141,33 @@ describe("local weather presentation", () => {
           : air({ cloud: 0.1 })
     ));
 
-    const root = document.createElement("div");
-    root.innerHTML = mapHtml(world, state, ui, cal);
-    const rainCell = root.querySelector<HTMLElement>(`[data-map-cell="${rainy}"]`)!;
-    const hiddenCell = root.querySelector<HTMLElement>(`[data-map-cell="${hiddenKnown}"]`)!;
-    const unknownCell = root.querySelector<HTMLElement>(`[data-map-cell="${unknown}"]`)!;
+    const b = board(world, state, ui, cal);
+    const rainCell = glyphOfCell(b, rainy)!;
+    const hiddenCell = glyphOfCell(b, hiddenKnown)!;
+    const unknownCell = glyphOfCell(b, unknown)!;
 
-    expect(rainCell.classList).toContain("wx-rain");
-    expect(rainCell.classList).toContain("ground-snow");
-    expect(rainCell.getAttribute("aria-label")).toMatch(/snow/i);
-    expect(rainCell.style.getPropertyValue("--wx-fall")).toBe("0.533");
-    expect(hiddenCell.classList).not.toContain("wx-local");
-    expect(hiddenCell.getAttribute("aria-label")).not.toMatch(/snow|ice/i);
-    expect(unknownCell.classList).not.toContain("wx-local");
-    expect(root.querySelector(".fog-field")).toBeNull();
-    expect([...unknownCell.children].some((child) => child.classList.contains("cell-ground"))).toBe(true);
+    expect(rainCell.classes).toContain("wx-rain");
+    expect(rainCell.classes).toContain("ground-snow");
+    expect(rainCell.info).toMatch(/snow/i);
+    // The rainy cell is the survivor's own, and a mark stays legible over its
+    // weather: the cell carries the rain, the canvas draws no glyph over the @.
+    expect(rainCell.classes).toContain("mk");
+    expect(effectsSnapshot()!.glyph.some((cell) => cell.gx === rainCell.gx && cell.gy === rainCell.gy)).toBe(false);
+    expect(hiddenCell.classes).not.toContain("wx-local");
+    expect(hiddenCell.info).not.toMatch(/snow|ice/i);
+    expect(unknownCell.classes).not.toContain("wx-local");
+    expect(unknownCell.classes).toContain("fog");
     // Remembered ground shows no live weather and unknown ground shows
     // nothing: neither cell contributed a glyph or a shadow to the canvas
     // model, which is what would otherwise turn the map into a radar.
-    const hiddenGx = Number(hiddenCell.dataset.mapX);
-    const hiddenGy = Number(hiddenCell.dataset.mapY);
-    const unknownGx = Number(unknownCell.dataset.mapX);
-    const unknownGy = Number(unknownCell.dataset.mapY);
     const model = effectsSnapshot()!;
-    expect(model.glyph.some((cell) => cell.gx === hiddenGx && cell.gy === hiddenGy)).toBe(false);
-    expect(model.shadow.some((cell) => cell.gx === hiddenGx && cell.gy === hiddenGy)).toBe(false);
-    expect(model.glyph.some((cell) => cell.gx === unknownGx && cell.gy === unknownGy)).toBe(false);
-    expect(model.shadow.some((cell) => cell.gx === unknownGx && cell.gy === unknownGy)).toBe(false);
-    expect(unknownCell.classList).not.toContain("ground-snow");
-    expect(unknownCell.className).not.toMatch(/t-(water|fell|rock|bog|spruce|pine|birch|meadow)/);
-    expect(unknownCell.getAttribute("aria-label")).toContain("unknown ground");
+    expect(model.glyph.some((cell) => cell.gx === hiddenCell.gx && cell.gy === hiddenCell.gy)).toBe(false);
+    expect(model.shadow.some((cell) => cell.gx === hiddenCell.gx && cell.gy === hiddenCell.gy)).toBe(false);
+    expect(model.glyph.some((cell) => cell.gx === unknownCell.gx && cell.gy === unknownCell.gy)).toBe(false);
+    expect(model.shadow.some((cell) => cell.gx === unknownCell.gx && cell.gy === unknownCell.gy)).toBe(false);
+    expect(unknownCell.classes).not.toContain("ground-snow");
+    expect(unknownCell.classes.join(" ")).not.toMatch(/t-(water|fell|rock|bog|spruce|pine|birch|meadow)/);
+    expect(unknownCell.info).toContain("unknown ground");
   });
 
   it("limits coarse live weather to known blocks intersecting the actual viewshed", () => {
@@ -181,13 +179,12 @@ describe("local weather presentation", () => {
     for (const cell of visible) markSeen(state.knowledge, cell);
     vi.spyOn(climate, "sampleAtmosphere").mockReturnValue(air({ cloud: 0.95, fog: 0.8 }));
 
-    const root = document.createElement("div");
-    root.innerHTML = mapHtml(world, state, ui, cal);
+    const b = board(world, state, ui, cal);
     const level = levelAt(ui.zoom);
-    const weatherCells = [...root.querySelectorAll<HTMLElement>(".c.wx-local")];
+    const weatherCells = glyphsWith(b, "wx-local");
     expect(weatherCells.length).toBeGreaterThan(0);
     for (const element of weatherCells) {
-      const start = Number(element.dataset.mapCell);
+      const start = element.mapCell!;
       const sx = start % world.w;
       const sy = Math.floor(start / world.w);
       expect([...visible].some((cell) => {
@@ -195,9 +192,9 @@ describe("local weather presentation", () => {
         const cy = Math.floor(cell / world.w);
         return cx >= sx && cx < sx + level.finePerGlyph && cy >= sy && cy < sy + level.finePerGlyph;
       })).toBe(true);
-      expect(element.classList).not.toContain("fog");
+      expect(element.classes).not.toContain("fog");
     }
-    expect(root.querySelectorAll(".c[data-map-cell]").length).toBeGreaterThan(weatherCells.length);
+    expect(b.glyphs.filter((g) => g.mapCell !== null).length).toBeGreaterThan(weatherCells.length);
   });
 
   it("renders clouds as terrain shadows by default and as ASCII flavor when disabled", () => {
@@ -205,24 +202,22 @@ describe("local weather presentation", () => {
     vi.spyOn(climate, "sampleAtmosphere").mockReturnValue(air({ cloud: 1 }));
     const ui = newUiState();
 
-    const shadow = document.createElement("div");
-    shadow.innerHTML = mapHtml(world, state, ui, calendar(state.minute, state.startDoy));
-    const shadowCell = shadow.querySelector<HTMLElement>(".c.wx-cloud:not(.mk)")!;
-    expect(shadow.querySelector(".grid")?.classList).toContain("cloud-shadows");
-    expect([...shadowCell.children].some((child) => child.classList.contains("cell-ground"))).toBe(true);
-    // The wash itself is a canvas draw call now (map.ts, drawShadows), not a
-    // child element; the cell still carries the number it is built from.
-    expect(shadowCell.style.getPropertyValue("--wx-shadow")).toBe("0.140");
+    const shadow = board(world, state, ui, calendar(state.minute, state.startDoy));
+    const shadowCell = glyphsWith(shadow, "wx-cloud", "!mk")[0];
+    expect(shadowCell).toBeDefined();
+    expect(shadow.gridClasses).toContain("cloud-shadows");
+    // The wash itself is a canvas draw call (map.ts, drawShadows): the cell
+    // under it keeps its own glyph, and the model carries the number.
+    expect(shadowCell.classes).not.toContain("wx-glyph");
     const shadowModel = effectsSnapshot()!;
     expect(shadowModel.shadow.length).toBeGreaterThan(0);
     for (const cell of shadowModel.shadow) expect(cell.alpha).toBeLessThanOrEqual(CLOUD_SHADOW_CAP);
     expect(shadowModel.shadow.some((cell) => Math.abs(cell.alpha - 0.14) < 0.001)).toBe(true);
 
     ui.cloudShadows = false;
-    const flavor = document.createElement("div");
-    flavor.innerHTML = mapHtml(world, state, ui, calendar(state.minute, state.startDoy));
-    expect(flavor.querySelector(".grid")?.classList).toContain("cloud-glyphs");
-    expect(flavor.querySelector(".c.wx-cloud:not(.wx-fog)")?.classList).toContain("wx-glyph");
+    const flavor = board(world, state, ui, calendar(state.minute, state.startDoy));
+    expect(flavor.gridClasses).toContain("cloud-glyphs");
+    expect(glyphsWith(flavor, "wx-cloud", "!wx-fog")[0]?.classes).toContain("wx-glyph");
     const flavorModel = effectsSnapshot()!;
     expect(flavorModel.shadow).toHaveLength(0);
     expect(flavorModel.glyph.filter((cell) => cell.kind === "cloud").length).toBeGreaterThan(0);
@@ -264,12 +259,12 @@ describe("local weather presentation", () => {
     }));
     const cal = calendar(state.minute, state.startDoy);
     const root = document.createElement("div");
-    root.innerHTML = `<div id="weather">${weatherHtml(state, world, cal, 0)}</div><div id="map">${mapHtml(world, state, newUiState(), cal)}</div>`;
+    root.innerHTML = `<div id="weather">${weatherHtml(state, world, cal, 0)}</div><div id="map">${mapBoardHtml(world, state, newUiState(), cal)}</div>`;
     updateSky(state, cal, 0, root);
 
-    const player = root.querySelector<HTMLElement>(`[data-map-cell="${cellOf(state, world)}"]`)!;
-    expect(player.classList).toContain(shown);
-    expect(player.classList).not.toContain(hidden);
+    const player = glyphOfCell(board(world, state, newUiState(), cal), cellOf(state, world))!;
+    expect(player.classes).toContain(shown);
+    expect(player.classes).not.toContain(hidden);
     expect(root.querySelector(".wx-word")?.textContent).toContain(phase);
     expect(root.querySelector<HTMLCanvasElement>("canvas.sky")?.dataset.skyPrecip).toBe(phase);
   });
@@ -298,17 +293,16 @@ describe("local weather presentation", () => {
     vi.spyOn(climate, "sampleAtmosphere").mockReturnValue(air({
       precipMmPerHour: 3, rainMmPerHour: 3, precip: "rain",
     }));
-    const root = document.createElement("div");
-    root.innerHTML = mapHtml(world, state, newUiState(), calendar(state.minute, state.startDoy));
-    const player = root.querySelector<HTMLElement>(`[data-map-cell="${cellOf(state, world)}"]`)!;
-    const playerGx = Number(player.dataset.mapX);
-    const playerGy = Number(player.dataset.mapY);
+    const player = glyphOfCell(board(world, state, newUiState(), calendar(state.minute, state.startDoy)), cellOf(state, world))!;
+    const playerGx = player.gx;
+    const playerGy = player.gy;
 
     // A mark stays legible over its own weather: the glyph the canvas would
     // otherwise draw there is left out of the model rather than covering the
     // signal, the way `.mk > .cell-weather { display: none }` used to read.
     expect(effectsSnapshot()!.glyph.some((cell) => cell.gx === playerGx && cell.gy === playerGy)).toBe(false);
-    expect([...player.children].find((child) => child.classList.contains("cell-signal"))?.textContent).toBe("@");
+    expect(player.glyph).toBe("@");
+    expect(player.signal).toBe(true);
   });
 
   it("keys the map to a weather interval and local samples without per-frame churn", () => {

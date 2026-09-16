@@ -10,7 +10,7 @@ import { cellOf } from "../src/sim/position";
 import type { GameState } from "../src/sim/types";
 import type { World } from "../src/world/gen";
 import { placesHtml, weatherHtml } from "../src/ui/panels";
-import { mapHtml } from "../src/ui/map";
+import { mapBoardHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import {
   bodyOpacity, bodyPosition, lighting, moonShadowOffset, nightConstellation, phaseName, skyHtml, skyModelFor,
@@ -321,18 +321,21 @@ describe("sky in the page", () => {
     const { state, world } = clearSkyGame();
     const cal = at(13);
     setPanel("weather", weatherHtml(state, world, cal, ambientTemperature(cal, state.weather)));
-    setPanel("map", mapHtml(world, state, newUiState(), cal));
+    setPanel("map", mapBoardHtml(world, state, newUiState(), cal));
     updateSky(state, cal, ambientTemperature(cal, state.weather));
     const noon = bodyPosition(cal, WALL);
     expect(noon.body).toBe("sun");
     // 22:00: the moon is still on the left half of its arc, so its x differs from the noon sun's.
     const night = at(22);
-    updateSky(state, night, -3);
+    const light = updateSky(state, night, -3);
     const evening = bodyPosition(night, WALL);
     expect(evening.body).toBe("moon");
     expect(evening.x).not.toBe(noon.x);
+    // The light it works out is what the board is drawn under (map.ts,
+    // setBoardLight); the markup carries none of it.
+    expect(light.brightness).toBeLessThan(0.6);
     const viewport = document.querySelector<HTMLElement>("#map .scroll-x")!;
-    expect(Number(viewport.style.getPropertyValue("--bright"))).toBeLessThan(0.6);
+    expect(viewport.style.getPropertyValue("--bright")).toBe("");
     // Precipitation belongs to coordinate-matched glyphs, never a global
     // viewport class laid over unrelated local conditions.
     expect(viewport.classList.contains("snowing")).toBe(false);

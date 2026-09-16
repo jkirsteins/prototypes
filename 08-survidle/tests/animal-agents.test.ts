@@ -11,7 +11,8 @@ import { setSkillLevel } from "../src/sim/horizon";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { advance } from "../src/sim/advance";
 import { cellOf } from "../src/sim/position";
-import { mapHtml } from "../src/ui/map";
+import { WILDLIFE_BG } from "../src/ui/palette";
+import { board, boardText, glyphsWith } from "./board";
 import { newUiState } from "../src/ui/render";
 import { passable } from "../src/world/route";
 import { recognitionHtml } from "../src/ui/wildlife-panel";
@@ -174,7 +175,7 @@ describe("immediate wildlife disturbance", () => {
     expect(visibleWildlife(state, world, cal)).toContain(deer);
     const ui = newUiState();
     ui.zoom = 1;
-    expect(mapHtml(world, state, ui, cal)).toContain(`data-wildlife-id="${deer.id}"`);
+    expect(glyphsWith(board(world, state, ui, cal), "mk-animal").some((g) => g.wildlifeId === deer.id)).toBe(true);
     const events: WildlifeStartleEvent[] = [];
     setWildlifeEventSink((event) => events.push(event));
 
@@ -541,11 +542,11 @@ describe("large animal agents", () => {
     placeAt(state, world, away);
     const ui = newUiState();
     ui.zoom = 0;
-    const html = mapHtml(world, state, ui, calendar(state.minute, state.startDoy));
-    expect(html).toContain("mk-den");
-    // The cell's reading lives in aria-label, which is what announces it; it
-    // used to be duplicated into a data-map-info attribute that nothing read.
-    expect(html).toMatch(/aria-label="[^"]*known bear den/);
+    const den = glyphsWith(board(world, state, ui, calendar(state.minute, state.startDoy)), "mk-den");
+    expect(den.length).toBeGreaterThan(0);
+    // The cell's reading is the glyph's info, which is what the tooltip and
+    // the screen reader announce.
+    expect(den[0].info).toContain("known bear den");
   });
 
   it("keeps a known bear den huntable throughout the modeled denning season", () => {
@@ -989,17 +990,18 @@ describe("animal recognition", () => {
     state.wildlife.recognized[subject.id] = true;
     const close = newUiState();
     close.zoom = 0;
-    const html = mapHtml(world, state, close, cal);
-    expect(html).toContain("mk-animal");
-    expect(html).toContain("Mora");
-    expect(html).toContain(`wildlife-${subject.colour}`);
-    const marker = html.match(new RegExp(`data-wildlife-id="${subject.id}"[^>]*--animal-x:([0-9.]+)px`));
-    expect(marker).not.toBeNull();
-    if (!marker) throw new Error("expected a visual wildlife slot");
-    expect(Number(marker[1])).toBeGreaterThan(0);
+    const b = board(world, state, close, cal);
+    // At the closest rung the herd is a mark at its own metre position, in its own colour.
+    const marker = b.marks.find((m) => m.id === subject.id);
+    expect(marker).toBeDefined();
+    expect(marker!.x).toBeGreaterThan(0);
+    expect(marker!.bg).toBe(WILDLIFE_BG[subject.colour]);
+    expect(boardText(b)).toContain("Mora");
 
     close.zoom = 3;
-    expect(mapHtml(world, state, close, cal)).not.toContain("mk-animal");
+    const far = board(world, state, close, cal);
+    expect(far.marks).toHaveLength(0);
+    expect(glyphsWith(far, "mk-animal")).toHaveLength(0);
   });
 
   it("round-trips the current save and fills a save written without wildlife", () => {

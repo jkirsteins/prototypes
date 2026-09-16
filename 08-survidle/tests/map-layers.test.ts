@@ -10,7 +10,9 @@ import { visibleCells } from "../src/sim/sight";
 import { ensureGround } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
 import { activateWildlife } from "../src/sim/wildlife-agents";
-import { effectsSnapshot, type EffectsWeatherKind, mapHtml, WATER_LIT, WATER_RIPPLES, waterRippleDelaysS, waterRipplePeak, waterRipplePhases, weatherGlyphChar } from "../src/ui/map";
+import { effectsSnapshot, type EffectsWeatherKind, mapBoardHtml, WATER_LIT, WATER_RIPPLES, waterRippleDelaysS, waterRipplePeak, waterRipplePhases, weatherGlyphChar } from "../src/ui/map";
+import { filtered, glyphStyle } from "../src/ui/palette";
+import { board, glyphOfCell, glyphsWith } from "./board";
 import { enqueueWildlifeStartle, newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { cellAt, neighbours, regionPeek } from "../src/world/gen";
 import { cellIdx, chunkIndexOf, residentChunk } from "../src/world/cells";
@@ -48,113 +50,60 @@ describe("the map's compositing layers", () => {
     const ui = newUiState();
     // The closest rung: one glyph is one patch, which is the only rung that marks a brook.
     ui.zoom = 0;
-    const map = document.createElement("div");
-    map.id = "mapdyn";
-    map.innerHTML = mapHtml(world, state, ui, calendar(state.minute, state.startDoy));
-    document.body.append(map);
-    try {
-      const marked = parent.filter((cell) => map.querySelector(`[data-map-cell="${cell}"]`)?.classList.contains("mk-stream"));
-      expect(marked).toEqual([wet]);
-    } finally {
-      map.remove();
-    }
+    const b = board(world, state, ui, calendar(state.minute, state.startDoy));
+    const marked = parent.filter((cell) => glyphOfCell(b, cell)?.classes.includes("mk-stream"));
+    expect(marked).toEqual([wet]);
   });
 
+  const day = { season: "summer", night: false };
+
   it("turns frozen water from liquid blue into distinct thin and safe ice surfaces", () => {
-    const sheet = document.createElement("style");
-    sheet.textContent = css;
-    document.head.append(sheet);
-    const map = document.createElement("div");
-    map.id = "mapdyn";
-    map.innerHTML = `<div class="grid">
-      <span class="c t-water deep-2">~</span>
-      <span class="c t-water deep-2 ice-thin">~</span>
-      <span class="c t-water deep-0 ice-safe">~</span>
-    </div>`;
-    document.body.append(map);
-    try {
-      const [open, thin, safe] = [...map.querySelectorAll(".c")].map((cell) => getComputedStyle(cell));
-      expect(open.backgroundColor).toBe("#060d20");
-      expect(thin.backgroundColor).toBe("#142533");
-      expect(safe.backgroundColor).toBe("#243746");
-      expect(thin.color).toBe("#3a6fd8");
-      expect(safe.color).toBe("#3a6fd8");
-    } finally {
-      sheet.remove();
-      map.remove();
-    }
+    const open = glyphStyle(day, ["c", "t-water", "deep-2"]);
+    const thin = glyphStyle(day, ["c", "t-water", "deep-2", "ice-thin"]);
+    const safe = glyphStyle(day, ["c", "t-water", "deep-0", "ice-safe"]);
+    expect(open.bg).toBe("#060d20");
+    expect(thin.bg).toBe("#142533");
+    expect(safe.bg).toBe("#243746");
+    expect(thin.fg).toBe("#3a6fd8");
+    expect(safe.fg).toBe("#3a6fd8");
   });
 
   it("leaves adjacent map cells flush while retaining only real region edges", () => {
-    const sheet = document.createElement("style");
-    sheet.textContent = css;
-    document.head.append(sheet);
-    const map = document.createElement("div");
-    map.id = "mapdyn";
-    map.innerHTML = '<div class="scroll-x"><div class="grid"><span class="c t-meadow"></span><span class="c t-meadow bl"></span></div></div>';
-    document.body.append(map);
-    try {
-      const [ordinary, boundary] = [...map.querySelectorAll(".c")];
-      const widths = (cell: Element) => {
-        const style = getComputedStyle(cell);
-        return [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth];
-      };
-      expect(widths(ordinary)).toEqual(["0px", "0px", "0px", "0px"]);
-      expect(widths(boundary)).toEqual(["0px", "0px", "0px", "1px"]);
-    } finally {
-      sheet.remove();
-      map.remove();
-    }
+    const ordinary = glyphStyle(day, ["c", "t-meadow"]).border;
+    const boundary = glyphStyle(day, ["c", "t-meadow", "bl"]).border;
+    expect(ordinary).toEqual({ l: null, r: null, t: null, b: null });
+    expect(boundary.l).toBe("#3b6fd1");
+    expect([boundary.r, boundary.t, boundary.b]).toEqual([null, null, null]);
   });
 
   it("emphasizes a targeted ordinary cell without drawing a box around it", () => {
-    const sheet = document.createElement("style");
-    sheet.textContent = css;
-    document.head.append(sheet);
-    const map = document.createElement("div");
-    map.id = "mapdyn";
-    map.innerHTML = '<div class="grid"><span class="c t-meadow target" tabindex="0"><span class="cell-ground">.</span></span></div>';
-    document.body.append(map);
-    try {
-      const target = map.querySelector(".target")!;
-      expect(getComputedStyle(target).outlineStyle).toBe("none");
-      expect(getComputedStyle(target).textShadow).not.toBe("none");
-    } finally {
-      sheet.remove();
-      map.remove();
-    }
+    const target = glyphStyle(day, ["c", "t-meadow", "target"]);
+    expect(target.glow).toBe("#e6c229");
+    expect(target.border).toEqual({ l: null, r: null, t: null, b: null });
+    expect(target.wash).toBeNull();
   });
 
   it("puts weather over the shaded ground and under routes, light, and essential marks", () => {
-    const viewport = rule(".scroll-x");
-    const layers = rule("#mapdyn");
-    expect(viewport).toContain("isolation: isolate");
-    for (const layer of ["ground: 0", "shade: 1", "weather: 2", "route: 3", "signal: 4", "startle: 5", "control: 6"]) {
-      expect(layers).toContain(`--map-${layer}`);
-    }
-
-    expect(rule(".scroll-x > .shade")).toContain("z-index: var(--map-shade)");
-    expect(rule(".scroll-x::after")).toContain("z-index: var(--map-shade)");
-    expect(rule(".scroll-x::before")).toContain("z-index: var(--map-weather)");
-    expect(rule(".scroll-x::before")).toContain("pointer-events: none");
-    expect(rule(".grid .walk")).toContain("z-index: var(--map-route)");
-    expect(rule(".grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire, .grid .c.mk-coals"))
-      .toContain("z-index: var(--map-signal)");
-    expect(rule(".grid.night .c.lit-1::after, .grid.night .c.lit-2::after"))
-      .toContain("z-index: var(--map-signal)");
+    // The stack is the order the one canvas is painted in (map.ts,
+    // updateEffects): the board, then the shade and the tint, then the
+    // weather, then the walk, then the marks that stay legible in the dark,
+    // the pulses, the animals, the cues, and the pointed glyph last.
+    const source = readFileSync("src/ui/map.ts", "utf8");
+    const body = source.slice(source.indexOf("export function updateEffects("), source.indexOf("let effectsFrozenKey"));
+    const order = ["drawBoardImage(", "drawLight(", "drawWaterShimmer(", "drawShadows(", "drawGlyphs(", "drawWalk(", "drawLifted(", "drawPulses(", "drawRecoils(", "drawMarks(", "drawStartles(", "drawPointed("];
+    const at = order.map((call) => body.indexOf(call));
+    for (const [i, position] of at.entries()) expect(position, order[i]).toBeGreaterThan(i === 0 ? -1 : at[i - 1]);
+    expect(rule(".scroll-x")).toContain("isolation: isolate");
+    expect(rule(".scroll-x > .effects")).toContain("z-index: var(--map-board)");
     expect(rule(".maptools")).toContain("z-index: var(--map-control)");
   });
 
-  it("renders precipitation as a canvas glyph without taking the pointer off the cell", () => {
-    // No more markup, so no more gradients or borders to rule out on it; the
-    // canvas glyph is one fillText call, and the cell underneath still owns
-    // hover and click.
+  it("renders precipitation as a canvas glyph without taking the pointer off the board", () => {
+    // The canvas glyph is one fillText call, and the grid underneath still
+    // owns hover and click.
     expect(weatherGlyphChar(17, 12, 34, "rain", 0)).toMatch(/[/'|]/);
     expect(weatherGlyphChar(17, 12, 34, "snow", 0)).toMatch(/[.*+]/);
-    expect(rule(".grid .c.wx-cloud, .grid .c.wx-fog, .grid .c.wx-rain, .grid .c.wx-snowing"))
-      .toContain("pointer-events: auto");
     expect(rule(".scroll-x > .effects")).toContain("pointer-events: none");
-    expect(rule(".grid .c .cell-signal")).toContain("z-index: var(--map-signal)");
   });
 
   it("stops local map and sky weather motion when reduced motion is requested", () => {
@@ -183,19 +132,18 @@ describe("the map's compositing layers", () => {
     // Fog reads over cloud shadow and over every ripple, so a cell shows one
     // weather glyph at a time; the terrain glyph a weather glyph replaces
     // stays hidden underneath.
-    expect(rule(".grid .c.wx-glyph:not(.mk) > .cell-ground > .terrain-visual")).toContain("visibility: hidden");
-    expect(rule(".grid .c.memory > .cell-ground, .grid .c.memory > .cell-signal"))
-      .toContain("filter: brightness(0.58) saturate(0.45)");
-    expect(rule(".grid .c.dim > .cell-ground, .grid .c.dim > .cell-signal"))
-      .toContain("opacity: 0.45");
+    expect(glyphStyle(day, ["c", "t-meadow", "wx-glyph"]).hidden).toBe(true);
+    expect(glyphStyle(day, ["c", "t-meadow", "memory"]).fg).toBe(filtered("#6f9a3c", 0.58, 0.45));
+    expect(glyphStyle(day, ["c", "t-meadow", "dim"]).alpha).toBe(0.45);
   });
 
   it("never feathers exploration or stacks atmospheric glyphs over terrain glyphs", () => {
     const stylesheet = readFileSync("src/style.css", "utf8");
     expect(stylesheet).not.toContain(".fog-edge");
     expect(stylesheet).not.toContain("--fog-left");
-    expect(rule(".grid .c.wx-glyph:not(.mk) > .cell-ground > .terrain-visual"))
-      .toContain("visibility: hidden");
+    expect(glyphStyle(day, ["c", "t-meadow", "wx-glyph"]).hidden).toBe(true);
+    // A mark stays legible over its own weather.
+    expect(glyphStyle(day, ["c", "t-meadow", "wx-glyph", "mk", "mk-player"]).hidden).toBe(false);
   });
 
   it("keeps startles outside filtered, dimmed and clipped cells above signals and below controls", () => {
@@ -215,34 +163,20 @@ describe("the map's compositing layers", () => {
       perception: { kind: "heard", identification: "unknown", uncertaintyM: 0 },
       terrain: "spruce", body: "light", group: "group", logText: "Something crashes away.",
     }, 1000);
-    const sheet = document.createElement("style");
-    sheet.textContent = css;
-    document.head.append(sheet);
-    const map = document.createElement("div");
-    map.id = "mapdyn";
-    map.innerHTML = mapHtml(world, state, ui, calendar(state.minute, state.startDoy), 1100);
-    document.body.append(map);
-    try {
-      const cue = map.querySelector(".wildlife-startle")!;
-      // At the closest rung the survivor's glyph is the cell, so the filters
-      // and the dimming ride on the cell and its own signal, not on a mark
-      // nested inside it.
-      const source = map.querySelector(".mk-player")!;
-      const player = source.querySelector(".cell-signal")!;
-      source.classList.add("tone-0", "dim");
-      const z = (element: Element) => Number(getComputedStyle(element).zIndex);
-      expect(getComputedStyle(source).filter).toBe("");
-      expect(getComputedStyle(source).opacity).toBe("");
-      expect(getComputedStyle(player).opacity).toBe("0.45");
-      expect(cue.parentElement).toBe(map.querySelector(".grid"));
-      expect(z(cue)).toBeGreaterThan(z(player));
-      expect(z(cue)).toBeGreaterThan(z(map.querySelector(".walk")!));
-      expect(z(cue)).toBeLessThan(z(map.querySelector(".maptools")!));
-      expect(getComputedStyle(cue).pointerEvents).toBe("none");
-    } finally {
-      sheet.remove();
-      map.remove();
-    }
+    const b = board(world, state, ui, calendar(state.minute, state.startDoy), 1100);
+    // The cue is the model's, drawn by the effects layer after every glyph
+    // and mark and before only the pointed glyph (the draw order above); the
+    // snow and the fog on the survivor's own glyph touch the glyph's colour
+    // and nothing about the cue.
+    expect(b.startles).toHaveLength(1);
+    expect(b.startles[0].kind).toBe("heard");
+    const you = glyphsWith(b, "mk-player")[0];
+    expect(you.classes).toContain("ground-snow");
+    const look = glyphStyle({ season: b.season, night: b.night }, [...you.classes, "tone-0", "dim"]);
+    // A mark owns its whole cell: the snow tone never touches its letter, and
+    // dimming is the letter's alone.
+    expect(look.fg).toBe("#fff");
+    expect(look.alpha).toBe(0.45);
   });
 
   it("keeps the effects canvas inside the grid's own isolated stacking context, under the route, the marks and a startle", () => {
@@ -275,26 +209,23 @@ describe("the map's compositing layers", () => {
     document.head.append(sheet);
     const map = document.createElement("div");
     map.id = "mapdyn";
-    map.innerHTML = mapHtml(world, state, ui, calendar(state.minute, state.startDoy), 1100);
+    map.innerHTML = mapBoardHtml(world, state, ui, calendar(state.minute, state.startDoy), 1100);
     document.body.append(map);
     try {
       const scrollX = map.querySelector(".scroll-x")!;
       const effects = map.querySelector("#effects")!;
       const grid = map.querySelector(".grid")!;
-      const walk = map.querySelector(".walk")!;
-      const player = map.querySelector(".mk-player")!;
-      const startle = map.querySelector(".wildlife-startle")!;
       expect(getComputedStyle(scrollX).isolation).toBe("isolate");
-      // The regression this guards: a sibling of #mapdyn would fail every
-      // one of these three, since it would sit outside .scroll-x entirely.
+      // The regression this guards: a sibling of #mapdyn would fail these,
+      // since it would sit outside .scroll-x entirely.
       expect(effects.parentElement).toBe(scrollX);
       expect(grid.parentElement).toBe(scrollX);
-      expect(walk.parentElement).toBe(grid);
-      expect(startle.parentElement).toBe(grid);
-      const z = (element: Element) => Number(getComputedStyle(element).zIndex);
-      expect(z(effects)).toBeLessThan(z(walk));
-      expect(z(walk)).toBeLessThan(z(player));
-      expect(z(player)).toBeLessThan(z(startle));
+      // One canvas carries the walk, the marks and the cue in its own draw
+      // order; there is nothing else in the grid for it to be under.
+      expect(map.querySelectorAll("canvas")).toHaveLength(1);
+      expect(grid.children).toHaveLength(0);
+      const b = board(world, state, ui, calendar(state.minute, state.startDoy), 1100);
+      expect(b.startles).toHaveLength(1);
     } finally {
       sheet.remove();
       map.remove();
@@ -318,47 +249,30 @@ describe("the map's compositing layers", () => {
     const ui = newUiState();
     ui.zoom = 0;
     const cal = calendar(state.minute, state.startDoy);
-    setPanel("mapdyn", mapHtml(world, state, ui, cal, 1000));
+    setPanel("mapdyn", mapBoardHtml(world, state, ui, cal, 1000));
     const canvas = document.querySelector<HTMLCanvasElement>("#effects")!;
     canvas.width = 999;
     canvas.height = 777;
     // A different frame, so setPanel's own same-html shortcut cannot mask a
     // morph that never actually ran against the canvas.
     ui.cloudShadows = !ui.cloudShadows;
-    setPanel("mapdyn", mapHtml(world, state, ui, cal, 2000));
+    setPanel("mapdyn", mapBoardHtml(world, state, ui, cal, 2000));
     expect(document.querySelector("#effects")).toBe(canvas);
     expect(canvas.width).toBe(999);
     expect(canvas.height).toBe(777);
   });
 
   it("keeps player and camp signals above routes without lifting ordinary animals", () => {
-    const sheet = document.createElement("style");
-    sheet.textContent = css;
-    document.head.append(sheet);
-    const map = document.createElement("div");
-    map.id = "mapdyn";
-    // The three things you would know in the dark without looking sit above
-    // the walk line; a herd's glyph is ordinary ground and passes under it.
-    // The herd's exact mark at the closest rung is laid over the grid, so it
-    // rises with the rest of the signals.
-    map.innerHTML = '<div class="scroll-x"><div class="grid fine">'
-      + '<span class="c mk mk-player"></span><span class="c mk mk-camp"></span><span class="c mk mk-fire"></span>'
-      + '<span class="c mk mk-coals"></span><span class="c mk mk-animal"></span>'
-      + '<svg class="walk"></svg><b class="micro-mark wildlife-map-mark mk-animal"></b><i class="wildlife-startle"></i></div></div>';
-    document.body.append(map);
-    try {
-      const z = (selector: string) => Number(getComputedStyle(map.querySelector(selector)!).zIndex);
-      const route = z(".walk");
-      for (const signal of [".c.mk-player", ".c.mk-camp", ".c.mk-fire", ".c.mk-coals"]) {
-        expect(z(signal)).toBeGreaterThan(route);
-        expect(z(signal)).toBeLessThan(z(".wildlife-startle"));
-      }
-      expect(z(".c.mk-animal")).toBeLessThan(route);
-      expect(z(".micro-mark.mk-animal")).toBeGreaterThan(route);
-    } finally {
-      sheet.remove();
-      map.remove();
-    }
+    // The three things you would know in the dark without looking, and the
+    // fire's own lit cell, are drawn again over the shade and the walk line
+    // (map.ts, drawLifted); a herd's glyph is ordinary ground and stays on
+    // the board under both. The herd's exact mark at the closest rung is
+    // drawn over the grid with the rest of the signals (drawMarks).
+    const source = readFileSync("src/ui/map.ts", "utf8");
+    const lifted = source.slice(source.indexOf("function drawLifted("), source.indexOf("const RECOIL_MS"));
+    for (const mark of ["mk-player", "mk-camp", "mk-fire", "mk-coals", "lit-0"]) expect(lifted).toContain(`"${mark}"`);
+    expect(lifted).not.toContain("mk-animal");
+    expect(lifted).not.toContain("mk-shelter");
   });
 
   it.each(["camp", "fire", "coals"])("raises filtered snowy cells containing player and %s signals above routes", (kind) => {
@@ -376,47 +290,38 @@ describe("the map's compositing layers", () => {
     const animal = state.wildlife.subjects.find((subject) => subject.active)!;
     animal.active!.cell = neighbours(world, cellOf(state, world)).find((cell) =>
       cell !== region.campCell && cellAt(world, cell).region === state.player.region && passable(cellAt(world, cell).terrain))!;
-    const sheet = document.createElement("style");
-    sheet.textContent = css;
-    document.head.append(sheet);
-    const map = document.createElement("div");
-    map.id = "mapdyn";
-    map.innerHTML = mapHtml(world, state, ui, calendar(state.minute, state.startDoy));
-    document.body.append(map);
-    try {
-      const route = Number(getComputedStyle(map.querySelector(".walk")!).zIndex);
-      // A glyph carrying one of the three essential marks rises above the
-      // walk line whatever the snow is doing to the ground around it.
-      for (const selector of [".c.mk-player", `.c.mk-${kind}`]) {
-        const cell = map.querySelector(selector)!;
-        expect(Number(getComputedStyle(cell).zIndex)).toBeGreaterThan(route);
-      }
-      // Exercise both snow filters on real map markup, on ground carrying no
-      // mark: a mark's glyph draws a letter and not the ground under it.
-      const terrainCell = [...map.querySelectorAll(".c:not(.fog):not(.void):not(.mk)")]
-        .find((cell) => cell.querySelector(".terrain-visual"))!;
-      terrainCell.classList.add("ground-snow");
-      for (const [tone, filter] of [["tone-0", "brightness(0.82)"], ["tone-2", "brightness(1.18)"]]) {
-        terrainCell.classList.remove("tone-0", "tone-2");
-        terrainCell.classList.add(tone);
-        expect(getComputedStyle(terrainCell).filter).toBe("");
-        expect(getComputedStyle(terrainCell.querySelector(".terrain-visual")!).filter).toBe(filter);
-      }
-      const animalMark = map.querySelector(`[data-wildlife-id="${animal.id}"]`)!;
-      expect(Number(getComputedStyle(animalMark).zIndex)).toBeGreaterThan(route);
-      expect(Number(getComputedStyle(terrainCell).zIndex)).toBeLessThan(route);
-    } finally {
-      sheet.remove();
-      map.remove();
+    const b = board(world, state, ui, calendar(state.minute, state.startDoy));
+    // The survivor and the mark stand on snow, and each is drawn again over
+    // the shade and the walk whatever the snow does to the ground round them.
+    for (const mark of ["mk-player", `mk-${kind}`]) {
+      const glyph = glyphsWith(b, mark)[0];
+      expect(glyph, mark).toBeDefined();
+      expect(glyph.classes).toContain("ground-snow");
     }
+    // The snow's relief is on the letter alone: the cell keeps the snow's
+    // own background under either tone.
+    const ground = glyphsWith(b, "!fog", "!void", "!mk").find((g) => g.glyph.trim())!;
+    const grid = { season: b.season, night: b.night };
+    const plain = glyphStyle(grid, [...ground.classes.filter((c) => !c.startsWith("tone-")), "ground-snow"]);
+    for (const [tone, brightness] of [["tone-0", 0.82], ["tone-2", 1.18]] as const) {
+      const toned = glyphStyle(grid, [...ground.classes.filter((c) => !c.startsWith("tone-")), "ground-snow", tone]);
+      expect(toned.bg).toBe(plain.bg);
+      expect(toned.fg).toBe(filtered(plain.fg, brightness, 1));
+    }
+    // The herd's mark rises with the signals: it is on the model as a mark
+    // over the grid, not as a glyph on the board.
+    expect(b.marks.some((m) => m.id === animal.id)).toBe(true);
   });
 
   it("keeps night firelight and active survivor marks animated above the weather", () => {
-    expect(rule(".grid.night .c.mk-fire")).toContain("animation: flicker");
-    expect(rule(".grid.night .c.lit-0")).toContain("z-index: var(--map-signal)");
-    expect(rule(".grid.night .c.lit-0")).toContain("animation: flicker");
-    expect(rule(".grid .c.mk-player.mood-walk")).toContain("animation: mood-toil");
-    expect(rule(".grid .c.mk-player.mood-work")).toContain("animation: mood-toil");
+    // The flicker, the coals' breath and the mood's pulse are fills the
+    // effects layer draws each frame (map.ts, drawPulses), over the weather.
+    const source = readFileSync("src/ui/map.ts", "utf8");
+    const pulses = source.slice(source.indexOf("const PULSE = {"), source.indexOf("function drawGlyphOver("));
+    for (const name of ["walk:", "work:", "fire:", "fireFar:", "coals:", "lit0:", "lit0Coals:"]) expect(pulses).toContain(name);
+    expect(pulses).toContain('cls.includes("mk-fire")');
+    expect(pulses).toContain('cls.includes("mood-walk")');
+    expect(pulses).toContain('cls.includes("lit-0")');
   });
 
   it("lets seen liquid water shimmer on the wall clock, out of step per cell, and nothing else", () => {
@@ -450,9 +355,9 @@ describe("the map's compositing layers", () => {
     expect(waterRipplePhases(17, 12, 34, 1)).toEqual(waterRipplePhases(17, 12, 34, 1));
     for (const p of waterRipplePhases(17, 12, 34, 1)) { expect(p).toBeGreaterThanOrEqual(0); expect(p).toBeLessThan(turn); }
     // Each depth band shimmers within its own palette.
-    expect(rule(".grid .c.t-water")).toContain("--water-rest: #0a1633");
-    expect(rule(".grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0")).toContain("--water-rest: #102047");
-    expect(rule(".grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2")).toContain("--water-rest: #060d20");
+    expect(glyphStyle(day, ["c", "t-water"]).bg).toBe("#0a1633");
+    expect(glyphStyle(day, ["c", "t-water", "deep-0"]).bg).toBe("#102047");
+    expect(glyphStyle(day, ["c", "t-water", "deep-2"]).bg).toBe("#060d20");
 
     // The frozen-water shore in midsummer: open coastal water in sight.
     const summer = WEATHER_SHOTS["sunny-clouds"].minute;
@@ -468,13 +373,11 @@ describe("the map's compositing layers", () => {
     state.knowledge = newKnowledge();
     for (const seen of visibleCells(state, world, cal, cell)) markKnown(state, seen);
     const ui = newUiState();
-    const first = mapHtml(world, state, ui, cal);
-    expect(mapHtml(world, state, ui, cal)).toBe(first);
-    const root = document.createElement("div");
-    root.innerHTML = first;
+    const first = board(world, state, ui, cal);
+    expect(JSON.stringify(board(world, state, ui, cal))).toBe(JSON.stringify(first));
     // The document still marks which cells qualify, so the canvas model and
     // the class the cell carries can be checked against each other.
-    const liveCells = [...root.querySelectorAll<HTMLElement>(".c.water-live")];
+    const liveCells = glyphsWith(first, "water-live");
     expect(liveCells.length).toBeGreaterThan(20);
     const model = effectsSnapshot()!;
     expect(model).not.toBeNull();
@@ -503,30 +406,32 @@ describe("the map's compositing layers", () => {
     // depth class the cell itself carries.
     for (const c of model.water) expect([WATER_LIT.rest, WATER_LIT.shallow, WATER_LIT.deep]).toContain(c.lit);
     for (const el of liveCells) {
-      expect(el.classList.contains("t-water")).toBe(true);
-      for (const still of ["mk", "memory", "dim", "ice-thin", "ice-safe"]) expect(el.classList.contains(still)).toBe(false);
+      expect(el.classes).toContain("t-water");
+      for (const still of ["mk", "memory", "dim", "ice-thin", "ice-safe"]) expect(el.classes).not.toContain(still);
     }
     // Water the survivor remembers but cannot see now lies still.
-    for (const el of root.querySelectorAll(".c.t-water.memory, .c.t-water.dim")) expect(el.classList.contains("water-live")).toBe(false);
+    for (const el of [...glyphsWith(first, "t-water", "memory"), ...glyphsWith(first, "t-water", "dim")]) expect(el.classes).not.toContain("water-live");
 
     // Frozen water is a sheet, not a surface that catches light.
     const frozen = weatherShotFixture("frozen-water");
-    root.innerHTML = mapHtml(frozen.world, frozen.state, newUiState(), frozen.cal);
-    expect(root.querySelectorAll(".t-water.ice-safe").length).toBeGreaterThan(20);
-    expect(root.querySelector(".water-live")).toBeNull();
+    const sheet = board(frozen.world, frozen.state, newUiState(), frozen.cal);
+    expect(glyphsWith(sheet, "t-water", "ice-safe").length).toBeGreaterThan(20);
+    expect(glyphsWith(sheet, "water-live")).toHaveLength(0);
     expect(effectsSnapshot()!.water).toHaveLength(0);
   });
 
-  it("makes the visual harness select simulation fixtures without injecting presentation state", () => {
-    const shots = readFileSync("scripts/map-shots.mjs", "utf8");
-    for (const name of ["clear", "approaching-rain", "local-rain", "persisted-snow", "frozen-water", "valley-fog", "windward-lee", "obscured"]) {
-      expect(shots).toContain(`"${name}"`);
-    }
-    for (const name of ["cloud-shadows.png", "cloud-glyphs.png"]) expect(shots).toContain(name);
-    expect(shots).toContain("?weather-shot=");
-    expect(shots).toContain("window.survidle.weatherShot.visibleCells");
-    expect(shots).toContain("[data-display=cloud-shadows]");
-    expect(shots).not.toContain("classList.toggle");
-    expect(shots).not.toContain("style.setProperty");
+  it("makes the browser harness play the real game and read the real board, never a fixture or a stand-in", () => {
+    const e2e = readFileSync("scripts/e2e.mjs", "utf8");
+    // Real input at screen coordinates, the model the canvas drew, the
+    // canvas the player sees; never a synthetic click, an off-screen copy of
+    // the board or a fixture world.
+    expect(e2e).toContain("Input.dispatchMouseEvent");
+    expect(e2e).toContain("window.survidle.mapModel");
+    expect(e2e).toContain("querySelector('#effects')");
+    expect(e2e).toContain("Page.captureScreenshot");
+    expect(e2e).not.toContain("weather-shot");
+    expect(e2e).not.toContain("mapMarkup");
+    expect(e2e).not.toContain("classList.toggle");
+    expect(e2e).not.toContain("style.setProperty");
   });
 });

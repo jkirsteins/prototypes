@@ -24,7 +24,8 @@ import { newGame } from "../src/sim/newgame";
 import { startTask } from "../src/sim/tasks";
 import { Rng } from "../src/rng";
 import { doHtml } from "../src/ui/dopanel";
-import { levelAt, mapHtml, mapKey, mapTargetAtPoint } from "../src/ui/map";
+import { levelAt, mapKey, mapTargetAtPoint } from "../src/ui/map";
+import { board } from "./board";
 import { tipHtml, tipKey } from "../src/ui/tip";
 import { campHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, logHtml, skillsHtml, statsHtml, taskHtml, travelHtml, weatherHtml, weatherKey } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
@@ -253,16 +254,16 @@ describe("no panel redraws faster than what it is showing", () => {
  * coordinate back out is.
  */
 describe("sweeping the pointer does not redraw the map", () => {
-  it("the map's markup and key are the same still as swept", () => {
+  it("the map's model and key are the same still as swept", () => {
     const { state, world } = newGame(21);
     const ui = newUiState();
     const cal = calendar(state.minute, state.startDoy);
-    const still = `${mapKey(state, world, ui, cal)}|${mapHtml(world, state, ui, cal)}`;
+    const still = `${mapKey(state, world, ui, cal)}|${JSON.stringify(board(world, state, ui, cal))}`;
     const l = levelAt(ui.zoom);
     let changed = 0;
     for (let f = 0; f < FRAMES; f++) {
       ui.hover = mapTargetAtPoint(world, state, ui, (f * 7) % (l.w * l.px), (f * 11) % (l.h * l.line))?.patch ?? null;
-      const now = `${mapKey(state, world, ui, cal)}|${mapHtml(world, state, ui, cal)}`;
+      const now = `${mapKey(state, world, ui, cal)}|${JSON.stringify(board(world, state, ui, cal))}`;
       if (now !== still) changed++;
     }
     expect(changed).toBe(0);

@@ -30,9 +30,11 @@ import { passable, type RouteConditions } from "../world/route";
 import { routeConditions, survivorRoute, survivorRouteCandidates } from "../sim/routing";
 import { aggregateTerrain } from "../sim/sight";
 import { activeWildlifeStartles, domGeneration, esc, type UiState } from "./render";
+import { boardImage, boardStamp, type MapGlyph, type MapMark, type MapModel, type MapStartle, styleOf } from "./mapcanvas";
+import { BOARD_FONT, WILDLIFE_BG } from "./palette";
 import { elevationAt, GROUND_CHANGE_GLYPH, offshoreAt, STREAM_MARK, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
-import { lighting } from "./sky";
+import { type Lighting, lighting } from "./sky";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
 import { metricPointForWildlife } from "../sim/wildlife-space";
 import { campfireVisible, hasLineOfSight, sightRangeCells, visibleCells } from "../sim/sight";
@@ -740,6 +742,12 @@ export interface EffectsModel {
 }
 
 let currentEffects: EffectsModel | null = null;
+let currentMap: MapModel | null = null;
+
+/** The model the last board build produced, for the canvas to draw and a harness to read. */
+export function mapModelSnapshot(): MapModel | null {
+  return currentMap;
+}
 
 /** The model the last `mapHtml` call built, for a test to check against the document it rendered alongside. */
 export function effectsSnapshot(): EffectsModel | null {
@@ -865,9 +873,9 @@ function ensureEffectsCanvasBox(canvas: HTMLCanvasElement, grid: HTMLElement): C
  * `mapHtml` for being remembered, marked, frozen or out of sight, and stays
  * still here too.
  */
-function drawWaterShimmer(ctx: CanvasRenderingContext2D, model: EffectsModel, nowS: number): void {
+function drawWaterShimmer(ctx: CanvasRenderingContext2D, model: EffectsModel, nowS: number, brightness = model.brightness): void {
   if (!model.water.length) return;
-  const gain = (model.zoom === 1 ? WATER_FINE_GAIN : 1) * model.brightness;
+  const gain = (model.zoom === 1 ? WATER_FINE_GAIN : 1) * brightness;
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   let fill = "";
@@ -912,32 +920,44 @@ function drawShadows(ctx: CanvasRenderingContext2D, model: EffectsModel): void {
 }
 
 /**
- * Redraws the effects canvas against the current wall clock. Cheap to call
- * every render tick: the model itself is rebuilt only when `mapHtml` is,
- * this just positions the canvas over the grid's current box and repaints
- * from data already on hand. Reduced motion draws one frame per model and
- * then does nothing until the model itself changes, rather than continuing
- * to redraw a picture nothing asked to move.
+ * Redraws the screen against the current wall clock: the board's picture
+ * under the light of the hour, then everything that moves over it. Cheap
+ * to call every render tick: the board is drawn only when the map's key
+ * changes (mapcanvas.ts, drawBoard) and copied here, the effects model is
+ * rebuilt only when `mapBoardHtml` is, and this just positions the canvas
+ * over the grid's current box and repaints from data already on hand.
+ * Reduced motion draws one frame per model and then does nothing until the
+ * model, the board or the light itself changes, rather than continuing to
+ * redraw a picture nothing asked to move.
+ *
+ * The order is the old stack of layers, bottom up: the board; the night
+ * shade and the hour's tint over the whole panel; water, cloud shadow and
+ * weather motion; the walk; the marks that stay legible in the dark - you,
+ * camp, the fire and its coals, drawn again over the shade; the pulses;
+ * the animals at their own positions; the startle cues; the pointed glyph.
  */
 export function updateEffects(root: ParentNode = document): void {
   const model = currentEffects;
+  const board = currentMap;
   const surfaces = effectsSurfaces(root);
-  if (!model || !surfaces) return;
+  if (!model || !board || !surfaces) return;
   const { canvas, host, grid, panel } = surfaces;
-  // Every layer over the board is sized from this one pair of properties:
-  // the canvas, the night shade and the hour's tint, which is a pseudo
-  // element with no handle for JS to size directly. They go on the panel
-  // rather than on `.scroll-x` because `setPanel` morphs the panel's
-  // children and would drop an inline style from the scroller itself,
-  // blanking the cover for a frame on every map rebuild.
+  // The canvas is sized from this one pair of properties on the panel:
+  // the board's far edge in the panel's own box, since a canvas has no
+  // layout of its own to size itself by. They go on the panel rather than
+  // on `.scroll-x` because `setPanel` morphs the panel's children and would
+  // drop an inline style from the scroller itself, blanking the cover for a
+  // frame on every map rebuild.
   const cover = boardCover(host, grid);
   if (panel) {
     if (panel.style.getPropertyValue("--board-w") !== `${cover.w}px`) panel.style.setProperty("--board-w", `${cover.w}px`);
     if (panel.style.getPropertyValue("--board-h") !== `${cover.h}px`) panel.style.setProperty("--board-h", `${cover.h}px`);
   }
+  const light = boardLight;
   const frozen = reducedMotionEffects();
-  if (frozen && effectsFrozenKey === model.key) return;
-  effectsFrozenKey = model.key;
+  const frozenKey = `${model.key}|${boardStamp()}|${light.brightness.toFixed(3)}|${light.saturation.toFixed(3)}|${light.tint}|${light.alpha.toFixed(3)}|${pointedPatch}`;
+  if (frozen && effectsFrozenKey === frozenKey) return;
+  effectsFrozenKey = frozenKey;
   const ctx = ensureEffectsCanvasBox(canvas, grid);
   if (!ctx) return;
   // The grid-offset transform ensureEffectsCanvasBox just set would clear
@@ -948,17 +968,273 @@ export function updateEffects(root: ParentNode = document): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
+  drawBoardImage(ctx, board, light);
+  drawLight(ctx, canvas, light);
   // ?shimmer= on the page sets this on the root to speed the wall clock up
   // for a screenshot or a test; the water layer is the only one it scales,
   // since it is the only one whose speed the stylesheet ever exposed.
   const shimmerSpeed = shimmerScale();
   const nowMs = frozen ? 0 : performance.now();
-  drawWaterShimmer(ctx, model, (nowMs / 1000) * shimmerSpeed);
+  drawWaterShimmer(ctx, model, (nowMs / 1000) * shimmerSpeed, light.brightness);
   drawShadows(ctx, model);
   drawGlyphs(ctx, model, nowMs);
+  drawWalk(ctx, board);
+  drawLifted(ctx, board);
+  drawPulses(ctx, model, nowMs);
+  drawRecoils(ctx, board, nowMs);
+  drawMarks(ctx, board, nowMs, frozen);
+  drawStartles(ctx, board, nowMs, frozen);
+  drawPointed(ctx, model);
 }
 
 let effectsFrozenKey: string | null = null;
+
+/** The light of the hour, as `updateSky` last worked it out; daylight until it has. */
+let boardLight: Lighting = { brightness: 1, saturation: 1, tint: "rgb(0, 0, 0)", alpha: 0, skyTop: "", skyBottom: "", cloudLow: "", cloudHigh: "", precip: "none" };
+export function setBoardLight(light: Lighting): void {
+  boardLight = light;
+}
+
+/**
+ * The board's picture, through the hour's saturation. `filter` on a 2d
+ * context is the compositor's own colour matrix where the browser has it;
+ * where it does not, the board keeps its daylight colour and only the
+ * shade and the tint below say what hour it is.
+ */
+function drawBoardImage(ctx: CanvasRenderingContext2D, board: MapModel, light: Lighting): void {
+  const image = boardImage();
+  if (!image) return;
+  const w = board.cols * board.px;
+  const h = board.rows * board.line;
+  const filterable = "filter" in ctx;
+  if (filterable && light.saturation < 0.999) ctx.filter = `saturate(${light.saturation.toFixed(3)})`;
+  ctx.drawImage(image, 0, 0, w, h);
+  if (filterable) ctx.filter = "none";
+}
+
+/**
+ * The night shade and the hour's tint over the whole panel, void padding
+ * included: black at one minus the brightness, then the tint colour in
+ * hard light at its own alpha, the way the shade element and the panel's
+ * `::after` used to lie over everything.
+ */
+function drawLight(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, light: Lighting): void {
+  const shade = 1 - light.brightness;
+  if (shade <= 0.002 && light.alpha <= 0.002) return;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (shade > 0.002) {
+    ctx.globalAlpha = Math.min(1, shade);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  if (light.alpha > 0.002) {
+    ctx.globalAlpha = Math.min(1, light.alpha);
+    ctx.globalCompositeOperation = "hard-light";
+    ctx.fillStyle = light.tint;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  ctx.restore();
+}
+
+/** Your walk: a line through the glyph centres, solid ahead, dashed behind, in screen pixels whatever the rung. */
+function drawWalk(ctx: CanvasRenderingContext2D, board: MapModel): void {
+  const { behind, ahead } = board.walk;
+  if (behind.length < 2 && ahead.length < 2) return;
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  const trace = (points: [number, number][]): void => {
+    ctx.beginPath();
+    points.forEach(([x, y], i) => { if (i === 0) ctx.moveTo(x * board.px, y * board.line); else ctx.lineTo(x * board.px, y * board.line); });
+    ctx.stroke();
+  };
+  if (behind.length >= 2) {
+    ctx.strokeStyle = "rgba(230, 194, 41, 0.45)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    trace(behind);
+  }
+  if (ahead.length >= 2) {
+    ctx.strokeStyle = "rgba(230, 194, 41, 0.9)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    trace(ahead);
+  }
+  ctx.restore();
+}
+
+/**
+ * What stays legible once the night sheet is down: where you are, where
+ * camp is, the fire and its banked coals - the things you would know in
+ * the dark without looking - and at the close rungs the fire's own lit
+ * cell. Drawn again over the shade and the tint in their own colours. A
+ * shelter, a trap and a seep are marks on ground you cannot see from here
+ * at midnight, so they take the dark with everything else.
+ */
+function drawLifted(ctx: CanvasRenderingContext2D, board: MapModel): void {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `bold ${board.font}px ${BOARD_FONT}`;
+  for (const g of board.glyphs) {
+    const cls = g.classes;
+    const lifted = cls.includes("mk-player") || cls.includes("mk-camp") || cls.includes("mk-fire") || cls.includes("mk-coals") || (board.night && cls.includes("lit-0"));
+    if (!lifted) continue;
+    const s = styleOf(board, g);
+    const x = g.gx * board.px;
+    const y = g.gy * board.line;
+    if (s.bg) {
+      ctx.fillStyle = s.bg;
+      ctx.fillRect(x, y, board.px, board.line);
+    }
+    if (g.glyph.trim()) {
+      ctx.globalAlpha = s.alpha;
+      ctx.fillStyle = s.fg;
+      ctx.fillText(g.glyph, x + board.px / 2, y + board.line / 2);
+      ctx.globalAlpha = 1;
+    }
+  }
+  ctx.restore();
+}
+
+/** The old `wildlife-recoil` keyframes: a shake of two pixels, a quarter of a second long, from the moment of the startle. */
+const RECOIL_MS = 280;
+function recoilOffset(startedAtMs: number, nowMs: number): number | null {
+  const t = (nowMs - startedAtMs) / RECOIL_MS;
+  if (t < 0 || t >= 1) return null;
+  const steps: [number, number][] = [[0, 0], [0.25, -2], [0.45, 2], [0.7, -2], [1, 0]];
+  for (let i = 1; i < steps.length; i++) {
+    if (t <= steps[i][0]) {
+      const [t0, v0] = steps[i - 1];
+      const [t1, v1] = steps[i];
+      return v0 + (v1 - v0) * ((t - t0) / (t1 - t0));
+    }
+  }
+  return 0;
+}
+
+/** An animal glyph seen bolting shakes in its cell: the cell painted over, the character drawn shifted. */
+function drawRecoils(ctx: CanvasRenderingContext2D, board: MapModel, nowMs: number): void {
+  if (reducedMotionEffects()) return;
+  for (const g of board.glyphs) {
+    if (g.wildlifeStart === undefined) continue;
+    const dx = recoilOffset(g.wildlifeStart, nowMs);
+    if (dx === null) continue;
+    const s = styleOf(board, g);
+    ctx.save();
+    ctx.fillStyle = s.bg ?? "#05070c";
+    ctx.fillRect(g.gx * board.px, g.gy * board.line, board.px, board.line);
+    ctx.font = `bold ${board.font}px ${BOARD_FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = s.fg;
+    ctx.fillText(g.glyph, g.gx * board.px + board.px / 2 + dx, g.gy * board.line + board.line / 2);
+    ctx.restore();
+  }
+}
+
+/** Where each animal's mark was last drawn, so a move slides over 180 ms the way the old `transition` did. */
+const markSlides = new Map<number, { fromX: number; fromY: number; toX: number; toY: number; sinceMs: number }>();
+const MARK_SLIDE_MS = 180;
+
+/**
+ * At the closest rung a glyph is one 50 m patch, so a herd's own metre
+ * position inside that patch is worth drawing: its mark is laid over the
+ * board rather than inside a glyph, which is what lets it sit between two
+ * of them and slide as the herd moves.
+ */
+function drawMarks(ctx: CanvasRenderingContext2D, board: MapModel, nowMs: number, frozen: boolean): void {
+  if (!board.marks.length) {
+    markSlides.clear();
+    return;
+  }
+  const alive = new Set<number>();
+  ctx.save();
+  ctx.font = `${board.font}px ${BOARD_FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const m of board.marks) {
+    alive.add(m.id);
+    let slide = markSlides.get(m.id);
+    if (!slide) {
+      slide = { fromX: m.x, fromY: m.y, toX: m.x, toY: m.y, sinceMs: nowMs - MARK_SLIDE_MS };
+      markSlides.set(m.id, slide);
+    } else if (slide.toX !== m.x || slide.toY !== m.y) {
+      const k = Math.min(1, (nowMs - slide.sinceMs) / MARK_SLIDE_MS);
+      slide.fromX = slide.fromX + (slide.toX - slide.fromX) * k;
+      slide.fromY = slide.fromY + (slide.toY - slide.fromY) * k;
+      slide.toX = m.x;
+      slide.toY = m.y;
+      slide.sinceMs = nowMs;
+    }
+    const k = frozen ? 1 : Math.min(1, (nowMs - slide.sinceMs) / MARK_SLIDE_MS);
+    const x = slide.fromX + (slide.toX - slide.fromX) * k + (m.recoilAt === undefined || frozen ? 0 : recoilOffset(m.recoilAt, nowMs) ?? 0);
+    const y = slide.fromY + (slide.toY - slide.fromY) * k;
+    const left = x - board.px / 2;
+    const top = y - board.line / 2;
+    ctx.fillStyle = "rgba(5, 7, 12, 0.42)";
+    ctx.fillRect(left - 1, top - 1, board.px + 2, board.line + 2);
+    ctx.fillStyle = m.bg;
+    ctx.fillRect(left, top, board.px, board.line);
+    ctx.fillStyle = m.fg;
+    ctx.fillText(m.glyph, x, y);
+  }
+  for (const id of markSlides.keys()) if (!alive.has(id)) markSlides.delete(id);
+  ctx.restore();
+}
+
+/**
+ * The startle cue: an exclamation that pops in above where something bolted
+ * or was heard, holds, and rises away, 1.2 s from the moment of the
+ * startle - the old `wildlife-startle` keyframes, sampled against the wall
+ * clock. Reduced motion keeps the fade and drops the pop and the rise.
+ */
+const STARTLE_MS = 1200;
+const STARTLE_FONT = 18;
+function drawStartles(ctx: CanvasRenderingContext2D, board: MapModel, nowMs: number, frozen: boolean): void {
+  if (!board.startles.length) return;
+  const at = (t: number, keys: [number, number][]): number => {
+    for (let i = 1; i < keys.length; i++) {
+      if (t <= keys[i][0]) {
+        const [t0, v0] = keys[i - 1];
+        const [t1, v1] = keys[i];
+        const k = t1 === t0 ? 1 : (t - t0) / (t1 - t0);
+        // ease-out, as the keyframes ran.
+        const e = 1 - (1 - k) * (1 - k);
+        return v0 + (v1 - v0) * e;
+      }
+    }
+    return keys[keys.length - 1][1];
+  };
+  ctx.save();
+  ctx.font = `900 ${Math.max(STARTLE_FONT, board.font)}px ${BOARD_FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  for (const cue of board.startles) {
+    const t = frozen ? 0.3 : Math.max(0, Math.min(1, (nowMs - cue.startedAtMs) / STARTLE_MS));
+    const opacity = at(t, [[0, 0], [0.12, 1], [0.6, 1], [1, 0]]);
+    const rise = frozen ? 0 : at(t, [[0, 0], [0.12, -0.12], [0.6, -0.12], [1, -0.65]]) * STARTLE_FONT;
+    const scale = frozen ? 1 : at(t, [[0, 0.55], [0.12, 1.25], [0.24, 1], [1, 1]]);
+    if (opacity <= 0.005) continue;
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    ctx.translate(cue.x, cue.y + rise + STARTLE_FONT / 2);
+    ctx.scale(scale, scale);
+    ctx.shadowColor = "#05070c";
+    ctx.shadowBlur = 4;
+    ctx.fillStyle = cue.kind === "heard" ? "#e8dab1" : "#ffe28a";
+    ctx.fillText("!", 0, -STARTLE_FONT / 2);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/** The patch a Do row is pointing at while the pointer rests on it, or null. Drawn by the effects layer each frame. */
+let pointedPatch: number | null = null;
+export function setPointedGlyph(patch: number | null): void {
+  pointedPatch = patch;
+}
 
 /**
  * `?shimmer=` is a screenshot and test aid that main.ts writes onto the
@@ -973,6 +1249,127 @@ function shimmerScale(): number {
     ? Number(getComputedStyle(document.documentElement).getPropertyValue("--water-shimmer-speed")) || 1
     : 1;
   return shimmerScaleRead;
+}
+
+/**
+ * What used to be CSS keyframes on cells, drawn per frame instead: the
+ * player mark's mood pulse (`mood-toil`, a background that breathes between
+ * two golds), the night fire's flicker and the coals' slower breath, and
+ * the lit rings round a fire (`flicker` on `.lit-0` and the `::after`
+ * washes of `.lit-1`/`.lit-2`). Each is a fill over the glyph's cell whose
+ * colour moves between the two ends of the old animation on the old
+ * period, `ease-in-out` and `alternate` as the stylesheet had it; the lit
+ * rings keep their per-glyph delay so neighbours are out of step. The
+ * static layer draws the mark itself underneath, so these are washes over
+ * it, never the mark.
+ */
+const PULSE = {
+  walk: { a: [0xb8, 0x86, 0x0b], b: [0xd8, 0xa3, 0x27], periodS: 1.2 },
+  work: { a: [0xb8, 0x86, 0x0b], b: [0xd8, 0xa3, 0x27], periodS: 2.4 },
+  fire: { a: [0xb8, 0x43, 0x1a], b: [0xff, 0x9a, 0x3a], periodS: 1.1 },
+  fireFar: { a: [0x63, 0x2d, 0x18], b: [0xa5, 0x4d, 0x20], periodS: 1.1 },
+  coals: { a: [0x5c, 0x2c, 0x14], b: [0x8a, 0x45, 0x20], periodS: 2.6 },
+  lit0: { a: [0xff, 0x7a, 0x1a], b: [0xff, 0xb8, 0x4d], periodS: 1.1 },
+  lit0Coals: { a: [0x6b, 0x32, 0x18], b: [0x9c, 0x4f, 0x24], periodS: 2.6 },
+} as const;
+const LIT_RING: Record<1 | 2, { rgb: [number, number, number]; a: number; b: number }> = {
+  1: { rgb: [255, 140, 40], a: 0.35, b: 0.55 },
+  2: { rgb: [255, 120, 30], a: 0.12, b: 0.22 },
+};
+
+/** Where an `alternate` `ease-in-out` animation of this period stands at `t` seconds past its (negative) delay: 0 at one end, 1 at the other. */
+function breath(t: number, periodS: number): number {
+  const cycle = ((t / periodS) % 2 + 2) % 2;
+  const x = cycle <= 1 ? cycle : 2 - cycle;
+  return x * x * (3 - 2 * x);
+}
+
+function mix(a: readonly number[], b: readonly number[], k: number): string {
+  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * k)}, ${Math.round(a[1] + (b[1] - a[1]) * k)}, ${Math.round(a[2] + (b[2] - a[2]) * k)})`;
+}
+
+function drawPulses(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: number): void {
+  const board = currentMap;
+  if (!board || reducedMotionEffects()) return;
+  const t = nowMs / 1000;
+  ctx.save();
+  for (const g of board.glyphs) {
+    const cls = g.classes;
+    const x = g.gx * model.px;
+    const y = g.gy * model.line;
+    if (cls.includes("mk-player")) {
+      const mood = cls.includes("mood-walk") ? PULSE.walk : cls.includes("mood-work") ? PULSE.work : null;
+      if (!mood) continue;
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = mix(mood.a, mood.b, breath(t, mood.periodS));
+      ctx.fillRect(x, y, model.px, model.line);
+      drawGlyphOver(ctx, model, g, "#fff");
+      continue;
+    }
+    if (!board.night) continue;
+    const lit0 = cls.includes("lit-0");
+    if (cls.includes("mk-fire")) {
+      const p = cls.includes("fire-far") ? PULSE.fireFar : PULSE.fire;
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = mix(p.a, p.b, breath(t, p.periodS));
+      ctx.fillRect(x, y, model.px, model.line);
+      drawGlyphOver(ctx, model, g, cls.includes("fire-far") ? "#ffe0aa" : "#fff");
+    } else if (cls.includes("mk-coals")) {
+      const p = lit0 ? PULSE.lit0Coals : PULSE.coals;
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = mix(p.a, p.b, breath(t - (g.fd ?? 0), p.periodS));
+      ctx.fillRect(x, y, model.px, model.line);
+      drawGlyphOver(ctx, model, g, "#fff");
+    } else if (lit0) {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = mix(PULSE.lit0.a, PULSE.lit0.b, breath(t - (g.fd ?? 0), PULSE.lit0.periodS));
+      ctx.fillRect(x, y, model.px, model.line);
+      drawGlyphOver(ctx, model, g, null);
+    } else {
+      const ring = cls.includes("lit-1") ? LIT_RING[1] : cls.includes("lit-2") ? LIT_RING[2] : null;
+      if (!ring) continue;
+      const k = breath(t - (g.fd ?? 0), 1.1);
+      ctx.globalAlpha = ring.a + (ring.b - ring.a) * k;
+      ctx.fillStyle = `rgb(${ring.rgb.join(", ")})`;
+      ctx.fillRect(x, y, model.px, model.line);
+    }
+  }
+  ctx.restore();
+}
+
+/**
+ * The glyph's own character again, over a wash that just covered it. `fill`
+ * null keeps the static layer's colour by drawing nothing, for a lit ring
+ * whose character is the ground's own and stays legible through the wash.
+ */
+function drawGlyphOver(ctx: CanvasRenderingContext2D, model: EffectsModel, g: MapGlyph, fill: string | null): void {
+  if (fill === null || !g.glyph.trim()) return;
+  ctx.font = `bold ${model.font}px ${BOARD_FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = fill;
+  ctx.fillText(g.glyph, g.gx * model.px + model.px / 2, g.gy * model.line + model.line / 2);
+}
+
+/** The Do row's pointer: the `target` treatment - the glyph in white with an accent glow - on the glyph the patch falls in. */
+function drawPointed(ctx: CanvasRenderingContext2D, model: EffectsModel): void {
+  const board = currentMap;
+  if (pointedPatch === null || !board) return;
+  const w = WORLD_W;
+  const gx = Math.floor((pointedPatch % w - board.x0) / board.z);
+  const gy = Math.floor((Math.floor(pointedPatch / w) - board.y0) / board.z);
+  if (gx < 0 || gy < 0 || gx >= board.cols || gy >= board.rows) return;
+  const g = board.glyphs[gy * board.cols + gx];
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.shadowColor = "#e6c229";
+  ctx.shadowBlur = 4;
+  ctx.font = `${g.signal ? "bold " : ""}${model.font}px ${BOARD_FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#fff";
+  ctx.fillText(g.glyph.trim() ? g.glyph : "\u00b7", gx * model.px + model.px / 2, gy * model.line + model.line / 2);
+  ctx.restore();
 }
 
 /**
@@ -1057,11 +1454,20 @@ function drawGlyphs(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: n
   ctx.restore();
 }
 
-function glyphHtml(glyph: string): string {
-  return glyph === "\"" ? "&quot;" : glyph;
-}
-
-/** Top-left cell of the viewport, so the player sits in the middle glyph. */
+/**
+ * Top-left cell of the viewport, so the player sits in the middle glyph.
+ *
+ * At the block rungs the origin is a whole number of glyphs from the
+ * world's own corner. A glyph there stands for a z-by-z block of patches,
+ * and an origin that followed the survivor patch by patch re-cut every
+ * block on the board one patch over at every step of a walk: each glyph's
+ * ground re-aggregated and recoloured, the whole board shimmering under a
+ * survivor who was standing still in the middle of it. Snapped, the board
+ * holds its picture while the survivor crosses a block and scrolls one
+ * whole glyph when they leave it, which is what a map does. The survivor's
+ * glyph is still the middle one: the snap moves the origin at most z - 1
+ * patches back, and the middle glyph is z patches wide.
+ */
 export function viewOrigin(state: GameState, world: World, zoom: number): { x0: number; y0: number } {
   const l = levelAt(zoom);
   const z = l.finePerGlyph;
@@ -1069,8 +1475,8 @@ export function viewOrigin(state: GameState, world: World, zoom: number): { x0: 
   const py = Math.floor(state.player.yM / PATCH_M);
   const spanX = l.w * z;
   const spanY = l.h * z;
-  let x0 = px - Math.floor(spanX / 2);
-  let y0 = py - Math.floor(spanY / 2);
+  let x0 = Math.floor((px - Math.floor(spanX / 2)) / z) * z;
+  let y0 = Math.floor((py - Math.floor(spanY / 2)) / z) * z;
   // Clamp to the world's edge, or centre a world smaller than the view; the
   // origin may then be negative and the glyphs outside the world are void.
   x0 = spanX >= world.w ? -Math.floor((spanX - world.w) / 2 / z) * z : Math.max(0, Math.min(world.w - spanX, x0));
@@ -1274,42 +1680,41 @@ export function litRings(sources: LightSource[], toGlyph: (cell: number) => numb
   return rings;
 }
 
-/** A negative animation delay under 1.1 s, fixed per glyph index, so neighbouring flames are out of step. */
-export function flickerDelay(i: number): string {
-  return `-${(((i * 2654435761) >>> 0) % 1100) / 1000}s`;
+/** A negative delay under 1.1 s, in seconds, fixed per glyph index, so neighbouring flames are out of step. */
+export function flickerDelay(i: number): number {
+  return -((((i * 2654435761) >>> 0) % 1100) / 1000);
 }
 
 /**
- * The walk as a line through glyph centres: solid from the survivor's glyph
- * to the target, dashed from where the walk began to the survivor's glyph.
- * The viewBox is in glyphs, so the same points serve every zoom; a point off
- * the view is kept and clipped rather than dropped, since dropping it would
- * join the two visible ends with a false straight segment. Cells that share
- * a glyph collapse to one point, and a polyline of one point draws nothing.
- * With no route the element is emitted empty, so the markup has one shape.
+ * The walk as points through glyph centres, in glyph units: solid from the
+ * survivor's glyph to the target, dashed from where the walk began to the
+ * survivor's glyph. A point off the view is kept and clipped rather than
+ * dropped, since dropping it would join the two visible ends with a false
+ * straight segment. Cells that share a glyph collapse to one point, and a
+ * line of one point draws nothing.
  */
-function walkSvg(world: World, state: GameState, here: number, x0: number, y0: number, z: number, view: { w: number; h: number }): string {
+function walkPoints(world: World, state: GameState, here: number, x0: number, y0: number, z: number): MapModel["walk"] {
   const route = state.route;
-  const points = (cells: number[]): string => {
-    const out: string[] = [];
-    let last = "";
+  const points = (cells: number[]): [number, number][] => {
+    const out: [number, number][] = [];
+    let lastX = Number.NaN;
+    let lastY = Number.NaN;
     for (const cell of cells) {
-      const pt = `${Math.floor((cell % world.w - x0) / z) + 0.5},${Math.floor((Math.floor(cell / world.w) - y0) / z) + 0.5}`;
-      if (pt === last) continue;
-      out.push(pt);
-      last = pt;
+      const x = Math.floor((cell % world.w - x0) / z) + 0.5;
+      const y = Math.floor((Math.floor(cell / world.w) - y0) / z) + 0.5;
+      if (x === lastX && y === lastY) continue;
+      out.push([x, y]);
+      lastX = x;
+      lastY = y;
     }
-    return out.join(" ");
+    return out;
   };
-  const behind = route ? points([...route.walked, here]) : "";
-  const ahead = route ? points([here, ...route.path]) : "";
-  return `<svg class="walk" viewBox="0 0 ${view.w} ${view.h}" preserveAspectRatio="none"><polyline class="walk-behind" points="${behind}"/><polyline class="walk-ahead" points="${ahead}"/></svg>`;
+  return {
+    behind: route ? points([...route.walked, here]) : [],
+    ahead: route ? points([here, ...route.path]) : [],
+  };
 }
 
-/**
- * Every cell in a region worth a mark: the camp itself, even bare, plus
- * every site a camp has since moved away from and left standing.
- */
 function markedCells(st: RegionState): number[] {
   const cells = new Set<number>(Object.keys(st.sites).map(Number));
   if (st.campCell !== null) cells.add(st.campCell);
@@ -1406,7 +1811,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${ui.destination}|cs${ui.cloudShadows ? 1 : 0}|wx${weatherMinute}:${localWeather}|${cal.isNight}|${marks}|${route}|${piles}|${carcasses}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${coarseKnowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|vis${viewshed}|${animals}|${startles}|${viewport}`;
 }
 
-export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs = performance.now()): string {
+function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs: number): MapBuild {
   const cur = state.player.region;
   const sel = ui.selected;
   const l = levelAt(ui.zoom);
@@ -1671,7 +2076,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const span = `${figure(kmAcross)} by ${figure(kmDown)} km`;
   const tools = `<div class="maptools"><button class="mini" data-act="zoom" data-dir="in" ${ui.zoom === 0 ? "disabled" : ""} title="Closer (plus key)">+</button><button class="mini" data-act="zoom" data-dir="out" ${ui.zoom === LEVELS.length - 1 ? "disabled" : ""} title="Farther (minus key)">-</button><span class="dim" title="${esc(`${span} on screen, centred on you`)}">${zoomLabel(ui.zoom)}, ${span}</span></div>`;
 
-  const parts: string[] = [];
+  const glyphs: MapGlyph[] = [];
   // The hour's light is written into the grid as it is built, in the figures
   // updateSky writes each frame. A grid built without them would be born at
   // the stylesheet's daylight defaults, and the first frame after would
@@ -1681,14 +2086,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const playerGround = localGround(state.player.region);
   const playerConditions = conditionsWithGround(state, world, playerCell, playerGround);
   const light = lighting(cal, playerConditions, playerConditions.temperatureC);
-  const lit = `--bright:${light.brightness.toFixed(3)};--sat:${light.saturation.toFixed(3)};--tint:${light.tint};--tint-a:${light.alpha.toFixed(3)}`;
   // Fed by the cell loop below and handed to updateEffects once the grid is
   // built, so the shimmer, cloud shadow and weather motion draw as canvas
   // arithmetic every render tick instead of as elements the loop emits here.
   const effectsWater: EffectsWaterCell[] = [];
   const effectsShadow: EffectsShadowCell[] = [];
   const effectsGlyph: EffectsGlyphCell[] = [];
-  parts.push(`<div class="scroll-x${cal.isNight ? " night" : ""}" style="--px:${l.px}px;--line:${l.line}px;${lit}"><div class="grid season-${cal.season}${z === 1 ? " fine" : ""} ${ui.cloudShadows ? "cloud-shadows" : "cloud-glyphs"}${cal.isNight ? " night" : ""}" role="grid" tabindex="0" aria-label="Map. Use arrow keys to inspect cells." style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px">`);
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
@@ -1699,21 +2102,20 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const named = reg >= 0 && discovery(state, reg) > 0;
     const cls = ["c"];
     let glyph = " ";
-    const styles: string[] = [];
     let animalId: number | null = null;
     let animalRecoil: number | null = null;
     let terrainLabel = "unknown ground";
+    let current = false;
+    let lightRing: number | undefined;
     const sampledWeather = weatherAt[i];
     const weather = sampledWeather?.air ?? null;
     const weatherGround = sampledWeather?.ground ?? null;
     if (weather) {
-      const fall = Math.min(1, weather.precipMmPerHour / 7.5);
       cls.push("wx-local");
       if (weather.cloud >= 0.15) cls.push("wx-cloud");
       if (weather.fog >= 0.05) cls.push("wx-fog");
       if (weather.precipMmPerHour >= 0.05 && weather.precip === "rain") cls.push("wx-rain");
       if (weather.precipMmPerHour >= 0.05 && weather.precip === "snow") cls.push("wx-snowing");
-      styles.push(`--wx-cloud:${weather.cloud.toFixed(3)}`, `--wx-shadow:${(weather.cloud * 0.14).toFixed(3)}`, `--wx-fog:${weather.fog.toFixed(3)}`, `--wx-fall:${fall.toFixed(3)}`);
     }
     if (reg < 0) {
       cls.push("void");
@@ -1743,7 +2145,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     } else {
       const t = terrains[i];
       cls.push(`t-${t}`);
-      const lightRing = rings.get(i);
+      lightRing = rings.get(i);
       // Firelight is its own light and cannot be read off the viewshed: the
       // viewshed is what the sky lights, and on a moonless night it is empty
       // while the ground round the fire is plainly lit. Only a glyph that
@@ -1751,7 +2153,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       // inside a kilometre - so this is a few dozen rays, not one per glyph.
       const firelit = lightRing !== undefined && hasLineOfSight(world, playerCell, mechanicalCell, 0.5);
       const surfaceCurrent = weatherVisibleGlyphs.has(i);
-      const current = surfaceCurrent || visibleFireDistance.has(mechanicalCell) || firelit;
+      current = surfaceCurrent || visibleFireDistance.has(mechanicalCell) || firelit;
       if (seen === 1 && !current) cls.push("dim");
       if (seen === 2 && !current) cls.push("memory");
       if (drawBorders) {
@@ -1809,10 +2211,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       }
       if (lyingGlyphs.has(i) && seen === 2) cls.push("pl");
       const ring = current ? lightRing : undefined;
-      if (ring !== undefined) {
-        cls.push(`lit-${ring}`);
-        styles.push(`--fd:${flickerDelay(i)}`);
-      }
+      if (ring !== undefined) cls.push(`lit-${ring}`);
     }
     const m = markerAt.get(i);
     if (m) {
@@ -1847,25 +2246,11 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // the board on every redraw and shift everything after it. That is the
     // flicker on the @ and the camp's x: they are the cells whose names
     // differ enough to be found and moved.
-    const act = named ? ` data-act="select" data-i="${i}" data-r="${reg}"` : "";
     const terrain = reg < 0 ? "beyond the mapped world" : seen === 0 && !far ? "unknown ground" : `${terrainLabel}${z > 1 ? `, ${glyphScale(z)} block` : ""}`;
     const place = reg >= 0 && named ? world.regions.get(reg)?.name : undefined;
     const info = [terrain, place, ...featuresAt.get(i) ?? []].filter(Boolean).join("; ");
     const cx = x0 + gx * z;
     const cy = y0 + gy * z;
-    const mapCell = cx >= 0 && cy >= 0 && cx < world.w && cy < world.h ? ` data-map-cell="${cellIdx(world, cx, cy)}"` : "";
-    // No title attribute: the board's own box says all of this, at once and
-    // in the page's own voice, where the browser's tooltip said it after a
-    // delay and stood over whatever it was next to.
-    let content = glyphHtml(glyph);
-    if (cls.includes("mk")) {
-      const wildlifeClass = animalRecoil === null ? "" : " wildlife-recoil";
-      const wildlifeData = animalId === null ? "" : ` data-wildlife-id="${animalId}"`;
-      const wildlifeStyle = animalRecoil === null ? "" : ` style="--wildlife-start:${animalRecoil}ms"`;
-      content = `<b class="cell-signal${wildlifeClass}"${wildlifeData}${wildlifeStyle}>${content}</b>`;
-    } else {
-      content = `<span class="cell-ground"><span class="terrain-visual">${content}</span></span>`;
-    }
     if (weather && (weather.cloud >= 0.15 || weather.fog >= 0.05 || weather.rainMmPerHour >= 0.05 || weather.snowCmPerHour >= 0.05)) {
       // Same precedence as the fall: fog reads over precipitation, and cloud
       // motion only where the shadow wash is off, so a cell never shows two
@@ -1900,10 +2285,15 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         peaks: [waterRipplePeak(world.seed, cx, cy, 0), waterRipplePeak(world.seed, cx, cy, 1), waterRipplePeak(world.seed, cx, cy, 2)],
       });
     }
-    const style = styles.length ? ` style="${styles.join(";")}"` : "";
-    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" aria-label="${esc(info)}" data-map-x="${gx}" data-map-y="${gy}"${mapCell}${act}${style}>${content}</span>`);
+    glyphs.push({
+      gx, gy, classes: cls, glyph, signal: cls.includes("mk"), info, region: reg,
+      mapCell: cx >= 0 && cy >= 0 && cx < world.w && cy < world.h ? cellIdx(world, cx, cy) : null,
+      act: named,
+      fd: current && lightRing !== undefined ? flickerDelay(i) : undefined,
+      wildlifeId: animalId ?? undefined, wildlifeStart: animalRecoil ?? undefined,
+    });
   }
-  const animalMarkup: string[] = [];
+  const marks: MapMark[] = [];
   if (z === 1) {
     for (const animal of visibleWildlife(state, world, cal, currentVisible)) {
       const point = metricPointForWildlife(state, world, animal);
@@ -1914,16 +2304,18 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       animalAnchors.set(animal.id, { x, y });
       const recognized = state.wildlife.recognized[animal.id];
       const recoil = recoilAt.get(animal.id);
-      const motionClass = recoil === undefined ? "" : " wildlife-recoil";
-      const motionStyle = recoil === undefined ? "" : `;--wildlife-start:${recoil}ms`;
-      animalMarkup.push(`<b class="micro-mark wildlife-map-mark mk-animal ${recognized ? `wildlife-${animal.colour}` : "wildlife-unknown"}${motionClass}" data-wildlife-id="${animal.id}" style="--animal-x:${Number(x.toFixed(2))}px;--animal-y:${Number(y.toFixed(2))}px${motionStyle}">${ANIMAL_GLYPH[animal.species]}</b>`);
+      marks.push({
+        id: animal.id, x: Number(x.toFixed(2)), y: Number(y.toFixed(2)), glyph: ANIMAL_GLYPH[animal.species],
+        bg: recognized ? WILDLIFE_BG[animal.colour] ?? "#b7ad87" : "#b7ad87", fg: "#111",
+        recoilAt: recoil,
+      });
     }
   }
   const viewport = ui.mapViewport ?? { left: 0, top: 0, right: l.w * l.px, bottom: l.h * l.line };
   // Reserve room for the whole mark, including its pop and rise.
   const insetX = Math.min(24, (viewport.right - viewport.left) / 2);
   const insetY = Math.min(24, (viewport.bottom - viewport.top) / 2);
-  const startleMarkup = startles.map(({ event, startedAtMs, key }) => {
+  const startleCues: MapStartle[] = startles.map(({ event, startedAtMs, key }) => {
     const gx = (event.source.xM / PATCH_M - x0) / z;
     const gy = (event.source.yM / PATCH_M - y0) / z;
     // Seen reactions follow the subject's rendered glyph, which may already
@@ -1951,21 +2343,9 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const y = Math.max(viewport.top + insetY, Math.min(viewport.bottom - insetY, py));
     const bearing = ["east", "southeast", "south", "southwest", "west", "northwest", "north", "northeast"];
     const direction = bearing[(Math.round(event.bearingRad / (Math.PI / 4)) % 8 + 8) % 8];
-    const edge = px !== x || py !== y ? ` edge bearing-${direction}` : "";
-    // All cues share the grid's transient layer, clear of cell clipping and
-    // snow filters. Their anonymous identity and start time survive movement.
-    return `<i aria-hidden="true" class="wildlife-startle ${event.perception.kind}${edge}" data-startle="${key}" style="--wildlife-start:${startedAtMs}ms;left:${Number(x.toFixed(2))}px;top:${Number(y.toFixed(2))}px">!</i>`;
+    // Its anonymous identity and start time survive movement.
+    return { key, x: Number(x.toFixed(2)), y: Number(y.toFixed(2)), kind: event.perception.kind, startedAtMs, edge: px !== x || py !== y ? direction : null };
   });
-  // The canvas sits beside .grid rather than inside it, as a direct child of
-  // the isolated .scroll-x - the same stacking context .shade, the route
-  // line and every mark's z-index already share, so its own z-index (below,
-  // in style.css) is actually compared against theirs instead of against a
-  // context outside the isolation boundary. Keyed by id so a rebuild reuses
-  // the live node rather than tearing down its backing buffer; this markup
-  // never states a width or height, and morphAttrs (render.ts) knows to
-  // leave a canvas's alone rather than read that silence as an instruction
-  // to remove the device-pixel size main.ts wrote onto the live element.
-  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}${animalMarkup.join("")}${startleMarkup.join("")}</div><canvas id="effects" class="effects" aria-hidden="true"></canvas><i class="shade"></i></div>${tools}`);
   currentEffects = {
     cols: l.w, rows: l.h, px: l.px, line: l.line, font: l.font,
     seed: world.seed, zoom: z,
@@ -1978,5 +2358,44 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       light.brightness.toFixed(3),
     ].join("|"),
   };
-  return parts.join("");
+  const gridClasses = ["grid", `season-${cal.season}`, ...(z === 1 ? ["fine"] : []), ui.cloudShadows ? "cloud-shadows" : "cloud-glyphs", ...(cal.isNight ? ["night"] : [])];
+  currentMap = {
+    cols: l.w, rows: l.h, px: l.px, line: l.line, font: l.font, x0, y0, z, gridClasses, night: cal.isNight, season: cal.season, glyphs,
+    walk: walkPoints(world, state, playerCell, x0, y0, z), marks, startles: startleCues,
+  };
+  return {
+    model: currentMap,
+    scroll: `class="scroll-x${cal.isNight ? " night" : ""}" style="--px:${l.px}px;--line:${l.line}px"`,
+    gridStyle: `--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px`,
+    tools,
+  };
+}
+
+/** What a build hands the page: the model, and the pieces of markup that are not the board. */
+interface MapBuild {
+  model: MapModel;
+  scroll: string;
+  gridStyle: string;
+  tools: string;
+}
+
+/**
+ * The map panel's markup: the grid's box, the one canvas everything is
+ * drawn on, and the zoom controls. The grid holds no cells; it keeps its
+ * size and position so that hit testing, the board cover and the viewport
+ * bounds - all arithmetic over its rect - read exactly what they read when
+ * it held them. The canvas is keyed by id so a rebuild reuses the live node
+ * and its backing buffer.
+ */
+export function mapBoardHtml(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs = performance.now()): string {
+  const b = buildMapModel(world, state, ui, cal, nowMs);
+  const { model } = b;
+  const w = model.cols * model.px;
+  const h = model.rows * model.line;
+  return `<div ${b.scroll}><div class="${model.gridClasses.join(" ")}" tabindex="0" role="img" aria-label="Map, ${glyphScale(model.z)} per glyph" style="${b.gridStyle};width:${w}px;height:${h}px"></div><canvas id="effects" class="effects" aria-hidden="true"></canvas></div>${b.tools}`;
+}
+
+/** The board as a model: what the canvas draws, for a test to read glyph by glyph. */
+export function mapModel(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs = performance.now()): MapModel {
+  return buildMapModel(world, state, ui, cal, nowMs).model;
 }

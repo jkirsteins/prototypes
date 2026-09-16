@@ -1734,49 +1734,97 @@ does not have a morph.
 
 ### Stage three, as built
 
-**Decided** 2026-09-16, on the way in. The plan above left three open
-questions and one design freedom; this is what was chosen and why.
+**Decided** 2026-09-16, on the way in, and then **revised the same day**
+once the first cut had been played. The plan above left three open
+questions and one design freedom; this is what was chosen, what the first
+cut got wrong, and what stands.
 
-The board becomes one canvas drawn from a model. `mapHtml` is split: a
-`buildMapModel` that works out, per glyph, everything the old markup
-carried - classes, glyph, borders, hover text, the patch and the action
-it stands for - and a `mapHtml` that is now only a serializer of that
-model into the old markup. The app never calls the serializer; it draws
-the model. The serializer stays because nineteen test files and about a
-hundred and fifty assertions read the map as markup, and the model is
-what they were really testing all along: a test that asserts `.c.t-water.
-memory` is asserting what the model said about that glyph, and it still
-does. Migrating those to model assertions is worth doing, and is not what
-makes the canvas correct.
+The board is one canvas drawn from a model. `buildMapModel` (map.ts) works
+out, per glyph, everything the old markup carried - the words the classes
+were (`t-water`, `memory`, `mk-player`), the character, the borders, the
+hover text, the patch and the action it stands for - and `drawBoard`
+(mapcanvas.ts) turns that into a picture in a canvas nobody sees, redrawn
+only when the map's key changes. The picture reaches the screen through
+the effects layer: `updateEffects` copies it onto the one visible canvas
+every frame under the light of the hour and then draws everything that
+moves over it, in the order the old stack of layers had - the night shade
+and the hour's tint over the whole panel, the water, the cloud shadow and
+the weather motion, the walk, the marks that stay legible in the dark
+drawn again over the shade, the pulses, the animals at their own metre
+positions, the startle cues, the pointed glyph. The static layer draws
+nothing that moves, which is the budget the plan asked for, and the
+`.grid` element keeps only its box: hit testing, the board cover and the
+viewport bounds were always arithmetic over its rect and still are.
 
-Colours come from the stylesheet, not from a table typed beside it. There
-are 138 rules for cells - terrain by tone by season by snow by ice by
-mark by night - and a hand copy of them would drift from the first edit.
-The canvas keeps a hidden probe: one `.grid` off screen carrying the same
-classes the live grid would, one `.c` inside it dressed in a glyph's
-classes with the same child structure, and `getComputedStyle` read once
-per distinct class list and cached. The stylesheet stays the single
-source of truth, and `layout.test.ts`, which pins those rules by
-selector, keeps its subject.
+The first cut kept the stylesheet as the source of colours, through a
+hidden probe cell and `getComputedStyle`, and kept `mapHtml` as a
+serializer of the model into the old markup so that nineteen test files
+could go on reading the map as a document. Both were retired the same
+day, and the reason is the one the author gave: a board drawn from a
+stylesheet through a probe, verified through a markup nobody shows, is a
+board that is not what the player sees, and it is not trustworthy on the
+one browser that was crashing. So:
 
-What animates leaves the static layer. The night fire's flicker, the lit
-rings round it and the player mark's mood pulse were CSS keyframes on
-cells; on canvas they are per-frame draws on the effects layer, which
-already redraws from a model against the wall clock. The static layer
-draws nothing that moves, which is the budget the plan asked for.
+- **The palette is code.** `palette.ts` is the 140 cell rules carried over
+  one by one, with the cascade's order of precedence written out as the
+  order of the assignments. It was checked against the stylesheet before
+  the stylesheet went: every distinct look on the board, across five
+  seeds, four seasons, every rung and night, through the probe and
+  through the function, and the two agreed on all of them (the two
+  differences found were the probe's own - a remembered mark filtered
+  twice, and a fog dot drawn under the survivor's `@`). Then the cell
+  rules, the keyframes, the overlays, the shade and the tint left the
+  stylesheet: 424 lines, and no rule left that the board reads.
+- **The tests read the model.** `tests/board.ts` is the whole of the
+  helper: `board()` builds the model, `glyphsWith(b, "t-water",
+  "memory")` is what `.c.t-water.memory` used to select, `glyphOfCell`
+  finds the glyph a patch falls in at any rung. What the stylesheet used
+  to be asked - a mark keeps its colours on any ground, snow flattens the
+  relief, ice has no shallows - the palette is asked instead, and it
+  answers the same. What the DOM's z-indices used to be asked is now the
+  draw order of `updateEffects`, and the test reads that order.
+- **The overlays are drawn.** The walk line (two strokes), the herd's
+  exact-position marks at 50 m (with the 180 ms slide the old `transition`
+  gave a move), the startle cues (the 1.2 s pop, hold and rise of the old
+  keyframes, sampled against the wall clock from each cue's own start) and
+  the recoil shake are all `updateEffects` draws from the model. The
+  `--wildlife-now` write every frame and the paused-animation trick that
+  read it are gone with them.
 
-What the `.grid` element keeps: its box. Hit testing was already
-arithmetic over `getBoundingClientRect()` of the grid, the tooltip is a
-fixed panel that never positioned itself by a cell, and the board-cover
-measurement reads the same rect - so the grid stays as a sized, empty
-positioned box holding the board canvas, the route line and the few DOM
-overlays (wildlife micro-marks, startle cues) that were never cells.
-`role="grid"`, the 2,592 focusable cells and arrow-key inspection go, as
-the plan said they would; Escape stays.
+What the real-input harness found, and the DOM never would have. The plan
+had a browser harness that read a fixture world through an off-screen copy
+of the board's markup; the author's view of the game was not that, and
+said so. `scripts/e2e.mjs` plays the real game instead: seed 42 on day
+200, landed through the real controls, clicked on the board with real
+mouse events at real screen coordinates, zoomed with the real buttons,
+walked into night, screenshotted as the player sees it. Its first run
+turned up two bugs that had been in the DOM board all along:
 
-The route line stays SVG. It is one element with two polylines and it
-already draws from the model's coordinates; there is nothing to buy by
-moving it.
+- **The board sat at the top of its panel and clipped the bottom half.**
+  `.scroll-x` is a grid container whose one row track sized itself to the
+  board's 504 px, so `place-items: center` centred nothing: on a 900 px
+  window the map panel is 262 px tall, the survivor - the middle glyph -
+  was drawn on the panel's bottom edge, and every glyph under them was off
+  the screen and could not be clicked. That is the "player glyph is
+  broken" report and half of the "two clicks to walk" one: a click on the
+  visible half walked, a click aimed below it landed on the legend. One
+  declaration fixes it - `grid-template-rows: minmax(0, 1fr)` - and the
+  harness now holds the survivor to the middle third of the visible panel.
+- **The block rungs re-cut the board on every step.** `viewOrigin` put the
+  survivor's patch in the middle glyph exactly, so at 300 m the origin
+  moved one patch per step and every glyph on the board re-aggregated its
+  block one patch over: the whole board recoloured under a survivor
+  standing still in the middle of it. That is the "shimmers and jiggles
+  like crazy when I walk at 300 m" report. The origin is snapped to whole
+  glyphs now; the board holds still while the survivor crosses a block and
+  scrolls one glyph when they leave it. The harness measures it: median
+  glyph churn between origin moves is held under one percent, and a step
+  that re-reads more than five percent of the board is allowed twice in a
+  walk (a region crossing re-washes that region once).
+
+The harness is `npm run e2e` against `npm run dev`, and `docs/e2e/` is
+what it saw. `docs/map-shots/` and the `?weather-shot=` fixture mode are
+gone: the game has one way of being looked at, which is playing it.
 
 ### What the suite was actually spending
 

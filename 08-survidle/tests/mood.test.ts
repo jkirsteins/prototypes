@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
-import { mapHtml, mapKey } from "../src/ui/map";
+import { mapKey } from "../src/ui/map";
+import { board, glyphsWith } from "./board";
 import { MOOD_BY_TASK, MOODS, moodOf } from "../src/ui/mood";
 import { statsHtml } from "../src/ui/panels";
 import { updateBars } from "../src/ui/bars";
@@ -66,10 +67,10 @@ describe("the mood on the screen", () => {
     const cal = calendar(state.minute, state.startDoy);
     const ambient = ambientTemperature(cal, state.weather);
     doing(state, "chop");
-    expect(mapHtml(world, state, ui, cal)).toContain("mk-player mood-work");
+    expect(glyphsWith(board(world, state, ui, cal), "mk-player", "mood-work")).toHaveLength(1);
     expect(statsHtml(state, world, cal, ambient, ui)).toContain("stat-face mood-work");
     doing(state, "travel");
-    expect(mapHtml(world, state, ui, cal)).toContain("mk-player mood-walk");
+    expect(glyphsWith(board(world, state, ui, cal), "mk-player", "mood-walk")).toHaveLength(1);
     expect(statsHtml(state, world, cal, ambient, ui)).toContain("stat-face mood-walk");
   });
 
@@ -99,12 +100,11 @@ describe("the mood on the screen", () => {
     expect(mapKey(state, world, ui, cal)).not.toBe(working);
   });
 
-  it("carries no mood in a data attribute, which the morph would key the glyph by", () => {
+  it("carries the mood as one of the glyph's own words, where the palette and the pulse read it", () => {
     const { state, world } = newGame(17);
     doing(state, "chop");
-    // A key that changed with the task would have the morph replace the @'s node at
-    // every change of work instead of restyling it; see morphChildren in render.ts.
-    expect(mapHtml(world, state, newUiState(), calendar(state.minute, state.startDoy))).not.toContain("data-mood");
+    const you = glyphsWith(board(world, state, newUiState(), calendar(state.minute, state.startDoy)), "mk-player")[0];
+    expect(you.classes.filter((c) => c.startsWith("mood-"))).toEqual(["mood-work"]);
   });
 
   it("draws every mood it can produce, and asks for none of it under reduced motion", () => {
@@ -189,9 +189,10 @@ describe("the mood on the screen", () => {
     );
   });
 
-  it("never animates a map cell with a positional transform", () => {
-    const mapRules = css.match(/\.grid \.c[^}]*}/g)?.join("\n") ?? "";
-    expect(mapRules).not.toMatch(/transform\s*:/);
-    expect(mapRules).not.toContain("mood-step");
+  it("never animates a map glyph through the stylesheet at all", () => {
+    // The board is a canvas: there are no cell rules left to animate, and the
+    // mood's pulse is a fill the effects layer draws (map.ts, drawPulses).
+    expect(css).not.toMatch(/\.grid \.c\b/);
+    expect(css).not.toContain("mood-toil");
   });
 });
