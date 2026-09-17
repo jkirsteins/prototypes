@@ -21,7 +21,7 @@ export function formatRate(perGameHour: number, unit: string, display: RateDispl
   const real = `${num(perGameMinute)} ${unit}/s`;
   // A game hour is a real minute, so "per real min" repeats the same digits
   // in other words; the game reading stands alone.
-  return display === "real" ? `${real} (${game} in the north)` : game;
+  return display === "real" ? real : game;
 }
 
 export function loadRateDisplay(storage: Storage = localStorage): RateDisplay {
