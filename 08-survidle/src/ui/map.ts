@@ -1798,8 +1798,22 @@ interface ViewshedCache {
 let viewshedCache: ViewshedCache | null = null;
 
 /** One authoritative visibility result per displayed game minute, shared by the key and markup. */
+/**
+ * Game minutes the drawn viewshed is held for. The contrast pass behind it
+ * is the most expensive thing a frame can ask for - about 500 sight rays and
+ * ten milliseconds - and it was held for one minute, which is fine at the one
+ * scale and is not fine at all when a hurried action carries six minutes a
+ * second: six of those landed in six separate frames, and the
+ * 95th-percentile frame measured 50 ms against 17 idle. What actually
+ * changes underneath it is the air, which the map already reads in ten
+ * minute steps (weatherMinute, in mapKey), so this is the same clock. The
+ * survivor's own patch and their sight range stay in the key, so a step
+ * taken or a lamp lit still redraws the view at once.
+ */
+const VIEWSHED_HOLD_MINUTES = 10;
+
 function currentViewshed(state: GameState, world: World, cal: Calendar, cell: number): ViewshedCache {
-  const minute = Math.floor(state.minute + state.weather.elapsedMinutes);
+  const minute = Math.floor((state.minute + state.weather.elapsedMinutes) / VIEWSHED_HOLD_MINUTES);
   const range = sightRangeCells(state, world, cal, cell);
   const key = `${cell}:${minute}:${range}`;
   if (viewshedCache?.state === state && viewshedCache.world === world && viewshedCache.key === key) return viewshedCache;
