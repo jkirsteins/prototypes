@@ -1592,9 +1592,8 @@ function cellKnowledge(state: GameState, world: World, x: number, y: number): { 
 
 /**
  * A block reads as known only once more than half its sampled patches are -
- * ties go to fog. A corridor one patch wide fills at most a couple of a
- * block's nine samples, so it stays fog at this rung and only reads as a
- * thread at the closer ones, where a glyph is one patch and cannot blur.
+ * ties read as partial ground if any patches are known. Close rungs read
+ * every patch, so a thin explored corridor cannot fall between samples.
  */
 const BLOCK_MAJORITY = 0.5;
 
@@ -1626,7 +1625,7 @@ export function dominantByPriority(counts: Record<Terrain, number>): Terrain {
  * would fill chunks across the whole screen at the wide rungs, to draw fog.
  */
 function glyphGround(state: GameState, world: World, visible: Set<number> | null, x0: number, y0: number, z: number): GlyphGround {
-  const step = Math.max(1, Math.floor(z / 3));
+  const step = z <= 6 ? 1 : Math.max(1, Math.floor(z / 3));
   const knowledge: KnowledgeComposition = { samples: 0, visible: 0, remembered: 0, inherited: 0, unknown: 0, far: 0 };
   let knownAny = 0;
   let knownBright = 0;

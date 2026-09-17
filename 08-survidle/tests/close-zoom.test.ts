@@ -14,6 +14,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
+import { newKnowledge } from "../src/sim/fineknowledge";
 import { newGame } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
 import { DEFAULT_ZOOM, glyphSummary, LEVELS, levelAt, mapBoardHtml, mapTargetAtPoint, terrainComposition, viewOrigin, ZOOMS, zoomLabel } from "../src/ui/map";
@@ -66,6 +67,25 @@ function blockNear(world: World, state: GameState, ui: UiState) {
 }
 
 describe("the zoom ladder", () => {
+  it("draws every known patch position in a 300m block, without generating unknown ground", () => {
+    const { state, world } = newGame(21);
+    const ui = open(2);
+    const first = board(world, state, ui, CAL);
+    const target = first.glyphs.find((g) => g.classes.includes("fog") && g.mapCell !== null && !g.classes.includes("void"))!;
+    const x0 = first.x0 + target.gx * 6;
+    const y0 = first.y0 + target.gy * 6;
+    for (let y = 0; y < 6; y++) {
+      for (let x = 0; x < 6; x++) {
+        state.knowledge = newKnowledge();
+        markKnown(state, (y0 + y) * world.w + x0 + x);
+        const before = world.fineChunkBuilds;
+        const g = board(world, state, ui, CAL).glyphs[target.gy * first.cols + target.gx];
+        expect(g.classes, `known patch ${x},${y}`).toContain("part");
+        expect(g.classes).not.toContain("fog");
+        expect(world.fineChunkBuilds).toBe(before);
+      }
+    }
+  });
   it("counts real patches per glyph and nothing else", () => {
     expect(ZOOMS.slice(0, 5)).toEqual([1, 2, 6, 18, 54]);
     expect(LEVELS.slice(0, 5).every((l) => l.w === 72 && l.h === 36)).toBe(true);
