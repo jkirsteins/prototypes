@@ -2,7 +2,7 @@ import { dayNumber } from "./calendar";
 import { qty } from "./inventory";
 import { type FoodId, RECIPES } from "./items";
 import {
-  allOpportunityDefs, catalogOpportunityDef, DAY_ONE_CAPABILITY_KEYS, eventDiscoveryKeys,
+  allOpportunityDefs, catalogOpportunityDef, DAY_ONE_CAPABILITY_KEYS, eventDiscoveryKeys, settleCurrent,
   OPPORTUNITY_GROUPS, registerAuthoredOpportunityDefs, SEASONS,
 } from "./opportunity-catalog";
 import { straightKm } from "./position";
@@ -244,7 +244,10 @@ export function dismissOpportunityPresentation(state: GameState, noticeId: strin
   if (index < 0) return false;
   if (selected !== null && (selected === opportunities.current || !opportunities.notices[index].discovered.includes(selected)
     || !opportunityDef(selected) || !setCurrentOpportunity(opportunities, selected))) return false;
-  opportunities.notices.splice(index, 1);
+  const [notice] = opportunities.notices.splice(index, 1);
+  // OK without a choice is not "none of these": the first offered goal
+  // stands, so the card never reads empty beside a goal just announced.
+  if (selected === null) settleCurrent(opportunities, notice.discovered);
   return true;
 }
 
@@ -321,10 +324,12 @@ export function applyOpportunityEvent(
   for (const key of discoveryKeys) {
     if (discoverOpportunity(state, key, minute, false)) result.discovered.push(key);
   }
+  // One arrival is the answer; several are a choice the notice offers, and
+  // the choice left unmade settles when the notice is dismissed. Nothing
+  // arriving, the spine's next open goal steps forward.
   if (state.current !== null && state.completedAt[state.current] !== undefined) state.current = null;
-  // The one thing newly worth doing becomes current; FYIs are told, not done, so they do not count.
   const doable = result.discovered.filter((key) => !opportunityDef(key)?.fyi);
-  if (state.current === null && doable.length === 1) setCurrentOpportunity(state, doable[0]);
+  if (doable.length <= 1) settleCurrent(state, doable);
   for (const group of OPPORTUNITY_GROUPS) {
     // A group of nothing but FYIs - the seasons - is never an achievement.
     if (group.keys.every((key) => opportunityDef(key)?.fyi)) continue;

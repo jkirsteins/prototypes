@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
-import { discoverAvailableOpportunities, isOpportunityComplete, isOpportunityDiscovered, opportunityDef, recordOpportunityEvent, setCurrentOpportunity } from "../src/sim/opportunities";
+import { discoverAvailableOpportunities, dismissOpportunityPresentation, isOpportunityComplete, isOpportunityDiscovered, opportunityDef, recordOpportunityEvent, setCurrentOpportunity } from "../src/sim/opportunities";
 import { cellOf } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import type { TaskId } from "../src/sim/types";
@@ -78,5 +78,26 @@ describe("an FYI left open by an older save", () => {
     expect(announced).not.toEqual(expect.arrayContaining(["season:spring"]));
     expect(announced).not.toContain("seasons");
     expect(isOpportunityComplete(state.opportunities, "season:spring")).toBe(true);
+  });
+});
+
+describe("something open is current whenever something open exists", () => {
+  /**
+   * The fire and the firewood arrive together after the pit: a choice the
+   * notice offers. OK without choosing settles on the first; when the
+   * firewood is done the fire steps forward. The card never says "No
+   * current opportunity" beside a half-ticked goal.
+   */
+  it("settles an unmade choice on the first offered goal, and steps the next open goal forward on completion", () => {
+    const { state } = camped();
+    recordOpportunityEvent(state, { kind: "built", structure: "firePit" });
+    const notice = state.opportunities.notices.at(-1)!;
+    expect(notice.discovered).toEqual(expect.arrayContaining(["firewood", "fire"]));
+    expect(state.opportunities.current).toBeNull();
+    expect(dismissOpportunityPresentation(state, notice.id, null)).toBe(true);
+    expect(state.opportunities.current).toBe("firewood");
+    for (let i = 0; i < 10; i++) recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: 1 });
+    expect(isOpportunityComplete(state.opportunities, "firewood")).toBe(true);
+    expect(state.opportunities.current).toBe("fire");
   });
 });

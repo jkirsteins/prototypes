@@ -1350,7 +1350,10 @@ function drawPulses(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: n
     const x = g.gx * model.px;
     const y = g.gy * model.line;
     if (cls.includes("mk-player")) {
-      const mood = cls.includes("mood-walk") ? PULSE.walk : cls.includes("mood-work") ? PULSE.work : null;
+      // At night the fire under the survivor's feet outranks their mood:
+      // the flicker or the coals' breath, and the @ over it.
+      const fire = board.night ? cls.includes("at-fire") ? PULSE.fire : cls.includes("at-coals") ? PULSE.coals : null : null;
+      const mood = fire ?? (cls.includes("mood-walk") ? PULSE.walk : cls.includes("mood-work") ? PULSE.work : null);
       if (!mood) continue;
       ctx.globalAlpha = 1;
       ctx.fillStyle = mix(mood.a, mood.b, breath(t, mood.periodS));
@@ -2018,6 +2021,13 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
   const destinationGlyph = ui.destination === null ? -1 : toGlyph(ui.destination);
   const playerGlyph = toGlyph(playerCell);
   addFeature(playerGlyph, "you");
+  // The survivor's mark takes the cell, but a fire under their feet is
+  // still a fire: the cell carries it as a class, so the static layer keeps
+  // the fire's ground under the @ and the night flicker draws through it.
+  // Standing at camp is where a survivor spends most of the early game;
+  // without this the fire they lit is never seen burning.
+  const under = markerAt.get(playerGlyph);
+  const atFire = under === MARKS.fire ? "at-fire" : under === MARKS.coals ? "at-coals" : null;
   markerAt.set(playerGlyph, MARKS.you);
   // A glyph one patch across carries the herd's exact metre position instead
   // (animalMarkup below), so only the block rungs put a letter on the glyph.
@@ -2359,7 +2369,10 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
       // The mood rides as a class and not as a data attribute: the morph keys an
       // element by its data attributes, so a mood written there would make every
       // change of task replace the glyph's node instead of retitling it.
-      if (m.cls === "mk-player") cls.push(`mood-${moodOf(state)}`);
+      if (m.cls === "mk-player") {
+        cls.push(`mood-${moodOf(state)}`);
+        if (atFire) cls.push(atFire);
+      }
       glyph = m.glyph;
     } else {
       const animal = animalAt.get(i)?.[0];

@@ -315,6 +315,29 @@ describe("the map's compositing layers", () => {
     expect(b.marks.some((m) => m.id === animal.id)).toBe(true);
   });
 
+  it.each([["fire", "at-fire"], ["coals", "at-coals"]] as const)("keeps the %s under the survivor standing at it", (kind, cls) => {
+    // The survivor's mark takes the camp cell; the fire under their feet
+    // rides as a class, so the ground keeps the fire's colour and the night
+    // pulse draws it (map.ts, drawPulses; palette.ts, at-fire).
+    const { state, world } = newGame(79);
+    const ui = newUiState();
+    ui.zoom = 0;
+    mapRegion(state, world, state.player.region);
+    const region = state.regions[state.player.region];
+    region.campCell = cellOf(state, world);
+    region.fire.lit = kind === "fire";
+    region.fire.embers = kind === "coals" ? 60 : 0;
+    const b = board(world, state, ui, calendar(state.minute, state.startDoy));
+    const you = glyphsWith(b, "mk-player")[0];
+    expect(you.classes).toContain(cls);
+    expect(glyphsWith(b, `mk-${kind}`)).toHaveLength(0);
+    const grid = { season: b.season, night: b.night };
+    expect(glyphStyle(grid, you.classes).bg).toBe(glyphStyle(grid, ["c", "mk", `mk-${kind}`]).bg);
+    const source = readFileSync("src/ui/map.ts", "utf8");
+    const pulses = source.slice(source.indexOf("function drawPulses("), source.indexOf("function drawGlyphOver("));
+    expect(pulses).toContain(`cls.includes("${cls}")`);
+  });
+
   it("keeps night firelight and active survivor marks animated above the weather", () => {
     // The flicker, the coals' breath and the mood's pulse are fills the
     // effects layer draws each frame (map.ts, drawPulses), over the weather.

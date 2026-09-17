@@ -231,6 +231,9 @@ export function glyphStyle(grid: GridLook, tokens: readonly string[]): GlyphStyl
       if (colour) bg = WILDLIFE_BG[Number(colour.slice(9))] ?? bg;
     }
     if (has("mk-player") && has("mood-sleep")) bg = "#7d5c08";
+    // The survivor standing at their fire: the fire's ground under the @.
+    if (has("mk-player") && has("at-fire")) bg = MARK["mk-fire"].bg;
+    if (has("mk-player") && has("at-coals")) bg = MARK["mk-coals"].bg;
     if (grid.night) {
       if (has("mk-fire")) {
         bg = NIGHT_FIRE_BG;

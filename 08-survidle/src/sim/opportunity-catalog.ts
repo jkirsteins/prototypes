@@ -145,6 +145,33 @@ export function catalogOpportunityDef(key: OpportunityKey): OpportunityDef | und
  * something that just happened: it neither presents nor takes the current
  * leaf, since there was no moment for the player to answer.
  */
+/** Discovered, not done, and something to do rather than something told. */
+const openGoal = (state: OpportunityState, key: OpportunityKey): boolean =>
+  state.discoveredAt[key] !== undefined && state.completedAt[key] === undefined && DEFS.has(key) && !DEFS.get(key)?.fyi;
+
+/**
+ * Something open is current whenever something open exists.
+ *
+ * Current used to be set only when exactly one new goal arrived, so two
+ * arriving together - the fire and the firewood, both after the pit - left
+ * it empty once the first was done: "No current opportunity" beside a
+ * half-ticked "Light a fire". A goal the player is being offered right now
+ * (`prefer`: the discoveries of a notice) steps forward first; failing
+ * that, the authored spine's earliest open goal, since that is the order
+ * the run was written in; failing that, the oldest open goal from the
+ * catalogue. The player can still choose another from the catalogue.
+ */
+export function settleCurrent(state: OpportunityState, prefer: readonly OpportunityKey[] = []): void {
+  if (state.current !== null && state.completedAt[state.current] === undefined) return;
+  const offered = prefer.filter((key) => openGoal(state, key));
+  const authored = AUTHORED_OPPORTUNITIES.map((def) => def.key).filter((key) => openGoal(state, key));
+  const collected = (Object.keys(state.discoveredAt) as OpportunityKey[])
+    .filter((key) => openGoal(state, key))
+    .sort((a, b) => (state.discoveredAt[a] ?? 0) - (state.discoveredAt[b] ?? 0));
+  state.current = offered[0] ?? authored[0] ?? collected[0] ?? null;
+  if (state.current) state.lastCategory = DEFS.get(state.current)?.category ?? state.lastCategory;
+}
+
 export function discoverMany(state: OpportunityState, keys: readonly OpportunityKey[], minute: number, announce = true): OpportunityKey[] {
   const discovered: OpportunityKey[] = [];
   for (const key of keys) {
@@ -155,11 +182,10 @@ export function discoverMany(state: OpportunityState, keys: readonly Opportunity
     discovered.push(key);
   }
   if (!announce) return discovered;
+  // One arrival is the answer; several are a choice the notice offers, and
+  // the choice left unmade settles when the notice is dismissed.
   const doable = discovered.filter((key) => !DEFS.get(key)?.fyi);
-  if (state.current === null && doable.length === 1) {
-    state.current = doable[0];
-    state.lastCategory = DEFS.get(doable[0])?.category ?? state.lastCategory;
-  }
+  if (doable.length === 1) settleCurrent(state, doable);
   if (discovered.length) state.notices.push({ id: `${minute}:${state.nextNoticeId++}`, minute, completed: [], completedGroups: [], discovered, messages: [] });
   return discovered;
 }
