@@ -640,7 +640,19 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
     : hasEmbers(st.fire)
       ? '<span class="ember">coals</span>'
       : '<span class="dim">cold</span>';
-  const fire = site?.structures.firePit ? `<div>fire: ${fireWord}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}` : "";
+  // An empty pit beside a full woodpile read as a bug: "53 kg of wood, why
+  // is fuel 0?". Fuel is what has been laid in the pit, the pile is what
+  // waits beside it, and the line between them says which step is missing.
+  const dryInPile = campPile ? qty(campPile, "firewood") : 0;
+  const wetInPile = campPile ? qty(campPile, "wetFirewood") : 0;
+  const pitHint = !site?.structures.firePit || st.fire.fuelKg > 1e-9
+    ? ""
+    : dryInPile > 1e-9
+      ? `<div class="dim">nothing laid in the pit yet: ${dryInPile.toFixed(1)} kg dry in the pile - Fuel the fire site</div>`
+      : wetInPile > 1e-9
+        ? `<div class="dim">nothing laid in the pit: the pile is all wet, and wet wood dries by a lit fire or under a roof</div>`
+        : "";
+  const fire = site?.structures.firePit ? `<div>fire: ${fireWord}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}${pitHint}` : "";
   const rack = site?.structures.dryingRack
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
