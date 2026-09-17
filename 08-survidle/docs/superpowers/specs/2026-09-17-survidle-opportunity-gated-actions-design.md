@@ -266,6 +266,33 @@ one, or that eighteen rows on day 1 is the right number rather than twelve
 or thirty. Pacing is a playtest finding, and this spec does not pretend
 otherwise.
 
+## 4a. The graph walk never runs in the game
+
+The transitive resolution in section 4 is **test-time only**. It walks
+`RECIPES`, `STRUCTURES` and the gather-yield table, all of which are
+static module data, and it runs in vitest. It must never run in a tick,
+in `render()`, or behind a click.
+
+What runtime does instead, per row, per draw:
+
+```ts
+const key = REVEAL[rowKey(id, arg)];        // object lookup
+if (key && !state.revealed.has(key)) return; // Set.has
+```
+
+One object lookup and one `Set.has`. `state.revealed` is a `Set` on the
+save, written only when an opportunity is discovered, which is already an
+event-driven moment and not a per-tick one.
+
+This is a hard constraint, not a preference. The Do pane redraws
+constantly and the repo already gates that with `tests/churn.test.ts` and
+the budget suites. A fourth test holds the line:
+
+**`tests/reveal.test.ts`, no walking at runtime.** Neither the graph
+resolver nor `RECIPES`/`STRUCTURES` traversal is reachable from
+`dopanel.ts` or `render.ts`. The resolver lives in a test-only module so
+importing it from UI code is a lint and type error, not a review catch.
+
 ## 5. The need chips
 
 The verb tree cannot answer "I am cold". Measured over `VOCABULARY` in
