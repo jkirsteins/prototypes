@@ -56,7 +56,7 @@ Files: src/sim/sight.ts, src/ui/dopanel.ts, tests/sight.test.ts, tests/search-bu
 
 ## Task 5: Budgets, ownership and final validation
 
-Files: tests/frame-budget.test.ts, src/ui/mapcanvas.ts, scripts/e2e.mjs, docs/testing.md.
+Files: tests/mapcanvas-budget.test.ts, src/ui/mapcanvas.ts, scripts/e2e.mjs, docs/performance-playtest-2026-09-17.md.
 
 - [ ] Audit latest wall-clock viewshed bounds and enforce static draw no-op across animation-only frames, with redraw on changed keys/DPR.
 - [ ] Audit solved-world and fine-cache ownership; document actual duplication and safe next steps instead of speculative transfer.
@@ -65,6 +65,6 @@ Files: tests/frame-budget.test.ts, src/ui/mapcanvas.ts, scripts/e2e.mjs, docs/te
 
 ## Execution record
 
-Tasks 1-4 implemented, tested and pushed in separate commits. Task 5's static draw budget and worker ownership audit are implemented; eager forecast allocation, old solved-seed caches and strong old-game search retention were fixed. Browser playthrough passed, then an additional keyboard-under-loading regression exposed a missing input guard; its fix is being verified. Final results and explicit unimplemented architecture work are recorded in `docs/performance-playtest-2026-09-17.md`.
+Tasks 1-4 implemented, tested and pushed in separate commits. Task 5's static draw budget and worker ownership audit are implemented; eager forecast allocation, old solved-seed caches and strong old-game search retention were fixed. Browser playthrough passed, then an additional keyboard-under-loading regression exposed a missing input guard; the guard and final browser playthrough now pass. Results and explicit unimplemented architecture work are recorded in `docs/performance-playtest-2026-09-17.md`.
 
-Full fast rerun is running after repairing the pre-existing weather-projection test's cache assumptions. The full slow suite is running and has failures; selected UI/wildlife/delivery failures reproduce in an isolated worktree at the pulled baseline. Safari automation is blocked by unavailable Computer Use permissions. No integration-green or Safari-memory claim is made.
+Full fast rerun passed all 1267 tests across 134 files after repairing the pre-existing weather-projection test's cache assumptions. The final production build passed. The full slow suite is running and has failures; selected UI/wildlife/delivery failures reproduce in an isolated worktree at the pulled baseline. Additional body/save/task failures have not yet been baseline-classified. Safari automation is blocked by unavailable Computer Use permissions. No integration-green or Safari-memory claim is made.
