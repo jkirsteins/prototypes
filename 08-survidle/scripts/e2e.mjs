@@ -218,6 +218,7 @@ async function main() {
     }
     if (chromeError) throw chromeError;
     const { send, evalJs, errors } = await cdp("about:blank");
+    await send("Page.enable");
     await send("Page.addScriptToEvaluateOnNewDocument", { source: `
       window.startupCheck = { covered: 0, partial: 0 };
       function checkStartupFrame() {
