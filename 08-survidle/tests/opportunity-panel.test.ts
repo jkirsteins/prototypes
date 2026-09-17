@@ -20,7 +20,9 @@ it("opens title and checklist with one keyboard button and reads stored progress
   setCurrentOpportunity(state.opportunities, "fire");
   recordOpportunityEvent(state, { kind: "built", structure: "firePit" });
   document.body.innerHTML = opportunityPanelHtml(state);
-  const button = document.querySelector<HTMLButtonElement>('[data-act="opportunity-detail"]')!;
+  // The card goes to the row its opportunity is asking for. It used to open
+  // the catalogue, which left the player to find the row themselves.
+  const button = document.querySelector<HTMLButtonElement>('[data-act="opportunity-goto"]')!;
   expect(button.tagName).toBe("BUTTON");
   expect(button.dataset.opportunity).toBe("fire");
   expect(button.textContent).toContain("[x] Build the fire site");

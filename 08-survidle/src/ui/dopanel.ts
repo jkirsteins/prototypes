@@ -19,7 +19,8 @@ import { shoppingTarget } from "../sim/shopping";
 import { regionAt, type RegionDef, type World } from "../world/gen";
 import { masteryLine } from "./panels";
 import { purposesHtml } from "./panes";
-import { PURPOSES, purposeOf, subtabOf } from "./purpose";
+import { isOpportunityDiscovered } from "../sim/opportunities";
+import { PURPOSES, purposeOf, revealOf, subtabOf } from "./purpose";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
 import { formatTravel } from "./travel";
 
@@ -584,6 +585,10 @@ function searchRows(state: GameState, world: World, cal: Calendar, ui: UiState):
   return intentGroups(regionAt(world, state.player.region)).flatMap((g) => {
     const candidates = {
       ...g, items: g.items.filter(({ id, arg }) => {
+        // Search reaches only what the run has revealed, like the panes do.
+        // A filter that found a row the panel will not draw would be a way
+        // back to the wall of refusals this gate removes.
+        if (!revealed(state, id, arg)) return false;
         if (concept !== null) return conceptsFor(id, arg).includes(concept);
         // groupRows rewrites region survey labels after the task check.
         if (id === "explore" && arg?.startsWith("region:")) return true;
@@ -636,10 +641,28 @@ function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState):
  * those choices undiscoverable. What a player cannot do yet still shows,
  * and says why.
  */
+/**
+ * Whether the run has revealed this row.
+ *
+ * Two object lookups, and that is deliberate: this is asked of every
+ * candidate on every draw. `REVEAL` is a static table and `discoveredAt` is
+ * a plain record on the save, so nothing here walks a dependency graph.
+ * The walk that proves the table honest lives in `tests/reveal-graph.ts`
+ * and never ships - `tests/reveal.test.ts` holds it to that.
+ *
+ * A row no table names draws, rather than vanishing: a missing entry is a
+ * fault the coverage test reports, not a row the player silently loses.
+ */
+function revealed(state: GameState, id: TaskId, arg?: string): boolean {
+  const key = revealOf(id, arg);
+  return key === null || isOpportunityDiscovered(state.opportunities, key);
+}
+
 function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
   const currentRegion = `region:${state.player.region}`;
   const wanted = intentGroups(regionAt(world, state.player.region))
     .flatMap((g) => g.items)
+    .filter((i) => revealed(state, i.id, i.arg))
     .filter((i) => subtabOf(i.id, i.arg) === ui.panes.subtab && purposeOf(i.id, i.arg) === ui.panes.purpose)
     .filter((i) => i.id !== "chop" || !i.arg || ui.specific.trees)
     .filter((i) => i.id !== "fish" || i.arg === "any" || ui.specific.fish)
@@ -652,6 +675,7 @@ export function purposeCounts(state: GameState, world: World, ui: UiState): Reco
   const counts: Record<string, number> = {};
   for (const q of PURPOSES[ui.panes.subtab]) counts[q] = 0;
   for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
+    if (!revealed(state, i.id, i.arg)) continue;
     if (subtabOf(i.id, i.arg) !== ui.panes.subtab) continue;
     if (i.id === "chop" && i.arg && !ui.specific.trees) continue;
     if (i.id === "fish" && i.arg !== "any" && !ui.specific.fish) continue;

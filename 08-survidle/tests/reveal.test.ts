@@ -10,18 +10,18 @@
  * a row that no opportunity reveals is an action no run can reach, and
  * nobody would notice until a player went looking for it.
  *
- * This first pass only measures. It prints the gap so the opportunities
- * that still have to be authored name themselves, and asserts nothing
- * about REVEAL, which does not exist yet.
+ * The graph walk these use lives in `tests/reveal-graph.ts` and must never
+ * be imported by `src/`. The game's gate is two object lookups; proving the
+ * table honest is a question asked once here, not sixty times a second.
  */
 import { describe, expect, it } from "vitest";
-import { RECIPE_IDS, RECIPES, STRUCTURE_IDS } from "../src/sim/items";
+import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { DAY_ONE_CAPABILITY_KEYS } from "../src/sim/opportunity-catalog";
+import { allOpportunityDefs } from "../src/sim/opportunity-catalog";
 import { fishSpecies, huntedLand } from "../src/sim/species";
 import type { OpportunityKey, TaskId } from "../src/sim/types";
 import { intentGroups } from "../src/ui/dopanel";
-import { rowKey } from "../src/ui/purpose";
+import { revealOf, rowKey } from "../src/ui/purpose";
 import { regionAt } from "../src/world/gen";
 import { producers, requirementsOf } from "./reveal-graph";
 
@@ -61,65 +61,114 @@ function everyRow(): Row[] {
   return rows;
 }
 
+const ROWS = everyRow();
+
 /** The keys a fresh world hands over before the player has done anything. */
 function dayOneKeys(): Set<OpportunityKey> {
   const { state } = newGame(21);
   return new Set(Object.keys(state.opportunities.discoveredAt) as OpportunityKey[]);
 }
 
-describe("the opportunity gap", () => {
-  const rows = everyRow();
-
+describe("every Do row is revealed by exactly one opportunity", () => {
   it("finds rows at all, so an empty pass cannot read as a pass", () => {
-    expect(rows.length).toBeGreaterThan(40);
+    expect(ROWS.length).toBeGreaterThan(40);
   });
 
-  it("reports which rows a minute-0 opportunity would fail to gate", () => {
-    const seeded = dayOneKeys();
-    const dayOne = new Set<OpportunityKey>([...DAY_ONE_CAPABILITY_KEYS, ...seeded]);
-
-    // A make: or build: key exists for these rows today, so they are the
-    // ones REVEAL would naturally name - and every one of them is already
-    // discovered before the player has done anything.
-    const defeated = rows
-      .filter((r) => r.id === "craft" || r.id === "build")
-      .map((r) => ({ row: rowKey(r.id, r.arg), key: naturalKey(r) }))
-      .filter((r) => r.key !== null && dayOne.has(r.key));
-
-    const uncovered = rows
-      .filter((r) => r.id === "craft" || r.id === "build")
-      .map((r) => ({ row: rowKey(r.id, r.arg), key: naturalKey(r) }))
-      .filter((r) => r.key === null || !dayOne.has(r.key));
-
-    console.log(`day-one keys seeded: ${dayOne.size}`);
-    console.log(`rows a minute-0 key would fail to gate (${defeated.length}):`);
-    console.log(`  ${defeated.map((d) => d.row).join(", ")}`);
-    console.log(`craft/build rows with no natural key (${uncovered.length}):`);
-    console.log(`  ${uncovered.map((d) => d.row).join(", ")}`);
-    expect(rows.length).toBeGreaterThan(0);
+  it("no row is unreachable", () => {
+    const unreachable = ROWS.filter((r) => revealOf(r.id, r.arg) === null).map((r) => rowKey(r.id, r.arg));
+    expect(unreachable).toEqual([]);
   });
 
-  it("reports rows whose needs no action produces", () => {
-    const made = producers();
-    const orphans: string[] = [];
-    for (const r of rows) {
-      const { items, tools } = requirementsOf(r.id, r.arg);
-      for (const need of [...items, ...tools]) {
-        if (!made.has(need)) orphans.push(`${rowKey(r.id, r.arg)} needs ${need}`);
-      }
-    }
-    console.log(`requirements no action produces (${orphans.length}):`);
-    console.log(`  ${orphans.join("\n  ") || "none"}`);
-    expect(orphans).toEqual([]);
+  it("names only opportunities that exist", () => {
+    const known = new Set(allOpportunityDefs().map((d) => d.key));
+    const dangling = ROWS
+      .map((r) => ({ row: rowKey(r.id, r.arg), key: revealOf(r.id, r.arg) }))
+      .filter((r) => r.key !== null && !known.has(r.key))
+      .map((r) => `${r.row} -> ${r.key}`);
+    expect(dangling).toEqual([]);
   });
 });
 
-/** The `make:`/`build:` key a craft or build row would naturally be revealed by, if one exists. */
-function naturalKey(r: Row): OpportunityKey | null {
-  if (r.id === "build" && r.arg) return `build:${r.arg}` as OpportunityKey;
-  if (r.id === "craft" && r.arg) {
-    const out = RECIPES[r.arg as keyof typeof RECIPES]?.out.item;
-    return out ? (`make:${out}` as OpportunityKey) : null;
-  }
-  return null;
-}
+describe("a revealed row's blocks name only things revealed no later", () => {
+  /**
+   * What a test can actually prove here, and what it cannot.
+   *
+   * It cannot prove ordering in time. A reveal condition is a predicate
+   * over world state - stone in the pack, a camp sited, an animal seen -
+   * and no walk over static tables can say which predicate comes true
+   * first. Whether eighteen rows on day 1 is the right number, and whether
+   * they arrive in a good order, is a playtest question.
+   *
+   * What it can prove is that the graph has no cycle. If making a knife
+   * needs cordage, and cordage were revealed only by something needing a
+   * knife, no player could ever start: a door with its own key locked
+   * inside. That is a deadlock, it is structural, and it is exactly the
+   * kind of thing that survives review and dies in a playtest.
+   */
+  it("has no cycle, so no key is locked inside its own door", () => {
+    const made = producers();
+
+    /** Which reveal keys a key depends on: what its rows need, and who makes that. */
+    const dependsOn = new Map<OpportunityKey, Set<OpportunityKey>>();
+    for (const r of ROWS) {
+      const key = revealOf(r.id, r.arg);
+      if (key === null) continue;
+      const edges = dependsOn.get(key) ?? new Set<OpportunityKey>();
+      const { items, tools } = requirementsOf(r.id, r.arg);
+      for (const need of [...items, ...tools]) {
+        for (const source of made.get(need) ?? []) {
+          const sourceKey = REVEAL_BY_ROW.get(source) ?? null;
+          if (sourceKey !== null && sourceKey !== key) edges.add(sourceKey);
+        }
+      }
+      dependsOn.set(key, edges);
+    }
+
+    const cycles: string[] = [];
+    const state = new Map<OpportunityKey, "open" | "done">();
+    const walk = (key: OpportunityKey, trail: OpportunityKey[]): void => {
+      if (state.get(key) === "done") return;
+      if (state.get(key) === "open") {
+        cycles.push([...trail.slice(trail.indexOf(key)), key].join(" -> "));
+        return;
+      }
+      state.set(key, "open");
+      for (const next of dependsOn.get(key) ?? []) walk(next, [...trail, key]);
+      state.set(key, "done");
+    };
+    for (const key of dependsOn.keys()) walk(key, []);
+
+    expect(cycles).toEqual([]);
+  });
+
+  it("reveals every row with a key the world can actually hand over", () => {
+    // Every key either arrives with the landing or is one some condition in
+    // knownCapabilityOpportunityKeys can reach. A key nothing seeds and no
+    // condition names would strand every row it reveals.
+    const dayOne = dayOneKeys();
+    const known = new Set(allOpportunityDefs().map((d) => d.key));
+    const stranded = [...new Set(ROWS.map((r) => revealOf(r.id, r.arg)))]
+      .filter((key): key is OpportunityKey => key !== null)
+      .filter((key) => !dayOne.has(key) && !known.has(key));
+    expect(stranded).toEqual([]);
+  });
+});
+
+/** Every row's reveal key, by row, so the walk above can ask about a producer it found. */
+const REVEAL_BY_ROW = new Map<string, OpportunityKey | null>(
+  ROWS.map((r) => [rowKey(r.id, r.arg), revealOf(r.id, r.arg)]),
+);
+
+describe("the graph walk never ships", () => {
+  it("is not imported by the UI", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    for (const file of ["src/ui/dopanel.ts", "src/ui/render.ts", "src/ui/purpose.ts", "src/ui/panes.ts"]) {
+      const text = readFileSync(resolve(process.cwd(), file), "utf8");
+      // An import, not a mention: dopanel.ts names the helper in a comment
+      // saying precisely that it must never import it.
+      expect(text).not.toMatch(/^\s*import[^\n]*reveal-graph/m);
+      expect(text).not.toMatch(/require\([^)]*reveal-graph/);
+    }
+  });
+});

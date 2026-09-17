@@ -1,7 +1,7 @@
 import { cellAt, neighbours, waterKindOf, type World } from "../world/gen";
 import { knownPatches } from "./fineknowledge";
 import type { Calendar } from "./calendar";
-import { STRUCTURES, TOOLS, type FoodId } from "./items";
+import { RECIPES, STRUCTURES, TOOLS, type FoodId } from "./items";
 import { SPECIES_DEFS, type Species } from "./species";
 import type {
   GameState, ItemId, OpportunityCategory, OpportunityDef, OpportunityEvent,
@@ -16,6 +16,22 @@ export const SUPPORTED_FISH_SPECIES = ["perch", "roach", "pike", "whitefish", "c
 export const SUPPORTED_FORAGE_FOODS = ["berries", "eggs", "barkFlour", "cookedRoots", "seaweed"] as const satisfies readonly FoodId[];
 export const SUPPORTED_SHELTER_STRUCTURES = ["leanTo", "cabin", "boughBed", "turfHut", "snowShelter"] as const satisfies readonly StructureId[];
 export const SUPPORTED_TOOL_RECIPES = ["knife", "fireDrill", "bow", "fishingSpear", "needle", "stoneAxe", "flakedAxe", "whetstone", "barkBucket", "waterskin"] as const satisfies readonly RecipeId[];
+
+/**
+ * The recipes that are not tools but are still Do rows, so they still need
+ * an opportunity to reveal them. Cordage and a torch are handwork, wedges
+ * and arrows are consumables, and the six clothing recipes are what a hide
+ * becomes. Keyed `make:<recipe>` like the tools; the tool keys are recipe
+ * ids too, since TOOL_RECIPE is an identity map.
+ */
+export const SUPPORTED_CRAFT_RECIPES = ["cordage", "torch", "arrows", "snare", "wedges", "basketTrap", "hideCoat", "hideTrousers", "hideBoots", "furHat", "furMittens", "hideBlanket"] as const satisfies readonly RecipeId[];
+
+/**
+ * The structures a camp is made of rather than sheltered by. The five in
+ * SUPPORTED_SHELTER_STRUCTURES are roofs; these are the fire site, the
+ * woodshed, the rack, the snare, the seep and the trough.
+ */
+export const SUPPORTED_CAMP_STRUCTURES = ["firePit", "vedbod", "dryingRack", "snare", "seep", "waterStore"] as const satisfies readonly StructureId[];
 const SUPPORTED_FISH_SET = new Set<Species>(SUPPORTED_FISH_SPECIES);
 
 const TOOL_RECIPE: Record<(typeof SUPPORTED_TOOL_RECIPES)[number], ToolId> = {
@@ -47,7 +63,9 @@ const dressKeys = () => SUPPORTED_WILDLIFE_SPECIES.map((species) => `dress:${spe
 const recoverKeys = () => SUPPORTED_WILDLIFE_SPECIES.map((species) => `recover:${species}` as OpportunityKey);
 const forageKeys = () => SUPPORTED_FORAGE_FOODS.map((food) => `forage:${food}` as OpportunityKey);
 const shelterKeys = () => SUPPORTED_SHELTER_STRUCTURES.map((structure) => `build:${structure}` as OpportunityKey);
+const campStructureKeys = () => SUPPORTED_CAMP_STRUCTURES.map((structure) => `build:${structure}` as OpportunityKey);
 const toolKeys = () => SUPPORTED_TOOL_RECIPES.map((recipe) => `make:${TOOL_RECIPE[recipe]}` as OpportunityKey);
+const craftKeys = () => SUPPORTED_CRAFT_RECIPES.map((recipe) => `make:${recipe}` as OpportunityKey);
 const seasonKeys = () => SEASONS.map((season) => `season:${season}` as OpportunityKey);
 
 export const OPPORTUNITY_CATEGORIES: OpportunityCategory[] = ["survival", "camp", "food", "wildlife", "weather", "exploration", "mastery"];
@@ -60,7 +78,9 @@ export const OPPORTUNITY_GROUPS: OpportunityGroupDef[] = [
   { id: "trap-fish", title: "Trap fish", category: "food", keys: fishKeys("trap") },
   { id: "forage-foods", title: "Forage foods", category: "food", keys: forageKeys() },
   { id: "build-shelters", title: "Build shelters", category: "camp", keys: shelterKeys() },
+  { id: "build-camp", title: "Build up a camp", category: "camp", keys: campStructureKeys() },
   { id: "make-tools", title: "Make tools", category: "mastery", keys: toolKeys() },
+  { id: "make-craft", title: "Make cordage, clothing and tackle", category: "mastery", keys: craftKeys() },
   { id: "seasons", title: "Seasons", category: "exploration", keys: seasonKeys() },
 ];
 
@@ -85,6 +105,16 @@ const COLLECTION_OPPORTUNITIES: OpportunityDef[] = [
     const tool = TOOL_RECIPE[recipe];
     return { key: `make:${tool}`, title: `Make ${TOOLS[tool].name}`, category: "mastery", group: "make-tools", steps: one("make", `Make ${TOOLS[tool].name}`, (event) => event.kind === "toolMade" && event.tool === tool ? 1 : 0) };
   }),
+  // Credited off `crafted` rather than `toolMade`: none of these is a tool,
+  // so nothing would ever tick a toolMade step for them.
+  ...SUPPORTED_CRAFT_RECIPES.map((recipe): OpportunityDef => {
+    const title = `Make ${RECIPES[recipe].name}`;
+    return { key: `make:${recipe}`, title, category: "mastery", group: "make-craft", steps: one("make", title, (event) => event.kind === "crafted" && event.recipe === recipe ? 1 : 0) };
+  }),
+  ...SUPPORTED_CAMP_STRUCTURES.map((structure): OpportunityDef => ({
+    key: `build:${structure}`, title: `Build ${STRUCTURES[structure].name}`, category: "camp",
+    group: "build-camp", steps: one("build", `Build ${STRUCTURES[structure].name}`, built(structure)),
+  })),
 ];
 
 let AUTHORED_OPPORTUNITIES: OpportunityDef[] = [];
@@ -197,6 +227,29 @@ export function knownCapabilityOpportunityKeys(state: GameState): OpportunityKey
   if (holds(state, "whetstone")) keys.push("make:stoneAxe");
   if (camp) keys.push("build:turfHut", "build:snowShelter");
   if (camp && capabilityLevel(state, "building") >= 5) keys.push("build:cabin");
+
+  // Bark is the first thing a pair of hands turns into something else, and
+  // cordage is what half the recipes below want, so it opens the moment
+  // there is bark to twist.
+  if (holds(state, "bark")) keys.push("make:cordage", "make:torch");
+  // Knife work. Each of these is a stick or a stone with an edge taken to
+  // it, and none of them is a prospect until the edge exists.
+  if (knife) keys.push("make:wedges", "make:arrows", "make:snare", "make:basketTrap");
+  // A hide is the whole clothing branch. Sewing also wants a needle, but
+  // the hide is what makes the branch worth knowing about: a player holding
+  // one should learn a coat is possible and then go find the needle.
+  if (holds(state, "hide")) {
+    keys.push("make:hideCoat", "make:hideTrousers", "make:hideBoots", "make:hideBlanket");
+  }
+  if (holds(state, "fur") || holds(state, "hide")) keys.push("make:furHat", "make:furMittens");
+
+  // A camp is the ground these stand on, so none of them means anything
+  // before there is one. The fire site comes with the camp itself; the rest
+  // wait for the material or the tool that builds them.
+  if (camp) keys.push("build:firePit");
+  if (camp && holds(state, "cordage")) keys.push("build:dryingRack", "build:vedbod");
+  if (camp && holds(state, "snare")) keys.push("build:snare");
+  if (camp && holds(state, "barkBucket")) keys.push("build:seep", "build:waterStore");
   return keys;
 }
 

@@ -34,17 +34,33 @@ left column's bars sit inside the first screenful. Scrolling inside a
 column, or inside the Do pane's item list, does not count as the body
 scrolling.
 
-## The Do pane is subtabs and purposes, and hides nothing
+## The Do pane holds what the run has revealed, and hides nothing in it
 
 A subtab holds a handful of rows per purpose rather than a folded list of
 everything. Nothing sits behind a "more (N)": a row a survivor cannot
-start yet still shows and says why, because learning what is available is
-most of learning the game.
+start yet still shows and says why.
 
-A browser pass confirms every purpose of every subtab draws rows, and
-that the filter box searches across all of them rather than only the pane
-in front. `tests/purpose.test.ts` holds every row to having exactly one
-home and every home to having at least one row.
+A row appears when the opportunity that names it is discovered, and from
+that moment it is always visible. What a run has not reached is not drawn
+at all - because a list of refusals for work the player has no concept of
+is the long list the overhaul set out to kill. Measured before this
+changed: day 1 drew 84 rows, 12 could be started, and Make offered 22
+recipes of which none could be made.
+
+Revealed is not startable, and the difference is the point. A row may
+still be blocked on the season, on the place, on materials, or on a step
+that is itself on screen, and each of those blocks teaches something: the
+year, the ground, the shopping list, the order of operations. What is
+gated is the one block that teaches nothing - a tool the player has never
+heard of.
+
+A browser pass confirms every purpose of every subtab that draws rows
+draws rows, that the filter box searches across all of them rather than
+only the pane in front, and that the filter cannot reach a row the panes
+will not draw. `tests/purpose.test.ts` holds every row to having exactly
+one home and every home to having at least one row;
+`tests/reveal.test.ts` holds every row to naming exactly one opportunity
+that exists, and the reveal graph to having no cycle.
 
 ## A Do row is two lines, and says less when it can
 

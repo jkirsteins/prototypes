@@ -47,6 +47,7 @@ import { catalogPage, opportunityCatalogAction, opportunityCatalogHtml, opportun
 import { opportunityPanelHtml } from "./ui/opportunity-panel";
 import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
+import { paneForOpportunity } from "./ui/purpose";
 import type { SubtabId } from "./ui/purpose";
 import { effectsSnapshot, LEVELS, legendHtml, mapAggregateAtPoint, mapBoardHtml, mapKey, mapModelSnapshot, type MapTarget, mapTargetAtClient, mapViewportBounds, setBoardLight, setPointedGlyph, type TargetResolution, updateEffects } from "./ui/map";
 import { drawBoard, releaseBoard } from "./ui/mapcanvas";
@@ -731,6 +732,23 @@ function onClick(ev: Event) {
       // was open were paused, not spent away.
       lastReal = performance.now();
       break;
+    // The card is a door, not a label. It used to open the catalogue and
+    // leave the player to find Build > Site themselves, which is the sixth
+    // subtab of six and the reason day one read as a dead end.
+    case "opportunity-goto": {
+      const key = target.dataset.opportunity as OpportunityKey | undefined;
+      const where = key ? paneForOpportunity(key) : null;
+      if (where) {
+        ui.panes = { ...ui.panes, pane: "do", subtab: where.subtab, purpose: where.purpose };
+        ui.filter = "";
+        savePanes(localStorage, ui.panes);
+      } else if (key) {
+        // Nothing in REVEAL asks for this one, so fall back to what the card
+        // did before rather than swallowing the click.
+        opportunityCatalogAction(state, ui, "opportunity-detail", key, opportunityPageSize());
+      }
+      break;
+    }
     case "opportunity-open":
     case "opportunity-close":
     case "opportunity-category":

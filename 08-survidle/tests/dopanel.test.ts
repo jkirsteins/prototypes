@@ -12,7 +12,7 @@ import { noteHuntSign } from "../src/sim/hunting";
 import { availableTasks } from "../src/sim/tasks";
 import { doHtml, doPurposesHtml, filterRows, intentGroups, keyedRows, makeFirst, purposeCounts, rankRows } from "../src/ui/dopanel";
 import { purposeOf, subtabOf } from "../src/ui/purpose";
-import { paneHtml } from "./pane";
+import { paneHtml, revealEverything } from "./pane";
 import { defaultChoice, defaultChoiceFor, newUiState, rowRequest, setWhenField } from "../src/ui/render";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { regionState, siteFor } from "../src/sim/regionstate";
@@ -26,6 +26,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("the purposes and the filter", () => {
   it("does not expose a specific game species until the survivor has fresh local sign", () => {
     const { state, world } = newGame(3);
+    revealEverything(state);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Hunt" as const, purpose: "Game" } };
     const cal = calendar(state.minute, state.startDoy);
     expect(doHtml(state, world, cal, ui)).not.toContain("Hunt mountain hare");
@@ -82,6 +83,7 @@ describe("the purposes and the filter", () => {
     // would park it at the head of the list, stopping every order under it
     // until it was struck off by hand. A storm or a missing tool still queues.
     const { state, world } = newGame(1);
+    revealEverything(state);
     const home = regionAt(world, state.player.region);
     // A neighbour with no outcrop and somewhere to stand: a region that is
     // all water has no camp cell and cannot host a survivor to tell about it.
@@ -121,6 +123,7 @@ describe("the purposes and the filter", () => {
     // it still says why: learning what is available is most of learning the
     // game, so nothing is tucked behind a "more" any more.
     const { state, world } = newGame(17);
+    revealEverything(state);
     placeAtSpot(state, world, state.player.region, "forest");
     // The task under test is skill ordering, not the local storm field.
     testAtmosphere();
@@ -152,6 +155,7 @@ describe("the purposes and the filter", () => {
 
   it("offers material tracking only inside an eligible Make or Build row", () => {
     const { state, world } = newGame(3);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = {
       ...newUiState(),
@@ -238,6 +242,7 @@ describe("the purposes and the filter", () => {
 
   it("the filter narrows doHtml's rows and puts the groups and their folds away", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const cal = calendar(state.minute);
     state.skills.woodcraft.xp = levelMinutes(5);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "tree" });
@@ -249,6 +254,7 @@ describe("the purposes and the filter", () => {
 
   it("a broad word leads with the rows that say it and puts the rest under their own heading", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "fire" });
     const split = html.indexOf('also answers to "fire"');
@@ -264,6 +270,7 @@ describe("the purposes and the filter", () => {
 
   it("a filter nothing answers says so rather than emptying the panel", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "kayak" });
     expect(html).toContain('nothing answers to "kayak"');
@@ -276,6 +283,7 @@ describe("the purposes and the filter", () => {
     // Cooking lives under Camp/Food. A search that only looked where the
     // reader happened to be is the search that sent them looking by hand.
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Fuel" }, filter: "cook" };
     expect(doHtml(state, world, cal, ui)).toContain('data-opt="intent:cook:');
@@ -283,6 +291,7 @@ describe("the purposes and the filter", () => {
 
   it("a purpose shows its own rows and no others", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const food = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Wild food" } };
     const html = doHtml(state, world, cal, food);
@@ -292,6 +301,7 @@ describe("the purposes and the filter", () => {
 
   it("Explore has one Shelter row in Do", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Explore" as const, purpose: "Shelter" } };
     const html = doHtml(state, world, cal, ui);
@@ -301,6 +311,7 @@ describe("the purposes and the filter", () => {
 
   it("Build has one improve-cover Shelter row in Do", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const here = siteCamp(state, world);
     placeAt(state, world, here);
     siteFor(regionState(state, world, state.player.region), here).cover = 1;
@@ -314,6 +325,7 @@ describe("the purposes and the filter", () => {
 
   it("Build offers one emergency Shelter row whose face names the next protection threshold", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Build" as const, purpose: "Shelter" } };
     const html = doHtml(state, world, cal, ui);
@@ -329,6 +341,7 @@ describe("the purposes and the filter", () => {
 
   it("Camp is no longer one heap of twenty-six rows", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const water = { ...newUiState(), panes: { pane: "do" as const, subtab: "Camp" as const, purpose: "Water" } };
     const html = doHtml(state, world, cal, water);
@@ -338,6 +351,7 @@ describe("the purposes and the filter", () => {
 
   it("the left pane counts what each purpose holds", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Camp" as const, purpose: "Fire" } };
     const counts = purposeCounts(state, world, ui);
     // Every purpose Camp offers is present, and none of them is empty.
@@ -348,6 +362,7 @@ describe("the purposes and the filter", () => {
 
   it("an unfiltered pane with nothing in it says so rather than going blank", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Hunt" as const, purpose: "Scout" } };
     const html = doHtml(state, world, cal, ui);
@@ -358,6 +373,7 @@ describe("the purposes and the filter", () => {
 
   it("a far row still renders under a filter, with no more line", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "coat" });
     expect(html).toContain("hide coat");
@@ -366,6 +382,7 @@ describe("the purposes and the filter", () => {
 
   it("once is a kind button, carrying the row's own choice of deliver and where", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Kindling" } };
     ui.open = { id: "sticks", arg: "" };
@@ -397,6 +414,7 @@ describe("the condition fields", () => {
 
   it("the season, the stock line and the daily count open at the condition rung and are named under it", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = {
       ...newUiState(),
@@ -420,6 +438,7 @@ describe("the condition fields", () => {
 
   it("keeps scheduling prose out of an open row", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const shut = rowHtml(doHtml(state, world, cal, newUiState()), "intent:chop:");
     expect(shut).not.toContain("the rest are the runner's");
@@ -433,6 +452,7 @@ describe("the condition fields", () => {
 
   it("the restart line shows at the condition rung and the due date at the pace rung, and only a keep carries them", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), open: { id: "chop" as const, arg: "" } };
     state.skills.woodcraft.xp = levelMinutes(15);
@@ -577,6 +597,7 @@ describe("the search list's route cache", () => {
   // they cost the same small, fixed amount, not that they cost nothing.
   it("does not repeat the search's route pathfind when nothing it depends on has changed", () => {
     const { state, world } = newGame(11);
+    revealEverything(state);
     placeAtSpot(state, world, state.player.region, "heath");
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), filter: "wood" };
@@ -598,6 +619,7 @@ describe("the search list's route cache", () => {
 
   it("recomputes routes once the survivor moves, once new ground is known, and once the in-game minute turns over - but not for a changed filter alone", () => {
     const { state, world } = newGame(11);
+    revealEverything(state);
     placeAtSpot(state, world, state.player.region, "heath");
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), filter: "wood" };
@@ -649,6 +671,7 @@ describe("the search list's route cache", () => {
   // delivery is in for as long as the wait lasts.
   it("refreshes a row's ok and why once a skill is earned or stock arrives, with cell, filter and knowledgeGen unchanged", () => {
     const { state, world } = newGame(12);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
 
     // Skill: finding a bear den needs Hunting 5. Below it the row names the

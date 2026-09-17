@@ -8,12 +8,14 @@ import { knownHuntSpecies } from "../src/sim/hunting";
 import { regionAt } from "../src/world/gen";
 import type { Species } from "../src/sim/species";
 import { newUiState } from "../src/ui/render";
+import { revealEverything } from "./pane";
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("search construction budget", () => {
   it("does not route unrelated direct-address rows for free text", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const build = vi.spyOn(intent, "intentOption");
     const html = doHtml(state, world, calendar(state.minute, state.startDoy), { ...newUiState(), filter: "torch" });
     expect(html).toContain('data-opt="intent:craft:torch"');
@@ -23,6 +25,7 @@ describe("search construction budget", () => {
 
   it("preserves exhaustive free-text matches in live details, refusals and keywords", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const known = new Set(knownHuntSpecies(state, world));
     const rows = intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)
@@ -41,6 +44,7 @@ describe("search construction budget", () => {
 
   it("routes only concept members, not every action, for a dark concept search", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const ui = { ...newUiState(), filter: "kw:dark" };
     const build = vi.spyOn(intent, "intentOption");
     const html = doHtml(state, world, calendar(state.minute, state.startDoy), ui);
@@ -51,6 +55,7 @@ describe("search construction budget", () => {
 
   it("does not construct routes for an unknown concept", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const build = vi.spyOn(intent, "intentOption");
     const html = doHtml(state, world, calendar(state.minute, state.startDoy), { ...newUiState(), filter: "kw:nonexistent" });
     expect(html).toContain("nothing answers");
