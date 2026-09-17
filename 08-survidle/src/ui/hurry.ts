@@ -22,6 +22,24 @@ export type HurryKind = "auto" | "click" | "none";
 
 /** The peak rate of both the automatic and clicked ease-in/out curves. */
 export const PEAK = 6;
+
+/**
+ * The peak a walk is hurried at. A minute is indivisible and lands whole
+ * inside one frame, and a walked minute is the dear one: the survivor looks
+ * from every patch they cross, which is about 500 sight rays and ten
+ * milliseconds, against under three for standing or working
+ * (tests/frame-budget.test.ts). At the full peak that is six of them a
+ * second, and the 95th-percentile frame measured 50 ms against 17 idle. The
+ * world is not changed to pay for this and the animals still move as they
+ * did: a walk is simply hurried less hard than an axe is.
+ */
+export const WALK_PEAK = 3;
+
+/** How hard this work may be hurried: what the frames use and what the clock reads. */
+export function peakFor(state: GameState): number {
+  const id = state.task?.id;
+  return id === "walk" || id === "travel" || id === "explore" || state.route !== null ? WALK_PEAK : PEAK;
+}
 /** Real seconds one pulse lasts; the next click waits for it. */
 export const PULSE_S = 10 / 1.5;
 /** Extra game minutes carried by the smooth 1x -> PEAK -> 1x pulse. */
@@ -61,10 +79,10 @@ function pulseArea(u: number): number {
   return v / 2 - Math.sin(2 * Math.PI * v) / (4 * Math.PI);
 }
 
-function pulseRate(at: number): number {
+function pulseRate(at: number, peak = PEAK): number {
   const u = at / PULSE_S;
   if (u < 0 || u >= 1) return 1;
-  return 1 + (PEAK - 1) * Math.sin(Math.PI * u) ** 2;
+  return 1 + (peak - 1) * Math.sin(Math.PI * u) ** 2;
 }
 
 /** Share of the action over which the automatic rate eases in at the start and out at the end. */
@@ -77,7 +95,7 @@ const AUTO_EDGE = 0.15;
  * wall-clock estimate both read this one curve, so the bar's seconds cannot
  * drift from the seconds the frames actually take.
  */
-export function autoRate(progress: number, continued: boolean, hasNext: boolean): number {
+export function autoRate(progress: number, continued: boolean, hasNext: boolean, peak = PEAK): number {
   const p = Math.max(0, Math.min(1, progress));
   const entering = continued ? 1 : Math.min(1, p / AUTO_EDGE);
   const leaving = hasNext ? 1 : Math.min(1, (1 - p) / AUTO_EDGE);
@@ -85,7 +103,7 @@ export function autoRate(progress: number, continued: boolean, hasNext: boolean)
     Math.sin(Math.PI * entering / 2) ** 2,
     Math.sin(Math.PI * leaving / 2) ** 2,
   );
-  return 1 + (PEAK - 1) * envelope;
+  return 1 + (peak - 1) * envelope;
 }
 
 /**
@@ -101,11 +119,12 @@ export function hurryFrame(
   dtSec: number,
   autoProgress = 0,
   autoHasNext = false,
+  peak = PEAK,
 ): number {
   let extra = 0;
   if (kind === "auto") {
     const continued = h.autoRun && h.autoOrderId !== liveOrderId;
-    h.rate = autoRate(autoProgress, continued, autoHasNext);
+    h.rate = autoRate(autoProgress, continued, autoHasNext, peak);
     extra += (h.rate - 1) * dtSec;
     h.autoRun = true;
     h.autoOrderId = liveOrderId;
@@ -119,10 +138,10 @@ export function hurryFrame(
   if (h.pulse) {
     const a0 = h.pulse.at;
     const a1 = a0 + dtSec;
-    extra += (PEAK - 1) * PULSE_S * (pulseArea(a1 / PULSE_S) - pulseArea(a0 / PULSE_S));
+    extra += (peak - 1) * PULSE_S * (pulseArea(a1 / PULSE_S) - pulseArea(a0 / PULSE_S));
     h.pulse = a1 >= PULSE_S ? null : { orderId: h.pulse.orderId, at: a1 };
   }
-  if (kind !== "auto") h.rate = h.pulse ? pulseRate(h.pulse.at) : 1;
+  if (kind !== "auto") h.rate = h.pulse ? pulseRate(h.pulse.at, peak) : 1;
   return extra;
 }
 
@@ -137,7 +156,7 @@ export function advanceHurry(h: HurryState, state: GameState, world: World, dtSe
     ? null
     : nextRunnableAfter(state, world, calendar(state.minute, state.startDoy), liveId);
   const autoHasNext = next !== null && !isCareRow(next) && next.req.until.kind === "once";
-  return hurryFrame(h, hurryKind(state), liveId, dtSec, progress, autoHasNext);
+  return hurryFrame(h, hurryKind(state), liveId, dtSec, progress, autoHasNext, peakFor(state));
 }
 
 /**
@@ -173,9 +192,10 @@ export function realSecondsLeft(state: GameState, world: World, h: HurryState, s
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state, world) : 1;
   const share = t.progress / t.duration;
   const kind = hurryKind(state);
+  const peak = peakFor(state);
   if (kind === "auto") {
     const continued = h.autoRun && h.autoOrderId !== (state.intent?.orderId ?? null);
-    return secondsUnder(left, share, t.duration, pace, speed, (p) => autoRate(p, continued, h.autoHasNext));
+    return secondsUnder(left, share, t.duration, pace, speed, (p) => autoRate(p, continued, h.autoHasNext, peak));
   }
   if (kind === "click" && h.pulse) {
     // Walk the rest of the pulse in real time; whatever is left after it runs at the one scale.
@@ -185,7 +205,7 @@ export function realSecondsLeft(state: GameState, world: World, h: HurryState, s
     let seconds = 0;
     while (at < PULSE_S && done < left) {
       const next = Math.min(PULSE_S, at + dt);
-      const carried = (next - at) * GAME_MINUTES_PER_REAL_SECOND * speed + (PEAK - 1) * PULSE_S * (pulseArea(next / PULSE_S) - pulseArea(at / PULSE_S));
+      const carried = (next - at) * GAME_MINUTES_PER_REAL_SECOND * speed + (peak - 1) * PULSE_S * (pulseArea(next / PULSE_S) - pulseArea(at / PULSE_S));
       const minutes = pace * carried;
       if (done + minutes >= left) return seconds + (next - at) * ((left - done) / minutes);
       done += minutes;

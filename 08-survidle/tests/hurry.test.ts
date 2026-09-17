@@ -11,7 +11,7 @@ import { startTask } from "../src/sim/tasks";
 import { workSpeed } from "../src/sim/player";
 import { WORK_TASKS } from "../src/sim/tasks";
 import type { GameState } from "../src/sim/types";
-import { advanceHurry, autoRate, type HurryState, hurryClick, hurryFrame, hurryKind, newHurry, PEAK, PULSE_MIN, PULSE_S, pulseLeft, realSecondsForOrder, realSecondsLeft } from "../src/ui/hurry";
+import { advanceHurry, autoRate, peakFor, WALK_PEAK, type HurryState, hurryClick, hurryFrame, hurryKind, newHurry, PEAK, PULSE_MIN, PULSE_S, pulseLeft, realSecondsForOrder, realSecondsLeft } from "../src/ui/hurry";
 import { GAME_MINUTES_PER_REAL_SECOND } from "../src/units";
 import type { World } from "../src/world/gen";
 import { queueHtml } from "../src/ui/panels";
@@ -22,6 +22,41 @@ const cal = calendar(0);
 function frames(h: ReturnType<typeof newHurry>, kind: "auto" | "click" | "none", live: number | null, lengths: number[]): number {
   return lengths.reduce((sum, d) => sum + hurryFrame(h, kind, live, d), 0);
 }
+
+describe("what a walk may be hurried to", () => {
+  // A minute lands whole inside one frame, and a walked minute is the dear
+  // one: the survivor looks from every patch they cross, ten milliseconds
+  // against under three for standing or working (tests/frame-budget.test.ts).
+  // So a walk is hurried to a lower peak than work at a fixed place.
+  it("hurries walking, travelling and surveying to the lower peak", () => {
+    const { state } = newGame(11);
+    expect(peakFor(state)).toBe(PEAK);
+    for (const id of ["walk", "travel", "explore"] as const) {
+      state.task = { id, arg: undefined, progress: 0, duration: 10, repeat: false };
+      expect(peakFor(state), id).toBe(WALK_PEAK);
+    }
+    state.task = { id: "deadwood", arg: undefined, progress: 0, duration: 10, repeat: false };
+    expect(peakFor(state)).toBe(PEAK);
+    // A task done at a place while a route is still live is a walk too: the
+    // feet are what the minutes are being spent on.
+    state.route = { target: 0, path: [0], walked: [0], label: "", ice: "none", lastLand: 0 };
+    expect(peakFor(state)).toBe(WALK_PEAK);
+  });
+
+  it("carries fewer minutes a second at the lower peak", () => {
+    const fast = newHurry();
+    const slow = newHurry();
+    const seconds = [0.1, 0.1, 0.1, 0.1, 0.1];
+    let hurried = 0;
+    let walked = 0;
+    for (const dt of seconds) {
+      hurried += hurryFrame(fast, "auto", 1, dt, 0.5, true, PEAK);
+      walked += hurryFrame(slow, "auto", 1, dt, 0.5, true, WALK_PEAK);
+    }
+    expect(walked).toBeLessThan(hurried);
+    expect(walked).toBeCloseTo(hurried * (WALK_PEAK - 1) / (PEAK - 1), 9);
+  });
+});
 
 describe("the automatic pulse", () => {
   const atProgress = hurryFrame as unknown as (
