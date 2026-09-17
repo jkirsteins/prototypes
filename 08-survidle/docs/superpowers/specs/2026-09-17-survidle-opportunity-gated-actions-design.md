@@ -237,11 +237,19 @@ same opportunity or an earlier one:
 | season, place | nothing; the world fixes it | exempt |
 | skill level | the rows that train that skill | see below |
 
-**One table has to be added for this to close.** Gather tasks do not
-declare what they yield: nothing in the code says `bark` produces `bark`
-or `chop` produces `log`. That is roughly ten entries, authored beside
-`REVEAL` and under the same coverage discipline, and without it the
-transitive walk stops at the first raw material.
+**Most of the item-to-action map already exists.** `yieldItem(task, arg)`
+in `src/sim/intent.ts:88` returns the `ItemId` a task produces, covering
+every gather task and delegating craft to `RECIPES[arg].out.item`. The
+test inverts it over every `TaskId` to get item to producing action. No
+new gather table is needed; an earlier draft of this spec called for one
+and was wrong.
+
+What `yieldItem` does not cover is the animal materials, because they come
+off a carcass rather than out of a task: `hide`, `sinew`, `bone`, `fur`.
+Those are what the clothing recipes want, so the walk must not stop there.
+A supplement of about five entries maps them to `hunt`, and it is a
+supplement to an existing function rather than a parallel table that could
+drift from it.
 
 **Skill levels are the one block that is not an action.** `Make bow` wants
 Crafting 5. The test cannot demand that a level be "revealed", so it
@@ -276,13 +284,20 @@ in `render()`, or behind a click.
 What runtime does instead, per row, per draw:
 
 ```ts
-const key = REVEAL[rowKey(id, arg)];        // object lookup
-if (key && !state.revealed.has(key)) return; // Set.has
+const key = REVEAL[rowKey(id, arg)];
+if (key && state.opportunities.discoveredAt[key] === undefined) return;
 ```
 
-One object lookup and one `Set.has`. `state.revealed` is a `Set` on the
-save, written only when an opportunity is discovered, which is already an
-event-driven moment and not a per-tick one.
+Two object lookups. **This adds no state and needs no save migration.**
+`OpportunityState.discoveredAt` already exists (`types.ts:969`) as
+`Partial<Record<OpportunityKey, number>>`, is already written when an
+opportunity is discovered, and is already persisted.
+
+A first draft of this spec proposed a `state.revealed` Set. That would
+have been wrong twice over: it duplicates `discoveredAt`, and `serialize`
+is a plain `JSON.stringify` (`save.ts:41`), which turns a `Set` into `{}`.
+Knowledge has its own encode/decode for exactly that reason. Reuse the
+record; add nothing.
 
 This is a hard constraint, not a preference. The Do pane redraws
 constantly and the repo already gates that with `tests/churn.test.ts` and
@@ -385,9 +400,9 @@ This is separable from the gating work and should land after it.
 
 ## 10. Order of work
 
-1. The gather-yield table, ~10 entries. Without it the third test cannot
-   resolve a material to the action that makes it.
-2. `tests/reveal.test.ts`, all three rules, against an empty `REVEAL`. Red.
+1. The test-only resolver: invert `yieldItem` over every `TaskId`, plus the
+   animal-material supplement (`hide`, `sinew`, `bone`, `fur` from `hunt`).
+2. `tests/reveal.test.ts`, all four rules, against an empty `REVEAL`. Red.
 3. `REVEAL` authored to green, 77 entries, keyed off task requirements
    rather than displayed reasons.
 4. The Do pane draws only revealed rows; `docs/ux.md` section rewritten.
