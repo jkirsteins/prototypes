@@ -226,6 +226,16 @@ function makeSubject(state: GameState, species: AgentSpecies, region: number, co
 export const CARRY_ACROSS_BORDER_M = 1_200;
 
 /**
+ * How many animals of other regions may stay at their positions at once.
+ * Every active subject is stepped, disturbed and drawn every tick, and the
+ * region's own cohort is already capped at MAX_ACTIVE_SUBJECTS: without a
+ * cap here a survivor walking a border would carry a second region's herds
+ * on top of this one's and pay for both every minute. The nearest keep
+ * their places; the rest collapse to their region's count.
+ */
+export const MAX_CARRIED_SUBJECTS = 4;
+
+/**
  * Collapses the cells of every animal that is not near the survivor and
  * materializes a bounded cohort in the current region. Animals of other
  * regions inside CARRY_ACROSS_BORDER_M stay where they are, at their
@@ -234,9 +244,15 @@ export const CARRY_ACROSS_BORDER_M = 1_200;
 export function activateWildlife(state: GameState, world: World, rng: Rng): void {
   const region = state.player.region;
   const here = cellOf(state, world);
+  const carried: { subject: WildlifeSubject; away: number }[] = [];
   for (const s of state.wildlife.subjects) {
-    if (s.region !== region && s.active && metresBetween(s.active.cell, here) > CARRY_ACROSS_BORDER_M) s.active = null;
+    if (s.region === region || !s.active) continue;
+    const away = metresBetween(s.active.cell, here);
+    if (away > CARRY_ACROSS_BORDER_M) s.active = null;
+    else carried.push({ subject: s, away });
   }
+  carried.sort((a, b) => a.away - b.away || a.subject.id - b.subject.id);
+  for (const { subject } of carried.slice(MAX_CARRIED_SUBJECTS)) subject.active = null;
   state.wildlife.activeRegion = region;
   const cal = calendar(state.minute, state.startDoy);
   reconcileRegion(state, world, region, cal);
@@ -430,7 +446,7 @@ export function advanceWildlifeMotion(state: GameState, world: World, rng: Rng, 
 
 /** Evaluated after player movement/work and again after a detailed animal tick. */
 export function evaluateWildlifeDisturbance(state: GameState, world: World, cal: Calendar, live: boolean, rolls: EncounterRolls = {}): void {
-  if (state.wildlife.activeRegion !== state.player.region) return;
+  if (state.wildlife.activeRegion === null) return;
   const actor = metricPointForPlayer(state, world);
   if (!actor) return;
   const playerTerrain = cellAt(world, cellOf(state, world)).terrain;
@@ -911,7 +927,10 @@ export function unknownBearDen(state: GameState, cal: Calendar): WildlifeSubject
  * the meaning of the function does not depend on who is asking.
  */
 export function visibleWildlife(state: GameState, world: World, cal: Calendar, visible?: ReadonlySet<number>): WildlifeSubject[] {
-  if (state.wildlife.activeRegion !== state.player.region) return [];
+  // Nothing is at a place while the spatial layer is down: an aggregate tick
+  // collapses every cell and leaves activeRegion null, and the positions
+  // still hanging off the subjects are last week's.
+  if (state.wildlife.activeRegion === null) return [];
   const seen = visible ?? visibleCells(state, world, cal, cellOf(state, world));
   return state.wildlife.subjects.filter((s) => s.active !== null && seen.has(s.active.cell));
 }

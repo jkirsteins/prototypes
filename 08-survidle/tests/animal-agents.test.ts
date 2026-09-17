@@ -2,7 +2,7 @@ import { encodeKnowledge, setKnowledge } from "../src/sim/fineknowledge";
 import { SAVE_VERSION } from "../src/sim/world-version";
 import { afterEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { activateWildlife, CARRY_ACROSS_BORDER_M, claimHuntableAnimal, dailyWildlife, emptyWildlife, evaluateWildlifeDisturbance, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
+import { activateWildlife, CARRY_ACROSS_BORDER_M, MAX_CARRIED_SUBJECTS, claimHuntableAnimal, dailyWildlife, emptyWildlife, evaluateWildlifeDisturbance, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
 import { calendar, monthStartDoy } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
@@ -584,6 +584,25 @@ describe("large animal agents", () => {
       if (s.active) expect(metres(s.active.cell, here)).toBeLessThanOrEqual(CARRY_ACROSS_BORDER_M);
     }
     expect(state.wildlife.subjects.filter((s) => s.active !== null && s.region === next).length).toBeGreaterThan(0);
+  });
+
+  it("carries no more than a handful of another region's animals, nearest first", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const old = state.player.region;
+    const mine = state.wildlife.subjects.filter((s) => s.active && s.region === old);
+    expect(mine.length).toBeGreaterThan(MAX_CARRIED_SUBJECTS);
+    // Step over the border without walking away: every one of them is inside
+    // the carry distance, and only the nearest few may keep their places.
+    const next = regionAt(world, old).neighbours[0].id;
+    state.player.region = next;
+    regionState(state, world, next);
+    const cell = mine[0].active!.cell;
+    state.player.xM = (cell % world.w + 0.5) * PATCH_M;
+    state.player.yM = (Math.floor(cell / world.w) + 0.5) * PATCH_M;
+    activateWildlife(state, world, new Rng(2));
+    expect(state.wildlife.subjects.filter((s) => s.active && s.region === old).length).toBeLessThanOrEqual(MAX_CARRIED_SUBJECTS);
+    expect(mine[0].active).not.toBeNull();
   });
 
   it("keeps an animal of the region just left where it stood while the survivor is near it", () => {
