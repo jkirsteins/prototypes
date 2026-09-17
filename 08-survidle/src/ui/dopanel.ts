@@ -573,7 +573,15 @@ function cachedRouteOption(state: GameState, world: World, cal: Calendar, id: Ta
 
 /** The search list's rows: every candidate across every group, its route cached, its legality always current. */
 function searchRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
-  return intentGroups(regionAt(world, state.player.region)).flatMap((g) => groupRows(g, state, world, cal, ui, cachedRouteOption));
+  const concept = conceptAsked(ui.filter);
+  return intentGroups(regionAt(world, state.player.region)).flatMap((g) => {
+    // A concept is an exact membership query. Free text also matches live
+    // details and refusals, so names alone cannot safely exclude its rows.
+    const candidates = concept === null ? g : {
+      ...g, items: g.items.filter(({ id, arg }) => conceptsFor(id, arg).includes(concept)),
+    };
+    return candidates.items.length ? groupRows(candidates, state, world, cal, ui, cachedRouteOption) : [];
+  });
 }
 
 /**
