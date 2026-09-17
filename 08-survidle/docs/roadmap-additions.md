@@ -2014,10 +2014,105 @@ continuously through the light term in `baseWalkSpeed`, by enough that
 dropping the key would show a walk time wrong by a third all night. So the
 misses are honest work, not a missing invalidation.
 
-The remaining cost is that every candidate row is built before anything
-knows whether the typed text can match it. A cheap pre-filter - narrow the
-candidates by name against the filter text first, and only then build the
-rows that survive - would collapse the work without touching the cache or
-the legality check. It is worth doing when the filter box next feels slow,
-and it is not worth doing before the effects canvas, which is a far larger
-share of the frame.
+**Partially addressed** 2026-09-17. Exact concepts are filtered before route
+construction. Free text now checks live searchable descriptions at exact
+direct destinations, or at a valid cached destination, before building routed
+options. The description includes progression text, details, refusals and
+keywords, not only the name. Destination rules are shared with normal intent
+resolution. Cold location-dependent rows remain candidates: excluding them by
+the description at the player's feet would lose legitimate matches elsewhere.
+Region survey labels are also conservatively retained because the panel rewrites
+them. No whole-row or search-text cache can make live legality stale.
+
+The regression starts with 95 routed rows for "torch" and now requires fewer
+than 45, with no unrelated hide-coat route. Exhaustive-result comparisons and
+existing route invalidation/live legality checks protect the search contract.
+Further narrowing of cold location-dependent rows is deferred until measured
+cost justifies a descriptor that can conservatively represent every destination.
+
+## Cross-thread solved-world and fine-cache sharing
+
+**Raised** 2026-09-17, after the Safari memory audit.
+
+Lazy forecast loading and old-seed cache eviction are implemented. They avoid
+allocating a forecast world merely to announce a seed and retaining replaced
+runs. They do not eliminate the second solved world or the independent fine
+caches once forecasts run. Main-thread terrain arrays are still used by rendering
+and simulation; transferring their buffers to the worker would detach data still
+in use and is not sharing.
+
+Investigate immutable base-world sharing separately from mutable run overlays:
+
+1. Measure retained main/worker solved arrays and fine chunks after first forecast,
+   cancellation, reset and a long Safari session. Establish a memory budget.
+2. Enumerate thread ownership and mutations. Keep forecast state and mutable
+   ground overlays isolated; share only data proven immutable.
+3. Verify the candidate shared-memory mechanism against the actual Pages preview
+   deployment and Safari. Do not assume required browser/deployment capabilities.
+   Preserve the current isolated-worker fallback and lazy startup behavior.
+4. Prototype one immutable array boundary, test cancellation/seed replacement,
+   then measure total retained memory and message costs before extending it to
+   solved arrays or fine-cache entries.
+
+Acceptance requires correct reset/cancellation, unchanged world results, verified
+Safari/deployment compatibility and a measured memory reduction. This is not a
+prerequisite for the current preview and is not a speculative transfer patch.
+
+## Slow-suite reconciliation after map, weather and wildlife migrations
+
+**Raised** 2026-09-17. Fast tests and Chromium playthrough passed, but the slow
+integration suite reports failures. A baseline worktree at 98461be3 reproduced
+16 selected UI/wildlife/delivery failures before the performance batch. That
+establishes provenance, not harmlessness. Additional failures are not yet fully
+baseline-classified. Do not disable files or relax assertions to claim green.
+
+Simple cases addressed in this follow-up:
+
+- Task enumeration keeps uniqueness and required-task assertions, without the
+  obsolete fixed count of 49 after two tasks were added.
+- Counted yard clearing gets its missing Building delegation gate. A real order
+  now refuses below the rung and succeeds at it instead of throwing.
+- Save round-trip expectations preserve Maps/typed arrays through an independent
+  structured snapshot; old-world saves assert the explicit refusal result rather
+  than expecting null. These repair obsolete fixtures, not save behavior.
+- Fire fixtures clear leftover laid fuel before testing carried-wood consumption.
+  The drying test checks both 2 kg/h drying and 1 kg/h exposed-stack rewetting,
+  including dry wood and wetted accounting, rather than mistaking the net rate
+  for the drying rate. The whole fire file passes without simulation changes.
+
+Remaining investigation groups, ordered by player risk:
+
+- Delivery preemption and haul completion (`orders`, `ladder`): reproduce whether
+  displaced carrying loses row ownership or marks work complete before delivery.
+  Trace owner, carried load and completion credit across preemption/resumption.
+- Shelter and fire (`body`, `fire`): distinguish stale synthetic-weather fixtures
+  from incorrect cover adequacy, extinguishing or wet-wood drying. Use explicit
+  observer position, local weather and protection transitions, not only regional
+  settings. No balance constants should change just to satisfy an old expectation.
+- Wildlife (`animal-agents`, `hunting`): separate old cell/axis-distance and
+  region-boundary assumptions from actual visibility, alarm and hidden-ice leaks.
+  Use metric positions and independently specified sight/movement contracts.
+  The `animals` summer-refill case narrowly misses its 90% density band; diagnose
+  the migration/calendar fixture before changing the ecological rate or band.
+- Terrain presentation (`ui`, `siting`, `landing`): old per-patch assertions often
+  run at the default 300m aggregate rung. Rewrite narrow tests at an explicit rung
+  and keep separate 300m aggregate/canvas acceptance checks. Fixtures that cannot
+  find their proposed night observer need controlled terrain rather than a new
+  arbitrary seed or weaker assertion.
+  `churn` also reports zero tooltip transitions in its pointer fixture. Reproduce
+  that against controlled known cells, alongside the separate static-layer budget;
+  do not infer from it that continuous redraw is acceptable.
+- Task availability and seep waiting (`tasks`, `needs`): establish whether the
+  fixture reaches usable water, then validate seasonal refusals and continuous
+  trickle drinking at the resolved work destination.
+  `water` also expects an iced-shore message in an old inventory presentation;
+  check the current access/status boundary before altering UI or removing coverage.
+- Routing/visibility budgets (`spatial-performance`): replace incidental generated
+  terrain with controlled traversable neighbors; derive parent-touch budgets from
+  the declared reach plus boundary cells. Do not merely raise failing limits.
+
+Next pass should produce an exhaustive JSON failure inventory, run each affected
+case at the pulled baseline and current head, and record root cause, production
+contract and minimal regression. Commit each verified correction independently,
+then run the complete slow suite on the settled head. The in-flight old-head
+run is diagnostic evidence, not final validation of subsequent commits.
