@@ -31,7 +31,7 @@ import { routeConditions, survivorRoute, survivorRouteCandidates } from "../sim/
 import { aggregateTerrain } from "../sim/sight";
 import { activeWildlifeStartles, domGeneration, esc, type UiState } from "./render";
 import { boardImage, boardStamp, type MapGlyph, type MapMark, type MapModel, type MapStartle, styleOf } from "./mapcanvas";
-import { BOARD_FONT, WILDLIFE_BG } from "./palette";
+import { BOARD_BG, BOARD_FONT, WILDLIFE_BG } from "./palette";
 import { elevationAt, GROUND_CHANGE_GLYPH, offshoreAt, STREAM_MARK, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
 import { type Lighting, lighting } from "./sky";
@@ -1198,7 +1198,7 @@ const MARK_SLIDE_MS = 180;
  * board rather than inside a glyph, which is what lets it sit between two
  * of them and slide as the herd moves.
  */
-function drawMarks(ctx: CanvasRenderingContext2D, board: MapModel, nowMs: number, frozen: boolean): void {
+export function drawMarks(ctx: CanvasRenderingContext2D, board: MapModel, nowMs: number, frozen: boolean): void {
   if (!board.marks.length) {
     markSlides.clear();
     return;
@@ -1225,13 +1225,11 @@ function drawMarks(ctx: CanvasRenderingContext2D, board: MapModel, nowMs: number
     const k = frozen ? 1 : Math.min(1, (nowMs - slide.sinceMs) / MARK_SLIDE_MS);
     const x = slide.fromX + (slide.toX - slide.fromX) * k + (m.recoilAt === undefined || frozen ? 0 : recoilOffset(m.recoilAt, nowMs) ?? 0);
     const y = slide.fromY + (slide.toY - slide.fromY) * k;
-    const left = x - board.px / 2;
-    const top = y - board.line / 2;
-    ctx.fillStyle = "rgba(5, 7, 12, 0.42)";
-    ctx.fillRect(left - 1, top - 1, board.px + 2, board.line + 2);
+    // Exact metre positions can sit between cells. A colored letter keeps
+    // that movement legible without an opaque tile obscuring the ground.
+    ctx.shadowColor = BOARD_BG;
+    ctx.shadowBlur = 3;
     ctx.fillStyle = m.bg;
-    ctx.fillRect(left, top, board.px, board.line);
-    ctx.fillStyle = m.fg;
     ctx.fillText(m.glyph, x, y);
   }
   for (const id of markSlides.keys()) if (!alive.has(id)) markSlides.delete(id);
