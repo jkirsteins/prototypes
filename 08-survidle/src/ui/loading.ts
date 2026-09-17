@@ -1,5 +1,6 @@
 /** The bar that stands in for the world while the worker solves it. */
 export function showLoading(stage: string, fraction: number): void {
+  document.documentElement.dataset.loading = "true";
   const el = document.getElementById("loading");
   if (!el) return;
   el.hidden = false;
@@ -10,6 +11,7 @@ export function showLoading(stage: string, fraction: number): void {
 }
 
 export function hideLoading(): void {
+  delete document.documentElement.dataset.loading;
   const el = document.getElementById("loading");
   if (el) el.hidden = true;
 }

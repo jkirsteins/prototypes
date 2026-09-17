@@ -160,6 +160,7 @@ let tellForecaster: ((w: World) => void) | null = null;
 // A world is being made. The run underneath stands still while it is: the
 // frame does nothing, and a second click cannot start a second solve.
 let solving = false;
+let startupReady = false;
 
 /**
  * A new run: the world is solved behind the bar first, so nothing starts on a
@@ -173,6 +174,7 @@ let solving = false;
 async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0, persist = true): Promise<void> {
   if (solving) return;
   solving = true;
+  showLoading("Loading...", 0);
   // The finally is what makes the flag and the bar safe to hold: a solve that
   // throws would otherwise leave the frame standing still with every later
   // click a no-op, behind a full-page overlay that never comes down.
@@ -181,8 +183,10 @@ async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: numbe
     const g = newWorld(seed, boat, startDoy, loaded);
     state = g.state;
     world = g.world;
+  } catch (err) {
+    showLoading(`the world could not be made: ${err instanceof Error ? err.message : String(err)}`, 0);
+    throw err;
   } finally {
-    hideLoading();
     solving = false;
   }
   wasDead = false;
@@ -206,6 +210,11 @@ async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: numbe
   }
   awayDial?.refresh();
   tellForecaster?.(world);
+  if (startupReady) {
+    render();
+    updateEffects();
+    hideLoading();
+  }
 }
 
 async function boot() {
@@ -227,7 +236,6 @@ async function boot() {
     try {
       world = await loadWorld(state.seed, showLoading);
     } finally {
-      hideLoading();
       solving = false;
     }
     // Before anything reads terrain: the loaded run's clearings are part of it.
@@ -1223,6 +1231,9 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
   });
 }
 render();
+updateEffects();
+startupReady = true;
+hideLoading();
 portraitMotion.frame(document, performance.now(), document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
 requestAnimationFrame(frame);
 
