@@ -49,7 +49,7 @@ import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHt
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
 import { effectsSnapshot, LEVELS, legendHtml, mapAggregateAtPoint, mapBoardHtml, mapKey, mapModelSnapshot, type MapTarget, mapTargetAtClient, mapViewportBounds, setBoardLight, setPointedGlyph, type TargetResolution, updateEffects } from "./ui/map";
-import { drawBoard } from "./ui/mapcanvas";
+import { drawBoard, releaseBoard } from "./ui/mapcanvas";
 import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { loadRateDisplay, saveRateDisplay, type RateDisplay } from "./ui/rate";
 import { stockPanelHtml, stocksHtml } from "./ui/stocks";
@@ -69,7 +69,8 @@ import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
 import { hideLoading, showLoading } from "./ui/loading";
 import { recognitionHtml } from "./ui/wildlife-panel";
 import { type WorldCacheStats, worldCacheStats } from "./world/aggregate";
-import { bindGround } from "./world/cells";
+import { releaseViewsheds } from "./sim/sight";
+import { bindGround, FINE_CHUNK_HIDDEN_LIMIT, trimFineChunks } from "./world/cells";
 import { regionAt, type World } from "./world/gen";
 import { loadWorld } from "./world/worldloader";
 
@@ -1021,7 +1022,16 @@ document.addEventListener("change", (ev) => {
   render();
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") persistGame();
+  if (document.visibilityState !== "hidden") return;
+  persistGame();
+  // A tab in the background is a tab a browser may reclaim, and Safari says
+  // so out loud: "This web page was reloaded because it was using
+  // significant memory." Everything released here is rebuilt from the seed
+  // or redrawn on the next frame, so the cost of coming back is a moment of
+  // work and the cost of staying away is most of the footprint.
+  releaseViewsheds();
+  trimFineChunks(world, FINE_CHUNK_HIDDEN_LIMIT);
+  releaseBoard();
 });
 window.addEventListener("pagehide", persistGame);
 // The terrain letters never change, so the legend is set once rather than rebuilt with the map.

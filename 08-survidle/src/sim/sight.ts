@@ -86,6 +86,17 @@ let viewshedCacheCells = 0;
 const viewshedWorldIds = new WeakMap<World, number>();
 let nextViewshedWorldId = 1;
 
+/**
+ * Drops every held viewshed. A backgrounded tab is doing nothing with them,
+ * and they are the largest thing the sight model keeps: up to
+ * VIEWSHED_CACHE_CELL_BUDGET patch numbers in Sets. They rebuild on demand,
+ * so this costs the next look and nothing else.
+ */
+export function releaseViewsheds(): void {
+  viewshedCache.clear();
+  viewshedCacheCells = 0;
+}
+
 function viewshedWorldId(world: World): number {
   let id = viewshedWorldIds.get(world);
   if (id === undefined) {

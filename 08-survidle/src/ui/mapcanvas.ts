@@ -113,6 +113,22 @@ let drawnKey = "";
 let drawnDpr = 0;
 let stamp = 0;
 
+/**
+ * Gives back the board's pixels. A canvas keeps its backing store as long as
+ * it has a size, which for a board on a retina screen is megabytes that a
+ * hidden tab is not showing anybody. The next draw sizes it again, and
+ * `drawnKey` is cleared so that draw happens.
+ */
+export function releaseBoard(): void {
+  if (!board) return;
+  board.width = 0;
+  board.height = 0;
+  drawnKey = "";
+  drawnDpr = 0;
+  looks.clear();
+  lookedGrid = "";
+}
+
 /** Counts draws, so a frame can tell a board it has already copied from one drawn since. */
 export function boardStamp(): number {
   return stamp;
