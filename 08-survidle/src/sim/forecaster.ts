@@ -95,11 +95,10 @@ export function createForecaster(world: World, worker?: Worker, runs?: number): 
     // beside them rather than instead of them, and posting it would block
     // this thread on cloning ~44 MB before the message even queues.
     setWorld(w) {
+      active = w;
       if (worker) {
         const msg: ForecastRequest = { kind: "world", seed: w.seed };
         worker.postMessage(msg);
-      } else {
-        active = w;
       }
     },
     view: () => view,

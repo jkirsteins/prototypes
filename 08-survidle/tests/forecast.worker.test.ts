@@ -23,7 +23,8 @@ describe("the forecast worker's row loop", () => {
 
     await worker.onMessage({ kind: "world", seed: state.seed });
     const run = worker.onMessage({ kind: "forecast", id: 1, state });
-    // onMessage runs synchronously up to its first await: one horizon's wait is already queued.
+    // First forecast loads lazily; let that completed load enter its row loop.
+    await Promise.resolve();
     expect(waiters.length).toBe(1);
 
     // fresh() in main.ts (reset world, leave world, next boat) posts exactly
