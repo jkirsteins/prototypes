@@ -815,7 +815,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const site = campSite(st);
       const done = site?.build[sid] ?? 0;
       const total = buildMinutes(state, world, sid, at);
-      const o = opt({ group: "build", label: def.name, detail: def.needs.length ? `${needsList(def.needs)}; ${def.desc}` : def.desc, duration: Math.max(1, total - done) });
+      // Verb first, like every other row: "Build fire site" beside "Make
+      // stone knife" and "Fell any tree", not a bare "fire site".
+      const o = opt({ group: "build", label: `Build ${def.name}`, detail: def.needs.length ? `${needsList(def.needs)}; ${def.desc}` : def.desc, duration: Math.max(1, total - done) });
       if (sid === "snare") {
         const o2 = ground(heathCell(world, at), "heath", "heath", o);
         if (!o2.ok) return o2;

@@ -61,3 +61,22 @@ describe("the opening spine", () => {
     expect(isOpportunityDiscovered(state.opportunities, "firewood")).toBe(true);
   });
 });
+
+describe("an FYI left open by an older save", () => {
+  /**
+   * A world saved before the seasons were FYIs has them discovered and
+   * not complete. With no steps they would complete on the first event of
+   * any kind and be announced - four seasons lived through on the day a
+   * camp was sited. They are closed without a word instead.
+   */
+  it("is closed silently, never announced, and its group is no achievement", () => {
+    const { state } = newGame(17);
+    for (const season of ["spring", "summer", "autumn", "winter"] as const) delete state.opportunities.completedAt[`season:${season}`];
+    state.opportunities.notices = [];
+    recordOpportunityEvent(state, { kind: "task", id: "makeCamp" as TaskId });
+    const announced = state.opportunities.notices.flatMap((n) => [...n.completed, ...n.completedGroups]);
+    expect(announced).not.toEqual(expect.arrayContaining(["season:spring"]));
+    expect(announced).not.toContain("seasons");
+    expect(isOpportunityComplete(state.opportunities, "season:spring")).toBe(true);
+  });
+});

@@ -289,6 +289,11 @@ export function applyOpportunityEvent(
     // Discovery timestamps describe history across lives, whose clocks reset.
     // Only membership gates credit; no past event is ever replayed.
     if (!def) continue;
+    // An FYI is told, not done. One left discovered-but-open by a save from
+    // before it was an FYI is closed here without a word: it has no steps,
+    // so it would otherwise complete on the first event of any kind and
+    // announce four seasons lived through on the day a camp was sited.
+    if (def.fyi) { state.completedAt[key] = minute; continue; }
     const progress = state.stepProgress[key] ?? {};
     state.stepProgress[key] = progress;
     for (let i = 0; i < def.steps.length; i++) {
@@ -317,6 +322,8 @@ export function applyOpportunityEvent(
   const doable = result.discovered.filter((key) => !opportunityDef(key)?.fyi);
   if (state.current === null && doable.length === 1) setCurrentOpportunity(state, doable[0]);
   for (const group of OPPORTUNITY_GROUPS) {
+    // A group of nothing but FYIs - the seasons - is never an achievement.
+    if (group.keys.every((key) => opportunityDef(key)?.fyi)) continue;
     if (group.keys.length && result.completed.some((key) => group.keys.includes(key)) && group.keys.every((key) => state.completedAt[key] !== undefined)) result.completedGroups.push(group.id);
   }
   if (result.completed.length || result.discovered.length || result.completedGroups.length) {
