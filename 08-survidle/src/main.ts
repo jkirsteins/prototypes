@@ -42,7 +42,7 @@ import { updateBars, updateFills } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
-import { chipsHtml, doHtml, doPurposesHtml, KW_PREFIX, purposeCounts, subtabCounts } from "./ui/dopanel";
+import { doHtml, doPurposesHtml, KW_PREFIX, purposeCounts, subtabCounts } from "./ui/dopanel";
 import { catalogPage, opportunityCatalogAction, opportunityCatalogHtml, opportunityCatalogKeyboard } from "./ui/opportunity-catalog";
 import { opportunityPanelHtml } from "./ui/opportunity-panel";
 import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
@@ -415,7 +415,6 @@ function render(nowMs = performance.now()) {
   setPanel("panetabs", paneTabsHtml(ui.panes));
   settlePanes();
   setPanel("dosubs", ui.filter.trim() ? "" : subtabsHtml(ui.panes, subtabCounts(state, world, ui)));
-  setPanel("dochips", chipsHtml(state, world, ui));
   // Shown and hidden, never rendered on demand: a pane built when it is
   // asked for is a pane whose scroll position starts again every time.
   for (const id of PANE_IDS) setHidden(document.getElementById(`pane-${id}`), id !== ui.panes.pane);
@@ -873,18 +872,13 @@ function onClick(ev: Event) {
     case "camp-no":
       ui.confirmCamp = false;
       break;
-    case "kw":
-    // A chip above the strip and a tag on a row ask the same question; the
-    // chip is that question put where someone who cannot find the row can
-    // still reach it.
-    case "do-chip": {
+    case "kw": {
       // A concept tag asks for its own rows exactly, not for the letters of its
       // name: see conceptAsked in dopanel.ts. The box is static markup outside
       // every panel, so its value is written here rather than rendered.
-      const concept = act === "do-chip" ? target.dataset.concept : target.dataset.kw;
-      const asked = `${KW_PREFIX}${concept ?? ""}`;
-      // Clicking the chip that is already on puts it back, so a chip is a
-      // toggle rather than a thing you can only turn on.
+      const asked = `${KW_PREFIX}${target.dataset.kw ?? ""}`;
+      // Clicking the tag that is already on puts it back, so it is a toggle
+      // rather than a thing you can only turn on.
       ui.filter = ui.filter === asked ? "" : asked;
       const box = document.querySelector<HTMLInputElement>("[data-do=filter]");
       if (box) box.value = ui.filter;

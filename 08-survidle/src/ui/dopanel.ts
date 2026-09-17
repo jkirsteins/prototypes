@@ -707,33 +707,6 @@ function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): T
  * the eighty-four-row panel told: it advertises a game that is not there
  * yet. The strip grows as the run does.
  */
-/**
- * The concept chips, above the subtab strip.
- *
- * The verb tree cannot answer "I am cold". Warmth spans Camp > Fire,
- * Build > Shelter, Make > Clothing and Camp > Tools; food spans five
- * subtabs and eight purposes. VOCABULARY already crosses those, and the
- * `kw:` filter already searches it - but the only way to find a chip was
- * to notice a tag on a row you had already found, which is no use to
- * someone who cannot find the row.
- *
- * So the concepts are put on screen. A chip is drawn only when a revealed
- * row carries it, so the strip grows with the run like the subtabs do.
- */
-export function chipsHtml(state: GameState, world: World, ui: UiState): string {
-  const live = new Set<string>();
-  for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
-    if (!revealed(state, i.id, i.arg)) continue;
-    for (const concept of conceptsFor(i.id, i.arg)) live.add(concept);
-  }
-  const asked = conceptAsked(ui.filter);
-  return conceptNames()
-    .filter((name) => live.has(name))
-    .map((name) =>
-      `<button type="button" class="kw${name === asked ? " on" : ""}" data-act="do-chip" data-concept="${esc(name)}" title="Show every ${esc(name)} row, whatever subtab it lives in">${esc(name)}</button>`)
-    .join("");
-}
-
 export function subtabCounts(state: GameState, world: World, ui: UiState): Record<SubtabId, number> {
   const counts = Object.fromEntries(SUBTABS.map((s) => [s, 0])) as Record<SubtabId, number>;
   for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
