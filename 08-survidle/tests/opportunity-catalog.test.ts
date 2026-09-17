@@ -93,11 +93,17 @@ it("credits overlapping authored and collection leaves from one build event", ()
 });
 
 it("knows its day-one leaves without credit and identity events credit only their leaf", () => {
-  const state = newState();
-  expect(state.opportunities.discoveredAt["make:knife"]).toBe(0);
+  const { state, world } = newGame(3);
+  expect(state.opportunities.discoveredAt["make:fireDrill"]).toBe(0);
   expect(state.opportunities.discoveredAt["build:leanTo"]).toBe(0);
-  expect(state.opportunities.completedAt["make:knife"]).toBeUndefined();
+  expect(state.opportunities.completedAt["make:fireDrill"]).toBeUndefined();
   expect(state.opportunities.completedAt["build:leanTo"]).toBeUndefined();
+
+  // Credit only counts against goals already open, so the knife has to be
+  // discovered before it is made. That is the real order: the stone comes
+  // first, discovery runs on it, and only then can a knife be knapped.
+  state.player.pack.items.stone = 2;
+  discoverAvailableOpportunities(state, world, calendar(state.minute, state.startDoy));
 
   recordOpportunityEvent(state, { kind: "toolMade", tool: "knife" });
   recordOpportunityEvent(state, { kind: "foraged", item: "berries" });
@@ -116,25 +122,38 @@ it("refresh discovers known possibilities but never infers completion from posse
   expect(state.opportunities.completedAt["forage:berries"]).toBeUndefined();
 });
 
-it("knows supported Do-list entries below their recommended levels", () => {
-  const state = newState();
+/**
+ * A recommended level is advice, not a gate: the bow is still knowable at
+ * Crafting 1. What holds these back now is kit and ground, not the ladder,
+ * so the check is that discovery arrives with the stone rather than with
+ * the level.
+ */
+it("gates supported Do-list entries on kit and ground, never on the recommended level", () => {
+  const { state, world } = newGame(3);
   expect(state.skills.crafting.xp).toBe(0);
-  expect(state.skills.building.xp).toBe(0);
-  expect(state.opportunities.discoveredAt["make:bow"]).toBe(0);
-  expect(state.opportunities.discoveredAt["make:stoneAxe"]).toBe(0);
-  expect(state.opportunities.discoveredAt["build:cabin"]).toBe(0);
-  expect(state.opportunities.discoveredAt["build:turfHut"]).toBe(0);
-  expect(state.opportunities.completedAt["make:bow"]).toBeUndefined();
+  expect(state.opportunities.discoveredAt["make:knife"]).toBeUndefined();
+
+  state.player.pack.items.stone = 2;
+  discoverAvailableOpportunities(state, world, calendar(state.minute, state.startDoy));
+
+  // Crafting is still 1. The stone is what changed.
+  expect(state.skills.crafting.xp).toBe(0);
+  expect(state.opportunities.discoveredAt["make:knife"]).toBeDefined();
+  expect(state.opportunities.completedAt["make:knife"]).toBeUndefined();
 });
 
-it("seeds every day-one capability silently, so the opening is not a wall of unearned leaves", () => {
+it("seeds the day-one capabilities silently, and seeds only the ones a landing has earned", () => {
   const state = newState();
   const announced = state.opportunities.notices.flatMap((notice) => notice.discovered);
   for (const key of DAY_ONE_CAPABILITY_KEYS) {
     expect(state.opportunities.discoveredAt[key]).toBe(0);
     expect(announced).not.toContain(key);
   }
-  expect(DAY_ONE_CAPABILITY_KEYS.length).toBe(SUPPORTED_TOOL_RECIPES.length + SUPPORTED_SHELTER_STRUCTURES.length);
+  // The fire wanted tonight and the two roofs the ground alone pays for.
+  // Every other tool and shelter waits: each one puts a Do row on the board,
+  // and a wall of rows for work the player cannot start is what this pass removes.
+  expect([...DAY_ONE_CAPABILITY_KEYS]).toEqual(["make:fireDrill", "build:leanTo", "build:boughBed"]);
+  expect(DAY_ONE_CAPABILITY_KEYS.length).toBeLessThan(SUPPORTED_TOOL_RECIPES.length + SUPPORTED_SHELTER_STRUCTURES.length);
 });
 
 it("migrates old aggregate trap catches without inventing species credit", () => {

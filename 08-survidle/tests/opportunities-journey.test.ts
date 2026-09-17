@@ -22,21 +22,26 @@ const cal = calendar(0);
 /** Seed 3 lands on a salt shore with bog and pine behind it, so these five foods arrive on the first frames. */
 const INITIAL_FORAGE = ["forage:berries", "forage:eggs", "forage:barkFlour", "forage:cookedRoots", "forage:seaweed"] as const;
 
-/** Nothing gates a tool recipe or a shelter, so all fifteen are known from world start. */
-const DAY_ONE_CAPABILITIES = [
-  "build:leanTo", "build:cabin", "build:boughBed", "build:turfHut", "build:snowShelter",
-  "make:knife", "make:fireDrill", "make:bow", "make:fishingSpear", "make:needle",
+/**
+ * The capabilities a landing hands over: the fire wanted tonight and the
+ * two roofs the ground alone pays for. The other twelve tools and shelters
+ * used to be seeded here too; they now wait for the stone, the knife or the
+ * camp that makes them a real prospect, because each one puts a Do row on
+ * the board and fifteen unearned rows is what this pass removes.
+ */
+const DAY_ONE_CAPABILITIES = ["make:fireDrill", "build:leanTo", "build:boughBed"] as const;
+
+/** Seeded no longer: discovered when the run reaches them. */
+const EARNED_CAPABILITIES = [
+  "build:cabin", "build:turfHut", "build:snowShelter",
+  "make:knife", "make:bow", "make:fishingSpear", "make:needle",
   "make:stoneAxe", "make:flakedAxe", "make:whetstone", "make:barkBucket", "make:waterskin",
 ] as const;
-
-const INITIAL_COLLECTIONS = [...INITIAL_FORAGE, ...DAY_ONE_CAPABILITIES] as const;
 
 /** `newOpportunities` seeds tools before shelters; the catalog renders them the other way round. */
-const DAY_ONE_CAPABILITY_ORDER = [
-  "make:knife", "make:fireDrill", "make:bow", "make:fishingSpear", "make:needle",
-  "make:stoneAxe", "make:flakedAxe", "make:whetstone", "make:barkBucket", "make:waterskin",
-  "build:leanTo", "build:cabin", "build:boughBed", "build:turfHut", "build:snowShelter",
-] as const;
+const DAY_ONE_CAPABILITY_ORDER = ["build:leanTo", "build:boughBed", "make:fireDrill"] as const;
+
+const INITIAL_COLLECTIONS = [...INITIAL_FORAGE, ...DAY_ONE_CAPABILITY_ORDER] as const;
 
 /** Drain the presentation queue the way the modal does, one notice per OK. */
 function dismissAll(state: ReturnType<typeof newGame>["state"]): void {
@@ -112,6 +117,13 @@ describe("the authored opportunity journey", () => {
     expect(state.opportunities.notices.flatMap((notice) => notice.discovered))
       .toEqual(expect.not.arrayContaining([...DAY_ONE_CAPABILITIES]));
     expect(state.opportunities.current).toBe("site");
+  });
+
+  it("withholds the capabilities a landing has not earned", () => {
+    const { state } = newGame(3);
+    for (const key of EARNED_CAPABILITIES) {
+      expect(state.opportunities.discoveredAt[key]).toBeUndefined();
+    }
   });
 
   it("keeps the landing ground's own forage silent, so choosing a home is the only thing said", () => {
@@ -330,6 +342,11 @@ describe("opportunities are the world's, not a life's", () => {
 
   it("does not credit later building opportunities before they are announced", () => {
     const { state } = newGame(3);
+    // The hut is no longer a landing capability, so a build before it is
+    // announced credits nothing at all - which is what this test is named for.
+    expect(recordOpportunityEvent(state, { kind: "built", structure: "turfHut" })).toEqual([]);
+
+    reveal(state, ["build:turfHut"]);
     expect(recordOpportunityEvent(state, { kind: "built", structure: "turfHut" })).toEqual(["build:turfHut"]);
     expect(state.opportunities.completedAt["build:turfHut"]).toBe(state.minute);
     expect(state.opportunities.completedAt.roof).toBeUndefined();
@@ -424,7 +441,9 @@ describe("opportunities are the world's, not a life's", () => {
     const g = newOpportunities("winter");
     expect(g.completedAt).toEqual({});
     expect(g.stepProgress).toEqual({});
-    expect(Object.keys(g.discoveredAt)).toEqual([...SEASON_KEYS, ...DAY_ONE_CAPABILITY_ORDER, "site"]);
+    // Insertion order into discoveredAt is the order newOpportunities seeds,
+    // which is not the order the catalog renders.
+    expect(Object.keys(g.discoveredAt)).toEqual([...SEASON_KEYS, ...DAY_ONE_CAPABILITIES, "site"]);
     expect(g.notices).toHaveLength(1);
     expect(g.context.weather).toBeNull();
     expect(g.context.chapter3HomeRegion).toBeNull();

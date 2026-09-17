@@ -4,7 +4,7 @@ import type { Calendar } from "./calendar";
 import { STRUCTURES, TOOLS, type FoodId } from "./items";
 import { SPECIES_DEFS, type Species } from "./species";
 import type {
-  GameState, OpportunityCategory, OpportunityDef, OpportunityEvent,
+  GameState, ItemId, OpportunityCategory, OpportunityDef, OpportunityEvent,
   OpportunityGroupDef, OpportunityKey, OpportunityState, OpportunityStepDef,
   RecipeId, Season, SkillId, StructureId, TaskId, ToolId,
 } from "./types";
@@ -131,14 +131,74 @@ export function discoverMany(state: OpportunityState, keys: readonly Opportunity
 const capabilityLevel = (state: GameState, skill: SkillId): number => Math.min(50, 1 + Math.floor(Math.sqrt(Math.max(0, state.skills[skill].xp) / 120)));
 
 /**
- * Every supported tool recipe and shelter is buildable from the first minute:
- * nothing in the simulation gates them behind a skill, a season or a place.
- * So they are known from world start, like the seasons, and `newOpportunities`
- * seeds them silently rather than announcing fifteen unearned leaves at once.
- * A capability that a future gate really does hide belongs in
- * `discoverAvailableOpportunities`, beside forage and traps.
+ * The capabilities a survivor steps off the boat already able to reach:
+ * the fire they need tonight and the two roofs that cost only what the
+ * ground gives. Seeded silently by `newOpportunities`, like the seasons.
+ *
+ * Everything else waits. Each Do row now hangs off the opportunity that
+ * names it, so seeding all ten tools and all five shelters here would put
+ * fifteen rows on the board before the player had done anything - which is
+ * the twenty-two unmakeable recipes this pass exists to remove. The rest
+ * are discovered in `knownCapabilityOpportunityKeys` below, which is where
+ * this comment used to say a genuinely gated capability belongs.
  */
-export const DAY_ONE_CAPABILITY_KEYS: readonly OpportunityKey[] = [...toolKeys(), ...shelterKeys()];
+export const DAY_ONE_CAPABILITY_KEYS: readonly OpportunityKey[] = [
+  "make:fireDrill", "build:leanTo", "build:boughBed",
+];
+
+/**
+ * Whether the survivor can lay hands on an item: in hand as a tool, in the
+ * pack, or in the pile at camp.
+ *
+ * Reads `items` directly rather than calling `qty`, because importing
+ * inventory here is a cycle - inventory reaches back into this module and
+ * the catalogue's own `SEASONS` is still undefined when it does. Every item
+ * asked about below is a counted one, never a perishable stack, so the
+ * plain read is the same answer `qty` would give.
+ */
+function holds(state: GameState, item: ItemId): boolean {
+  if (state.player.tools.some((t) => (t.id as string) === item)) return true;
+  if ((state.player.pack.items[item] ?? 0) > 0) return true;
+  const cell = state.regions[state.player.region]?.campCell;
+  if (cell === null || cell === undefined) return false;
+  return (state.piles[cell]?.items[item] ?? 0) > 0;
+}
+
+/**
+ * The capabilities the survivor's own kit, ground and skill have opened.
+ *
+ * Each condition names the thing that makes the capability a real prospect
+ * rather than a locked door: the stone in hand before a knife is worth
+ * knowing about, the knife before the work a knife does, the camp before
+ * the buildings a camp holds. A player who learns of a bow while holding
+ * no cordage has learned nothing they can act on.
+ */
+export function knownCapabilityOpportunityKeys(state: GameState): OpportunityKey[] {
+  // Holding the stone, not seeing the outcrop. Knowing there is rock a
+  // kilometre off is not having a stone to knap, and a condition that reads
+  // the map would open the knife on some landings and not others.
+  const stone = holds(state, "stone");
+  const knife = holds(state, "knife");
+  const camp = state.regions[state.player.region]?.campCell !== null
+    && state.regions[state.player.region]?.campCell !== undefined;
+  // Read off the track: keys rather than off the sign: having seen an animal
+  // is already an opportunity, so the bow waits on the same fact the player
+  // was told about rather than on a second notion of "seen".
+  const seenGame = SUPPORTED_WILDLIFE_SPECIES
+    .some((species) => state.opportunities.discoveredAt[`track:${species}` as OpportunityKey] !== undefined);
+
+  const keys: OpportunityKey[] = [];
+  if (stone) keys.push("make:knife", "make:whetstone");
+  if (holds(state, "bark")) keys.push("make:barkBucket");
+  if (knife) keys.push("make:flakedAxe", "make:fishingSpear");
+  if (holds(state, "bone") || holds(state, "crackedBone")) keys.push("make:needle");
+  if (holds(state, "hide")) keys.push("make:waterskin");
+  if (seenGame) keys.push("make:bow");
+  if (holds(state, "whetstone")) keys.push("make:stoneAxe");
+  if (camp) keys.push("build:turfHut", "build:snowShelter");
+  if (camp && capabilityLevel(state, "building") >= 5) keys.push("build:cabin");
+  return keys;
+}
 
 export function knownTrapOpportunityKeys(state: GameState): OpportunityKey[] {
   if (capabilityLevel(state, "fishing") < 5) return [];
@@ -171,6 +231,7 @@ export function discoverAvailableOpportunities(state: GameState, world: World, c
   const keys = [
     ...knownForageOpportunityKeys(state, world, cal),
     ...knownTrapOpportunityKeys(state),
+    ...knownCapabilityOpportunityKeys(state),
   ];
   return discoverMany(state.opportunities, keys, state.minute, announce);
 }
