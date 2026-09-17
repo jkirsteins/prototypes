@@ -40,10 +40,12 @@ things. It is that the action space was **obscured in a long list**. The
 overhaul answered it by making the long list scannable: subtabs,
 purposes, two-line rows, a filter. Good changes, all of them kept here.
 
-But a scannable list of eighty-four rows, seventy-two of which are
-refusals, is still the long list. Discovery-by-revelation is the moment
-he was protecting. Discovery-by-scrolling-past-twenty-two-refusals is the
-chore he was complaining about. Gating is on his side of that line.
+They were not enough. The list the overhaul produced is the one measured
+at the top of this document: eighty-four rows, seventy-two of them
+refusals. Scannable, and still the long list. Discovery-by-revelation is
+the moment the tester was protecting; scrolling past twenty-two
+unmakeable recipes is the chore he was complaining about. Gating is on
+his side of that line.
 
 What we must not do is teach the answer. A revealed row still says what
 it needs and never says how to get it. "Oh, I can build a fire?" survives.
@@ -115,11 +117,42 @@ is revealed by whatever revealed the thing it mends.
 
 ### 3.3 What "revealed" means
 
-Revealed is not startable. `Light the fire` appears on day 1 and says
-`needs tinder`. `Make camp here` appears on day 1 and is startable. Both
-are revealed by the same day-1 opportunity. The distinction the player
-reads is unchanged from today: a row with a duration can be clicked, a row
-with a reason cannot.
+Revealed is not startable, and the difference is the whole design. The
+distinction the player reads is unchanged from today: a row with a
+duration can be clicked, a row with a reason cannot.
+
+**The rule.** A row is revealed when the survivor has, or can plainly
+get, the tools and knowledge it names. It may still be blocked, and every
+legitimate block teaches something. What gets gated is the one block that
+teaches nothing: a tool the player has never heard of.
+
+Classifying all seventy-two of day 1's blocked rows against that rule:
+
+| Class | Example | Rows | |
+| --- | --- | --- | --- |
+| Calendar decides | `Tap a birch: the sap has not risen` | 3 | **reveal** |
+| Place decides | `Gather stone: no rock in Elglia` | 2 | **reveal** |
+| Prior step on screen | `Cook raw meat: needs a lit fire` | ~10 | **reveal** |
+| Camp not yet made | `lean-to: no camp here yet` | 15 | revealed by the camp opportunity, on making camp |
+| Tool chain, no concept of it | `Make hide coat: needs a bone needle` | ~40 | **gate** |
+
+The first three are the world teaching itself: its year, its geography,
+its order of operations. Hiding `no eggs until May` does not protect a
+discovery, it deletes one.
+
+A revealed row may still be blocked on **materials**, and that is
+intended. The moment `Make hide coat` appears, the player learns hide and
+sinew matter. The shopping list exists for exactly that. Revelation means
+"you now know this is a thing", never "you can do this now".
+
+Day 1 under this rule is roughly twelve startable rows plus five to seven
+revealed-but-blocked: about eighteen, against eighty-four today.
+
+**A caution for whoever authors `REVEAL`.** A row carries several blocks
+and the UI prints one. `log cabin` displays `Building 10, you are 1` and
+is *also* blocked by `no camp here yet`. Authoring this table by reading
+the displayed reason would therefore be wrong. It has to be keyed off the
+tool and skill requirements in the task definition.
 
 Revelation is permanent within a run. A row never leaves the board once
 shown, whatever happens to the opportunity that brought it. Rows
@@ -131,18 +164,45 @@ inherits the board their ancestor uncovered. This matches the reasoning
 already written into `opportunities.ts`, that goals outlive survivors and
 must be readable off the world rather than off a life.
 
-### 3.4 The day-1 set
+### 3.4 An opportunity reveals a chain, not a row
 
-The opportunities discovered at landing reveal roughly twelve rows:
+`Light a field fire` is blocked on `needs a fire drill`. The drill wants 2
+sticks and 1 cordage; cordage wants 3 bark. Every link is gatherable on
+day 1. Reveal the fire and hide the drill and the player is looking at a
+locked door with no handle.
+
+So an opportunity reveals **every row in the chain it names**. First fire
+brings `bark`, `craft:cordage`, `craft:fireDrill` and `light` at once. The
+intermediate rows are blocked, but blocked in class three: the prior step
+is on screen, which is the case that teaches sequence.
+
+This gives the crisp form of the whole rule:
+
+> **A revealed row's blocks may only name things revealed by the same
+> opportunity or an earlier one.**
+
+Inside a chain, a block is a next step. Across chains, it is a locked door
+with no handle. That sentence is the spec, and section 4 makes it a test.
+
+### 3.5 The day-1 set
+
+Landing reveals roughly eighteen rows: the twelve startable ones, plus the
+handful the world itself is holding shut.
 
 ```
-Gather    deadwood, sticks, berries
+Gather    deadwood, sticks, berries, bark
+          tap a birch      the sap has not risen     (calendar)
+          gather eggs      no eggs until May         (calendar)
+          gather stone     no rock in Elglia         (place)
 Explore   explore this region
 Build     make camp here
-Camp      light the fire, rest, sleep, drink
+Camp      rest, sleep, drink
+Make      cordage, fire drill                        (chain, for the fire)
+Camp      light a field fire   needs a fire drill    (chain)
 ```
 
-Hunt and Make draw nothing until something opens them. That is the point.
+Hunt draws nothing. Make draws two rows instead of twenty-two. The
+remaining sixty-six appear as the run reaches them.
 
 ## 4. The two tests
 
@@ -159,16 +219,27 @@ to a second axis, and it is enforced the same way.
 opportunity nothing leads to strands every row it names, and fails the
 build.
 
+**`tests/reveal.test.ts`, no locked doors.** Section 3.4's rule, enforced:
+for every row, every tool and recipe its task definition requires is
+itself revealed by the same opportunity or by one discoverable before it.
+A `craft:bow` revealed before anything reveals cordage fails the build.
+
+That third test is the one that earns its keep. It reads requirements off
+the task definitions rather than off the displayed reason, which is what
+section 3.3's caution demands, and it is the only mechanical check that
+the board a player is looking at can actually be acted on.
+
 Together these answer a question the game currently cannot answer at all:
 which opportunities are missing. Any row that cannot name one is a hole in
 the opportunity catalogue, and the test prints it.
 
 ### What the tests cannot catch
 
-A row revealed too early to be useful is structurally valid and reads as a
-wall: `craft:bow` revealed before any cordage row is. Reachability proves
-a path exists, not that the path is walkable in order. That is a playtest
-finding, not a test finding, and this spec does not pretend otherwise.
+Ordering *within* what is legal. The no-locked-doors test proves the
+player can reach every revealed row; it cannot prove the route is a good
+one, or that eighteen rows on day 1 is the right number rather than twelve
+or thirty. Pacing is a playtest finding, and this spec does not pretend
+otherwise.
 
 ## 5. The need chips
 
@@ -262,8 +333,9 @@ This is separable from the gating work and should land after it.
 
 ## 10. Order of work
 
-1. `tests/reveal.test.ts`, both rules, against an empty `REVEAL`. Red.
-2. `REVEAL` authored to green, 77 entries.
+1. `tests/reveal.test.ts`, all three rules, against an empty `REVEAL`. Red.
+2. `REVEAL` authored to green, 77 entries, keyed off task requirements
+   rather than displayed reasons.
 3. The Do pane draws only revealed rows; `docs/ux.md` section rewritten.
 4. `defaultPanes` reads the current opportunity; `clear` control.
 5. The opportunity card routes; catalogue pauses; the checkbox resolved.
