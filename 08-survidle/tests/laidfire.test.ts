@@ -41,7 +41,9 @@ describe("a fire laid before it is lit", () => {
     expect(b.ok, b.why).toBe(true);
     expect(startTask(state, world, cal, "build", "firePit")).toBe(true);
     advance(state, world, b.duration);
-    expect(state.opportunities.stepProgress.fire?.site).toBe(1);
+    // The pit is its own rung before the fire goal now, not a step of it:
+    // tests/opportunity-fyi.test.ts holds that rung. This fixture reveals
+    // the fire goal directly and walks its remaining steps.
     // No drill: laying the fire is work that stands on its own, so the player
     // who has wood and no drill yet can still do the step in front of them.
     state.player.tools = [];
