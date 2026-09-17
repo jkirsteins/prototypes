@@ -217,9 +217,29 @@ async function main() {
       try { await (await fetch(`http://localhost:${PORT}/json/version`)).json(); break; } catch { await sleep(250); }
     }
     if (chromeError) throw chromeError;
-    const { send, evalJs, errors } = await cdp(`${URL_BASE}?seed=${SEED}&day=${DAY}`);
+    const { send, evalJs, errors } = await cdp("about:blank");
+    await send("Page.addScriptToEvaluateOnNewDocument", { source: `
+      window.startupCheck = { covered: 0, partial: 0 };
+      function checkStartupFrame() {
+        const app = document.getElementById('app');
+        const loading = document.getElementById('loading');
+        if (app && loading) {
+          if (!loading.hidden) window.startupCheck.covered++;
+          if (getComputedStyle(app).visibility === 'visible' &&
+              (!document.getElementById('stocks')?.textContent.trim() ||
+               !document.getElementById('stats')?.textContent.trim() ||
+               !document.querySelector('#mapdyn .grid'))) window.startupCheck.partial++;
+        }
+        if (!window.survidle) requestAnimationFrame(checkStartupFrame);
+      }
+      requestAnimationFrame(checkStartupFrame);
+    ` });
+    await send("Page.navigate", { url: `${URL_BASE}?seed=${SEED}&day=${DAY}` });
     await send("Page.bringToFront");
     await waitFor(evalJs, "window.survidle && document.querySelector('[data-act=pick-candidate]')", "the landing");
+    const startup = await evalJs("window.startupCheck");
+    check(startup.covered > 0, "startup displayed a loading screen before the game was ready");
+    check(startup.partial === 0, `startup exposed ${startup.partial} partially initialized frames`);
     await clickSelector(send, evalJs, "[data-act=pick-candidate]");
     await sleep(200);
     await clickSelector(send, evalJs, "[data-act=land]");
@@ -236,6 +256,7 @@ async function main() {
     let paint = await evalJs(READ_PAINT);
     check(paint.painted > paint.of * 0.2, `the board is painted at the block rung (${paint.painted} of ${paint.of} samples)`);
     await saveShot(send, board, `300m-opening`);
+    console.log("300m effects draw:", await evalJs("window.survidle.effectsBench?.(200)"));
 
     // One click walks, and the board holds still while the survivor crosses a block.
     const walk = await orderWalk(send, evalJs, "300 m");
