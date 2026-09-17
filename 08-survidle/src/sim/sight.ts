@@ -24,17 +24,9 @@ const EYE_HEIGHT_M = 1.7;
 /** The geometric horizon: km = this times the square root of the eye's height in metres. */
 const HORIZON_KM_PER_SQRT_M = 3.57;
 /**
- * Closed spruce lets almost nothing through: the trunks and the dark below
- * them close the view down to the ground the survivor is already standing
- * on, whatever the horizon formula would say. Closed means wood on every
- * side; trees at a lakeshore or a clearing's edge open onto whatever lies
- * that way, and only the wooded sides stay shut.
- */
-const SPRUCE_RANGE_CELLS = 0;
-/**
- * Pine and birch keep about 150 m of visibility between the trunks: three
- * 50 m patches. Nearer than this their crowns hide nothing, which is why
- * EXACT_SIGHT_M must not be shorter - see the note there.
+ * A 150 m local envelope lets rays read the ground between trunks. Actual
+ * cover closes dense spruce earlier than pine or birch, through WOOD_COVER;
+ * a zero-range shortcut here would bypass that gradual obstruction.
  */
 export const FOREST_VISIBILITY_M = 150;
 const FOREST_RANGE_CELLS = Math.round(FOREST_VISIBILITY_M / PATCH_M);
@@ -247,7 +239,7 @@ function atWoodEdge(world: World, x: number, y: number): boolean {
  * ground beside it.
  */
 function vantageBaseCells(world: World, t: Terrain, x: number, y: number): number {
-  if (isForest(t) && !atWoodEdge(world, x, y)) return t === "spruce" ? SPRUCE_RANGE_CELLS : FOREST_RANGE_CELLS;
+  if (isForest(t) && !atWoodEdge(world, x, y)) return FOREST_RANGE_CELLS;
   if (t === "fell" || t === "rock" || t === "river") return Math.max(OPEN_RANGE_CELLS, horizonCells(prominenceM(world, x, y) + EYE_HEIGHT_M));
   return OPEN_RANGE_CELLS;
 }

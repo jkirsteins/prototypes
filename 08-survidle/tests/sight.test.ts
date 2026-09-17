@@ -587,6 +587,15 @@ describe("sight", () => {
     expect(isKnown(scene.state, scene.id(4, 0))).toBe(false);
   });
 
+  it("shows the closing trunks inside dense spruce, not just its immediate ring", () => {
+    const scene = fineSightFixture(["TTTTTTT", "TTTTTTT", "TTT@TTT", "TTTTTTT", "TTTTTTT"]);
+    scene.world.fineChunks.get(0)!.terrain[10 * FINE_CHUNK + 11] = TERRAIN_INDEX.spruce;
+    forget(scene.state);
+    seeFrom(scene.state, scene.world, NOON, scene.vantage);
+    expect(isKnown(scene.state, scene.id(5, 2))).toBe(true);
+    expect(isKnown(scene.state, scene.id(6, 2))).toBe(false);
+  });
+
   it("takes the ring away again once the light is under what walking wants", () => {
     const { state, world } = newGame(1);
     const spruce = spruceCell(world, state.player.region);
