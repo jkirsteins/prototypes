@@ -87,10 +87,18 @@ for (const { name, words, rows } of VOCABULARY) {
  * the whole task, and the ones named for this recipe or structure. Splitting
  * a log is fire and fuel; a lean-to is warmth, sleep and shelter.
  */
+const CONCEPTS_FOR = new Map<string, string[]>();
 export function conceptsFor(id: string | undefined, arg: string | undefined): string[] {
   if (!id) return [];
+  // Memoised: the answer depends on nothing but the row, and the chip strip
+  // asks it of every candidate on every draw.
+  const key = arg ? `${id}:${arg}` : id;
+  const hit = CONCEPTS_FOR.get(key);
+  if (hit) return hit;
   const both = [...(CONCEPTS.get(id) ?? []), ...(arg ? (CONCEPTS.get(`${id}:${arg}`) ?? []) : [])];
-  return VOCABULARY.map((v) => v.name).filter((n) => both.includes(n));
+  const out = VOCABULARY.map((v) => v.name).filter((n) => both.includes(n));
+  CONCEPTS_FOR.set(key, out);
+  return out;
 }
 
 /** A row's invisible keywords: the ones for the whole task, plus the ones for this recipe or structure. */
@@ -203,7 +211,27 @@ export function makeFirst<T extends { ok: boolean }>(rows: T[]): T[] {
  * not here is not offered, plus the shore's own reading and the trap it
  * sets and empties.
  */
+/**
+ * Memoised per region, because it is a pure function of one and the panel
+ * asks for it several times a render.
+ *
+ * It allocates roughly eighty objects a call. The rows, the counts on the
+ * subtab strip, the counts in the purpose column and the concept chips all
+ * want the same list, and rebuilding it for each of them was allocation
+ * churn on every frame that redraws. Nothing mutates what comes back - the
+ * callers filter and spread - so one list can serve them all.
+ */
+const INTENT_GROUPS = new WeakMap<RegionDef, { label: string; items: { id: TaskId; arg?: string }[] }[]>();
+
 export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId; arg?: string }[] }[] {
+  const cached = INTENT_GROUPS.get(r);
+  if (cached) return cached;
+  const built = buildIntentGroups(r);
+  INTENT_GROUPS.set(r, built);
+  return built;
+}
+
+function buildIntentGroups(r: RegionDef): { label: string; items: { id: TaskId; arg?: string }[] }[] {
   return [
     { label: "Gather", items: [
       { id: "chop" },
