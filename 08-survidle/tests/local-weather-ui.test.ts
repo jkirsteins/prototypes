@@ -334,10 +334,16 @@ describe("local weather presentation", () => {
     let extinction = 0.06;
     vi.spyOn(climate, "sampleAtmosphere").mockImplementation(() => air({ extinctionPerKm: extinction }));
 
-    const clear = mapKey(state, world, ui, cal);
-    extinction = 20;
-    state.minute = 1;
+    const clear = mapKey(state, world, ui, cal, 1000);
+    // Advance the existing ten-minute air bucket and the wall-clock hold.
+    // Dense fog must hide even adjacent patches, otherwise forest cover
+    // can already close the clear view before this extinction does.
+    extinction = 100;
+    state.minute = 10;
 
-    expect(mapKey(state, world, ui, calendar(state.minute, state.startDoy))).not.toBe(clear);
+    const dense = mapKey(state, world, ui, calendar(state.minute, state.startDoy), 1201);
+    const projection = (key: string) => key.match(/\|vis([^|]*)/)?.[1];
+    expect(projection(clear)).toBeDefined();
+    expect(projection(dense)).not.toBe(projection(clear));
   });
 });
