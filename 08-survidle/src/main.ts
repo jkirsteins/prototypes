@@ -20,6 +20,7 @@ import { log } from "./sim/log";
 import { startIntent, type Where } from "./sim/intent";
 import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
+import { dismissOpportunityPresentation } from "./sim/opportunities";
 import { isKnown, knowledgeGen, markKnown } from "./sim/mapped";
 import { patchId, patchXY } from "./world/spatial";
 import { frontierRoute } from "./sim/routing";
@@ -1370,6 +1371,18 @@ render();
 updateEffects();
 startupReady = true;
 hideLoading();
+// ?autoland is a diagnostic: land the first candidate and clear the opening
+// notices, so a run can be measured from a script that cannot click - a
+// real Safari driven by AppleScript has no JavaScript access unless the
+// Develop menu allows it, and a memory reading needs the clock running.
+if (params.has("autoland") && state.landing !== null) {
+  pickCandidate(state, 0);
+  land(state, world);
+  ui.welcome = false;
+  while (state.opportunities.notices.length) dismissOpportunityPresentation(state, state.opportunities.notices[0].id, null);
+  resetForecastAt();
+  render();
+}
 portraitMotion.frame(document, performance.now(), document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
 requestAnimationFrame(frame);
 

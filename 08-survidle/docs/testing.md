@@ -297,3 +297,15 @@ one full-size world with no cache and asserts under 20 seconds, run as
 part of `npm run test:slow` (`tests/slow/**/*.test.ts` is picked up by
 the slow suite's glob, the same as the other files already in that
 directory, with no separate listing needed in `vitest.config.ts`).
+
+
+## Safari memory
+
+`scripts/safari-footprint.sh <url> <urlmatch> [seconds]` opens the url in
+real Safari, lands, and prints the tab process's physical footprint every
+ten seconds beside the game clock. Physical footprint is what WebKit's
+memory pressure handler kills on; RSS overstates it and Chrome's numbers
+do not transfer at all, because JavaScriptCore lets a heap grow where V8
+collects it. Needs Safari's Develop menu to allow JavaScript from Apple
+Events, and the window uncovered, since Safari stops frames to a covered
+window. A kill reads as the pid changing while `probe#` resets to 1.
