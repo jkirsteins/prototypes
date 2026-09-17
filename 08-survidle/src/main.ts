@@ -983,7 +983,12 @@ beacon.opened(state);
 // later fresh() with a new world does not leave it stale.
 const forecaster = createForecaster(
   world,
-  typeof Worker === "undefined" ? undefined : new Worker(new URL("./sim/forecast.worker.ts", import.meta.url), { type: "module" }),
+  // ?noforecast runs without the forecast worker; requestForecast() also
+  // skips the synchronous fallback, so nothing forecasts at all. A
+  // diagnostic for measuring the tab without the rolling simulations.
+  typeof Worker === "undefined" || new URLSearchParams(location.search).has("noforecast")
+    ? undefined
+    : new Worker(new URL("./sim/forecast.worker.ts", import.meta.url), { type: "module" }),
 );
 forecaster.onRow = (row) => { noteMonthRow(state, row); };
 // The worker builds its world from these arrays instead of solving the seed itself.
@@ -996,6 +1001,9 @@ const FORECAST_ACTS = [
 ];
 /** A request when nothing overlays the game: the list, the day, the dial, the region and the hour each call this; the frame calls it on a cadence. */
 function requestForecast(): void {
+  // ?noforecast is a diagnostic: no worker AND no synchronous fallback, so
+  // the tab can be measured without any forecast running anywhere.
+  if (new URLSearchParams(location.search).has("noforecast")) return;
   if (state.dead || state.landing || ui.away) return;
   forecaster.request(state);
   forecastAt = { minute: state.minute, day: dayNumber(state.minute), region: state.player.region, real: performance.now() };

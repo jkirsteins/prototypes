@@ -1,5 +1,5 @@
 import { cellAt, neighbours, waterKindOf, type World } from "../world/gen";
-import { knownPatches } from "./fineknowledge";
+import { type KnowledgeChunks, knowledgeWrites, knownPatches } from "./fineknowledge";
 import type { Calendar } from "./calendar";
 import { RECIPES, STRUCTURES, TOOLS, type FoodId } from "./items";
 import { SPECIES_DEFS, type Species } from "./species";
@@ -262,17 +262,61 @@ export function knownTrapOpportunityKeys(state: GameState): OpportunityKey[] {
   return SUPPORTED_FISH_SPECIES.filter((species) => named.has(species)).map((species) => `trap:${species}` as OpportunityKey);
 }
 
+/**
+ * What the known ground is made of, read in one pass and kept until the
+ * ground changes.
+ *
+ * This used to be read six times per call - four terrain scans and two
+ * water scans, each walking every known patch through `cellAt`, which
+ * resolves fine chunks and churns the chunk cache - and the call came on
+ * every look the survivor took. Inside a forecast that is every simulated
+ * hour of every run of every horizon: profiled at 19% of a two-minute
+ * trace, with `fineChunkFor` alone at 11% self time, and a heap that rose
+ * by 130 MB on each real hour's forecast. Safari reloaded the tab for it.
+ *
+ * `knowledgeWrites` moves on every change to any patch's level, so a
+ * summary stamped with it is exact: the same ground reads the same, and
+ * new ground reads again. Keyed on the knowledge object too, so a
+ * forecast's clone never answers for the live state.
+ */
+interface GroundSummary { gen: number; terrains: Set<string>; byWater: boolean; bySea: boolean }
+const groundSummaries = new WeakMap<KnowledgeChunks, GroundSummary>();
+
+function groundSummary(state: GameState, world: World): GroundSummary {
+  const gen = knowledgeWrites();
+  const hit = groundSummaries.get(state.knowledge);
+  if (hit && hit.gen === gen) return hit;
+  const terrains = new Set<string>();
+  let byWater = false;
+  let bySea = false;
+  for (const cell of knownPatches(state.knowledge)) {
+    terrains.add(cellAt(world, cell).terrain);
+    if (byWater && bySea) continue;
+    for (const next of neighbours(world, cell)) {
+      if (!byWater && cellAt(world, next).terrain === "water") byWater = true;
+      if (!bySea && waterKindOf(world, next) === "sea") bySea = true;
+    }
+  }
+  const out = { gen, terrains, byWater, bySea };
+  groundSummaries.set(state.knowledge, out);
+  return out;
+}
+
 export function knownForageOpportunityKeys(state: GameState, world: World, _cal: Calendar): OpportunityKey[] {
-  const known = knownPatches(state.knowledge);
-  const hasTerrain = (...terrain: string[]) => known.some((cell) => terrain.includes(cellAt(world, cell).terrain));
-  const byWater = (kind: "any" | "sea") => known.some((cell) => neighbours(world, cell).some((next) => kind === "any" ? cellAt(world, next).terrain === "water" : waterKindOf(world, next) === kind));
+  // Nothing left to find means nothing to scan for: once every forage the
+  // catalogue supports is discovered, which most runs reach in their first
+  // hour, this costs a handful of lookups and no walk over the ground.
+  const wanted = SUPPORTED_FORAGE_FOODS.filter((food) => FORAGE_TASK[food] !== undefined && state.opportunities.discoveredAt[`forage:${food}`] === undefined);
+  if (wanted.length === 0) return [];
+  const ground = groundSummary(state, world);
+  const has = (...terrain: string[]) => terrain.some((t) => ground.terrains.has(t));
   const available = new Set<FoodId>();
-  if (hasTerrain("bog", "meadow")) available.add("berries");
-  if (hasTerrain("bog", "meadow") || byWater("any")) available.add("eggs");
-  if (hasTerrain("pine")) available.add("barkFlour");
-  if (hasTerrain("bog", "meadow") || byWater("any")) available.add("cookedRoots");
-  if (byWater("sea")) available.add("seaweed");
-  return SUPPORTED_FORAGE_FOODS.filter((food) => available.has(food) && FORAGE_TASK[food] !== undefined).map((food) => `forage:${food}` as OpportunityKey);
+  if (has("bog", "meadow")) available.add("berries");
+  if (has("bog", "meadow") || ground.byWater) available.add("eggs");
+  if (has("pine")) available.add("barkFlour");
+  if (has("bog", "meadow") || ground.byWater) available.add("cookedRoots");
+  if (ground.bySea) available.add("seaweed");
+  return wanted.filter((food) => available.has(food)).map((food) => `forage:${food}` as OpportunityKey);
 }
 
 /**

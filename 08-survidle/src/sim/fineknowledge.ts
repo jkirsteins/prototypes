@@ -97,7 +97,21 @@ function writeBits(knowledge: KnowledgeChunks, patch: PatchId, bits: number): bo
   }
   if (((chunk[byte] >> shift) & 3) === bits) return false;
   chunk[byte] = (chunk[byte] & ~(3 << shift)) | (bits << shift);
+  writes++;
   return true;
+}
+
+/**
+ * How many times any patch's level has changed, in this process. Every
+ * fine write - a raise from sight or a step, a set from mapping a region
+ * or loading a save - passes through writeBits, so a reader holding a
+ * summary of the known ground can stamp it with this and know the summary
+ * is exact: the same number means not one patch has changed. mapped.ts's
+ * generation is the route cache's stamp and moves on fewer of these.
+ */
+let writes = 0;
+export function knowledgeWrites(): number {
+  return writes;
 }
 
 /** Sets a patch's level outright, in either direction. Returns whether anything changed. */
