@@ -412,3 +412,74 @@ This is separable from the gating work and should land after it.
 8. Playtest for pacing, which no test will find.
 
 The tab-strip merge in section 8 follows separately.
+
+## 11. Playtest amendments, 2026-09-17
+
+The first playtest of the built pass (`docs/playtest-2026-09-17.md`)
+found the spine wrong in two ways and the reveal rule wrong in one. The
+tester's own words, then what changes.
+
+### 11.1 Waiting is not a goal
+
+> "'drink' is a useless opportunity. Maybe instead we can just inform
+> people about how it works ... opportunities used as fyi. But the real
+> second post-camp opportunity should be to make a fireplace."
+
+`drink` asks the player to do something the self-care row does on its
+own, and while it sits as the second rung it holds `firewood` and `fire`
+behind it. The same is true of every goal that is met by the clock alone:
+living into a season, keeping a night.
+
+An opportunity may now be an **FYI**: `fyi: true` on its definition. An
+FYI is discovered like any other and presented in the field notes with
+its note, but it has no steps, is complete the moment it is discovered,
+is never current, and never holds a later rung. It is how the game says
+"now that you have a camp, this is how water and food work" once, and
+then gets out of the way.
+
+`drink` becomes an FYI. The opening spine becomes:
+
+    site -> build:firePit -> firewood -> fire -> bed, roof
+
+with `drink` discovered beside `build:firePit` as the note that explains
+water. The `season:*` goals become FYIs too; a season is lived through,
+not achieved.
+
+### 11.2 The rule, from first principles
+
+> "skills can't be blocked by tech i haven't unlocked yet, and things
+> where i need to wait (like water drinking) can't block reveal of
+> actionable items."
+
+> "i have a 'blocked by knife' action but i can't make a knife."
+
+Section 3.3 allowed a revealed row to be blocked by a tool, as long as
+the tool's own row was revealed no later. The tester hit the case that
+rule does not cover: an heir in a region with no stone. The world knows
+`make:wedges` from an ancestor who once held a knife, so the wedges row
+draws; it says "needs a knife"; the knife row draws too and says "needs
+stone"; and there is no stone in Gammeldalen. Two rows, both honest, and
+a wall.
+
+So the rule tightens. **A row that needs a tool is revealed only while
+the survivor holds that tool.** A knife recipe appears when there is
+stone in hand; knife work appears when there is a knife in hand. What
+remains as a legitimate block on a revealed row is exactly what section
+3.3 listed minus tools: materials, the season, the place, and a step that
+is itself on screen. Each of those still teaches; a tool you cannot get
+where you stand teaches nothing.
+
+This is a possession check, not a discovery check, and it is deliberately
+life-scoped where discovery is world-scoped: an heir inherits what the
+world knows and not what the dead survivor carried. It is two lookups -
+the recipe's `tool`, and `hasTool` - and joins the reveal gate in
+`dopanel.ts` rather than adding a walk anywhere. Rows whose tool is not
+declared as recipe data (bark stripping, sap tapping, hunting, fishing,
+the trap) name it in a short table beside `REVEAL`, held by the same
+coverage test.
+
+### 11.3 What this does to the tests
+
+The no-cycle test stands. A new test holds every tool-needing row to
+naming its tool, so a row that says "needs a knife" in prose but not in
+data fails the build rather than drawing for a survivor with no knife.

@@ -703,17 +703,29 @@ function onClick(ev: Event) {
       ui.confirmAbandon = false;
       break;
     case "begin-again":
-      beginAgain(state, world);
-      resetForecastAt();
+      // Simulates the days between the death and the heir's landing: real
+      // seconds, and a click that showed nothing for them looked ignored.
+      void slowly("A new life lands", () => {
+        beginAgain(state, world);
+        resetForecastAt();
+      });
       break;
     case "pick-candidate":
       pickCandidate(state, Number(target.dataset.index) as 0 | 1 | 2);
       break;
     case "next-boat":
       // The first boat has no world to run yet: it is rebuilt a week later from the same seed.
-      if (state.landing && state.landing.oldCamp === null) void fresh(state.seed, startDoy, state.landing.boat + 1);
-      else nextBoat(state, world);
-      resetForecastAt();
+      if (state.landing && state.landing.oldCamp === null) {
+        void fresh(state.seed, startDoy, state.landing.boat + 1);
+        resetForecastAt();
+      } else {
+        // A week of the world running on without anyone: the same real
+        // seconds as a begin-again, behind the same bar.
+        void slowly("The world runs on a week", () => {
+          nextBoat(state, world);
+          resetForecastAt();
+        });
+      }
       break;
     case "land": {
       const wasLanding = state.landing !== null;
@@ -1000,6 +1012,35 @@ const FORECAST_ACTS = [
   "take", "drop", "drop-all",
 ];
 /** A request when nothing overlays the game: the list, the day, the dial, the region and the hour each call this; the frame calls it on a cadence. */
+/**
+ * Work that takes real seconds, run behind the loading bar.
+ *
+ * beginAgain and nextBoat each simulate days of the world - the gap between
+ * a death and the heir's landing, a week for the next boat - synchronously,
+ * and synchronous work paints nothing: the click looked ignored, and a
+ * second click queued a second run. So the bar goes up first, a frame is
+ * yielded so it actually draws, and only then does the work start. While it
+ * runs `solving` holds the frame loop still, as it does for a world solve,
+ * and the bar covers every button so nothing can be clicked twice. The
+ * minutes it was up were paused, not spent, so the real-time clock is
+ * rebased the way the away report's dismiss does it.
+ */
+async function slowly(stage: string, run: () => void): Promise<void> {
+  if (solving) return;
+  solving = true;
+  showLoading(stage, 0);
+  try {
+    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    run();
+  } finally {
+    solving = false;
+    hideLoading();
+    lastReal = performance.now();
+    persistGame();
+    render();
+  }
+}
+
 function requestForecast(): void {
   // ?noforecast is a diagnostic: no worker AND no synchronous fallback, so
   // the tab can be measured without any forecast running anywhere.
