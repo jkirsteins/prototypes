@@ -219,15 +219,40 @@ to a second axis, and it is enforced the same way.
 opportunity nothing leads to strands every row it names, and fails the
 build.
 
-**`tests/reveal.test.ts`, no locked doors.** Section 3.4's rule, enforced:
-for every row, every tool and recipe its task definition requires is
-itself revealed by the same opportunity or by one discoverable before it.
-A `craft:bow` revealed before anything reveals cordage fails the build.
+**`tests/reveal.test.ts`, no locked doors.** Section 3.4's rule, enforced.
+The single failure mode this whole design has is a revealed action blocked
+by an unrevealed one, and this is the test that forbids it.
 
-That third test is the one that earns its keep. It reads requirements off
-the task definitions rather than off the displayed reason, which is what
-section 3.3's caution demands, and it is the only mechanical check that
-the board a player is looking at can actually be acted on.
+A block is not only a tool. `Make cordage` is blocked on 3 bark, and bark
+comes from an action. So the test resolves each block to a **producing
+action, transitively**, and requires that action to be revealed by the
+same opportunity or an earlier one:
+
+| Block | Resolves via | Declared? |
+| --- | --- | --- |
+| tool (`tool: "knife"`) | `RECIPES[r].out.item` | yes, `items.ts:244` |
+| material (`needs: [{item}]`) | `RECIPES` / gather task | recipes yes, gather **no** |
+| structure (`no camp here yet`) | `STRUCTURES[s].needs` | yes, `items.ts:276` |
+| mend cost | mend table | yes, `items.ts:318` |
+| season, place | nothing; the world fixes it | exempt |
+| skill level | the rows that train that skill | see below |
+
+**One table has to be added for this to close.** Gather tasks do not
+declare what they yield: nothing in the code says `bark` produces `bark`
+or `chop` produces `log`. That is roughly ten entries, authored beside
+`REVEAL` and under the same coverage discipline, and without it the
+transitive walk stops at the first raw material.
+
+**Skill levels are the one block that is not an action.** `Make bow` wants
+Crafting 5. The test cannot demand that a level be "revealed", so it
+demands the next best thing: at least one revealed row trains that skill.
+A recipe gated on Crafting 5 with no revealed crafting work is a locked
+door like any other.
+
+This test reads requirements off the task definitions rather than off the
+displayed reason, which is what section 3.3's caution demands, and it is
+the only mechanical check that the board a player is looking at can
+actually be acted on.
 
 Together these answer a question the game currently cannot answer at all:
 which opportunities are missing. Any row that cannot name one is a hole in
@@ -333,13 +358,15 @@ This is separable from the gating work and should land after it.
 
 ## 10. Order of work
 
-1. `tests/reveal.test.ts`, all three rules, against an empty `REVEAL`. Red.
-2. `REVEAL` authored to green, 77 entries, keyed off task requirements
+1. The gather-yield table, ~10 entries. Without it the third test cannot
+   resolve a material to the action that makes it.
+2. `tests/reveal.test.ts`, all three rules, against an empty `REVEAL`. Red.
+3. `REVEAL` authored to green, 77 entries, keyed off task requirements
    rather than displayed reasons.
-3. The Do pane draws only revealed rows; `docs/ux.md` section rewritten.
-4. `defaultPanes` reads the current opportunity; `clear` control.
-5. The opportunity card routes; catalogue pauses; the checkbox resolved.
-6. Chips.
-7. Playtest for order-of-revelation walls, which no test will find.
+4. The Do pane draws only revealed rows; `docs/ux.md` section rewritten.
+5. `defaultPanes` reads the current opportunity; `clear` control.
+6. The opportunity card routes; catalogue pauses; the checkbox resolved.
+7. Chips.
+8. Playtest for pacing, which no test will find.
 
 The tab-strip merge in section 8 follows separately.
