@@ -301,8 +301,8 @@ directory, with no separate listing needed in `vitest.config.ts`).
 
 ## Safari memory
 
-`scripts/safari-footprint.sh <url> <urlmatch> [seconds]` opens the url in
-real Safari, lands, and prints the tab process's physical footprint every
+`npm run test:safari` (optionally `-- 40` for a shorter run) builds, serves
+`dist/` locally, opens it in real Safari, lands, and prints the tab process's physical footprint every
 ten seconds beside the game clock. Physical footprint is what WebKit's
 memory pressure handler kills on; RSS overstates it and Chrome's numbers
 do not transfer at all, because JavaScriptCore lets a heap grow where V8
