@@ -105,9 +105,12 @@ export const OPPORTUNITIES: OpportunityDef[] = [
   { key: "drink", title: "Drink water", category: "survival", steps: one("drink", "Drink", (d) => (d.kind === "drank" ? 1 : 0)), prerequisites: ["site"] },
   { key: "firewood", title: `Gather ${FIREWOOD_KG} kg of firewood`, category: "survival", steps: one("wood", `Gather ${FIREWOOD_KG} kg`, firewoodKg, FIREWOOD_KG, "kg"), prerequisites: ["drink"] },
   { key: "fire", title: "Light a fire", category: "survival", steps: [
-      step("site", "Establish a fire site", built("firePit")),
-      step("fuel", "Provide fuel", (d) => (d.kind === "fuelled" ? 1 : 0)),
-      step("ignition", "Provide ignition", crafted("fireDrill")),
+      step("site", "Build a fire pit", built("firePit")),
+      // "Provide fuel" read as the firewood the player has just gathered, and
+      // "provide ignition" as a word for nothing they could hold. Both name
+      // the act now: wood into the pit, and the drill that lights it.
+      step("fuel", "Lay wood in the pit", (d) => (d.kind === "fuelled" ? 1 : 0)),
+      step("ignition", "Make a fire drill", crafted("fireDrill")),
       { ...step("light", "Light the fire", lit), final: true },
     ], prerequisites: ["firewood"] },
   { key: "bed", title: "Get off the cold ground", category: "survival", steps: one("bed", "Build a bed", built("boughBed")), prerequisites: ["fire"] },
