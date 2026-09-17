@@ -251,6 +251,17 @@ async function main() {
 
     // The board as it opens: the block rung, the survivor in the middle.
     let board = await evalJs(READ_BOARD);
+    await evalJs("document.documentElement.dataset.loading = 'true'");
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "+", code: "Equal" });
+    const coveredZoom = await evalJs("window.survidle.mapModel.z");
+    await evalJs("delete document.documentElement.dataset.loading");
+    check(coveredZoom === board.z, "loading gates keyboard shortcuts as well as pointer input");
+    // Restore the starting rung if the regression fired, so the rest of the
+    // playthrough can still report its independent checks.
+    if (coveredZoom !== board.z) {
+      await send("Input.dispatchKeyEvent", { type: "keyDown", key: "-", code: "Minus" });
+      board = await evalJs(READ_BOARD);
+    }
     check(board.z > 1, `the map opens at a block rung, not ${board.z} patches per glyph`);
     check(board.player && Math.abs(board.player.gx - Math.floor(board.cols / 2)) <= 1 && Math.abs(board.player.gy - Math.floor(board.rows / 2)) <= 1, `the survivor opens in the middle glyph, not ${JSON.stringify(board.player)} of ${board.cols}x${board.rows}`);
     checkVisibleMiddle(board, "opening");

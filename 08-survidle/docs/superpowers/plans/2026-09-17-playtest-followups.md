@@ -38,7 +38,7 @@ Files: src/ui/map.ts, tests/close-zoom.test.ts.
 
 ## Task 3: Compact rates and wildlife presentation
 
-Files: src/ui/rate.ts, src/ui/map.ts, tests/rate.test.ts, tests/map-layers.test.ts.
+Files: src/ui/rate.ts, src/ui/map.ts, tests/rate.test.ts, tests/wildlife-presentation.test.ts.
 
 - [ ] Require selected real clock alone: `expect(formatRate(20, 'kg', 'real')).toBe('0.33 kg/s')`.
 - [ ] Observe failure, return selected reading only, verify and commit.
@@ -47,7 +47,7 @@ Files: src/ui/rate.ts, src/ui/map.ts, tests/rate.test.ts, tests/map-layers.test.
 
 ## Task 4: Forest and search
 
-Files: src/sim/sight.ts, src/ui/dopanel.ts, tests/sight.test.ts, tests/concepts.test.ts.
+Files: src/sim/sight.ts, src/ui/dopanel.ts, tests/sight.test.ts, tests/search-budget.test.ts.
 
 - [ ] Examine dense spruce fixtures and existing cover integration. Test seeing the closing trunks but not concealed wildlife behind them.
 - [ ] Remove the zero-range spruce shortcut in favor of the existing cover-limited forest envelope, without weakening terrain or optical occlusion.
@@ -62,3 +62,9 @@ Files: tests/frame-budget.test.ts, src/ui/mapcanvas.ts, scripts/e2e.mjs, docs/te
 - [ ] Audit solved-world and fine-cache ownership; document actual duplication and safe next steps instead of speculative transfer.
 - [ ] Push completed fixes, then run npm test, npm run test:slow and npm run build. Run real browser e2e and compare drawing costs at 300m.
 - [ ] Report Safari verification separately if unavailable. Update plan with results and remaining work.
+
+## Execution record
+
+Tasks 1-4 implemented, tested and pushed in separate commits. Task 5's static draw budget and worker ownership audit are implemented; eager forecast allocation, old solved-seed caches and strong old-game search retention were fixed. Browser playthrough passed, then an additional keyboard-under-loading regression exposed a missing input guard; its fix is being verified. Final results and explicit unimplemented architecture work are recorded in `docs/performance-playtest-2026-09-17.md`.
+
+Full fast rerun is running after repairing the pre-existing weather-projection test's cache assumptions. The full slow suite is running and has failures; selected UI/wildlife/delivery failures reproduce in an isolated worktree at the pulled baseline. Safari automation is blocked by unavailable Computer Use permissions. No integration-green or Safari-memory claim is made.

@@ -560,6 +560,7 @@ function anchorScroll(target: HTMLElement): () => void {
 }
 
 function onClick(ev: Event) {
+  if (document.documentElement.dataset.loading === "true") return;
   const target = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]");
   if (!target) return;
   const act = target.dataset.act;
@@ -940,6 +941,7 @@ document.addEventListener("visibilitychange", () => {
 });
 document.addEventListener("click", onClick);
 document.addEventListener("keydown", (ev) => {
+  if (document.documentElement.dataset.loading === "true") return;
   const presentation = document.querySelector<HTMLElement>('#overlay:not([hidden]) .opportunity-modal');
   if (presentation) {
     opportunityModalKeyboard(presentation, ev);
