@@ -42,12 +42,46 @@ import { updateBars, updateFills } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
-import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
+import { chipsHtml, doHtml, doPurposesHtml, KW_PREFIX, purposeCounts, subtabCounts } from "./ui/dopanel";
 import { catalogPage, opportunityCatalogAction, opportunityCatalogHtml, opportunityCatalogKeyboard } from "./ui/opportunity-catalog";
 import { opportunityPanelHtml } from "./ui/opportunity-panel";
 import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
-import { paneForOpportunity } from "./ui/purpose";
+import { paneForOpportunity, PURPOSES } from "./ui/purpose";
+
+/**
+ * Move off a pane that has nothing in it, once, at startup.
+ *
+ * A pane is remembered across reloads, and rows are now revealed a rung at
+ * a time - so a save from a later run, or from before this gate existed,
+ * can name a purpose that holds nothing today. The player then opens the
+ * game onto a blank panel, which reads as something they broke.
+ *
+ * Only ever fires when the pane is empty, so it can take nothing away, and
+ * only while the player has not chosen for themselves this session: after
+ * that, an empty pane is somewhere they asked to be and they are left in it.
+ */
+let panesSettled = false;
+function settlePanes(): void {
+  if (panesSettled || ui.filter.trim()) return;
+  panesSettled = true;
+  const counts = purposeCounts(state, world, ui);
+  if ((counts[ui.panes.purpose] ?? 0) > 0) return;
+  const filled = PURPOSES[ui.panes.subtab].find((q) => (counts[q] ?? 0) > 0);
+  if (filled) {
+    ui.panes = { ...ui.panes, purpose: filled };
+  } else {
+    const where = currentOpportunityPane(state);
+    if (where) ui.panes = { ...ui.panes, pane: "do", subtab: where.subtab, purpose: where.purpose };
+  }
+  savePanes(localStorage, ui.panes);
+}
+
+/** Where the Do pane should stand for whatever the game is currently asking for. */
+function currentOpportunityPane(state: GameState): { subtab: SubtabId; purpose: string } | null {
+  const key = state.opportunities.current;
+  return key ? paneForOpportunity(key) : null;
+}
 import type { SubtabId } from "./ui/purpose";
 import { effectsSnapshot, LEVELS, legendHtml, mapAggregateAtPoint, mapBoardHtml, mapKey, mapModelSnapshot, type MapTarget, mapTargetAtClient, mapViewportBounds, setBoardLight, setPointedGlyph, type TargetResolution, updateEffects } from "./ui/map";
 import { drawBoard, releaseBoard } from "./ui/mapcanvas";
@@ -198,7 +232,9 @@ async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: numbe
   ui.wildlifeStartles = [];
   ui.wildlifeStartleIds.clear();
   ui.confirmAbandon = false;
-  ui.panes = loadPanes(localStorage);
+  // A fresh world stands where its opportunity is, not on a constant: on a
+  // landing that is "Make camp here", and Gather > Woodcutting holds nothing.
+  ui.panes = loadPanes(localStorage, currentOpportunityPane(state));
   ui.confirmCamp = false;
   resetPanels();
   resetForecastAt();
@@ -377,7 +413,9 @@ function render(nowMs = performance.now()) {
   setPanel("orders", queueHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
   setPanel("panetabs", paneTabsHtml(ui.panes));
-  setPanel("dosubs", ui.filter.trim() ? "" : subtabsHtml(ui.panes));
+  settlePanes();
+  setPanel("dosubs", ui.filter.trim() ? "" : subtabsHtml(ui.panes, subtabCounts(state, world, ui)));
+  setPanel("dochips", chipsHtml(state, world, ui));
   // Shown and hidden, never rendered on demand: a pane built when it is
   // asked for is a pane whose scroll position starts again every time.
   for (const id of PANE_IDS) setHidden(document.getElementById(`pane-${id}`), id !== ui.panes.pane);
@@ -609,10 +647,21 @@ function onClick(ev: Event) {
       ui.panes = { ...ui.panes, pane: target.dataset.pane as PaneId };
       savePanes(localStorage, ui.panes);
       break;
-    case "subtab":
-      ui.panes = toSubtab(ui.panes, target.dataset.subtab as SubtabId);
+    case "subtab": {
+      const subtab = target.dataset.subtab as SubtabId;
+      ui.panes = toSubtab(ui.panes, subtab);
+      // Its first purpose that holds something, not simply its first: with
+      // rows revealed a rung at a time, Camp's first purpose is Fire and the
+      // row the player came for is under Rest. Landing on the empty one
+      // reads as a subtab with nothing in it.
+      const counts = purposeCounts(state, world, ui);
+      if ((counts[ui.panes.purpose] ?? 0) === 0) {
+        const filled = PURPOSES[subtab].find((q) => (counts[q] ?? 0) > 0);
+        if (filled) ui.panes = { ...ui.panes, purpose: filled };
+      }
       savePanes(localStorage, ui.panes);
       break;
+    }
     case "purpose":
       ui.panes = { ...ui.panes, purpose: target.dataset.purpose as string };
       savePanes(localStorage, ui.panes);
@@ -824,13 +873,37 @@ function onClick(ev: Event) {
     case "camp-no":
       ui.confirmCamp = false;
       break;
-    case "kw": {
+    case "kw":
+    // A chip above the strip and a tag on a row ask the same question; the
+    // chip is that question put where someone who cannot find the row can
+    // still reach it.
+    case "do-chip": {
       // A concept tag asks for its own rows exactly, not for the letters of its
       // name: see conceptAsked in dopanel.ts. The box is static markup outside
       // every panel, so its value is written here rather than rendered.
-      ui.filter = `${KW_PREFIX}${target.dataset.kw ?? ""}`;
+      const concept = act === "do-chip" ? target.dataset.concept : target.dataset.kw;
+      const asked = `${KW_PREFIX}${concept ?? ""}`;
+      // Clicking the chip that is already on puts it back, so a chip is a
+      // toggle rather than a thing you can only turn on.
+      ui.filter = ui.filter === asked ? "" : asked;
       const box = document.querySelector<HTMLInputElement>("[data-do=filter]");
       if (box) box.value = ui.filter;
+      break;
+    }
+    /**
+     * Back to what the game is asking for.
+     *
+     * Filter text, a chip, a subtab and a purpose are four pieces of state
+     * with no single way out of them: a player who had typed something and
+     * wandered two subtabs away had no way back but to undo each step.
+     */
+    case "do-clear": {
+      ui.filter = "";
+      const box = document.querySelector<HTMLInputElement>("[data-do=filter]");
+      if (box) box.value = "";
+      const where = currentOpportunityPane(state);
+      if (where) ui.panes = { ...ui.panes, pane: "do", subtab: where.subtab, purpose: where.purpose };
+      savePanes(localStorage, ui.panes);
       break;
     }
     case "row-more": {

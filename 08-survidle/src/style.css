@@ -1161,3 +1161,13 @@ button.act small.gives, span.act small.gives,
 #loading .bar { width: min(60vw, 420px); height: 8px; border: 1px solid var(--line); background: var(--panel); }
 #loading .bar > i { display: block; height: 100%; width: 0; background: var(--accent); }
 #loading p { color: var(--dim); margin: 0; }
+
+/* The filter box and its way back out, on one line. */
+.dofind { display: flex; gap: 6px; align-items: center; }
+.dofind input[type="search"] { flex: 1 1 auto; min-width: 0; }
+
+/* The concept chips, above the subtab strip. They read as the row tags they
+   are the same question as, so a player who has seen one on a row recognises
+   the strip without being told. */
+#dochips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 2px; }
+#dochips:empty { display: none; }

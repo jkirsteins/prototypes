@@ -85,11 +85,19 @@ describe("what the strips draw", () => {
     expect(html).toContain('data-subtab="Camp"');
   });
 
-  it("a purpose says how many rows it holds, so an empty one reads as empty and not as broken", () => {
+  it("a purpose says how many rows it holds, and an empty one is left out", () => {
     const html = purposesHtml(panes, { Fire: 3, Water: 4 });
     expect(html).toContain("Fire <small>3</small>");
     expect(html).toContain("Water <small>4</small>");
-    // A purpose the count map says nothing about is nought, not undefined.
+    // Rows are revealed a rung at a time, so most purposes hold nothing
+    // early. Listing them anyway advertises a game that is not there yet.
+    expect(html).not.toContain("Rest");
+  });
+
+  it("keeps the purpose being shown, even at nought, so it cannot vanish underfoot", () => {
+    // The original reason an empty purpose drew at all: a strip that loses
+    // the entry the player is standing in reads as something they broke.
+    const html = purposesHtml({ ...panes, purpose: "Rest" }, { Fire: 3 });
     expect(html).toContain("Rest <small>0</small>");
   });
 

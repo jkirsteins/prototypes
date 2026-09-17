@@ -827,7 +827,7 @@ export type OpportunityKey =
   | StaticOpportunityId
   | `track:${Species}` | `hunt:${Species}` | `dress:${Species}`
   | `recover:${Species}` | `catch:${Species}` | `trap:${Species}`
-  | `forage:${FoodId}` | `build:${StructureId}` | `make:${ToolId}`
+  | `forage:${FoodId}` | `build:${StructureId}` | `make:${ToolId}` | `make:${RecipeId}`
   | `season:${Season}`;
 
 export type OpportunityCategory =
@@ -837,7 +837,7 @@ export type OpportunityCategory =
 export type OpportunityGroupId =
   | "track-animals" | "hunt-animals" | "dress-carcasses" | "recover-kills"
   | "catch-fish" | "trap-fish" | "forage-foods" | "build-shelters"
-  | "make-tools" | "seasons";
+  | "build-camp" | "make-tools" | "make-craft" | "seasons";
 
 export type StormOptionKind = "returnCamp" | "localShelter" | "remoteRefuge";
 
