@@ -1,5 +1,5 @@
 import { dismissOpportunityPresentation, isOpportunityComplete, isOpportunityDiscovered, opportunityDef, opportunityGroupView } from "../sim/opportunities";
-import type { GameState, OpportunityKey, OpportunityNotice } from "../sim/types";
+import type { GameState, OpportunityKey, OpportunityNotice, OpportunityGroupId } from "../sim/types";
 import { opportunityChecklistHtml } from "./opportunity-panel";
 import { esc, type UiState } from "./render";
 
@@ -20,9 +20,20 @@ export function opportunityModalHtml(state: GameState, notice: OpportunityNotice
     const group = opportunityGroupView(state.opportunities, id);
     return group.discovered.length ? `<p class="opportunity-completed">Group completed: ${esc(group.title)}</p>` : "";
   }).join("");
-  const discoveries = notice.discovered.map((key) => {
+  // Six fish read from one water arrive as one discovery, not six: the
+  // group they share names them in a line, and the catalogue keeps the
+  // per-fish choice. Below three, each still gets its own section.
+  const byGroup = new Map<OpportunityGroupId, OpportunityKey[]>();
+  for (const key of notice.discovered) { const g = known(key)?.group; if (g) byGroup.set(g, [...(byGroup.get(g) ?? []), key]); }
+  const folded = new Set([...byGroup.values()].filter((keys) => keys.length >= 3).flat());
+  const groupSections = [...byGroup].filter(([, keys]) => keys.length >= 3).map(([id, keys]) => {
+    const group = opportunityGroupView(state.opportunities, id);
+    const names = keys.map((key) => known(key)?.title.replace(/^(Catch|Trap|Read|Hunt|Gather|Make|Build) /, "") ?? key);
+    return `<section class="opportunity-discovery"><h2>New opportunities: ${esc(group.title)}</h2><p class="opportunity-note">${esc(names.join(", "))}. Any of them can be set as current from the catalogue.</p></section>`;
+  }).join("");
+  const discoveries = groupSections + notice.discovered.map((key) => {
     const def = known(key);
-    if (!def) return "";
+    if (!def || folded.has(key)) return "";
     if (def.fyi) return `<section class="opportunity-discovery"><h2>${esc(def.title)}</h2>${def.note ? `<p class="opportunity-note">${esc(def.note)}</p>` : ""}</section>`;
     const done = isOpportunityComplete(state.opportunities, key);
     const current = !done && state.opportunities.current === key;
