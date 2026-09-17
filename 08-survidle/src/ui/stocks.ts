@@ -106,7 +106,18 @@ function held(value: number, unit: StockGroup["unit"]): string {
  */
 export function stocksHtml(state: GameState, world: World, cal: Calendar, ui: Pick<UiState, "rateDisplay"> & Partial<Pick<UiState, "stockOpen">>): string {
   const causes = stockCauses(state, world, cal);
+  // Every group but the pack reads the pile at camp, so before there is a
+  // camp there is no store for them to describe. Saying "0.0 days" then is
+  // not a dull reading, it is a false one: a survivor who has just landed is
+  // carrying a kilo of dried meat and two litres of water. The groups stay
+  // on the strip rather than vanishing, because a gauge that comes and goes
+  // never teaches anyone it is there - the Do panel has opportunities to
+  // introduce its rows, and the strip has nothing.
+  const noCamp = regionState(state, world, state.player.region).campCell === null;
   const cells = GROUPS.map((g) => {
+    if (noCamp && g.id !== "pack") {
+      return `<button type="button" class="stock" data-stock="${g.id}" aria-expanded="false"><span class="lbl">${esc(g.label)}</span> <span class="dim">no camp yet</span></button>`;
+    }
     const cap = groupCap(state, world, g);
     const amount = held(groupHeld(state, world, g), g.unit);
     const of = cap === null ? "" : ` <span class="dim">of ${held(cap, g.unit)}</span>`;

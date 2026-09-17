@@ -103,3 +103,30 @@ describe("the expanded group", () => {
     expect(html).toContain("coming");
   });
 });
+
+describe("the strip before there is a camp", () => {
+  /**
+   * Every group but the pack reads the pile at camp. Before there is a camp
+   * they read zero, which on a landing is a lie: the survivor is carrying a
+   * kilo of dried meat and two litres of water, and "Food 0.0 days" is the
+   * wrong thing to tell them about the thing that kills them second fastest.
+   */
+  it("says so rather than reporting a store of nothing", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    expect(regionState(state, world, state.player.region).campCell).toBeNull();
+
+    const html = stocksHtml(state, world, cal, { rateDisplay: "game" });
+    expect(html).toContain("no camp yet");
+    expect(html).not.toContain("0.0 days");
+    expect(html).not.toContain("of 0.0");
+  });
+
+  it("still reads the pack, which is the one group that is not the camp's", () => {
+    const { state, world } = newGame(17);
+    const html = stocksHtml(state, world, calendar(state.minute, state.startDoy), { rateDisplay: "game" });
+    expect(html).toContain("Pack");
+    // The pack's own figure, not a refusal: it is real from the first minute.
+    expect(html).toMatch(/Pack<\/span> <b>[^<]+<\/b>/);
+  });
+});
