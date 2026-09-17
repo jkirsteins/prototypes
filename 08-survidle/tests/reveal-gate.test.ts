@@ -150,3 +150,34 @@ describe("the opportunity card is a door", () => {
     expect(paneForOpportunity("site")?.purpose).not.toBe("Rest");
   });
 });
+
+describe("a row that needs a tool waits for the tool", () => {
+  /**
+   * From first principles: "skills can't be blocked by tech i haven't
+   * unlocked yet". An heir inherits the world's knowledge of wedges from
+   * an ancestor who held a knife, lands without one, and saw "needs a
+   * knife" beside a knife recipe blocked on stone this region has none of.
+   * Possession gates the row, not discovery, and it is life-scoped.
+   */
+  it("hides knife work until there is a knife in hand", () => {
+    const { state, world } = fresh();
+    const cal = calendar(state.minute, state.startDoy);
+    for (const key of ["make:wedges", "make:knife"] as const) state.opportunities.discoveredAt[key] = 0;
+    const ui = newUiState();
+    const html = () => doHtml(state, world, cal, { ...ui, panes: { pane: "do", subtab: "Make", purpose: "Tools" } });
+    expect(html()).not.toContain("wedges");
+    state.player.tools.push({ id: "knife", durability: 100 });
+    expect(html()).toContain("wedges");
+  });
+
+  it("hides hunting until there is a bow, and still says why once there is", () => {
+    const { state, world } = fresh();
+    const cal = calendar(state.minute, state.startDoy);
+    state.opportunities.discoveredAt["make:bow"] = 0;
+    const ui = newUiState();
+    const html = () => doHtml(state, world, cal, { ...ui, panes: { pane: "do", subtab: "Hunt", purpose: "Game" } });
+    expect(html()).not.toContain("Hunt anything");
+    state.player.tools.push({ id: "bow", durability: 100 });
+    expect(html()).toContain("Hunt anything");
+  });
+});

@@ -7,6 +7,7 @@
  * never has to name the pane by hand and can never name it wrongly.
  */
 import type { Calendar } from "../src/sim/calendar";
+import { TOOL_IDS } from "../src/sim/items";
 import { allOpportunityDefs } from "../src/sim/opportunity-catalog";
 import type { GameState, TaskId } from "../src/sim/types";
 import { doHtml } from "../src/ui/dopanel";
@@ -27,6 +28,10 @@ import type { World } from "../src/world/gen";
  */
 export function revealEverything(state: GameState): GameState {
   for (const def of allOpportunityDefs()) state.opportunities.discoveredAt[def.key] ??= 0;
+  // A row that needs a tool draws only while the survivor holds it, so a
+  // test that wants to read every row hands them every tool as well. The
+  // tool rule itself is the subject of tests/reveal-gate.test.ts.
+  for (const id of TOOL_IDS) if (!state.player.tools.some((t) => t.id === id)) state.player.tools.push({ id, durability: 100 });
   return state;
 }
 

@@ -75,14 +75,16 @@ it("renders detail notes, Current and Done with valid selection controls only", 
   const { state } = newGame(3);
   discoverOpportunity(state.opportunities, "drink", 0, false);
   expect(opportunityDetailHtml(state, "drink")).toContain("Below 1 litre, Self-care drinks from water at hand, or walks to some, on the minutes the activity queue gives it.");
-  expect(opportunityDetailHtml(state, "drink")).toContain('data-act="opportunity-current"');
-  setCurrentOpportunity(state.opportunities, "drink");
-  expect(opportunityDetailHtml(state, "drink")).toContain("Current");
-  expect(opportunityDetailHtml(state, "drink")).not.toContain('data-act="opportunity-current"');
-  state.opportunities.completedAt.drink = 1;
-  expect(opportunityDetailHtml(state, "drink")).toContain("Done");
-  expect(opportunityDetailHtml(state, "drink")).not.toContain('data-act="opportunity-current"');
-  expect(opportunityDetailHtml(state, "drink")).toContain('data-act="opportunity-back"');
+  // drink is an FYI: told and done, never current. The controls are checked on a real goal.
+  discoverOpportunity(state.opportunities, "build:firePit", 0, false);
+  expect(opportunityDetailHtml(state, "build:firePit")).toContain('data-act="opportunity-current"');
+  setCurrentOpportunity(state.opportunities, "build:firePit");
+  expect(opportunityDetailHtml(state, "build:firePit")).toContain("Current");
+  expect(opportunityDetailHtml(state, "build:firePit")).not.toContain('data-act="opportunity-current"');
+  state.opportunities.completedAt["build:firePit"] = 1;
+  expect(opportunityDetailHtml(state, "build:firePit")).toContain("Done");
+  expect(opportunityDetailHtml(state, "build:firePit")).not.toContain('data-act="opportunity-current"');
+  expect(opportunityDetailHtml(state, "build:firePit")).toContain('data-act="opportunity-back"');
 });
 
 it("opens the current leaf's category and page, or the persisted last category", () => {
@@ -104,19 +106,19 @@ it("opens the current leaf's category and page, or the persisted last category",
 it("browses and changes current without mutating simulation progress or notices", () => {
   const { state } = newGame(3);
   const ui = newUiState();
-  discoverOpportunity(state.opportunities, "drink", 0, false);
+  discoverOpportunity(state.opportunities, "firewood", 0, false);
   const before = structuredClone(state);
-  opportunityCatalogAction(state, ui, "opportunity-detail", "drink", 8);
-  expect(ui.opportunityCatalog.detail).toBe("drink");
-  opportunityCatalogAction(state, ui, "opportunity-current", "drink", 8);
-  expect(state.opportunities.current).toBe("drink");
-  expect(state).toEqual({ ...before, opportunities: { ...before.opportunities, current: "drink" } });
+  opportunityCatalogAction(state, ui, "opportunity-detail", "firewood", 8);
+  expect(ui.opportunityCatalog.detail).toBe("firewood");
+  opportunityCatalogAction(state, ui, "opportunity-current", "firewood", 8);
+  expect(state.opportunities.current).toBe("firewood");
+  expect(state).toEqual({ ...before, opportunities: { ...before.opportunities, current: "firewood" } });
   opportunityCatalogAction(state, ui, "opportunity-back", "", 8);
   expect(ui.opportunityCatalog.detail).toBeNull();
   opportunityCatalogAction(state, ui, "opportunity-current", "track:elk", 8);
   state.opportunities.completedAt.site = 1;
   opportunityCatalogAction(state, ui, "opportunity-current", "site", 8);
-  expect(state.opportunities.current).toBe("drink");
+  expect(state.opportunities.current).toBe("firewood");
   opportunityCatalogAction(state, ui, "opportunity-page", "999", 8);
   expect(ui.opportunityCatalog.page).toBe(0);
   opportunityCatalogAction(state, ui, "opportunity-detail", "track:elk", 8);

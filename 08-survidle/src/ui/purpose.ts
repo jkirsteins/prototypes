@@ -15,7 +15,7 @@
  * tests/purpose.test.ts holds every row to having exactly one home, and
  * every home to having at least one row.
  */
-import type { OpportunityKey, TaskId } from "../sim/types";
+import type { OpportunityKey, TaskId, ToolId } from "../sim/types";
 
 export type SubtabId = "Gather" | "Hunt" | "Explore" | "Camp" | "Make" | "Build";
 
@@ -151,13 +151,18 @@ const HOME: Record<string, [SubtabId, string]> = {
  *
  * The opening is the authored spine, and nothing else:
  *
- *     site -> drink -> firewood -> fire -> bed, roof
+ *     site -> build:firePit -> firewood -> fire -> bed, roof
  *
- * `opportunities.ts` already declares those with a prerequisite on the one
- * before, so a landing offers exactly one thing to do - make camp - and the
- * board opens a rung at a time as each is met. That sequence is the
- * onboarding; keying the opening rows to anything else would put a dozen
- * choices in front of a player who has not yet chosen where to live.
+ * `opportunities.ts` declares those with a prerequisite on the one before,
+ * so a landing offers exactly one thing to do - make camp - and the board
+ * opens a rung at a time as each is met. That sequence is the onboarding;
+ * keying the opening rows to anything else would put a dozen choices in
+ * front of a player who has not yet chosen where to live. `drink` is told
+ * beside the fire site as an FYI - done the moment it is told - so the
+ * water and forage rows keyed to it arrive with the camp and hold nothing.
+ *
+ * A row that needs a tool is drawn only while the survivor holds it,
+ * whatever its key says: see `revealed` in dopanel.ts and TOOL_FOR_ROW.
  *
  * Only the body rows keep `site` alongside making camp, because resting and
  * sleeping are not things a player is taught, they are things a body does.
@@ -176,7 +181,7 @@ const REVEAL: Record<string, OpportunityKey> = {
   // Not the forage: keys, which a landing discovers silently so the
   // catalogue can show what the ground carries. Those would put every
   // edible on the board beside "choose where to live". The rows arrive with
-  // the first rung after the camp; which of them a ground actually offers
+  // the water note the camp brings; which of them a ground actually offers
   // is still decided by intentGroups, which filters by region.
   innerBark: "drink",
   berries: "drink",
@@ -264,6 +269,24 @@ const REVEAL: Record<string, OpportunityKey> = {
   "build:waterStore": "build:waterStore",
   "build:dryingRack": "build:dryingRack",
   "build:snare": "build:snare",
+};
+
+/**
+ * The tool a task row cannot be started without, for the rows whose tool
+ * is not recipe data. A craft row's tool is `RECIPES[recipe].tool`; these
+ * are the tasks whose own check says "needs a knife" in prose.
+ *
+ * Only unconditional needs belong here. Lighting a fire wants a drill
+ * unless there are embers to rekindle, fetching water wants a vessel
+ * unless there is a camp: those stay revealed and say why.
+ */
+export const TOOL_FOR_ROW: Partial<Record<TaskId, ToolId>> = {
+  innerBark: "knife",
+  tapSap: "knife",
+  hunt: "bow",
+  fish: "fishingSpear",
+  hone: "whetstone",
+  repair: "needle",
 };
 
 /**

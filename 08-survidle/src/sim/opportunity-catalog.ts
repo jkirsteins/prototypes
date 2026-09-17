@@ -114,6 +114,9 @@ const COLLECTION_OPPORTUNITIES: OpportunityDef[] = [
   ...SUPPORTED_CAMP_STRUCTURES.map((structure): OpportunityDef => ({
     key: `build:${structure}`, title: `Build ${STRUCTURES[structure].name}`, category: "camp",
     group: "build-camp", steps: one("build", `Build ${STRUCTURES[structure].name}`, built(structure)),
+    // The fire site is the second rung of the opening: it follows the camp
+    // the way drink used to, and firewood and the fire follow it.
+    ...(structure === "firePit" ? { prerequisites: ["site" as OpportunityKey] } : {}),
   })),
 ];
 
@@ -145,14 +148,17 @@ export function catalogOpportunityDef(key: OpportunityKey): OpportunityDef | und
 export function discoverMany(state: OpportunityState, keys: readonly OpportunityKey[], minute: number, announce = true): OpportunityKey[] {
   const discovered: OpportunityKey[] = [];
   for (const key of keys) {
-    if (!DEFS.has(key) || state.discoveredAt[key] !== undefined) continue;
+    const def = DEFS.get(key);
+    if (!def || state.discoveredAt[key] !== undefined) continue;
     state.discoveredAt[key] = minute;
+    if (def.fyi) state.completedAt[key] ??= minute;
     discovered.push(key);
   }
   if (!announce) return discovered;
-  if (state.current === null && discovered.length === 1) {
-    state.current = discovered[0];
-    state.lastCategory = DEFS.get(discovered[0])?.category ?? state.lastCategory;
+  const doable = discovered.filter((key) => !DEFS.get(key)?.fyi);
+  if (state.current === null && doable.length === 1) {
+    state.current = doable[0];
+    state.lastCategory = DEFS.get(doable[0])?.category ?? state.lastCategory;
   }
   if (discovered.length) state.notices.push({ id: `${minute}:${state.nextNoticeId++}`, minute, completed: [], completedGroups: [], discovered, messages: [] });
   return discovered;
@@ -246,7 +252,6 @@ export function knownCapabilityOpportunityKeys(state: GameState): OpportunityKey
   // A camp is the ground these stand on, so none of them means anything
   // before there is one. The fire site comes with the camp itself; the rest
   // wait for the material or the tool that builds them.
-  if (camp) keys.push("build:firePit");
   if (camp && holds(state, "cordage")) keys.push("build:dryingRack", "build:vedbod");
   if (camp && holds(state, "snare")) keys.push("build:snare");
   if (camp && holds(state, "barkBucket")) keys.push("build:seep", "build:waterStore");

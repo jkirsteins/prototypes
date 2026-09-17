@@ -35,8 +35,8 @@ describe("weather teaching opportunity lifecycle", () => {
   it("reserves a discovered weather opportunity while another leaf is current", () => {
     const { state, world } = newGame(17);
     discoverOpportunity(state.opportunities, "testShelter", state.minute, false);
-    discoverOpportunity(state.opportunities, "drink", state.minute, false);
-    setCurrentOpportunity(state.opportunities, "drink");
+    discoverOpportunity(state.opportunities, "bed", state.minute, false);
+    setCurrentOpportunity(state.opportunities, "bed");
     state.weather.storm = {
       id: 7, source: "natural", kind: "rain", from: 120, until: 480, warned: false,
     };
@@ -47,7 +47,7 @@ describe("weather teaching opportunity lifecycle", () => {
     expect(state.opportunities.context.weather).toMatchObject({
       opportunity: "testShelter", status: "reserved", stormId: 7,
     });
-    expect(state.opportunities.current).toBe("drink");
+    expect(state.opportunities.current).toBe("bed");
   });
 
   it("moves one stable natural storm through reserved, announced, running, and resolved at its exact minutes", () => {

@@ -99,9 +99,11 @@ const OWN_WORD: Partial<Record<OpportunityKey, string[]>> = {
   trapMeal: ["fish", "basket trap", "cooked fish"] };
 
 describe("the authored opportunity journey", () => {
-  it("starts with site, the four known seasons, and the visible collection possibilities", () => {
+  it("starts with site and the visible collection possibilities; the seasons are told, not open", () => {
     const { state } = newGame(3);
-    expect(activeOpportunityKeys(state, cal)).toEqual(["site", ...SEASON_KEYS, ...INITIAL_COLLECTIONS]);
+    // The four seasons are known from the first minute and, being FYIs,
+    // done from the first minute: lived through, never worked toward.
+    expect(activeOpportunityKeys(state, cal)).toEqual(["site", ...INITIAL_COLLECTIONS]);
     expect(unpresentedOpportunityKeys(state, cal)).toEqual(["site"]);
     dismissAll(state);
     expect(unpresentedOpportunityKeys(state, cal)).toEqual([]);
@@ -187,7 +189,7 @@ describe("the authored opportunity journey", () => {
 
   it("releases all first-night leaves, then waits for all three before meals", () => {
     const { state } = newGame(3);
-    finish(state, ["site", "drink", "firewood", "fire"]);
+    finish(state, ["site", "build:firePit", "firewood", "fire"]);
     expect(activeOpportunityKeys(state, cal)).toEqual(expect.arrayContaining(["bed", "roof", "keptNight"]));
     finish(state, ["bed", "roof"]);
     expect(activeOpportunityKeys(state, cal)).not.toContain("cook");
@@ -196,7 +198,7 @@ describe("the authored opportunity journey", () => {
   });
   it("gates weather at day eight and remote work at day thirty-one", () => {
     const { state } = newGame(3);
-    finish(state, ["site", "drink", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook", ...CHAPTER_1]);
+    finish(state, ["site", "build:firePit", "firewood", "fire", "bed", "roof", "keptNight", "forageMeal", "cook", ...CHAPTER_1]);
     state.minute = 9599;
     expect(activeOpportunityKeys(state, calendar(state.minute))).not.toContain("readWeather");
     state.minute = 9600;
@@ -210,10 +212,11 @@ describe("the authored opportunity journey", () => {
     finish(state, CHAPTER_3);
     expect(activeOpportunityKeys(state, calendar(state.minute))).toEqual(expect.arrayContaining(["snareMeal", "huntMeal", "fishMeal"]));
   });
-  it("keeps all unfinished seasonal leaves available from world start", () => {
+  it("has every season done from world start, since a season is lived through and not achieved", () => {
     const { state } = newGame(3);
+    for (const key of SEASON_KEYS) expect(state.opportunities.completedAt[key]).toBe(0);
     recordOpportunityEvent(state, { kind: "season", season: "winter" });
-    expect(activeOpportunityKeys(state, cal)).toEqual(["site", "season:spring", "season:summer", "season:autumn", ...INITIAL_COLLECTIONS]);
+    expect(activeOpportunityKeys(state, cal)).toEqual(["site", ...INITIAL_COLLECTIONS]);
   });
   it("has no unfinished keys after every definition is completed", () => {
     const { state } = newGame(3);
@@ -288,15 +291,16 @@ describe("opportunity guards", () => {
 describe("opportunities are the world's, not a life's", () => {
   it("ignores deeds until the opportunity has been announced, without replaying them later", () => {
     const { state } = newGame(3);
-    expect(recordOpportunityEvent(state, { kind: "drank" })).toEqual([]);
-    expect(state.opportunities.completedAt.drink).toBeUndefined();
-    expect(state.opportunities.stepProgress.drink).toBeUndefined();
+    // The fire site, not drinking: drink is an FYI now and done when told.
+    expect(recordOpportunityEvent(state, { kind: "built", structure: "firePit" })).toEqual([]);
+    expect(state.opportunities.completedAt["build:firePit"]).toBeUndefined();
+    expect(state.opportunities.stepProgress["build:firePit"]).toBeUndefined();
     expect(state.opportunities.notices.flatMap((notice) => notice.completed)).toEqual([]);
 
-    reveal(state, ["drink"]);
-    expect(state.opportunities.completedAt.drink).toBeUndefined();
-    expect(recordOpportunityEvent(state, { kind: "drank" })).toEqual(["drink"]);
-    expect(state.opportunities.completedAt.drink).toBeDefined();
+    reveal(state, ["build:firePit"]);
+    expect(state.opportunities.completedAt["build:firePit"]).toBeUndefined();
+    expect(recordOpportunityEvent(state, { kind: "built", structure: "firePit" })).toEqual(["build:firePit"]);
+    expect(state.opportunities.completedAt["build:firePit"]).toBeDefined();
   });
 
   it("advances on a deed and not on a state a survivor inherited", () => {
@@ -439,7 +443,8 @@ describe("opportunities are the world's, not a life's", () => {
 
   it("starts a world with an empty ladder standing in the season it landed in", () => {
     const g = newOpportunities("winter");
-    expect(g.completedAt).toEqual({});
+    // Empty but for the seasons, which are told and therefore done.
+    expect(g.completedAt).toEqual(Object.fromEntries(SEASON_KEYS.map((key) => [key, 0])));
     expect(g.stepProgress).toEqual({});
     // Insertion order into discoveredAt is the order newOpportunities seeds,
     // which is not the order the catalog renders.
@@ -460,7 +465,7 @@ describe("opportunities are the world's, not a life's", () => {
     // Nothing gets marked done and nothing but the one field set above is
     // touched: a mutation that credits any opportunity here would show up as an
     // extra key in either object, not just a wrong value in one already set.
-    expect(state.opportunities.completedAt).toEqual({});
+    expect(state.opportunities.completedAt).toEqual(Object.fromEntries(SEASON_KEYS.map((key) => [key, 0])));
     expect(state.opportunities.stepProgress).toEqual({ firewood: { wood: 6 } });
     expect(state.opportunities.discoveredAt.findUsefulCover).toBeDefined();
   });
@@ -487,10 +492,11 @@ describe("opportunities are the world's, not a life's", () => {
     };
     const loaded = readSave(JSON.stringify(raw))!.state;
     expect(loaded.opportunities.current).toBe("firewood");
-    expect(loaded.opportunities.completedAt).toEqual({ site: 0, drink: 0, "season:spring": 0 });
+    expect(loaded.opportunities.completedAt).toEqual({ site: 0, drink: 0, "season:spring": 0, "season:summer": 0, "season:autumn": 0, "season:winter": 0 });
     expect(loaded.opportunities.discoveredAt.fire).toBe(0);
     expect(loaded.opportunities.stepProgress.firewood).toEqual({ wood: 6 });
-    expect(loaded.opportunities.stepProgress.fire).toEqual({ site: 1 });
+    // The legacy fire-site tick has no step to land on: the site is a rung of its own now.
+    expect(loaded.opportunities.stepProgress.fire).toBeUndefined();
     expect(loaded.opportunities.notices).toEqual([expect.objectContaining({ completed: ["drink"], messages: ["Weather passed."] })]);
     expect(loaded.opportunities.context.chapter3HomeRegion).toBe(77);
     expect(loaded.opportunities.discoveredAt["hunt:deer"]).toBeUndefined();

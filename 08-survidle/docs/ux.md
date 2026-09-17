@@ -51,8 +51,17 @@ Revealed is not startable, and the difference is the point. A row may
 still be blocked on the season, on the place, on materials, or on a step
 that is itself on screen, and each of those blocks teaches something: the
 year, the ground, the shopping list, the order of operations. What is
-gated is the one block that teaches nothing - a tool the player has never
-heard of.
+gated is the block that teaches nothing: a row that needs a tool is drawn
+only while the survivor holds the tool, whatever the world already knows.
+A knife recipe appears with stone in hand; knife work appears with the
+knife. That is possession and not discovery, and it is a life's, not the
+world's - an heir inherits what the world knows and not what the dead
+survivor carried.
+
+Waiting is not a goal. An opportunity that is met by the clock alone - a
+season, a drink the self-care row takes on its own - is an FYI: told once
+in the field notes with its note, complete the moment it is told, never
+current, and never standing in front of a later rung.
 
 A browser pass confirms every purpose of every subtab that draws rows
 draws rows, that the filter box searches across all of them rather than

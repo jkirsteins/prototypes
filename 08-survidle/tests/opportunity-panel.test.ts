@@ -8,9 +8,9 @@ import { opportunityPanelHtml } from "../src/ui/opportunity-panel";
 it("shows only the current leaf and keeps the catalog available with no current", () => {
   const { state, world } = newGame(3);
   regionState(state, world, state.player.region).campCell = cellOf(state, world);
-  discoverOpportunity(state.opportunities, "drink", 0, false);
-  setCurrentOpportunity(state.opportunities, "drink");
-  expect(opportunityPanelHtml(state)).toContain("Drink water");
+  discoverOpportunity(state.opportunities, "build:firePit", 0, false);
+  setCurrentOpportunity(state.opportunities, "build:firePit");
+  expect(opportunityPanelHtml(state)).toContain("fire site");
   expect(opportunityPanelHtml(state)).not.toContain("Choose where to live");
   setCurrentOpportunity(state.opportunities, null);
   expect(opportunityPanelHtml(state)).toContain("No current opportunity");
@@ -28,7 +28,8 @@ it("opens title and checklist with one keyboard button and reads stored progress
   const button = document.querySelector<HTMLButtonElement>('[data-act="opportunity-goto"]')!;
   expect(button.tagName).toBe("BUTTON");
   expect(button.dataset.opportunity).toBe("fire");
-  expect(button.textContent).toContain("[x] Build the fire site");
+  // The fire site is its own rung before firewood now, not a step of the fire.
+  expect(button.textContent).not.toContain("Build the fire site");
   // Each step names a row in the Do panel, in the order the rows come due.
   expect(button.textContent).toContain("[ ] Fuel the fire site");
   expect(button.textContent).toContain("[ ] Have a fire drill");

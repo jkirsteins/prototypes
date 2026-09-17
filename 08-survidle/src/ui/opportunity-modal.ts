@@ -23,6 +23,7 @@ export function opportunityModalHtml(state: GameState, notice: OpportunityNotice
   const discoveries = notice.discovered.map((key) => {
     const def = known(key);
     if (!def) return "";
+    if (def.fyi) return `<section class="opportunity-discovery"><h2>${esc(def.title)}</h2>${def.note ? `<p class="opportunity-note">${esc(def.note)}</p>` : ""}</section>`;
     const done = isOpportunityComplete(state.opportunities, key);
     const current = !done && state.opportunities.current === key;
     return `<section class="opportunity-discovery"><h2>New opportunity: ${esc(def.title)}</h2>${opportunityChecklistHtml(state, key)}${def.note ? `<p class="opportunity-note">${esc(def.note)}</p>` : ""}${done ? `<p class="opportunity-completed">[x] Done</p>` : current ? `<p class="opportunity-current">Current</p>` : `<button type="button" class="mini" data-act="opportunity-set-current" data-notice="${esc(notice.id)}" data-opportunity="${esc(key)}">Set as current</button>`}</section>`;

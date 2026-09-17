@@ -127,14 +127,18 @@ const NOTES: Partial<Record<StaticOpportunityId, string>> = {
 
 export const OPPORTUNITIES: OpportunityDef[] = [
   { key: "site", title: "Choose where to live", category: "survival", steps: one("camp", "Make camp", task("makeCamp")) },
-  { key: "drink", title: "Drink water", category: "survival", steps: one("drink", "Drink", (d) => (d.kind === "drank" ? 1 : 0)), prerequisites: ["site"] },
-  { key: "firewood", title: `Gather ${FIREWOOD_KG} kg of firewood`, category: "survival", steps: one("wood", `Gather ${FIREWOOD_KG} kg`, firewoodKg, FIREWOOD_KG, "kg"), prerequisites: ["drink"] },
+  // An FYI, not a goal: the self-care row drinks on its own, and a goal
+  // that asked for it held the fire behind it. Told once, with the camp.
+  { key: "drink", title: "Water", category: "survival", fyi: true, steps: [], prerequisites: ["site"] },
+  { key: "firewood", title: `Gather ${FIREWOOD_KG} kg of firewood`, category: "survival", steps: one("wood", `Gather ${FIREWOOD_KG} kg`, firewoodKg, FIREWOOD_KG, "kg"), prerequisites: ["build:firePit"] },
   { key: "fire", title: "Light a fire", category: "survival", steps: [
       // Every step names a row in the Do panel, in the order the rows come
       // due. "Provide fuel" named no row at all and could only be met by the
       // lighting it was listed above, which left a player with a site, a
       // drill and ten kilos of wood reading a checklist they could not act on.
-      step("site", "Build the fire site", built("firePit")),
+      // The fire site is not a step here: it is the rung before firewood,
+      // so it is always built before this goal opens, and a step credited
+      // by the building event alone could then never be ticked.
       step("fuel", "Fuel the fire site", (d) => (d.kind === "fuelled" ? 1 : 0)),
       step("ignition", "Have a fire drill", made("fireDrill")),
       { ...step("light", "Light the fire", lit), final: true },
@@ -180,7 +184,9 @@ export const OPPORTUNITIES: OpportunityDef[] = [
   { key: "preserveHunt", title: "Preserve meat from a hunt", category: "food", prerequisites: ["snareMeal", "huntMeal", "fishMeal"], steps: [step("hunt", "Hunt any animal", (event) => event.kind === "animalKilled" ? 1 : 0), { ...step("preserve", "Preserve meat", (event) => event.kind === "preserved" ? 1 : 0), final: true }] },
 ];
 for (const def of OPPORTUNITIES) def.note = NOTES[def.key as StaticOpportunityId];
-for (const season of SEASONS) OPPORTUNITIES.push({ key: `season:${season}`, title: `Live through ${season}`, category: "exploration", group: "seasons", steps: one("season", `Live into ${season}`, (event) => event.kind === "season" && event.season === season ? 1 : 0) });
+// Lived through, not achieved: an FYI, so it never stands in front of
+// anything. The seasons are seeded known from the first minute regardless.
+for (const season of SEASONS) OPPORTUNITIES.push({ key: `season:${season}`, title: `Live through ${season}`, category: "exploration", group: "seasons", fyi: true, steps: [] });
 const defs = new Map(OPPORTUNITIES.map((def) => [def.key, def]));
 registerAuthoredOpportunityDefs(OPPORTUNITIES);
 export function newOpportunities(season: Season): OpportunityState {
@@ -219,6 +225,8 @@ function chapterEligible(state: OpportunityState, def: OpportunityDef, minute: n
 }
 
 export function setCurrentOpportunity(state: OpportunityState, key: OpportunityKey | null): boolean {
+  // Nothing to do is nothing to be current.
+  if (key !== null && opportunityDef(key)?.fyi) return false;
   if (key !== null && (state.discoveredAt[key] === undefined || state.completedAt[key] !== undefined)) return false;
   state.current = key;
   if (key !== null) state.lastCategory = opportunityDef(key)?.category ?? state.lastCategory;
@@ -245,8 +253,11 @@ export function isOpportunityComplete(state: OpportunityState, key: OpportunityK
 }
 
 export function discoverOpportunity(state: OpportunityState, key: OpportunityKey, minute: number, announce = true): boolean {
-  if (!opportunityDef(key) || state.discoveredAt[key] !== undefined) return false;
+  const def = opportunityDef(key);
+  if (!def || state.discoveredAt[key] !== undefined) return false;
   state.discoveredAt[key] = minute;
+  // An FYI has nothing to do: told is done, so it never holds a later rung.
+  if (def.fyi) state.completedAt[key] ??= minute;
   if (announce) state.notices.push({ id: `${minute}:${state.nextNoticeId++}`, minute, completed: [], completedGroups: [], discovered: [key], messages: [] });
   return true;
 }
@@ -302,7 +313,9 @@ export function applyOpportunityEvent(
     if (discoverOpportunity(state, key, minute, false)) result.discovered.push(key);
   }
   if (state.current !== null && state.completedAt[state.current] !== undefined) state.current = null;
-  if (state.current === null && result.discovered.length === 1) setCurrentOpportunity(state, result.discovered[0]);
+  // The one thing newly worth doing becomes current; FYIs are told, not done, so they do not count.
+  const doable = result.discovered.filter((key) => !opportunityDef(key)?.fyi);
+  if (state.current === null && doable.length === 1) setCurrentOpportunity(state, doable[0]);
   for (const group of OPPORTUNITY_GROUPS) {
     if (group.keys.length && result.completed.some((key) => group.keys.includes(key)) && group.keys.every((key) => state.completedAt[key] !== undefined)) result.completedGroups.push(group.id);
   }

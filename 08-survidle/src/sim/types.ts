@@ -942,6 +942,15 @@ export interface OpportunityDef {
   prerequisites?: OpportunityKey[];
   notBeforeDay?: number;
   note?: string;
+  /**
+   * An FYI: discovered like any other and shown in the field notes with
+   * its note, but with nothing to do - complete the moment it is
+   * discovered, never current, never holding a later rung. How the game
+   * says "this is how water works" once and then gets out of the way.
+   * Waiting is not a goal: drinking happens on its own, a season is
+   * lived through rather than achieved.
+   */
+  fyi?: true;
 }
 
 export interface OpportunityGroupDef {

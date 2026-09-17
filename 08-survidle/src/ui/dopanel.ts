@@ -3,7 +3,7 @@ import { calendar, type Calendar, monthName, monthStartDoy } from "../sim/calend
 import { capabilityFor } from "../sim/capabilities";
 import { knownHuntSpecies } from "../sim/hunting";
 import { directIntentCell, groundOf, intentOption, yieldItem } from "../sim/intent";
-import { DECAYING, ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
+import { DECAYING, ITEM_NAMES, RECIPE_IDS, RECIPES, STRUCTURE_IDS } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { knowledgeGen } from "../sim/mapped";
 import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
@@ -11,7 +11,7 @@ import { RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand, type Species } from "../sim/species";
 import { plain } from "../sim/voice";
 import { check, leftBehind, type TaskOption, withProgression } from "../sim/tasks";
-import type { GameState, ItemId, OrderWhen, TaskId, Where } from "../sim/types";
+import type { GameState, ItemId, OrderWhen, RecipeId, TaskId, ToolId, Where } from "../sim/types";
 import { fmtDuration, fmtRealSeconds } from "../units";
 import { realSecondsForOrder } from "./hurry";
 import { regionState } from "../sim/regionstate";
@@ -20,7 +20,8 @@ import { regionAt, type RegionDef, type World } from "../world/gen";
 import { masteryLine } from "./panels";
 import { purposesHtml } from "./panes";
 import { isOpportunityDiscovered } from "../sim/opportunities";
-import { PURPOSES, purposeOf, revealOf, type SubtabId, SUBTABS, subtabOf } from "./purpose";
+import { hasTool } from "../sim/inventory";
+import { PURPOSES, purposeOf, revealOf, type SubtabId, SUBTABS, subtabOf, TOOL_FOR_ROW } from "./purpose";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
 import { formatTravel } from "./travel";
 
@@ -683,7 +684,30 @@ function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState):
  */
 function revealed(state: GameState, id: TaskId, arg?: string): boolean {
   const key = revealOf(id, arg);
-  return key === null || isOpportunityDiscovered(state.opportunities, key);
+  if (key !== null && !isOpportunityDiscovered(state.opportunities, key)) return false;
+  // A row that needs a tool draws only while the survivor holds it. What
+  // the world knows is world-scoped and what a survivor carries is not: an
+  // heir inherits the knowledge of wedges from an ancestor who held a
+  // knife, lands without one, and "needs a knife" beside a knife recipe
+  // blocked on stone this region has none of is two honest rows and a
+  // wall. A knife recipe appears with stone in hand; knife work appears
+  // with the knife. Possession, not discovery, and life-scoped on purpose.
+  const tool = toolFor(id, arg);
+  return tool === null || toolInReach(state, tool);
+}
+
+/** The tool a row cannot be started without: the recipe's own, or the task's from the table beside REVEAL. */
+function toolFor(id: TaskId, arg?: string): ToolId | null {
+  if (id === "craft" && arg) return RECIPES[arg as RecipeId]?.tool ?? null;
+  return TOOL_FOR_ROW[id] ?? null;
+}
+
+/** Held, or lying in the pile at camp: the same reach the row's own check allows. */
+function toolInReach(state: GameState, tool: ToolId): boolean {
+  if (hasTool(state.player, tool)) return true;
+  const cell = state.regions[state.player.region]?.campCell;
+  if (cell === null || cell === undefined) return false;
+  return (state.piles[cell]?.items[tool] ?? 0) > 0;
 }
 
 function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
