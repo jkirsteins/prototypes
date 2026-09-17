@@ -148,7 +148,11 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     }
 
   }
-  dryWood(state, dt, who, world);
+  // Wood that dries is wood gathered, as far as the firewood goal is
+  // concerned: it counts dry kilos only, and an armful carried home in the
+  // rain would otherwise never reach the bar however long it sat by the fire.
+  const dried = dryWood(state, dt, who, world);
+  if (dried > 1e-9) recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: dried });
   wetWood(state, world, dt);
   spoilPiles(state, world, dt, who);
   // Nobody is carrying a pack with nobody home.

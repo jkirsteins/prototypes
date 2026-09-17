@@ -64,7 +64,8 @@ import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
 import { pileAt, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
-import { BARK_DRY_RATIO, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES } from "./items";
+import { fuelTotal } from "./fire";
+import { BARK_DRY_RATIO, FIRE_LOW_KG, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
 import { log } from "./log";
@@ -420,6 +421,9 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
     if (u.kind === "times" && o.done >= u.n) return true;
     return st.fire.lit;
   }
+  // A fuelling kept is read off the pit, not off a tally: what it promises is
+  // wood in the fire site, and it comes due again as the fire eats it.
+  if (o.req.task === "fuel" && o.kind === "keep") return fuelTotal(st.fire) > FIRE_LOW_KG;
   if (o.req.task === "walk" && typeof o.req.where === "object") {
     return o.done >= 1 || cellOf(state, world) === o.req.where.cell;
   }
@@ -457,6 +461,7 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
   // watch the raw item alone while it reads met on the cooked and dried kinds too.
   if (keep) parts.push(`keep camp at ${itemLabel(keep.item, keep.qty)}${KEEP_FORMS[o.req.task] ? " in any form" : ""}`);
   else if (o.kind === "keep" && (o.req.task === "light" || o.req.task === "lightIndoors")) parts.push("keep it lit");
+  else if (o.kind === "keep" && o.req.task === "fuel") parts.push("keep it fuelled");
   else if (structureKeep(o.req, o.kind)) parts.push(o.req.arg === "snare" ? `keep ${u.kind === "campHas" ? u.qty : 1} snares set` : `keep the ${STRUCTURES[o.req.arg as StructureId].name} laid`);
   else if (u.kind === "times") parts.push(`${o.done} of ${u.n} done`);
   else if (u.kind === "campHas") parts.push(`until camp has ${itemLabel(yieldItem(o.req.task, o.req.arg)!, u.qty)}`);

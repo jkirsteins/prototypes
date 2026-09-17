@@ -301,12 +301,17 @@ describe("opportunities are the world's, not a life's", () => {
     expect(state.opportunities.completedAt.fire).toBeDefined();
   });
 
-  it("counts the kilos this survivor actually gathered, wet or dry alike", () => {
+  it("counts the dry kilos, and the wet ones only once they have dried", () => {
     const { state } = newGame(3);
     reveal(state, ["firewood"]);
     expect(recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: 4 })).toEqual([]);
     expect(state.opportunities.stepProgress.firewood?.wood).toBeCloseTo(4);
-    expect(recordOpportunityEvent(state, { kind: "gathered", item: "wetFirewood", kg: 6 })).toEqual(["firewood"]);
+    // Wet wood lights nothing, and the goal under this one is lighting a fire:
+    // a bar full of wet wood promised the player a fire every light refused.
+    expect(recordOpportunityEvent(state, { kind: "gathered", item: "wetFirewood", kg: 6 })).toEqual([]);
+    expect(state.opportunities.stepProgress.firewood?.wood).toBeCloseTo(4);
+    // Drying is what makes those kilos count, and camp reports it as a gather.
+    expect(recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: 6 })).toEqual(["firewood"]);
     expect(state.opportunities.completedAt.firewood).toBeDefined();
   });
 

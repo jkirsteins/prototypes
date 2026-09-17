@@ -171,7 +171,7 @@ export const FILL_METHODS: FillMethod[] = ["shore", "hole", "seep"];
 export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split" | "deadwood" | "splitWedges"
   | "hunt" | "findDen" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
-  | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
+  | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fuel" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
   | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "widenYard" | "explore" | "searchHome" | "findShelter" | "improveCover" | "emergencyShelter" | "readSky";
 
@@ -179,7 +179,7 @@ export type TaskId =
 export const TASK_IDS: TaskId[] = [
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges",
   "hunt", "findDen", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
-  "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
+  "light", "lightTorch", "melt", "thaw", "lightIndoors", "fuel", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
   "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "widenYard", "explore", "searchHome", "findShelter", "improveCover", "emergencyShelter", "readSky",
 ];
@@ -929,7 +929,8 @@ export interface OpportunityStepDef {
   target: number;
   unit?: string;
   final?: boolean;
-  credit: (event: OpportunityEvent) => number;
+  /** `held` is what the survivor can lay hands on: a step asking for a tool reads it, so having one counts however it was come by. */
+  credit: (event: OpportunityEvent, held?: ReadonlySet<ItemId>) => number;
 }
 
 export interface OpportunityDef {

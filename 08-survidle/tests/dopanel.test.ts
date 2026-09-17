@@ -257,7 +257,7 @@ describe("the purposes and the filter", () => {
     // whose second line says it, and the split holds back the ones that answer
     // to it only through the invisible keywords.
     const opts = [...html.matchAll(/data-opt="intent:([^"]*)"/g)].map((m) => m[1]);
-    expect(opts.slice(0, 4)).toEqual(["light:", "lightIndoors:", "craft:fireDrill", "build:firePit"]);
+    expect(opts.slice(0, 5)).toEqual(["fuel:", "light:", "lightIndoors:", "craft:fireDrill", "build:firePit"]);
     expect(html.indexOf('data-opt="intent:deadwood:"')).toBeLessThan(split);
     expect(html.indexOf('data-opt="intent:sticks:"')).toBeGreaterThan(split);
   });

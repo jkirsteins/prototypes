@@ -5,7 +5,7 @@ import { type PatchId, patchCenter, patchXY } from "../world/spatial";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, neighbours, regionAt, spotOf, type World } from "../world/gen";
 import { ICE_SPEED, passable, routeKm, TERRAIN_SPEED } from "../world/route";
-import { itemLabel, loadRack } from "./actions";
+import { addFirewood, itemLabel, loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, dayNumber, type Calendar } from "./calendar";
 import { cellPossibilities, leaveCamp, needsMending, rackCapacity } from "./camp";
@@ -17,7 +17,7 @@ import {
 } from "./inventory";
 import {
   BARK_DRY_RATIO, BARK_FLOUR_MINUTES_PER_KG, BARK_FRESH_KG_PER_HOUR, BARK_FROM_DOY, BARK_TO_DOY, BARK_TREE_SHARE,
-  BERRY_PICK_KG, BERRY_WINTER_SHARE, CLOTHING, DECAYING, type Need, EGG_CLUTCH_KG, EGG_FROM_DOY, EGG_KG_PER_HOUR, EGG_TO_DOY, FOODS, ITEM_KG, ITEM_NAMES, KCAL_FULL, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND,
+  BERRY_PICK_KG, BERRY_WINTER_SHARE, CLOTHING, DECAYING, type Need, EGG_CLUTCH_KG, EGG_FROM_DOY, EGG_KG_PER_HOUR, EGG_TO_DOY, FIRE_MAX_KG, FOODS, ITEM_KG, ITEM_NAMES, KCAL_FULL, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND,
   RECIPES, RECIPE_IDS, ROE_SHARE, ROOT_FROM_DOY, ROOT_KG_PER_HOUR, ROOT_TO_DOY, ROOT_WINTER_KG_PER_HOUR, SAP_FROM_DOY, SAP_KCAL, SAP_LITRES, SAP_TAPS_PER_DAY, SAP_TO_DOY,
   SEAWEED_KG_PER_HOUR, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
@@ -37,7 +37,7 @@ import {
   atCamp, campCellOf, cellOf, forestCell, heathCell, hereTerrain, patchAt,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, fuelTotal, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { recordOpportunityEvent } from "./opportunities";
 import { builtProtection, coverCeiling, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
@@ -202,6 +202,17 @@ export const WIDEN_M2 = 10;
  * rewording this silently turned fetching off.
  */
 const AT_CAMP = " at camp";
+
+/**
+ * Why there is no dry kilo to light or lay. Wet wood is the trap worth
+ * naming: dead wood gathered in the rain comes back wet, weighs the same,
+ * and reads as firewood everywhere the player looks, so a refusal that said
+ * only "needs 1 kg firewood" was denying wood they could see on their back.
+ */
+function dryWoodWanted(invs: Inventory[]): string {
+  const wet = totalQty(invs, "wetFirewood");
+  return wet > 1e-9 ? `needs 1 kg of dry wood; ${itemLabel("wetFirewood", wet)} to hand` : "needs 1 kg firewood";
+}
 
 function shortList(invs: Inventory[], needs: Need[]): string {
   const short = shortOf(invs, needs);
@@ -508,7 +519,10 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "deadwood": {
-      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Gather dead wood", detail: `${DEADWOOD_KG} kg of firewood off the forest floor; no axe`, duration: 60, repeatable: true }));
+      // Dead wood off a wet floor comes back wet, and wet wood lights nothing:
+      // the detail says so before the hour is spent, not after.
+      const wet = splitIsWet(state, world, at);
+      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Gather dead wood", detail: `${DEADWOOD_KG} kg of ${wet ? "wet wood off a wet floor; it must dry before it lights" : "firewood off the forest floor"}; no axe`, duration: 60, repeatable: true }));
       if (!o.ok) return o;
       if (woodPatchLeft(st, world, at) < DEADWOOD_TREE_SHARE) return { ...o, ok: false, why: "the forest is picked clean" };
       return o;
@@ -874,20 +888,31 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: shortList(invs, def.needs) };
       return o;
     }
+    case "fuel": {
+      const o = needCamp(opt({ group: "camp", label: "Fuel the fire site", detail: `dry wood from the pile into the pit, up to ${FIRE_MAX_KG} kg`, duration: 10, repeatable: true }));
+      if (!o.ok) return o;
+      if (!campSite(st)?.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
+      if (fuelTotal(st.fire) >= FIRE_MAX_KG - 1e-9) return { ...o, ok: false, why: "the pit is full" };
+      if (totalQty(invs, "firewood") < 1e-9) return { ...o, ok: false, why: dryWoodWanted(invs) };
+      return o;
+    }
     case "light": {
       const rekindle = camp && hasEmbers(st.fire);
       const weather = localWeather(state, world, at);
       const lr = lightingInRain(weather, ambientTemperature(cal, weather), roofed(siteAt(st, at)), hasQuirk(state, "steadyByTheFire"));
+      // Wood already laid in the pit is what the drill catches, so the kilo is
+      // asked of the pit first and only then of what is carried.
+      const laid = camp && st.fire.fuelKg >= 1 - 1e-9;
       const o = opt({
         group: "camp", label: camp ? "Light the fire at the site" : "Light a field fire",
-        detail: rekindle ? "1 kg firewood" : `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
+        detail: rekindle ? "1 kg firewood" : `fire drill and ${laid ? "the wood laid in the pit" : "1 kg firewood"}${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
         duration: rekindle ? EMBER_RELIGHT_MINUTES : lr.minutes,
       });
       if (terrain === "water") return { ...o, ok: false, why: "needs dry ground" };
       if (camp && !campSite(st)?.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
       if (fireAt(state, world, at)) return { ...o, ok: false, why: "already burning" };
       if (!rekindle && !toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
-      if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
+      if (!laid && totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: dryWoodWanted(invs) };
       if (!rekindle && lr.blocked) return { ...o, ok: false, why: lr.blocked };
       return o;
     }
@@ -2709,11 +2734,19 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       log(state, `{You} {clear} another ${WIDEN_M2} square metres of yard.`, "good");
       return;
     }
+    case "fuel": {
+      const laid = addFirewood(state, world, FIRE_MAX_KG - fuelTotal(st.fire));
+      if (laid <= 1e-9) return false;
+      log(state, `{You} {lay} ${laid.toFixed(1)} kg of wood in the fire pit.`);
+      return;
+    }
     case "light":
     case "lightIndoors": {
       const camp = atCamp(state, world);
       const rekindle = camp && hasEmbers(st.fire);
-      consume(invs, [{ item: "firewood", qty: 1 }]);
+      // A laid fire is lit from the wood already in the pit; only a bare pit
+      // asks the kilo of what is carried.
+      if (!camp || st.fire.fuelKg < 1 - 1e-9) consume(invs, [{ item: "firewood", qty: 1 }]);
       if (!rekindle && wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
       const weather = localWeather(state, world);
       const lr = lightingInRain(weather, ambientTemperature(cal, weather), roofed(siteAt(st, cellOf(state, world))), hasQuirk(state, "steadyByTheFire"));
@@ -2732,10 +2765,13 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       st.fire.embers = 0;
       // A run of keeping survives the coals; only a fire lit from cold starts a new one.
       if (st.fire.litSince === null) st.fire.litSince = state.minute;
+      // The carried kilo goes in; a fire laid beforehand is already holding its
+      // own. Either way the wood is in the pit before the flame is reported,
+      // because the goal's light step waits on its fuel step being full.
+      if (st.fire.fuelKg < 1 - 1e-9) st.fire.fuelKg += 1;
       recordOpportunityEvent(state, { kind: "fuelled" });
       recordOpportunityEvent(state, { kind: "fireLit", minute: state.minute, region: state.player.region, cell: cellOf(state, world), atCamp: true }, world);
       cue("fireCatches");
-      st.fire.fuelKg += 1;
       // The row names the method: the pit fire is outdoors whatever stands, the fire indoors is indoors.
       st.fire.indoors = id === "lightIndoors";
       log(state, "Smoke, then flame. The fire is lit.", "good");

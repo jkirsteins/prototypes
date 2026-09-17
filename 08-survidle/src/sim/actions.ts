@@ -229,6 +229,13 @@ function listWords(parts: string[]): string {
   return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
 
+/**
+ * Wood onto the fire at hand: the field fire first, then the camp's own pit.
+ * A cold pit takes wood as readily as a burning one - a fire is laid before
+ * it is lit, and the wood waiting in it is what the drill catches. Only dry
+ * wood is laid cold, because nothing in an unlit pit dries: wet wood left in
+ * the pile or the pack is still drying, and wet wood in a cold pit is not.
+ */
 export function addFirewood(state: GameState, world: World, kg: number): number {
   const p = state.player;
   const fire = p.fieldFire;
@@ -239,8 +246,8 @@ export function addFirewood(state: GameState, world: World, kg: number): number 
   }
   if (!atCamp(state, world)) return 0;
   const st = regionState(state, world, p.region);
-  if (!st.fire.lit) return 0;
-  const added = feedFire(state, world, p.region, kg);
+  if (!campSite(st)?.structures.firePit) return 0;
+  const added = feedFire(state, world, p.region, kg, !st.fire.lit);
   if (added > 1e-9) recordOpportunityEvent(state, { kind: "fuelled" });
   return added;
 }

@@ -226,8 +226,9 @@ export function splitSheltered(state: GameState, world: World, at: number): bool
  * pair is wet firewood drying one for one; a second call with `freshBark`,
  * `driedBark` and `BARK_DRY_RATIO` runs the same budget over the bark.
  */
-function dryBudget(invs: Inventory[], perHour: number, dt: number, from: ItemId = "wetFirewood", to: ItemId = "firewood", ratio = 1): void {
+function dryBudget(invs: Inventory[], perHour: number, dt: number, from: ItemId = "wetFirewood", to: ItemId = "firewood", ratio = 1): number {
   let budget = (perHour / 60) * dt;
+  let dried = 0;
   for (const inv of invs) {
     if (budget <= 1e-9) break;
     const have = qty(inv, from);
@@ -235,7 +236,9 @@ function dryBudget(invs: Inventory[], perHour: number, dt: number, from: ItemId 
     const moved = removeItem(inv, from, Math.min(have, budget));
     addItem(inv, to, moved / ratio);
     budget -= moved;
+    dried += moved / ratio;
   }
+  return dried;
 }
 
 /**
@@ -248,7 +251,8 @@ function dryBudget(invs: Inventory[], perHour: number, dt: number, from: ItemId 
  * the same rates to dried bark, at BARK_DRY_RATIO, but only in a camp pile
  * or the pack: it is not left drying in a pile out in the field.
  */
-export function dryWood(state: GameState, dt: number, who: Presence | null, world?: World): void {
+export function dryWood(state: GameState, dt: number, who: Presence | null, world?: World): number {
+  let dried = 0;
   const dryAt = (cell?: number) => (world ? localWeather(state, world, cell) : state.weather).precip === "none";
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
@@ -261,12 +265,12 @@ export function dryWood(state: GameState, dt: number, who: Presence | null, worl
     const campPile = state.piles[st.campCell];
     const atThisCamp = who !== null && id === who.region && who.atCamp && !state.player.fieldFire;
     const invs = [campPile, atThisCamp ? state.player.pack : undefined].filter((x): x is Inventory => x !== undefined);
-    dryBudget(invs, perHour, dt);
+    dried += dryBudget(invs, perHour, dt);
     dryBudget(invs, perHour, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }
   // A field fire dries the carried items even in rain, without reaching a camp pile.
   if (who && state.player.fieldFire) {
-    dryBudget([state.player.pack], 2, dt);
+    dried += dryBudget([state.player.pack], 2, dt);
     dryBudget([state.player.pack], 2, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }
   for (const cell of pileCells(state, "wetFirewood")) {
@@ -274,13 +278,14 @@ export function dryWood(state: GameState, dt: number, who: Presence | null, worl
     if (!inv || qty(inv, "wetFirewood") <= TRACE_KG) continue;
     if (!dryAt(cell)) continue;
     const isCampPile = touchedRegions(state).some((id) => state.regions[id].campCell === cell);
-    if (!isCampPile) dryBudget([inv], 0.5, dt);
+    if (!isCampPile) dried += dryBudget([inv], 0.5, dt);
   }
   // Away from every camp, the pack dries in the open like any other stack; nobody carries one with nobody home.
   if (who && !who.atCamp && !state.player.fieldFire && dryAt()) {
-    dryBudget([state.player.pack], 0.5, dt);
+    dried += dryBudget([state.player.pack], 0.5, dt);
     dryBudget([state.player.pack], 0.5, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }
+  return dried;
 }
 
 /**

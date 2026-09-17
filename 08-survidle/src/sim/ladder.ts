@@ -35,17 +35,21 @@ export function structureKeep(req: IntentRequest, kind: OrderKind): boolean {
   return kind === "keep" && req.task === "build" && req.arg !== "seep";
 }
 
+/** The tasks whose keep watches the camp fire itself rather than a stock at camp. */
+export function fireKeep(req: IntentRequest, kind: OrderKind): boolean {
+  return kind === "keep" && (req.task === "light" || req.task === "lightIndoors" || req.task === "fuel");
+}
+
 /**
  * The kind an order is added as. A keep or a camp-has without a countable
- * yield is a once job; a grind is always forever. "Keep it lit" is the one
- * keep exempt from the fallback: light has no stock to count, but the fire
- * going out is itself the thing worth watching for. A keep on a structure
- * (structureKeep) is the other exemption: the bed standing or the snares
- * set is what it watches, not a stock.
+ * yield is a once job; a grind is always forever. The fire keeps are exempt
+ * from the fallback: neither lighting nor fuelling has a stock to count, but
+ * the fire going out, and the pit running empty, are themselves the things
+ * worth watching for. A keep on a structure (structureKeep) is the other
+ * exemption: the bed standing or the snares set is what it watches.
  */
 export function normalizeOrder(req: IntentRequest, kind: OrderKind): { req: IntentRequest; kind: WorkOrder["kind"] } {
-  const lightKeep = kind === "keep" && (req.task === "light" || req.task === "lightIndoors");
-  if ((kind === "keep" || req.until.kind === "campHas") && !yieldItem(req.task, req.arg) && !lightKeep && !structureKeep(req, kind)) {
+  if ((kind === "keep" || req.until.kind === "campHas") && !yieldItem(req.task, req.arg) && !fireKeep(req, kind) && !structureKeep(req, kind)) {
     return { req: { ...req, until: { kind: "once" } }, kind: "job" };
   }
   if (kind === "grind") return { req: { ...req, until: { kind: "forever" } }, kind: "grind" };

@@ -75,6 +75,7 @@ const HOME: Record<string, [SubtabId, string]> = {
 
   // Camp
   light: ["Camp", "Fire"],
+  fuel: ["Camp", "Fire"],
   lightIndoors: ["Camp", "Fire"],
   lightTorch: ["Camp", "Fire"],
   split: ["Camp", "Fuel"],

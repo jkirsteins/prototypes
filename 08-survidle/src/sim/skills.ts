@@ -209,7 +209,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
     case "mend": return "building";
     case "fish": case "read": case "setTrap": case "emptyTrap": return "fishing";
     case "craft": case "repair": case "sharpen": case "hone": return "crafting";
-    case "light": case "lightIndoors": case "lightTorch": case "cook": case "hang": case "crack": return "building";
+    case "light": case "lightIndoors": case "lightTorch": case "fuel": case "cook": case "hang": case "crack": return "building";
     case "fill": case "iceHole": return "foraging";
     case "explore": case "searchHome": return "wayfinding";
     case "findShelter": case "improveCover": return "naturalShelter";

@@ -23,7 +23,7 @@ const MOOD: Record<TaskId, Mood> = {
   chop: "work", sticks: "work", bark: "work", stone: "work", berries: "work",
   split: "work", deadwood: "work", splitWedges: "work", hunt: "work", findDen: "work", fish: "work",
   cook: "work", craft: "work", repair: "work", sharpen: "work", hone: "work",
-  build: "work", mend: "work", light: "work", lightTorch: "work", melt: "work",
+  build: "work", mend: "work", light: "work", fuel: "work", lightTorch: "work", melt: "work",
   thaw: "work", lightIndoors: "work", fill: "work", iceHole: "work", hang: "work",
   read: "work", setTrap: "work", emptyTrap: "work", crack: "work", eggs: "work",
   innerBark: "work", grindBark: "work", roots: "work", tapSap: "work", seaweed: "work",

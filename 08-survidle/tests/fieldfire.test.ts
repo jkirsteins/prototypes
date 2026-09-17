@@ -61,7 +61,10 @@ describe("a fire where you stand", () => {
     expect(check(state, world, cal, "light").why).toContain("fire drill");
     addItem(state.player.pack, "fireDrill", 1);
     addItem(state.player.pack, "wetFirewood", 5);
-    expect(check(state, world, cal, "light").why).toContain("1 kg firewood");
+    // Wet wood on the back is why the refusal names it: "needs 1 kg firewood"
+    // read as a denial of the wood the player could see they were carrying.
+    expect(check(state, world, cal, "light").why).toContain("needs 1 kg of dry wood");
+    expect(check(state, world, cal, "light").why).toContain("5.0 kg wet firewood");
     addItem(state.player.pack, "firewood", 2);
     testRain(10);
     expect(check(state, world, calendar(90 * 1440), "light").why).toContain("too wet");

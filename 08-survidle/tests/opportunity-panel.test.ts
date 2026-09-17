@@ -23,8 +23,10 @@ it("opens title and checklist with one keyboard button and reads stored progress
   const button = document.querySelector<HTMLButtonElement>('[data-act="opportunity-detail"]')!;
   expect(button.tagName).toBe("BUTTON");
   expect(button.dataset.opportunity).toBe("fire");
-  expect(button.textContent).toContain("[x] Build a fire pit");
-  expect(button.textContent).toContain("[ ] Make a fire drill");
+  expect(button.textContent).toContain("[x] Build the fire site");
+  // Each step names a row in the Do panel, in the order the rows come due.
+  expect(button.textContent).toContain("[ ] Fuel the fire site");
+  expect(button.textContent).toContain("[ ] Have a fire drill");
   expect(button.textContent).toContain("Current");
 });
 

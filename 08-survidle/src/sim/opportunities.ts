@@ -1,6 +1,6 @@
 import { dayNumber } from "./calendar";
 import { qty } from "./inventory";
-import type { FoodId } from "./items";
+import { type FoodId, RECIPES } from "./items";
 import {
   allOpportunityDefs, catalogOpportunityDef, DAY_ONE_CAPABILITY_KEYS, eventDiscoveryKeys,
   OPPORTUNITY_GROUPS, registerAuthoredOpportunityDefs, SEASONS,
@@ -9,7 +9,7 @@ import { straightKm } from "./position";
 import { current } from "./record";
 import { gainedForecastFact } from "./weather";
 import type { World } from "../world/gen";
-import type { GameState, OpportunityCategory, OpportunityDef, OpportunityEvent, OpportunityGroupDef, OpportunityGroupId, OpportunityKey, OpportunityState, OpportunityStepDef, RecipeId, Season, StaticOpportunityId, StructureId, TaskId, WeatherOpportunityContext } from "./types";
+import type { GameState, ItemId, OpportunityCategory, OpportunityDef, OpportunityEvent, OpportunityGroupDef, OpportunityGroupId, OpportunityKey, OpportunityState, OpportunityStepDef, RecipeId, Season, StaticOpportunityId, StructureId, TaskId, WeatherOpportunityContext } from "./types";
 export type { OpportunityKey, OpportunityEvent, StormPlanSnapshot, StormPlanOption, StormPlanInputs, StormOptionKind, FoodMethod } from "./types";
 import type { FoodMethod } from "./types";
 export { allOpportunityDefs, discoverAvailableOpportunities, OPPORTUNITY_CATEGORIES, OPPORTUNITY_GROUPS, SEASONS } from "./opportunity-catalog";
@@ -23,8 +23,14 @@ const roof = (d: OpportunityEvent) => d.kind === "protectionChanged"
     ? (d.protection >= 2 ? 1 : 0)
     : built("leanTo", "turfHut", "snowShelter", "cabin")(d);
 
-/** The kilos of firewood a gather actually produced, wet or dry: the opportunity is the gathering. */
-const firewoodKg = (d: OpportunityEvent) => (d.kind === "gathered" && (d.item === "firewood" || d.item === "wetFirewood") ? d.kg : 0);
+/**
+ * The kilos of dry firewood a gather produced. Wet wood is not counted: the
+ * goal below it is lighting a fire, and a bar that filled on ten kilos of wet
+ * wood told the player they had what the fire wanted while every light refused
+ * them. Wet wood dries into this same item, so the bar fills either way - it
+ * just waits until the wood can do the job the goal is naming.
+ */
+const firewoodKg = (d: OpportunityEvent) => (d.kind === "gathered" && d.item === "firewood" ? d.kg : 0);
 const awaitingContext = (_d: OpportunityEvent) => 0;
 
 const one = (id: string, label: string, credit: OpportunityStepDef["credit"], target = 1, unit?: string): OpportunityStepDef[] => [
@@ -32,10 +38,29 @@ const one = (id: string, label: string, credit: OpportunityStepDef["credit"], ta
 ];
 const step = (id: string, label: string, credit: OpportunityStepDef["credit"], target = 1, unit?: string): OpportunityStepDef => ({ id, label, credit, target, unit });
 const crafted = (recipe: RecipeId) => (d: OpportunityEvent) => (d.kind === "crafted" && d.recipe === recipe ? 1 : 0);
+/**
+ * Having the thing, however it was come by. Crafting is the usual way and
+ * still credits on the spot, but the event alone was not enough: it only
+ * counts against goals already open, so a drill made before "Light a fire"
+ * was discovered banked nothing, and an heir who inherits that drill could
+ * never tick a step telling them to make one. Goals outlive survivors; what
+ * they ask for has to be readable off the world rather than off a life.
+ */
+const made = (recipe: RecipeId) => {
+  const item = RECIPES[recipe].out.item;
+  return (d: OpportunityEvent, held?: ReadonlySet<ItemId>) => (crafted(recipe)(d) || (item && held?.has(item)) ? 1 : 0);
+};
 const acquired = (method?: FoodMethod) => (d: OpportunityEvent) => (d.kind === "foodAcquired" && (!method || d.method === method) ? 1 : 0);
+/** The food methods that keep producing: a source is a thing that goes on feeding you, not the first handful you pick. */
+const LASTING_METHODS: FoodMethod[] = ["snare", "trap", "hunt", "fish"];
+const lastingSource = (d: OpportunityEvent) => (d.kind === "foodAcquired" && LASTING_METHODS.includes(d.method) ? 1 : 0);
 const ate = (...items: (FoodId | "sap")[]) => (d: OpportunityEvent) => (d.kind === "ate" && items.includes(d.item) ? 1 : 0);
 const preparedMeal = ate("berries", "cookedRoots", "seaweed", "eggs", "barkFlour", "cookedMeat", "cookedFish", "cookedOilyFish", "fat", "roe", "driedMeat", "sap");
 const gatheredMeal = ate("berries", "cookedRoots", "seaweed", "eggs", "barkFlour", "sap");
+/** What a cook produced, for a step that says to eat the meal it just made: raw berries are not that meal. */
+const cookedMeal = ate("cookedRoots", "cookedMeat", "cookedFish", "cookedOilyFish", "barkFlour");
+/** The foods that are only there for part of the year, for the step that says to eat the seasonal one. */
+const seasonalMeal = ate("berries", "roe", "eggs", "sap", "cookedRoots", "seaweed");
 const cookedMeat = ate("cookedMeat");
 const cookedFish = ate("cookedFish", "cookedOilyFish");
 
@@ -65,8 +90,8 @@ export const KEPT_DAYS = 3;
 
 const NOTES: Partial<Record<StaticOpportunityId, string>> = {
   drink: "Below 1 litre, Self-care drinks from water at hand, or walks to some, on the minutes the activity queue gives it.",
-  firewood: "Dead wood burns without felling a tree.",
-  fire: "Fire needs a site, fuel, and ignition.",
+  firewood: "Dead wood burns without felling a tree. Gathered in the rain it comes back wet, and wet wood must dry before it counts.",
+  fire: "Fire needs a site, dry wood laid in it, and a drill to catch it.",
   bed: "A bed keeps sleep off the cold ground.",
   roof: "Shelter reduces wind and rain exposure.",
   forageMeal: "Some gathered foods must be cooked before eating.",
@@ -105,39 +130,40 @@ export const OPPORTUNITIES: OpportunityDef[] = [
   { key: "drink", title: "Drink water", category: "survival", steps: one("drink", "Drink", (d) => (d.kind === "drank" ? 1 : 0)), prerequisites: ["site"] },
   { key: "firewood", title: `Gather ${FIREWOOD_KG} kg of firewood`, category: "survival", steps: one("wood", `Gather ${FIREWOOD_KG} kg`, firewoodKg, FIREWOOD_KG, "kg"), prerequisites: ["drink"] },
   { key: "fire", title: "Light a fire", category: "survival", steps: [
-      step("site", "Build a fire pit", built("firePit")),
-      // "Provide fuel" read as the firewood the player has just gathered, and
-      // "provide ignition" as a word for nothing they could hold. Both name
-      // the act now: wood into the pit, and the drill that lights it.
-      step("fuel", "Lay wood in the pit", (d) => (d.kind === "fuelled" ? 1 : 0)),
-      step("ignition", "Make a fire drill", crafted("fireDrill")),
+      // Every step names a row in the Do panel, in the order the rows come
+      // due. "Provide fuel" named no row at all and could only be met by the
+      // lighting it was listed above, which left a player with a site, a
+      // drill and ten kilos of wood reading a checklist they could not act on.
+      step("site", "Build the fire site", built("firePit")),
+      step("fuel", "Fuel the fire site", (d) => (d.kind === "fuelled" ? 1 : 0)),
+      step("ignition", "Have a fire drill", made("fireDrill")),
       { ...step("light", "Light the fire", lit), final: true },
     ], prerequisites: ["firewood"] },
   { key: "bed", title: "Get off the cold ground", category: "survival", steps: one("bed", "Build a bed", built("boughBed")), prerequisites: ["fire"] },
   { key: "roof", title: "Put a roof over your head", category: "survival", steps: one("roof", "Build a roof", roof), prerequisites: ["fire"] },
   { key: "forageMeal", title: "Forage and eat a meal", category: "food", steps: [step("gather", "Gather edible food", acquired("forage")), { ...step("eat", "Eat gathered food", gatheredMeal), final: true }], prerequisites: ["bed","roof","keptNight"] },
-  { key: "cook", title: "Prepare and eat a hot meal", category: "food", steps: [step("cook", "Cook food", (d) => (d.kind === "cooked" && d.kg > 0 ? 1 : 0)), { ...step("eat", "Eat the meal", preparedMeal), final: true }], prerequisites: ["bed","roof","keptNight"] },
+  { key: "cook", title: "Prepare and eat a hot meal", category: "food", steps: [step("cook", "Cook food", (d) => (d.kind === "cooked" && d.kg > 0 ? 1 : 0)), { ...step("eat", "Eat the meal", cookedMeal), final: true }], prerequisites: ["bed","roof","keptNight"] },
   { key: "findUsefulCover", title: "Find useful cover", category: "weather", steps: one("cover", "Find useful cover", (d) => (d.kind === "protectionChanged" && d.source === "found" && d.to > d.from && d.to >= 1 ? 1 : 0)), prerequisites: ["forageMeal","cook"] },
   { key: "makeUsefulShelter", title: "Turn the ground into shelter", category: "weather", steps: one("shelter", "Reach weatherproof protection", awaitingContext), prerequisites: ["findUsefulCover"] },
   { key: "testShelter", title: "Put shelter to the test", category: "weather", steps: one("storm", "Weather the offered rain", awaitingContext), prerequisites: ["makeUsefulShelter"] },
   { key: "keptNight", title: "Keep the fire alive overnight", category: "survival", steps: one("night", "Keep the fire alive until dawn", (d) => (d.kind === "keptNight" ? 1 : 0)), prerequisites: ["fire"] },
-  { key: "snareMeal", title: "Eat from a snare", category: "food", steps: [step("make", "Make a snare", crafted("snare")), step("set", "Set a snare", built("snare")), step("catch", "Collect its catch", acquired("snare")), { ...step("eat", "Eat cooked meat", cookedMeat), final: true }], prerequisites: ["remoteStorm"] },
+  { key: "snareMeal", title: "Eat from a snare", category: "food", steps: [step("make", "Make a snare", made("snare")), step("set", "Set a snare", built("snare")), step("catch", "Collect its catch", acquired("snare")), { ...step("eat", "Eat cooked meat", cookedMeat), final: true }], prerequisites: ["remoteStorm"] },
   { key: "huntMeal", title: "Hunt, cook, and eat meat", category: "food", steps: [
-      step("bow", "Make a bow", crafted("bow")),
-      step("arrows", "Make arrows", crafted("arrows")),
+      step("bow", "Make a bow", made("bow")),
+      step("arrows", "Make arrows", made("arrows")),
       step("sign", "Find fresh animal sign", (d) => (d.kind === "signFound" ? 1 : 0)),
       step("recover", "Bring meat back to camp", (d) => (d.kind === "recoveredAtCamp" ? 1 : 0)),
       { ...step("eat", "Eat cooked meat", cookedMeat), final: true },
     ], prerequisites: ["remoteStorm"] },
-  { key: "fishMeal", title: "Catch, cook, and eat fish", category: "food", steps: [step("spear", "Make a fishing spear", crafted("fishingSpear")), step("catch", "Catch fish", acquired("fish")), { ...step("eat", "Eat cooked fish", cookedFish), final: true }], prerequisites: ["remoteStorm"] },
-  { key: "trapMeal", title: "Eat from a basket trap", category: "food", steps: [step("make", "Make a basket trap", crafted("basketTrap")), step("set", "Set the trap", task("setTrap")), step("catch", "Collect fish", acquired("trap")), { ...step("eat", "Eat cooked fish", cookedFish), final: true }], prerequisites: ["snareMeal","huntMeal","fishMeal"] },
+  { key: "fishMeal", title: "Catch, cook, and eat fish", category: "food", steps: [step("spear", "Make a fishing spear", made("fishingSpear")), step("catch", "Catch fish", acquired("fish")), { ...step("eat", "Eat cooked fish", cookedFish), final: true }], prerequisites: ["remoteStorm"] },
+  { key: "trapMeal", title: "Eat from a basket trap", category: "food", steps: [step("make", "Make a basket trap", made("basketTrap")), step("set", "Set the trap", task("setTrap")), step("catch", "Collect fish", acquired("trap")), { ...step("eat", "Eat cooked fish", cookedFish), final: true }], prerequisites: ["snareMeal","huntMeal","fishMeal"] },
   { key: "firstOrder", title: "Give a standing camp order", category: "mastery", steps: one("order", "Give a standing order", (d) => (d.kind === "ordered" && ["deadwood", "split", "splitWedges", "chop", "fill", "melt"].includes(d.task) ? 1 : 0)), prerequisites: ["fat"] },
   { key: "water", title: "Keep water at camp", category: "camp", steps: one("source", "Establish storage or a camp source", built("waterStore", "seep")), prerequisites: ["fat"] },
   { key: "readWeather", title: "Read approaching weather", category: "weather", steps: one("read", "Learn a new forecast fact", awaitingContext), prerequisites: ["testShelter"], notBeforeDay: 8 },
   { key: "prepareWeather", title: "Prepare for what is coming", category: "weather", steps: one("plan", "Have a viable plan at onset", awaitingContext), prerequisites: ["readWeather"], notBeforeDay: 8 },
   { key: "surviveForecast", title: "Come through the forecast storm", category: "weather", steps: one("survive", "Survive the forecast storm", awaitingContext), prerequisites: ["prepareWeather"], notBeforeDay: 8 },
   { key: "keptDays", title: "Keep a fire burning for three days", category: "survival", steps: one("fire", "Keep one fire alive for three days", (d) => (d.kind === "keptFor" && d.minutes >= KEPT_DAYS * 24 * 60 ? 1 : 0)), prerequisites: ["fat"] },
-  { key: "foodSource", title: "Find a lasting food source", category: "food", steps: [step("source", "Establish a repeatable or passive source", acquired()), { ...step("eat", "Eat from that source", preparedMeal), final: true }], prerequisites: ["snareMeal","huntMeal","fishMeal"] },
+  { key: "foodSource", title: "Find a lasting food source", category: "food", steps: [step("source", "Establish a repeatable or passive source", lastingSource), { ...step("eat", "Eat from that source", preparedMeal), final: true }], prerequisites: ["snareMeal","huntMeal","fishMeal"] },
   { key: "store", title: "Put food by for later", category: "food", steps: [step("preserve", "Preserve food", (d) => (d.kind === "preserved" ? 1 : 0)), { ...step("eat", "Eat preserved food", ate("driedMeat")), final: true }], prerequisites: ["snareMeal","huntMeal","fishMeal"] },
   { key: "fat", title: "Find food with fat", category: "food", steps: one("fat", "Eat food containing fat", (d) => (d.kind === "ateFat" ? 1 : 0)), prerequisites: ["trapMeal","foodSource","store","preserveHunt"] },
   { key: "longOrder", title: "Try a longer order", category: "mastery", steps: one("order", "Give a grind or keep order", (d) => (d.kind === "ordered" && d.long ? 1 : 0)), prerequisites: ["firstOrder","water","keptDays"] },
@@ -148,7 +174,7 @@ export const OPPORTUNITIES: OpportunityDef[] = [
   { key: "remoteStorm", title: "Ride out weather beyond home", category: "weather", steps: one("storm", "Weather the storm beyond home", awaitingContext), prerequisites: ["fieldMeal"], notBeforeDay: 31 },
   { key: "explore", title: "Explore another region", category: "exploration", steps: one("explore", "Explore another region", (d) => (d.kind === "explored" && d.anotherRegion ? 1 : 0)), prerequisites: ["longOrder","toolCare"] },
   { key: "secondCamp", title: "Establish a second camp", category: "camp", steps: one("camp", "Make camp in another region", (d) => (d.kind === "campedAgain" ? 1 : 0)), prerequisites: ["explore"] },
-  { key: "seasonalFood", title: "Try a seasonal food", category: "food", steps: [step("gather", "Gather seasonal food", (d) => (d.kind === "seasonalFood" ? 1 : 0)), { ...step("eat", "Eat seasonal food", preparedMeal), final: true }], prerequisites: ["explore"] },
+  { key: "seasonalFood", title: "Try a seasonal food", category: "food", steps: [step("gather", "Gather seasonal food", (d) => (d.kind === "seasonalFood" ? 1 : 0)), { ...step("eat", "Eat seasonal food", seasonalMeal), final: true }], prerequisites: ["explore"] },
   { key: "durableRoof", title: "Build lasting shelter", category: "camp", steps: one("roof", "Build a turf hut or cabin", built("turfHut", "cabin")), prerequisites: ["explore"] },
   { key: "winterStores", title: "Prepare stores for winter", category: "food", steps: one("stores", "Store food and fuel", (d) => (d.kind === "winterStocked" ? 1 : 0)), prerequisites: ["secondCamp","seasonalFood","durableRoof"] },
   { key: "preserveHunt", title: "Preserve meat from a hunt", category: "food", prerequisites: ["snareMeal", "huntMeal", "fishMeal"], steps: [step("hunt", "Hunt any animal", (event) => event.kind === "animalKilled" ? 1 : 0), { ...step("preserve", "Preserve meat", (event) => event.kind === "preserved" ? 1 : 0), final: true }] },
@@ -243,6 +269,7 @@ export function applyOpportunityEvent(
   minute: number,
   contextual?: (completed: OpportunityKey[]) => void,
   discoveryKeys = eventDiscoveryKeys(event),
+  held?: ReadonlySet<ItemId>,
 ): OpportunityEventResult {
   const result: OpportunityEventResult = { completed: [], discovered: [], completedGroups: [] };
   for (const key of Object.keys(state.discoveredAt) as OpportunityKey[]) {
@@ -256,7 +283,7 @@ export function applyOpportunityEvent(
     for (let i = 0; i < def.steps.length; i++) {
       const step = def.steps[i];
       if (step.final && def.steps.slice(0, i).some((prior) => (progress[prior.id] ?? 0) + 1e-9 < prior.target)) break;
-      const credit = Math.max(0, step.credit(event));
+      const credit = Math.max(0, step.credit(event, held));
       if (credit) progress[step.id] = Math.min(step.target, (progress[step.id] ?? 0) + credit);
     }
     if (def.steps.every((step) => (progress[step.id] ?? 0) + 1e-9 >= step.target)) {
@@ -306,6 +333,24 @@ function fieldOpportunity(minute: number, area: { region: number; centre: number
     minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     readerIndex: null, plan: null,
   };
+}
+
+/**
+ * Everything the survivor could lay a hand on this minute: the tools on their
+ * belt, what is in the pack, and what is in the camp pile beside them. A step
+ * that asks for a tool reads this, so having one is having one however it
+ * arrived - crafted this life, inherited from the last, or left in the pile.
+ */
+function inReach(state: GameState): ReadonlySet<ItemId> {
+  const held = new Set<ItemId>();
+  for (const tool of state.player.tools) held.add(tool.id);
+  const st = state.regions[state.player.region];
+  const invs = [state.player.pack, st?.campCell === null || st?.campCell === undefined ? undefined : state.piles[st.campCell]];
+  for (const inv of invs) {
+    if (!inv) continue;
+    for (const [item, n] of Object.entries(inv.items) as [ItemId, number][]) if (n > 1e-9) held.add(item);
+  }
+  return held;
 }
 
 /** Discovered leaves can earn credit regardless of presentation or current focus. */
@@ -380,7 +425,7 @@ export function recordOpportunityEvent(state: GameState, d: OpportunityEvent, wo
         finishOpportunity(state, "remoteStorm", finished);
       }
     }
-  }, eventDiscoveryKeys(d, state));
+  }, eventDiscoveryKeys(d, state), inReach(state));
   captureChapterHome(state);
   return result.completed;
 }
