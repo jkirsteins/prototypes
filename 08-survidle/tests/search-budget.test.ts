@@ -33,7 +33,7 @@ describe("search construction budget", () => {
       }).filter((o) => o.id !== "explore" && o.id !== "searchHome");
     for (const filter of ["torch", "needs", "cordage", "darkness", "materials", "logs", "fur", "no axe", "chance", "takes", "building"]) {
       const html = doHtml(state, world, cal, { ...newUiState(), filter });
-      const actual = [...html.matchAll(/data-opt="intent:([^\"]+)"/g)].map((m) => m[1]);
+      const actual = [...html.matchAll(/data-opt="intent:([^"]+)"/g)].map((m) => m[1]);
       const expected = filterRows(rows, filter).map((o) => `${o.id}:${o.arg ?? ""}`);
       expect(actual.filter((id) => !id.startsWith("explore:") && !id.startsWith("searchHome:")), filter).toEqual(expected);
     }

@@ -18,7 +18,7 @@ import { plain } from "./voice";
 import type { GameState, IntentRequest, OrderKind, SkillId, TaskId, WorkOrder } from "./types";
 
 /** Tasks that train no skill but can still be ordered take the skill of the work they serve. */
-const GATE_SKILL: Partial<Record<TaskId, SkillId>> = { haul: "woodcraft", melt: "building", thaw: "building" };
+const GATE_SKILL: Partial<Record<TaskId, SkillId>> = { haul: "woodcraft", melt: "building", thaw: "building", widenYard: "building" };
 
 /** Never orders: the runner's own steps, and the moves the Do panel starts directly. */
 export const NOT_ORDERS: TaskId[] = ["walk", "travel", "rest", "sleep", "night", "makeCamp", "explore", "searchHome"];

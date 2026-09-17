@@ -105,6 +105,9 @@ describe("wet wood", () => {
     // Lighting in light rain: a third of tries fail and cost the wood either way.
     w.precip = "light";
     state.player.tools.push({ id: "fireDrill", durability: 100 });
+    // Each attempt starts with a bare pit. The preceding snow case leaves
+    // laid fuel behind, which can be lit without consuming the carried kilo.
+    st.fire.fuelKg = 0;
     let fails = 0;
     for (let seed = 1; seed <= 12; seed++) {
       st.fire.lit = false;
@@ -131,7 +134,7 @@ describe("wet wood", () => {
     expect(qty(pile(state, st.campCell!), "wetFirewood")).toBeCloseTo(9.5, 6);
   });
 
-  it("a lit fire dries the camp pile at 2 kg an hour even in heavy rain", () => {
+  it("a lit fire dries 2 kg an hour while rain rewets 1 kg of exposed wood", () => {
     const { state, world } = newGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
@@ -141,7 +144,9 @@ describe("wet wood", () => {
     addItem(pile(state, st.campCell!), "wetFirewood", 10);
     testRain(10);
     advance(state, world, 60);
-    expect(qty(pile(state, st.campCell!), "wetFirewood")).toBeCloseTo(8, 6);
+    expect(qty(pile(state, st.campCell!), "wetFirewood")).toBeCloseTo(9, 6);
+    expect(qty(pile(state, st.campCell!), "firewood")).toBeCloseTo(1, 6);
+    expect(st.wettedKg).toBeCloseTo(1, 6);
   });
 });
 

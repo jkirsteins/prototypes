@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { newGame } from "../src/sim/newgame";
-import { orderByHand } from "../src/sim/ladder";
+import { orderByHand, orderGate } from "../src/sim/ladder";
+import { levelMinutes } from "../src/sim/skills";
+import type { IntentRequest } from "../src/sim/types";
 import { removeOrderByHand } from "../src/sim/orders";
 import { regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
@@ -12,6 +14,14 @@ import { clearM2PerHour, FOOTPRINT_M2, YARD_START_M2, yardFree, yardUsed } from 
 import { siteCamp } from "./siting-helpers";
 
 describe("the yard", () => {
+  it("gates counted yard clearing on Building instead of throwing for a missing skill", () => {
+    const { state } = newGame(21);
+    const req: IntentRequest = { task: "widenYard", until: { kind: "times", n: 2 }, deliver: "leave", where: "nearest" };
+    expect(orderGate(state, req, "job")).toMatchObject({ ok: false, skill: "building", at: 3 });
+    state.skills.building.xp = levelMinutes(3);
+    expect(orderGate(state, req, "job")).toEqual({ ok: true });
+  });
+
   it("counts what stands on the ground and nothing that does not", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
