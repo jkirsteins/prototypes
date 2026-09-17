@@ -2,7 +2,7 @@ import { itemLabel } from "../sim/actions";
 import { calendar, type Calendar, monthName, monthStartDoy } from "../sim/calendar";
 import { capabilityFor } from "../sim/capabilities";
 import { knownHuntSpecies } from "../sim/hunting";
-import { groundOf, intentOption, yieldItem } from "../sim/intent";
+import { directIntentCell, groundOf, intentOption, yieldItem } from "../sim/intent";
 import { DECAYING, ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { knowledgeGen } from "../sim/mapped";
@@ -554,7 +554,7 @@ function routeCacheKey(state: GameState, world: World): string {
  * it has to, never as workable when it is not, which is the asymmetry that
  * actually matters.
  */
-function cachedRouteOption(state: GameState, world: World, cal: Calendar, id: TaskId, arg: string | undefined, where: Where): TaskOption {
+function cachedRouteOption(state: GameState, world: World, cal: Calendar, id: TaskId, arg: string | undefined, where: Where, description?: TaskOption): TaskOption {
   const outerKey = routeCacheKey(state, world);
   let cache = routeCaches.get(state);
   if (!cache || cache.world !== world || cache.key !== outerKey) {
@@ -570,19 +570,38 @@ function cachedRouteOption(state: GameState, world: World, cal: Calendar, id: Ta
     entry = { cell: full.cell!, initialWalk: full.initialWalk };
     cache.rows.set(rowKey, entry);
   }
-  return { ...check(state, world, cal, id, arg, entry.cell), cell: entry.cell, initialWalk: entry.initialWalk };
+  const live = description?.cell === entry.cell ? description : check(state, world, cal, id, arg, entry.cell);
+  return { ...live, cell: entry.cell, initialWalk: entry.initialWalk };
 }
 
 /** The search list's rows: every candidate across every group, its route cached, its legality always current. */
 function searchRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
   const concept = conceptAsked(ui.filter);
+  const words = filterWords(ui.filter);
+  const stored = routeCaches.get(state);
+  const cache = stored?.world === world && stored.key === routeCacheKey(state, world) ? stored : undefined;
+  const descriptions = new Map<string, TaskOption>();
   return intentGroups(regionAt(world, state.player.region)).flatMap((g) => {
-    // A concept is an exact membership query. Free text also matches live
-    // details and refusals, so names alone cannot safely exclude its rows.
-    const candidates = concept === null ? g : {
-      ...g, items: g.items.filter(({ id, arg }) => conceptsFor(id, arg).includes(concept)),
+    const candidates = {
+      ...g, items: g.items.filter(({ id, arg }) => {
+        if (concept !== null) return conceptsFor(id, arg).includes(concept);
+        // groupRows rewrites region survey labels after the task check.
+        if (id === "explore" && arg?.startsWith("region:")) return true;
+        const open = ui.open?.id === id && ui.open.arg === (arg ?? "");
+        const where = open ? ui.choice.where : "nearest";
+        const cell = cache?.rows.get(`${id}:${arg ?? ""}:${where}`)?.cell ?? directIntentCell(state, world, id, arg, where);
+        // Location-dependent descriptions must remain candidates until their
+        // real destination is resolved. Direct rows use the same live check
+        // as cachedRouteOption, including details/refusals, never names alone.
+        if (cell === null) return true;
+        const description = { ...check(state, world, cal, id, arg, cell), cell };
+        if (matchTier(withProgression(state, world, description), words) < 0) return false;
+        descriptions.set(`${id}:${arg ?? ""}:${where}`, description);
+        return true;
+      }),
     };
-    return candidates.items.length ? groupRows(candidates, state, world, cal, ui, cachedRouteOption) : [];
+    return candidates.items.length ? groupRows(candidates, state, world, cal, ui, (s, w, c, id, arg, where) =>
+      cachedRouteOption(s, w, c, id, arg, where, descriptions.get(`${id}:${arg ?? ""}:${where}`))) : [];
   });
 }
 

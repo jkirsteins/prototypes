@@ -157,28 +157,40 @@ export function nearestCell(state: GameState, world: World, pred: (cell: number)
   return here;
 }
 
-/** Where the work is done, decided once. The note says when the chosen spot did not suit. */
-export function resolveCell(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, where: Where): { cell: number; note: string } {
+/** Exact destinations that need no route search. Null means the caller must resolve normally. */
+export function directIntentCell(state: GameState, world: World, task: TaskId, arg: string | undefined, where: Where): number | null {
   const here = cellOf(state, world);
-  if (task === "findShelter" || task === "improveCover" || task === "emergencyShelter" || task === "readSky") return { cell: typeof where === "object" ? where.cell : here, note: "" };
+  if (task === "findShelter" || task === "improveCover" || task === "emergencyShelter" || task === "readSky") return typeof where === "object" ? where.cell : here;
   // The site is chosen at the click, not wherever the runner happens to be standing when
   // the order starts; named explicitly, ahead of the generic object check below, so the
   // binding still holds even if that check is ever narrowed to fewer tasks.
-  if (task === "makeCamp") return { cell: typeof where === "object" ? where.cell : here, note: "" };
-  if (typeof where === "object") return { cell: where.cell, note: "" };
-  const r = regionAt(world, state.player.region);
+  if (task === "makeCamp") return typeof where === "object" ? where.cell : here;
+  if (typeof where === "object") return where.cell;
   const st = regionState(state, world, state.player.region);
-  if (HERE.has(task)) return { cell: here, note: "" };
-  if (task === "build" && arg === "seep") {
-    // The nearest wet cell with no seep on it.
-    return { cell: nearestCell(state, world, (c) => seepGround(world, c) !== null && !state.seeps[c]), note: "" };
-  }
+  if (HERE.has(task)) return here;
   // No camp to bind to: the work is judged where the survivor stands, and the camp
   // guard in `check` is what refuses it, rather than a cell chosen to carry the refusal.
-  if (CAMP_BOUND.has(task) || (task === "build" && arg !== "snare")) return { cell: st.campCell ?? here, note: "" };
+  if (CAMP_BOUND.has(task) || (task === "build" && arg !== "snare" && arg !== "seep")) return st.campCell ?? here;
   if (task === "craft") {
     const needs = RECIPES[arg as RecipeId].needs;
-    return { cell: canConsume(reach(state, world), needs) ? here : (st.campCell ?? here), note: "" };
+    return canConsume(reach(state, world), needs) ? here : (st.campCell ?? here);
+  }
+  // These ground-free tasks have their own destination search below.
+  if (task === "emptyTrap" || task === "eggs" || task === "innerBark" || task === "tapSap" || task === "seaweed" || task === "roots" || (task === "build" && arg === "seep") || (task === "fill" && arg === "seep")) return null;
+  if (!groundOf(task, arg)) return here;
+  return null;
+}
+
+/** Where the work is done, decided once. The note says when the chosen spot did not suit. */
+export function resolveCell(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, where: Where): { cell: number; note: string } {
+  if (typeof where === "object") return { cell: where.cell, note: "" };
+  const direct = directIntentCell(state, world, task, arg, where);
+  if (direct !== null) return { cell: direct, note: "" };
+  const here = cellOf(state, world);
+  const r = regionAt(world, state.player.region);
+  const st = regionState(state, world, state.player.region);
+  if (task === "build" && arg === "seep") {
+    return { cell: nearestCell(state, world, (c) => seepGround(world, c) !== null && !state.seeps[c]), note: "" };
   }
   if (task === "hunt" && arg === "any") return anyHuntCell(state, world, cal, where);
   if (task === "hunt" && arg === "bear") {
