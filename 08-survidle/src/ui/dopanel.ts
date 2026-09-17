@@ -504,13 +504,14 @@ interface RouteCacheEntry {
 }
 
 interface RouteCache {
-  state: GameState;
   world: World;
   key: string;
   rows: Map<string, RouteCacheEntry>;
 }
 
-let routeCache: RouteCache | null = null;
+// A search in an old run must not keep that run and its solved world alive
+// after a reset if the player never searches in the replacement run.
+const routeCaches = new WeakMap<GameState, RouteCache>();
 
 /**
  * What can move a row's route, or the cell its work happens at: the
@@ -555,10 +556,11 @@ function routeCacheKey(state: GameState, world: World): string {
  */
 function cachedRouteOption(state: GameState, world: World, cal: Calendar, id: TaskId, arg: string | undefined, where: Where): TaskOption {
   const outerKey = routeCacheKey(state, world);
-  if (!routeCache || routeCache.state !== state || routeCache.world !== world || routeCache.key !== outerKey) {
-    routeCache = { state, world, key: outerKey, rows: new Map() };
+  let cache = routeCaches.get(state);
+  if (!cache || cache.world !== world || cache.key !== outerKey) {
+    cache = { world, key: outerKey, rows: new Map() };
+    routeCaches.set(state, cache);
   }
-  const cache = routeCache;
   const rowKey = `${id}:${arg ?? ""}:${where}`;
   let entry = cache.rows.get(rowKey);
   if (!entry) {
