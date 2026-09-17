@@ -1791,11 +1791,28 @@ interface ViewshedCache {
   state: GameState;
   world: World;
   key: string;
+  /** What the set is of: a patch stood on and how far the eye reaches from it. */
+  cell: number;
+  range: number;
+  /** The wall clock the set was built at, which is what bounds how often it is built. */
+  builtAtMs: number;
   cells: Set<number>;
   projections: Map<string, string>;
 }
 
 let viewshedCache: ViewshedCache | null = null;
+let viewshedBuildCount = 0;
+
+/**
+ * How many times the map has worked out what the survivor can see. The
+ * budget is on this rather than on the sight rays under it: the terrain
+ * viewshed has its own cache, so a rebuild on the same patch casts no rays
+ * and still pays for the contrast pass over every candidate patch, which is
+ * the part a frame feels. Diagnostic only; asking never builds one.
+ */
+export function viewshedBuilds(): number {
+  return viewshedBuildCount;
+}
 
 /** One authoritative visibility result per displayed game minute, shared by the key and markup. */
 /**
@@ -1812,12 +1829,38 @@ let viewshedCache: ViewshedCache | null = null;
  */
 const VIEWSHED_HOLD_MINUTES = 10;
 
-function currentViewshed(state: GameState, world: World, cal: Calendar, cell: number): ViewshedCache {
+/**
+ * And the same in real time, because game minutes are not a bound at all:
+ * the hurry decides how many of them pass in a second, and a future action
+ * that runs an hour in a few seconds would roll the ten-minute clock above
+ * as fast as the old one-minute clock rolled at the one scale, putting the
+ * cost straight back. Nothing a player can see happens more than a handful
+ * of times a second, so a view the world's clock has moved on from is
+ * rebuilt at most this often. What is bounded here is what the map draws
+ * and what the tip reads; the knowledge the survivor keeps is written by
+ * the simulation's own look (seeFrom), which this never touches.
+ *
+ * A step is not held: moving is the one change a player watches for, so a
+ * new patch underfoot or a new sight range rebuilds at once. That path is
+ * bounded by how fast the feet can go, which is what WALK_PEAK caps.
+ */
+const VIEWSHED_HOLD_MS = 200;
+
+function currentViewshed(state: GameState, world: World, cal: Calendar, cell: number, nowMs = performance.now()): ViewshedCache {
   const minute = Math.floor((state.minute + state.weather.elapsedMinutes) / VIEWSHED_HOLD_MINUTES);
   const range = sightRangeCells(state, world, cal, cell);
   const key = `${cell}:${minute}:${range}`;
-  if (viewshedCache?.state === state && viewshedCache.world === world && viewshedCache.key === key) return viewshedCache;
-  viewshedCache = { state, world, key, cells: visibleCells(state, world, cal, cell), projections: new Map() };
+  const held = viewshedCache;
+  if (held?.state === state && held.world === world) {
+    if (held.key === key) return held;
+    // Only the clock has moved: hold what is drawn until the wall clock says
+    // a person could tell the difference. A step or a change of range is a
+    // different cell or a different range, and neither is held.
+    const since = nowMs - held.builtAtMs;
+    if (held.cell === cell && held.range === range && since >= 0 && since < VIEWSHED_HOLD_MS) return held;
+  }
+  viewshedBuildCount++;
+  viewshedCache = { state, world, key, cell, range, builtAtMs: nowMs, cells: visibleCells(state, world, cal, cell), projections: new Map() };
   return viewshedCache;
 }
 
@@ -1865,7 +1908,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const z = level.finePerGlyph;
   // Hoisted above the wildlife pass, which needs the same set: this is the
   // frame's one viewshed, held for the game minute it belongs to.
-  const shed = currentViewshed(state, world, cal, cell);
+  const shed = currentViewshed(state, world, cal, cell, nowMs);
   const animals = z <= ANIMAL_GLYPH_PATCHES ? visibleWildlife(state, world, cal, shed.cells)
     .filter((subject) => subject.active && (subject.active.cell % world.w) >= x0 && (subject.active.cell % world.w) < x0 + level.w * z && Math.floor(subject.active.cell / world.w) >= y0 && Math.floor(subject.active.cell / world.w) < y0 + level.h * z)
     .map((s) => {
@@ -1909,7 +1952,7 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
   // Current visibility has meaning only while one glyph is one patch. Coarser
   // blocks remain a map of knowledge rather than pretending a
   // majority-visible block is a precise view.
-  const currentVisible = currentViewshed(state, world, cal, playerCell).cells;
+  const currentVisible = currentViewshed(state, world, cal, playerCell, nowMs).cells;
   const visibleNow = z === 1 ? currentVisible : null;
   // Patch coordinates straight off the id: a marker may stand on ground no
   // chunk has been built for, and asking cellAt for it would build one.

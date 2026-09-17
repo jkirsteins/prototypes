@@ -30,6 +30,10 @@ import { passable } from "../src/world/route";
 import { clearObstacleReadCount, obstacleReadCount } from "../src/sim/sight";
 import { worldCacheStats } from "../src/world/aggregate";
 import { routeCacheStats } from "../src/world/route";
+import { board } from "./board";
+import { viewshedBuilds } from "../src/ui/map";
+import { newUiState } from "../src/ui/render";
+import { PATCH_M } from "../src/world/spatial";
 
 /**
  * The gates. They are set about half again above what was measured on this
@@ -108,5 +112,55 @@ describe("the frame's simulation budget", () => {
     expect(cost.routes).toBeLessThan(2);
     expect(cost.chunks).toBeLessThan(0.5);
     expect(cost.ms).toBeLessThan(WALKED_MINUTE_MS_CEILING);
+  });
+});
+
+/**
+ * The other half of the budget, and the half a simulated minute cannot see:
+ * how often the map recomputes what the survivor can see. Game minutes are
+ * not a bound, because the hurry decides how many of them pass in a second.
+ * An action that ran an hour in a few seconds would roll any clock made of
+ * game minutes as fast as the one-minute clock rolled at the one scale.
+ */
+describe("the map's budget for looking", () => {
+  it("rebuilds what the survivor can see a few times a second however fast the world runs", () => {
+    const { state, world } = newGame(42);
+    const ui = newUiState();
+    // One build to fill the caches under it, so what is counted afterwards is
+    // the looking itself.
+    board(world, state, ui, calendar(state.minute, state.startDoy), 1_000);
+    // An hour of world in a second of wall clock: the shape of a long action
+    // that speeds up, and of anything faster somebody adds later. The bound
+    // is the wall clock, so the answer is a handful either way.
+    const look = (minutes: number, wallMs: number): number => {
+      let looks = 0;
+      for (let i = 0; i < minutes; i++) {
+        state.minute += 1;
+        const before = viewshedBuilds();
+        board(world, state, ui, calendar(state.minute, state.startDoy), 1_000 + (i + 1) * (wallMs / minutes));
+        if (viewshedBuilds() > before) looks++;
+      }
+      return looks;
+    };
+    const inASecond = look(60, 1_000);
+    console.log(`${inASecond} looks over an hour of world in a second of wall clock`);
+    expect(inASecond).toBeLessThanOrEqual(6);
+    // And the hold is a hold, not a stop: a slower hour still gets its looks.
+    const inTenSeconds = look(60, 10_000);
+    console.log(`${inTenSeconds} looks over the next hour in ten seconds of wall clock`);
+    expect(inTenSeconds).toBeGreaterThan(inASecond);
+  });
+
+  it("looks again at once when the survivor moves", () => {
+    const { state, world } = newGame(42);
+    const ui = newUiState();
+    const cal = calendar(state.minute, state.startDoy);
+    board(world, state, ui, cal, 2_000);
+    const before = viewshedBuilds();
+    // The same wall-clock instant, one patch further on: a step is what a
+    // player watches for, so it is never held back.
+    state.player.xM += PATCH_M;
+    board(world, state, ui, cal, 2_000);
+    expect(viewshedBuilds()).toBeGreaterThan(before);
   });
 });
