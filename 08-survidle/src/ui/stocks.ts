@@ -120,7 +120,10 @@ export function stocksHtml(state: GameState, world: World, cal: Calendar, ui: Pi
     }
     const cap = groupCap(state, world, g);
     const amount = held(groupHeld(state, world, g), g.unit);
-    const of = cap === null ? "" : ` <span class="dim">of ${held(cap, g.unit)}</span>`;
+    // The cap is what the camp can keep: wood under a roof, water in
+    // vessels. "40 kg of 0.0 kg" is true and reads as nonsense, so a cap of
+    // nothing says what is missing instead of the number.
+    const of = cap === null ? "" : cap <= 0 && g.id === "wood" ? ` <span class="dim">no cover</span>` : cap <= 0 && g.id === "water" ? ` <span class="dim">no vessel at camp</span>` : ` <span class="dim">of ${held(cap, g.unit)}</span>`;
     const perHour = causes[g.id].reduce((a, c) => a + c.perHour, 0);
     const rate = formatRate(perHour, g.rateUnit, ui.rateDisplay);
     const sign = perHour > 0 ? "good" : perHour < 0 ? "bad" : "dim";

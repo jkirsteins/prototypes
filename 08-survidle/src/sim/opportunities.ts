@@ -90,7 +90,7 @@ export const KEPT_DAYS = 3;
 
 const NOTES: Partial<Record<StaticOpportunityId, string>> = {
   drink: "Below 1 litre, Self-care drinks from water at hand, or walks to some, on the minutes the activity queue gives it.",
-  firewood: "Dead wood burns without felling a tree. Gathered in the rain it comes back wet, and wet wood must dry before it counts.",
+  firewood: "Dead wood burns without felling a tree. Gathered in rain or snow it comes back wet, and only dry wood counts here: light the fire with what is dry and the rest dries beside it.",
   fire: "Fire needs a site, dry wood laid in it, and a drill to catch it.",
   bed: "A bed keeps sleep off the cold ground.",
   roof: "Shelter reduces wind and rain exposure.",
@@ -130,7 +130,7 @@ export const OPPORTUNITIES: OpportunityDef[] = [
   // An FYI, not a goal: the self-care row drinks on its own, and a goal
   // that asked for it held the fire behind it. Told once, with the camp.
   { key: "drink", title: "Water", category: "survival", fyi: true, steps: [], prerequisites: ["site"] },
-  { key: "firewood", title: `Gather ${FIREWOOD_KG} kg of firewood`, category: "survival", steps: one("wood", `Gather ${FIREWOOD_KG} kg`, firewoodKg, FIREWOOD_KG, "kg"), prerequisites: ["build:firePit"] },
+  { key: "firewood", title: `Gather ${FIREWOOD_KG} kg of dry firewood`, category: "survival", steps: one("wood", `Gather ${FIREWOOD_KG} kg, dry`, firewoodKg, FIREWOOD_KG, "kg"), prerequisites: ["build:firePit"] },
   { key: "fire", title: "Light a fire", category: "survival", steps: [
       // Every step names a row in the Do panel, in the order the rows come
       // due. "Provide fuel" named no row at all and could only be met by the
@@ -142,7 +142,11 @@ export const OPPORTUNITIES: OpportunityDef[] = [
       step("fuel", "Fuel the fire site", (d) => (d.kind === "fuelled" ? 1 : 0)),
       step("ignition", "Have a fire drill", made("fireDrill")),
       { ...step("light", "Light the fire", lit), final: true },
-    ], prerequisites: ["firewood"] },
+    // Beside the firewood goal, not behind it. Wood gathered in snow is wet
+    // and dries by a lit fire, so a fire held behind ten dry kilos was a
+    // landing that could never light one: the rows to light it were hidden
+    // until a goal that needed them lit was met.
+    ], prerequisites: ["build:firePit"] },
   { key: "bed", title: "Get off the cold ground", category: "survival", steps: one("bed", "Build a bed", built("boughBed")), prerequisites: ["fire"] },
   { key: "roof", title: "Put a roof over your head", category: "survival", steps: one("roof", "Build a roof", roof), prerequisites: ["fire"] },
   { key: "forageMeal", title: "Forage and eat a meal", category: "food", steps: [step("gather", "Gather edible food", acquired("forage")), { ...step("eat", "Eat gathered food", gatheredMeal), final: true }], prerequisites: ["bed","roof","keptNight"] },

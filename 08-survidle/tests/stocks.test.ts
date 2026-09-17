@@ -130,3 +130,13 @@ describe("the strip before there is a camp", () => {
     expect(html).toMatch(/Pack<\/span> <b>[^<]+<\/b>/);
   });
 });
+
+describe("a cap of nothing says what is missing", () => {
+  it("reads 'no cover' rather than 'of 0.0 kg' at a camp with no roof over its wood", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const html = stocksHtml(state, world, calendar(state.minute, state.startDoy), { rateDisplay: "game" });
+    expect(html).toContain("no cover");
+    expect(html).not.toContain("of 0.0 kg");
+  });
+});

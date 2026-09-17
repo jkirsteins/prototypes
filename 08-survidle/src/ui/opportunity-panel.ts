@@ -9,7 +9,12 @@ export function opportunityChecklistHtml(state: GameState, key: OpportunityKey):
   // and did nothing when clicked, which is a promise the panel cannot keep:
   // a step is ticked by doing the work, never by the player saying so. It
   // is hidden from a screen reader, which is told done or not in words.
-  return `<span class="opportunity-steps">${opportunitySteps(state, key).map((step) => `<span class="opportunity-step${step.done ? " done" : ""}"><span aria-hidden="true">[${step.done ? "x" : " "}]</span> ${esc(step.label)}<span class="sr-only">${step.done ? " (done)" : ""}</span></span>`).join("")}</span>`;
+  // A counted step says how far it has got. "Gather 10 kg" with 1.1 kg
+  // banked and a full wood pile in view read as a goal that had failed to
+  // notice; "1.1 of 10 kg" says what has counted and, by omission, what has not.
+  const progress = (step: { at: number; target: number; unit?: string; done: boolean }) => step.unit && !step.done && step.at > 0 ? ` <small class="dim">${fmt(step.at)} of ${fmt(step.target)} ${esc(step.unit)}</small>` : "";
+  const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+  return `<span class="opportunity-steps">${opportunitySteps(state, key).map((step) => `<span class="opportunity-step${step.done ? " done" : ""}"><span aria-hidden="true">[${step.done ? "x" : " "}]</span> ${esc(step.label)}${progress(step)}<span class="sr-only">${step.done ? " (done)" : ""}</span></span>`).join("")}</span>`;
 }
 
 /**
