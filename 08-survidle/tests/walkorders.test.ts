@@ -53,7 +53,9 @@ describe("visible walk orders", () => {
     expect(startIntent(state, world, calendar(state.minute), new Rng(1), walk.req, walk.id)).toBe(false);
     expect(state.task).toBeNull();
     judgeOrders(state, world, calendar(state.minute));
-    expect(walk.skipped).toBe("too exhausted");
+    // The collapse gate names itself and the line it is waiting for, so the
+    // skipped row does not read as the list being broken.
+    expect(walk.skipped).toBe(`resting to ${RESTED_AT} Stamina after a collapse`);
 
     state.player.energy = RESTED_AT;
     expect(startIntent(state, world, calendar(state.minute), new Rng(1), walk.req, walk.id)).toBe(true);

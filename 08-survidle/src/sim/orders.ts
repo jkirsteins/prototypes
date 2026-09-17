@@ -58,7 +58,7 @@
 import { Rng } from "../rng";
 import type { World } from "../world/gen";
 import { itemLabel } from "./actions";
-import { currentNeed, KIT_ITEMS, tooExhausted } from "./body";
+import { currentNeed, KIT_ITEMS, tooExhausted, workResumeAt } from "./body";
 import { bodyRowOf, BODY_SENTENCE, CAMP_SENTENCE, careLogLine, isBodyRow, isCampRow, isCareRow, judgeBodyRow, judgeCampRow, serveBodyRow, serveCareRow } from "./bodyorder";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
@@ -842,7 +842,13 @@ function judgeRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Or
   // Collapse is a normal refusal by the work row, not a hidden sleep task
   // outside the queue. That lets the next ranked row, usually self-care,
   // win visibly by the same rule as every other blocked order.
-  if (tooExhausted(state)) return { v: "blocked", why: "too exhausted" };
+  if (tooExhausted(state)) {
+    // Naming the gate and the number: "too exhausted" beside a Stamina bar
+    // that is visibly climbing reads as the list being broken rather than as
+    // the collapse rule holding work back until the body is fit for it.
+    const resume = workResumeAt(state);
+    return { v: "blocked", why: resume === null ? "too exhausted" : `resting to ${resume} Stamina after a collapse` };
+  }
   const opt = intentOption(state, world, cal, o.req.task, o.req.arg, o.req.where);
   if (!opt.ok) return { v: "blocked", why: opt.why };
   const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);

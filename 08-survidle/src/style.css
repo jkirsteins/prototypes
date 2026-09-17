@@ -849,6 +849,11 @@ button.act small, span.act small { display: block; color: var(--dim); }
 }
 #orders .order.once .kind { color: var(--accent); border-color: var(--accent); }
 #orders .order .kind.blocked { color: var(--bad); border-color: var(--bad); }
+/* A row the list passed over: the loud one of the three, since it is the
+   one the player asked for and is not getting. The reason under it carries
+   the same colour, so the tag and the sentence read as one statement. */
+#orders .order .kind.skipped { color: var(--bad); border-color: var(--bad); background: rgba(197, 74, 74, 0.14); }
+#orders .order .step.bad { color: var(--bad); }
 
 /* The block policy says its state in words. It is read top to bottom with
    every other part of the row, without a symbol or tooltip to decode. */

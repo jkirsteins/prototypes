@@ -709,6 +709,12 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     const once = !care && o.req.until.kind === "once";
     const kind = care ? "" : `<span class="kind">${once ? "once" : "standing"}</span>`;
     const blockedTag = blocked ? `<span class="kind blocked">blocked</span>` : "";
+    // A row the list walked past. The work was asked for and is not
+    // happening, and without a word for it the row reads as broken rather
+    // than as passed over on purpose: the tag says the list made a choice,
+    // and the line under it says what the choice was made on.
+    const fellThrough = !care && !live && !blocked && Boolean(o.skipped);
+    const skippedTag = fellThrough ? `<span class="kind skipped">skipped</span>` : "";
     // waitingLine is the plain reading and writes nothing; the scheduler's own read
     // is what moves a restart band's mark, so drawing a row never advances the list.
     // Task progress and the concrete step live in the central strip. The
@@ -718,7 +724,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
       ? ""
       : blocked && o !== judged.blockedBy
         ? ""
-        : ((line) => line ? `<div class="step">${esc(cap(plain(line)))}</div>` : "")(waitingLine(state, world, cal, o, judged));
+        : ((line) => line ? `<div class="step${fellThrough ? " bad" : ""}">${esc(cap(plain(line)))}</div>` : "")(waitingLine(state, world, cal, o, judged));
     // A care row ranks like any other row and draws the same up and down,
     // since where it sits against the work is the whole of what the player
     // says to it. It draws no x: it cannot be struck off, and a button that
@@ -747,7 +753,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     const btns = care
       ? `<span class="ctl">${move}</span>`
       : `<span class="ctl">${move} ${pin} <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
-    return `<div class="order${care ? " care" : ""}${once ? " once" : ""}${live ? " live" : ""}"><div class="head"><span class="ti"><b>${esc(orderSentence(state, world, cal, o))}</b><span class="meta">${kind}${blockedTag}</span>${counts}</span>${btns}</div>${second}</div>`;
+    return `<div class="order${care ? " care" : ""}${once ? " once" : ""}${live ? " live" : ""}"><div class="head"><span class="ti"><b>${esc(orderSentence(state, world, cal, o))}</b><span class="meta">${kind}${blockedTag}${skippedTag}</span>${counts}</span>${btns}</div>${second}</div>`;
   }).join("");
   return `${held}${rows}`;
 }
