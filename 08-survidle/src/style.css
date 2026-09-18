@@ -983,9 +983,6 @@ button.act small, span.act small { display: block; color: var(--dim); }
   max-width: 640px; max-height: 80vh; overflow-y: auto;
 }
 #overlay h1 { margin: 0 0 8px; font-size: 20px; }
-/* The field notes and the catalogue scroll inside the screen, like .box: a
-   batch of six discoveries once ran past the bottom and took OK with it. */
-#overlay .opportunity-modal, #overlay .opportunity-catalog { max-height: 85vh; overflow-y: auto; box-sizing: border-box; }
 #overlay .box button.act { width: auto; display: inline-block; margin-top: 12px; }
 /* A grave is a name, a death and what the life is remembered for, so its lines all start at one edge. */
 .grave { margin: 12px 0; }

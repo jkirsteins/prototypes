@@ -30,7 +30,7 @@ import { seepStopped } from "./seep";
 import { coverCeiling, EMERGENCY_MINUTES, findCover, galeProtection, improveCoverMinutes, protectionOf } from "./shelter";
 import { skillLevel } from "./skills";
 import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
-import { isRunning, type Step, walkStep } from "./steps";
+import { type Step, canStart, isRunning, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
 import { isWorkIntent, type BodyNeed, type CampNeed, type CareNeed, type GameState, type ItemId, type Protection, type Task, type TaskId, type ToolId, type WorkIntent } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
@@ -502,14 +502,19 @@ function thirstyStep(state: GameState, world: World, cal: Calendar, dry: boolean
   const options = waterOptions(state, world, cal);
   const enough = options.find((o) => o.litres >= need);
   if (enough) return walkStep(state, world, enough.cell, enough.why);
+  // Every step below is asked whether it can start before it is named:
+  // a named step the task refuses is a stall (steps.ts, canStart).
+  const can = (s: Step): Step | null => (canStart(state, world, cal, s) ? s : null);
   const site = iceHoleSite(state, world, cal);
   if (site !== null) {
     if (site !== here) return walkStep(state, world, site, " to open an ice hole");
-    return { id: "iceHole", step: "opening an ice hole" };
+    const hole = can({ id: "iceHole", step: "opening an ice hole" });
+    if (hole) return hole;
   }
   const seepHere = state.seeps[here];
   if (seepHere && seepStopped(state, world, here, ambientTemperature(cal, localWeather(state, world))) !== "frozen") {
-    return { id: "rest", step: "waiting at the seep" };
+    const wait = can({ id: "rest", step: "waiting at the seep" });
+    if (wait) return wait;
   }
   const seeps = options.filter((o) => o.why === " for the seep" && state.seeps[o.cell].ice <= 1e-9);
   if (seeps.length) {
@@ -524,7 +529,7 @@ function thirstyStep(state: GameState, world: World, cal: Calendar, dry: boolean
     // The cold step's fire, for the same reason: no fire, no melt.
     const fs = fireStep(state, world, cal, camp);
     if (fs) return fs;
-    return { id: "melt", step: "melting snow" };
+    return can({ id: "melt", step: "melting snow" });
   }
   return null;
 }

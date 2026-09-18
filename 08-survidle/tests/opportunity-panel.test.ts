@@ -64,21 +64,21 @@ it("tells a survivor with no camp to choose where to live, whatever the world ha
   expect(html).not.toContain("[x]");
 });
 
-it("a pinned recipe says what it still needs against the pack and the camp pile, and a structure likewise", () => {
+it("a make or build goal on the card opens the shopping list with the row's own track button", () => {
   const { state, world } = newGame(3);
   regionState(state, world, state.player.region).campCell = cellOf(state, world);
   discoverOpportunity(state.opportunities, "make:knife", 0, false);
   setCurrentOpportunity(state.opportunities, "make:knife");
-  const wanting = opportunityPanelHtml(state);
-  expect(wanting).toContain("still needs");
-  expect(wanting).toContain("stone");
-  expect(wanting).toContain("cordage");
-  state.player.pack.items.stone = 2;
-  state.player.pack.items.stick = 1;
-  state.player.pack.items.cordage = 1;
-  expect(opportunityPanelHtml(state)).toContain("everything it needs is at hand");
+  const html = opportunityPanelHtml(state);
+  expect(html).toContain('data-act="shopping-track" data-id="craft" data-arg="knife"');
+  expect(html).toContain("track materials");
+  state.shopping = { task: "craft", arg: "knife" };
+  expect(opportunityPanelHtml(state)).toContain("tracking materials");
   discoverOpportunity(state.opportunities, "build:vedbod", 0, false);
   setCurrentOpportunity(state.opportunities, "build:vedbod");
-  expect(opportunityPanelHtml(state)).toContain("still needs");
-  expect(opportunityPanelHtml(state)).toContain("log");
+  expect(opportunityPanelHtml(state)).toContain('data-id="build" data-arg="vedbod"');
+  setCurrentOpportunity(state.opportunities, "fire");
+  discoverOpportunity(state.opportunities, "fire", 0, false);
+  setCurrentOpportunity(state.opportunities, "fire");
+  expect(opportunityPanelHtml(state)).not.toContain("shopping-track");
 });
