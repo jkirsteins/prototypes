@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { bodyStep, campNeed } from "../src/sim/body";
 import { calendar } from "../src/sim/calendar";
-import { EMBER_RELIGHT_MINUTES, SPREAD_FUEL_KG } from "../src/sim/fire";
+import { BANKED_KG, EMBER_RELIGHT_MINUTES, SPREAD_FUEL_KG } from "../src/sim/fire";
 import { addItem, pile } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
@@ -34,41 +34,45 @@ function pit(seed = 3) {
   state.player.kcal = 3000;
   state.player.energy = 90;
   state.player.sleepDebt = 0;
+  state.player.warmth = 80;
+  state.player.wetness = 0;
   return { state, world, st, cal: calendar(state.minute, state.startDoy), rng: new Rng(1) };
 }
 
 describe("the camp row and a fire's setting", () => {
-  it("relights a fire gone to coals when set to burn, leaves one set to go out, and never starts one from cold", () => {
+  it("rekindles coals at night when set to burn, leaves a fire set to go out, and never starts one from cold", () => {
     const { state, world, st, cal, rng } = pit();
     expect(st.fire.keep).toBe("burning");
     // Stone cold: the pit is the body's or the player's to light, not the row's.
     expect(campNeed(state, world, cal)).toBeNull();
     st.fire.embers = EMBER_RELIGHT_MINUTES * 20;
+    // Midday, a warm dry body: coals are left as coals.
+    expect(campNeed(state, world, cal)).toBeNull();
+    // The flame useful - the body under the warm line - and the coals are rekindled.
+    state.player.warmth = 40;
     expect(campNeed(state, world, cal)).toBe("fire");
     expect(bodyStep(state, world, cal, rng, "fire")?.id).toBe("light");
     st.fire.keep = "out";
     expect(campNeed(state, world, cal)).toBeNull();
   });
 
-  it("feeds a low fire only when set to burn", () => {
-    const { state, world, st, cal } = pit();
+  it("feeds a low fire while the flame is useful, and banks a full one when it is not", () => {
+    const { state, world, st, cal, rng } = pit();
     st.fire.lit = true;
     st.fire.fuelKg = 0.5;
-    expect(campNeed(state, world, cal)).toBe("fire");
-    st.fire.keep = "coals";
+    // Warm, dry, midday: nobody needs the flame, and half a kilo is under the banked few kilos: nothing.
     expect(campNeed(state, world, cal)).toBeNull();
-  });
-
-  it("under coals, relights as the coals go and not before", () => {
-    const { state, world, st, cal, rng } = pit();
-    st.fire.keep = "coals";
-    st.fire.embers = EMBER_RELIGHT_MINUTES * 6;
-    expect(campNeed(state, world, cal)).toBeNull();
-    st.fire.embers = EMBER_RELIGHT_MINUTES;
+    state.player.warmth = 40;
     expect(campNeed(state, world, cal)).toBe("fire");
-    expect(bodyStep(state, world, cal, rng, "fire")?.id).toBe("light");
-    // Dead outright, it is not the row's to start: cold, the night or the player light it.
-    st.fire.embers = 0;
+    expect(bodyStep(state, world, cal, rng, "fire")).toBeNull();
+    expect(st.fire.fuelKg).toBeGreaterThan(5);
+    // Warm again: the surplus goes back to the pile in the minute.
+    state.player.warmth = 80;
+    const pileBefore = pile(state, st.campCell!).items.firewood ?? 0;
+    expect(campNeed(state, world, cal)).toBe("fire");
+    expect(bodyStep(state, world, cal, rng, "fire")).toBeNull();
+    expect(st.fire.fuelKg).toBeLessThanOrEqual(BANKED_KG + 1e-9);
+    expect(pile(state, st.campCell!).items.firewood ?? 0).toBeGreaterThan(pileBefore);
     expect(campNeed(state, world, cal)).toBeNull();
   });
 
@@ -86,11 +90,11 @@ describe("the camp row and a fire's setting", () => {
     expect(campNeed(state, world, cal)).toBeNull();
   });
 
-  it("reads burning from a save that predates the setting", () => {
+  it("reads burning from a save that predates the setting, and from one that said coals", () => {
     const { state, world, st } = pit();
-    state.player.fieldFire = { cell: st.campCell!, fuelKg: 2, keep: "coals" };
+    state.player.fieldFire = { cell: st.campCell!, fuelKg: 2, keep: "burning" };
     const raw = JSON.parse(serialize(state)) as { state: { regions: Record<string, { fire: { keep?: string } }>; player: { fieldFire: { keep?: string } } } };
-    for (const region of Object.values(raw.state.regions)) delete region.fire.keep;
+    for (const region of Object.values(raw.state.regions)) region.fire.keep = "coals";
     delete raw.state.player.fieldFire.keep;
     const loaded = readSave(JSON.stringify(raw));
     expect(loaded).not.toBeNull();

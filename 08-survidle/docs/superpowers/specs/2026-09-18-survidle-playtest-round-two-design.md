@@ -90,24 +90,28 @@ under foot; banking on leaving stays automatic. The camp view in roadmap
 item P part 1 is where these live in the end; until it exists they live
 on the Camp tab, every camp's fire listed.
 
-`fire.keep` on a region's fire and on the field fire:
+`fire.keep` on a region's fire and on the field fire, two settings after
+a second round with the author (the "keep coals" toggle was withdrawn:
+banking is a rule, not a choice):
 
-- `burning` (default, today's behaviour plus one thing): the camp row
-  feeds a lit fire to full, and relights it from its coals when the
-  flame goes out, so a fire that died while the survivor was out is back
-  the minute they are home.
-- `coals`: no feeding while lit; the fire is let down to coals and relit
-  only when the coals are about to die, so a kilo a night keeps a pit
-  warm enough to rekindle in five minutes.
+- `burning` (default): the fire is kept alive, and burning while the
+  flame is useful - the night, a body under the warm line or soaked,
+  wet wood in the pit drying, a cook or a melt in hand. Then it is fed
+  to max under the low mark, because the burn rate does not depend on
+  how full the pit is and only the hours lit cost wood. When nothing
+  needs the flame it is let down to coals and the surplus above six
+  kilos goes back to the pile, so a warm afternoon at camp does not
+  burn fifty kilos; the coals are rekindled when a need comes back, and
+  only with dry wood enough to keep the fire past the low mark. Leaving
+  camp banks it as before. Never from cold: the night, the cold, a cook,
+  a melt and the player's Light row light a cold pit.
 - `out`: the camp row does nothing for it.
 
-None of the three starts a fire from cold, and the relight ranks under
-the snares, waits for daylight, and yields to any want of the body's.
-The first cut relit a cold pit whenever the survivor was home by day and
-fed it to full from the pile; by bedtime the wood was gone and the sleep
-step was splitting logs. The body's own needs (cold, the night, a storm)
-and the player's Light row are what light a cold pit; the setting is
-maintenance, not survival.
+The rekindle ranks under the snares and yields to any want of the
+body's. The first cut lit cold pits by day and fed them from the pile
+until the wood was gone by bedtime; the second let the fire burn all day
+at camp. The author's ruling on the day hearth: coals by day when nothing
+needs the flame.
 
 Save files older than the field default to `burning`.
 

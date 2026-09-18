@@ -171,7 +171,10 @@ export function migrate(state: GameState): void {
   }
   state.player.skyReadDay ??= null;
   state.player.fieldFire ??= null;
-  if (state.player.fieldFire) state.player.fieldFire.keep ??= "burning";
+  if (state.player.fieldFire) {
+    state.player.fieldFire.keep ??= "burning";
+    if ((state.player.fieldFire.keep as string) === "coals") state.player.fieldFire.keep = "burning";
+  }
   state.seeps ??= {};
   state.carcasses ??= [];
   state.nextCarcassId ??= 1;
@@ -397,6 +400,8 @@ export function migrate(state: GameState): void {
     st.fire.litSince ??= null;
     st.fire.rainHeld ??= 0;
     st.fire.keep ??= "burning";
+    // "keep coals" was a setting for one round; banking is a rule now.
+    if ((st.fire.keep as string) === "coals") st.fire.keep = "burning";
     st.smoke ??= 0;
     st.logsWet ??= 1440;
     st.wettedKg ??= 0;

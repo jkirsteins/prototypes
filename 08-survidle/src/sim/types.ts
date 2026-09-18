@@ -264,15 +264,17 @@ export interface Route {
 
 /**
  * A fire's setting, one per fire, the field fire included. `burning`: the
- * camp row feeds it to full and relights it from its coals when the flame
- * goes out. `coals`: no feeding; it is let down to coals and relit only as
- * the coals go, so a kilo a night keeps the pit warm enough to rekindle in
- * minutes. `out`: the camp row does nothing for it. None of them starts a
- * fire from cold: the body's own needs - cold, the night, a storm - and
- * the player's Light row do that, whatever this says. It is maintenance,
- * not survival.
+ * fire is kept alive, and burning while the flame is useful - the night,
+ * a cold or wet body, work at camp that wants it. Fed to max under the low
+ * mark then, since the burn rate does not depend on how full the pit is
+ * and only the hours lit cost wood; let down to coals and banked when
+ * nothing needs the flame, so a warm day at camp does not burn fifty
+ * kilos; rekindled from coals when a need comes back. `out`: the camp row
+ * does nothing for it. Neither starts a fire from cold: the body's own
+ * needs - the night, the cold, a cook, a melt - and the player's Light row
+ * do that. Banking on leaving camp is automatic under both.
  */
-export type FireKeep = "burning" | "coals" | "out";
+export type FireKeep = "burning" | "out";
 
 /** When an intent is finished with. */
 export type Until =

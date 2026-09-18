@@ -596,12 +596,11 @@ function producerRate(state: GameState, world: World, st: RegionState, site: Ret
   return "";
 }
 
-const KEEP_CHOICES: readonly FireKeep[] = ["burning", "coals", "out"];
-const KEEP_WORD: Record<FireKeep, string> = { burning: "keep it burning", coals: "keep coals", out: "let it go out" };
+const KEEP_CHOICES: readonly FireKeep[] = ["burning", "out"];
+const KEEP_WORD: Record<FireKeep, string> = { burning: "keep it burning", out: "let it go out" };
 const KEEP_TITLE: Record<FireKeep, string> = {
-  burning: "Camp maintenance feeds it to full and relights it from its coals when the flame goes out",
-  coals: "No feeding: it burns down to coals and is relit only as they go, a kilo a night",
-  out: "Camp maintenance does nothing for it; cold, the night and a storm still light a fire, and so does the Light row",
+  burning: "Kept alive: fed to full while the flame is useful (night, cold, wet, cooking), let down to coals and banked when it is not, rekindled when a need comes back, banked when you leave",
+  out: "Camp maintenance does nothing for it; the night, the cold and the Light row still light a fire",
 };
 
 export function campHtml(state: GameState, world: World, cal: Calendar, display: RateDisplay = DEFAULT_RATE_DISPLAY): string {
