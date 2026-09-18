@@ -1384,7 +1384,10 @@ function drawPulses(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: n
       const ring = cls.includes("lit-1") ? LIT_RING[1] : cls.includes("lit-2") ? LIT_RING[2] : null;
       if (!ring) continue;
       const k = breath(t - (g.fd ?? 0), 1.1);
-      ctx.globalAlpha = ring.a + (ring.b - ring.a) * k;
+      // Past 100 m a cell is more ground than any fire lights: the spill is
+      // half as strong, a soft edge on the pulse rather than lit terrain.
+      const spill = board.z > 2 ? 0.5 : 1;
+      ctx.globalAlpha = (ring.a + (ring.b - ring.a) * k) * spill;
       ctx.fillStyle = `rgb(${ring.rgb.join(", ")})`;
       ctx.fillRect(x, y, model.px, model.line);
     }
@@ -1722,7 +1725,14 @@ export function lightSources(state: GameState, world: World): LightSource[] {
  */
 export function litRings(sources: LightSource[], toGlyph: (cell: number) => number, z: number, view: { w: number; h: number }): Map<number, number> {
   const rings = new Map<number, number>();
-  const reachAt = z === 1 ? 2 : z === 2 ? 1 : z <= 6 ? 0 : -1;
+  // The glow footprint, not the fire's visibility: a fire is seen from
+  // kilometres away (campfireVisible, the far mark) while it lights tens of
+  // metres of ground. At 50 m that is two glyphs; at 300 m one cell is
+  // already a large exaggeration, so the fire's own cell pulses, its
+  // neighbours take a weak spill, and only a large fire reaches a second,
+  // fainter ring (drawPulses halves the spill past 100 m). Coarser than
+  // that, a glyph is a kilometre and nothing glows.
+  const reachAt = z === 1 ? 2 : z === 2 ? 1 : z <= 6 ? 2 : -1;
   if (reachAt < 0) return rings;
   for (const s of sources) {
     const g = toGlyph(s.cell);

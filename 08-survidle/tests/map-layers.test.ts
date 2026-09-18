@@ -10,7 +10,7 @@ import { visibleCells } from "../src/sim/sight";
 import { ensureGround } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
 import { activateWildlife } from "../src/sim/wildlife-agents";
-import { effectsSnapshot, type EffectsWeatherKind, mapBoardHtml, WATER_LIT, WATER_RIPPLES, waterRippleDelaysS, waterRipplePeak, waterRipplePhases, weatherGlyphChar } from "../src/ui/map";
+import { effectsSnapshot, type EffectsWeatherKind, litRings, mapBoardHtml, WATER_LIT, WATER_RIPPLES, waterRippleDelaysS, waterRipplePeak, waterRipplePhases, weatherGlyphChar } from "../src/ui/map";
 import { filtered, glyphStyle } from "../src/ui/palette";
 import { board, glyphOfCell, glyphsWith } from "./board";
 import { enqueueWildlifeStartle, newUiState, resetPanels, setPanel } from "../src/ui/render";
@@ -336,6 +336,26 @@ describe("the map's compositing layers", () => {
     const source = readFileSync("src/ui/map.ts", "utf8");
     const pulses = source.slice(source.indexOf("function drawPulses("), source.indexOf("function drawGlyphOver("));
     expect(pulses).toContain(`cls.includes("${cls}")`);
+  });
+
+  it("gives a fire a glow footprint at 300 m: its cell, a weak spill on the neighbours, a second ring only for a large fire", () => {
+    // The footprint is not the fire's visibility (campfireVisible sees it
+    // from kilometres): it is the ground the pulse paints, one cell plus a
+    // soft edge at this rung, and never past 600 m.
+    const view = { w: 9, h: 9 };
+    const centre = 4 * 9 + 4;
+    const toGlyph = (cell: number) => cell;
+    const small = litRings([{ cell: centre, reach: 1 }], toGlyph, 6, view);
+    expect(small.get(centre)).toBe(0);
+    expect(small.get(centre + 1)).toBe(1);
+    expect(small.get(centre + 2)).toBeUndefined();
+    const large = litRings([{ cell: centre, reach: 2 }], toGlyph, 6, view);
+    expect(large.get(centre + 2)).toBe(2);
+    expect(large.get(centre + 3)).toBeUndefined();
+    expect(litRings([{ cell: centre, reach: 2 }], toGlyph, 12, view).size).toBe(0);
+    const source = readFileSync("src/ui/map.ts", "utf8");
+    const pulses = source.slice(source.indexOf("function drawPulses("), source.indexOf("function drawGlyphOver("));
+    expect(pulses).toContain("board.z > 2 ? 0.5 : 1");
   });
 
   it("keeps night firelight and active survivor marks animated above the weather", () => {
