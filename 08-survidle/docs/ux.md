@@ -137,9 +137,11 @@ visible board; `tests/layout.test.ts` holds the declarations.
 Under the phone breakpoint, buttons and inputs are at least 40 pixels
 tall, per the `@media (hover: none)` rule. The map's legend sits behind
 the same rule, standing in for the glyph tooltips a touch device has no
-hover to trigger. Since the rule only trips on a real touch device, a
-browser pass checks this with touch emulation, not a resized desktop
-window.
+hover to trigger - folded behind a `legend` button under the board, so
+the board keeps the screen and the key costs nothing until it is asked
+for; a tap on a cell names its ground either way. Since the rule only
+trips on a real touch device, a browser pass checks this with touch
+emulation, not a resized desktop window.
 
 ## The activity queue is strictly top to bottom
 

@@ -39,13 +39,18 @@ server origins. A new origin goes there, and `npm run deploy` again.
 ## Turn it on
 
 Settings > Sync across devices > `turn on`. The page draws a code of
-three words (`heron-birch-ember`), uploads the local save, takes the
+three words (`heron-pine-ember`), uploads the local save, takes the
 lease, and from then on this device runs the world and puts its save
 every minute it advances, and as the tab hides or closes.
 
 `copy link` copies the page URL with `?sync=<code>`. Opened on the phone,
 the link stores the code and drops it from the address bar; if the phone
 already has a survivor of its own, it asks once before replacing it. The
+parameter is only a way to carry the three words to the other device
+without typing them; the same settings block takes the code typed by
+hand (`join`), for a phone reading it off a desktop's screen. Either way
+the code ends up in that browser's local storage and the address is the
+same page as always. The
 phone then shows the desktop's save read-only under a banner, "The
 desktop has the world, saved 12 s ago", with `take over` and `refresh`.
 Take over moves the world to the phone at once and the desktop's banner

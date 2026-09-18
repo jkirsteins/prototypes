@@ -2,7 +2,7 @@ import { WORDS } from "./words";
 
 /**
  * The sync code: three words from the list, joined by dashes, for example
- * `heron-birch-ember`. Thirty bits. The code is the world's address in the
+ * `heron-pine-ember`. Thirty bits. The code is the world's address in the
  * store - the Durable Object's id is derived from it and nothing else - so
  * anyone with the code can read and take the world, and the settings
  * block says so in one line.

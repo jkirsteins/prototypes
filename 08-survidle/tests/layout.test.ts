@@ -398,7 +398,17 @@ describe("the phone", () => {
 
   it("gives the board a height of its own instead of what the legend leaves", () => {
     expect(narrow).toMatch(/#map \{ height: auto; \}/);
-    expect(narrow).toMatch(/#mapdyn \{[^}]*flex: none;[^}]*height: 55vh;/);
+    expect(narrow).toMatch(/#mapdyn \{[^}]*flex: none;[^}]*height: 70vh;/);
+  });
+
+  it("folds the legend behind its button on touch, so the board keeps the screen", () => {
+    const touch = css.slice(css.indexOf("@media (hover: none) {"));
+    expect(rule("#map .legend")).toContain("display: none");
+    expect(rule("#map .legendtoggle")).toContain("display: none");
+    expect(touch).toMatch(/#map \.legendtoggle \{ display: inline-block;/);
+    expect(touch).toMatch(/#map\.legend-open \.legend \{ display: flex; \}/);
+    expect(touch).not.toMatch(/\n {2}#map \.legend \{ display: flex; \}/);
+    expect(readFileSync("index.html", "utf8")).toContain('data-act="legend-toggle"');
   });
 
   it("stacks the boat's cards at their own height", () => {

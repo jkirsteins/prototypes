@@ -64,7 +64,11 @@
           <!-- One element, in the markup from the start, so it is shown and
                hidden rather than created and destroyed under the pointer. -->
           <div id="maptip" hidden></div>
-          <!-- The ways out, in a corner of the ground they lead off. -->
+          <!-- The ways out, in a corner of the ground they lead off. On touch,
+               where there is no hover to explain a glyph, the legend is folded
+               behind this button so the board keeps the screen; a tap on a cell
+               names its ground anyway. -->
+          <button type="button" class="mini legendtoggle" data-act="legend-toggle" aria-expanded="false">legend</button>
           <div class="legend"></div>
         </section>
         <section id="task" class="panel"></section>

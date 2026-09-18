@@ -51,10 +51,10 @@ scroll anywhere (`scrollWidth` 390), and the page throws nothing.
 
 ## Left as found, for a later pass
 
-- **The legend is 300px between the board and the Do pane** on every
-  phone check-in. It stands in for the hover tooltips, and a tap on a
-  cell now gives the tooltip anyway; folding it behind a `legend` toggle
-  would give the check-in its screen back. A design call, not made here.
+- ~~The legend is 300px between the board and the Do pane~~ Decided the
+  same day: the board gets the screen. The legend is folded behind a
+  `legend` button on touch and the board is 70vh; a tap on a cell names
+  its ground anyway.
 - **The page is 3,600px tall**: skills alone are ten bars of four lines.
   The check-in order puts what matters first, so this is a scroll rather
   than a fault; the phone page in the roadmap is the answer.

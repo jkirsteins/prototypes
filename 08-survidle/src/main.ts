@@ -520,6 +520,29 @@ async function turnSyncOff(): Promise<void> {
   render();
 }
 
+/**
+ * A code typed in by hand: the other way in beside the link, for a phone
+ * reading three words off a desktop's screen. The same question as the
+ * link when a survivor is already saved here; a code the store has never
+ * seen becomes a new world holding this browser's save, as turning on does.
+ */
+async function joinSync(code: string): Promise<void> {
+  if (!syncConfigured || solving || code === syncIdentity.code) return;
+  const hasSave = localStorage.getItem(SAVE_KEY) !== null;
+  if (hasSave && !window.confirm("Join this world? The survivor saved in this browser is replaced.")) return;
+  if (session) {
+    session.stop();
+    session = null;
+  }
+  syncIdentity.code = code;
+  saveCode(localStorage, code);
+  session = makeSession(code);
+  const local = localSave();
+  await applySync(await session.boot(local), local?.text ?? null, false);
+  lastReal = performance.now();
+  render();
+}
+
 async function copySyncLink(): Promise<void> {
   if (!syncIdentity.code) return;
   const link = `${location.origin}${location.pathname}?sync=${syncIdentity.code}`;
@@ -1026,6 +1049,13 @@ function onClick(ev: Event) {
     case "settings-open":
       ui.settings = true;
       break;
+    // The legend is static markup shown and hidden by a class on its panel,
+    // never rendered, so the toggle needs no state of its own.
+    case "legend-toggle": {
+      const map = document.getElementById("map")!;
+      target.setAttribute("aria-expanded", String(map.classList.toggle("legend-open")));
+      break;
+    }
     case "settings-close":
       ui.settings = false;
       break;
@@ -1368,6 +1398,7 @@ syncPanel = mountSyncPanel(document.getElementById("sync")!, {
   turnOff: () => { void turnSyncOff(); },
   copyLink: () => { void copySyncLink(); },
   newWorld: () => { void syncNewWorld(); },
+  join: (code) => { void joinSync(code); },
 });
 // A device reading the store's save re-reads it every minute, and takes the
 // world if the holder has gone quiet past the grace period meanwhile.

@@ -144,7 +144,7 @@ Worker is type-checked by `wrangler deploy` and by `worker:dev`.
 ### The sync code
 
 Three words from a 1024-word list, joined by dashes, for example
-`heron-birch-ember`. Thirty bits. The client draws it with
+`heron-pine-ember`. Thirty bits. The client draws it with
 `crypto.getRandomValues` when the player turns sync on. The Durable Object
 id is `idFromName(code)`, so the code is the world's address and there is
 no registry to consult. Anyone with the code can read and take the world;

@@ -1,3 +1,4 @@
+import { normalizeCode } from "../sync/code";
 import type { SessionView } from "../sync/session";
 import { esc } from "./render";
 
@@ -21,6 +22,8 @@ export interface SyncPanelDeps {
   turnOff(): void;
   copyLink(): void;
   newWorld(): void;
+  /** A code typed in by hand, already normalized. */
+  join(code: string): void;
 }
 
 export interface SyncPanel { refresh(): void }
@@ -44,6 +47,38 @@ export function mountSyncPanel(root: HTMLElement, deps: SyncPanelDeps): SyncPane
   const fresh = button("new", "start a new world on this code", deps.newWorld, "mini bad");
   const codeEl = document.createElement("code");
   codeEl.dataset.sync = "code";
+  // The other way in: three words typed, for a phone with no link to tap.
+  const joinRow = document.createElement("div");
+  joinRow.dataset.sync = "joinrow";
+  const joinInput = document.createElement("input");
+  joinInput.dataset.sync = "join";
+  joinInput.placeholder = "heron-pine-ember";
+  joinInput.size = 20;
+  joinInput.spellcheck = false;
+  joinInput.autocapitalize = "none";
+  joinInput.setAttribute("aria-label", "sync code to join");
+  const joinButton = document.createElement("button");
+  joinButton.type = "button";
+  joinButton.className = "mini";
+  joinButton.dataset.sync = "joinbutton";
+  joinButton.textContent = "join";
+  const joinNote = document.createElement("span");
+  joinNote.className = "dim";
+  joinNote.dataset.sync = "joinnote";
+  const tryJoin = () => {
+    const code = normalizeCode(joinInput.value);
+    if (!code) {
+      joinNote.textContent = " not a code: three words, as on the other device";
+      return;
+    }
+    joinNote.textContent = "";
+    joinInput.value = "";
+    deps.join(code);
+  };
+  joinButton.addEventListener("click", tryJoin);
+  joinInput.addEventListener("keydown", (ev) => { if (ev.key === "Enter") tryJoin(); });
+  joinRow.append("or join a world by its code: ", joinInput, " ", joinButton, joinNote);
+  actions.append(joinRow);
 
   function refresh(): void {
     const code = deps.code();
@@ -51,17 +86,20 @@ export function mountSyncPanel(root: HTMLElement, deps: SyncPanelDeps): SyncPane
     if (!deps.configured) {
       line.replaceChildren("no sync store is configured for this build");
       for (const b of [on, copy, off, fresh]) b.hidden = true;
+      joinRow.hidden = true;
       return;
     }
     if (!code) {
       line.replaceChildren("This survivor lives in this browser.");
       on.hidden = false;
+      joinRow.hidden = false;
       copy.hidden = off.hidden = fresh.hidden = true;
       return;
     }
     codeEl.textContent = code;
     line.replaceChildren("code ", codeEl, `. Anyone with the code can take this world. ${stateLine(view)}`);
     on.hidden = true;
+    joinRow.hidden = true;
     copy.hidden = off.hidden = false;
     fresh.hidden = view?.state !== "older";
   }

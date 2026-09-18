@@ -721,6 +721,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
    so it is present always but shown only under (hover: none). */
 .legend { margin-top: 6px; flex-wrap: wrap; gap: 4px 12px; color: var(--dim); font-size: 12px; }
 #map .legend { display: none; }
+#map .legendtoggle { display: none; }
 
 /* Region card */
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; }
@@ -1120,7 +1121,11 @@ button.act small.gives, span.act small.gives,
 /* Touch has no hover: the map's tooltips move into the legend line, and
    every control grows to a thumb's width. */
 @media (hover: none) {
-  #map .legend { display: flex; }
+  /* The legend stands in for the hover tooltips, folded behind its button
+     so the board keeps the screen: 300px of key on every check-in was the
+     phone's biggest cost. A tap on a cell names its ground anyway. */
+  #map .legendtoggle { display: inline-block; align-self: flex-start; margin-top: 6px; }
+  #map.legend-open .legend { display: flex; }
   button, input, select { min-height: 40px; }
   /* A checkbox is not a button: 40px of box around a 13px tick floats it
      away from its own label. The label is the thumb's target. */
@@ -1173,7 +1178,7 @@ button.act small.gives, span.act small.gives,
      left the board a 94px strip. The page scrolls, so the legend follows
      the board rather than squeezing it. */
   #map { height: auto; }
-  #mapdyn { flex: none; height: 55vh; min-height: 260px; }
+  #mapdyn { flex: none; height: 70vh; min-height: 260px; }
 
   /* The boat's three cards stack; each takes its own height. `flex: 1 1 0`
      in a column shared the row's height three ways and every card was 40px
