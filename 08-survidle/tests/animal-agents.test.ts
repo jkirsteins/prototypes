@@ -30,7 +30,7 @@ import { FINE_CHUNK } from "../src/world/cells";
 import { TERRAIN_INDEX } from "../src/world/terrain";
 import type { World } from "../src/world/gen";
 import type { Terrain } from "../src/sim/types";
-import { PATCH_M, patchId, patchXY } from "../src/world/spatial";
+import { fineNeighbours, PATCH_M, patchId, patchXY } from "../src/world/spatial";
 
 
 afterEach(() => setWildlifeEventSink(null));
@@ -49,12 +49,15 @@ function disturbanceScene() {
     && neighbours(world, cell).length === 4
     && neighbours(world, cell).every((n) => cellAt(world, n).region === state.player.region && passable(cellAt(world, n).terrain)))!;
   // A herd flees hundreds of metres, which is many 50 m patches. This seed
-  // puts a region boundary 150 m west of the start, so the scene states the
-  // ground the flight crosses: the same terrain, all of it this region's.
+  // puts a region boundary 150 m west of the start and open water 100 m
+  // west of it, and a stride never enters water: left as generated, the
+  // flight would step round the shore instead of running straight. So the
+  // scene states the ground the flight crosses: the start's own terrain,
+  // all of it this region's.
   const { x, y } = patchXY(startCell);
+  const ground = cellAt(world, startCell).terrain;
   for (let dy = -1; dy <= 1; dy++) for (let dx = -6; dx <= 1; dx++) {
-    const patch = patchId(x + dx, y + dy);
-    setGround(world, patch, cellAt(world, patch).terrain, state.player.region);
+    setGround(world, patchId(x + dx, y + dy), ground, state.player.region);
   }
   deer.active!.cell = startCell;
   const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, startCell)!)!;
@@ -71,6 +74,11 @@ function disturbanceScene() {
   return { state, world, deer, startCell, cal };
 }
 
+/** The patches one 50 m stride can reach: eight ways, where the map's `neighbours` are the four sides. */
+function strides(world: World, cell: number): number[] {
+  return fineNeighbours(world, cell).map((n) => n.patch);
+}
+
 function setGround(world: World, cell: number, terrain: Terrain, region?: number): void {
   const { x, y } = cellAt(world, cell);
   const chunk = world.fineChunks.get(Math.floor(y / FINE_CHUNK) * Math.ceil(world.w / FINE_CHUNK) + Math.floor(x / FINE_CHUNK))!;
@@ -85,9 +93,15 @@ function hiddenDisturbanceScene() {
   const point = resolveSpatialEstimate(state.seed, deer.id, metricAreaForCell(world, startCell)!)!;
   // This herd is near its cell's south edge. From the next cell at midnight
   // its departure is close enough to hear but its ground is out of sight.
+  // Out of sight takes closed wood: a patch of spruce with open ground
+  // beside it is a wood edge, and an eye at a wood edge reaches as far as
+  // the open ground lets it, moonlight and all. So the survivor's patch and
+  // every patch touching it are spruce, and the night closes the view to
+  // the ground underfoot.
   state.player.xM = point.xM;
   state.player.yM = point.yM + PATCH_M;
   setGround(world, cellOf(state, world), "spruce");
+  for (const cell of strides(world, cellOf(state, world))) setGround(world, cell, "spruce");
   state.minute = 960;
   const cal = calendar(state.minute, state.startDoy);
   expect(visibleWildlife(state, world, cal)).not.toContain(deer);
@@ -118,7 +132,7 @@ describe("immediate wildlife disturbance", () => {
     expect(deer.active).toMatchObject({ intent: "flee", escapeEpisode: 1, escapeStartedMinute: 1, lastDetectionMinute: 1 });
     expect(deer.active!.cell).toBe(startCell);
     expect(deer.active!.position).toEqual(point);
-    expect(neighbours(world, startCell)).toContain(deer.active!.travel?.cell);
+    expect(strides(world, startCell)).toContain(deer.active!.travel?.cell);
     expect(deer.active!.escapeRemainingM).toBeGreaterThanOrEqual(420);
     expect(deer.active!.escapeRemainingM).toBeLessThanOrEqual(680);
     expect(events).toHaveLength(1);
@@ -173,9 +187,12 @@ describe("immediate wildlife disturbance", () => {
     // Visibility used for recognition is refreshed only on spatial ticks.
     state.wildlife.visible = [];
     expect(visibleWildlife(state, world, cal)).toContain(deer);
+    // The herd shares the survivor's patch, and at every rung but the closest
+    // that patch's one glyph is the survivor's. At the closest rung the herd
+    // is drawn as its own mark at its own metre position: the map discloses it.
     const ui = newUiState();
-    ui.zoom = 1;
-    expect(glyphsWith(board(world, state, ui, cal), "mk-animal").some((g) => g.wildlifeId === deer.id)).toBe(true);
+    ui.zoom = 0;
+    expect(board(world, state, ui, cal).marks.some((m) => m.id === deer.id)).toBe(true);
     const events: WildlifeStartleEvent[] = [];
     setWildlifeEventSink((event) => events.push(event));
 
@@ -246,7 +263,7 @@ describe("immediate wildlife disturbance", () => {
     expect(state.wildlife.lastSpatialTick).toBe(0);
     expect(deer.active!.intent).toBe("flee");
     expect(deer.active!.cell).toBe(startCell);
-    expect(neighbours(world, startCell)).toContain(deer.active!.travel?.cell);
+    expect(strides(world, startCell)).toContain(deer.active!.travel?.cell);
     expect(deer.active!.escapeStartedMinute).toBe(2);
   });
 
@@ -296,7 +313,10 @@ describe("immediate wildlife disturbance", () => {
 
   it.each(["water", "thin ice", "region edge"])("stays alarmed when all exits are blocked by %s", (barrier) => {
     const { state, world, deer, startCell, cal } = disturbanceScene();
-    for (const cell of neighbours(world, startCell)) {
+    // A stride is eight-way, and a diagonal is refused only between two
+    // impassable corners, not between two patches of another region. All
+    // exits is the whole ring.
+    for (const cell of strides(world, startCell)) {
       setGround(world, cell, barrier === "region edge" ? "meadow" : "water", barrier === "region edge" ? state.player.region + 1 : undefined);
     }
     state.weather.iceCm = barrier === "thin ice" ? 3 : 0;
