@@ -891,7 +891,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "fuel": {
-      const o = needCamp(opt({ group: "camp", label: "Fuel the fire site", detail: `dry wood from the pile into the pit, up to ${FIRE_MAX_KG} kg`, duration: 10, repeatable: true }));
+      // Cold, the pit is laid; lit, the fire is fed. "Fuel the fire site" beside
+      // "Light the fire at the site" read as the same thing said twice.
+      const o = needCamp(opt({ group: "camp", label: st.fire.lit ? "Add wood to the fire" : "Lay wood at the fire site", detail: `dry wood from the pile into the pit, up to ${FIRE_MAX_KG} kg`, duration: 10, repeatable: true }));
       if (!o.ok) return o;
       if (!campSite(st)?.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
       if (fuelTotal(st.fire) >= FIRE_MAX_KG - 1e-9) return { ...o, ok: false, why: "the pit is full" };

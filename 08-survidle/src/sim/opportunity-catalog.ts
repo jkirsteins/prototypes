@@ -115,8 +115,11 @@ const COLLECTION_OPPORTUNITIES: OpportunityDef[] = [
     key: `build:${structure}`, title: `Build ${STRUCTURES[structure].name}`, category: "camp",
     group: "build-camp", steps: one("build", `Build ${STRUCTURES[structure].name}`, built(structure)),
     // The fire site is the second rung of the opening: it follows the camp
-    // the way drink used to, and firewood and the fire follow it.
-    ...(structure === "firePit" ? { prerequisites: ["site" as OpportunityKey] } : {}),
+    // the way drink used to, and firewood and the fire follow it. The vedbod
+    // arrives with the firewood goal: a player gathering ten kilos of dry
+    // wood is the player asking how to keep it dry, and the answer has to
+    // be on the board while the wood is, not once cordage happens to be.
+    ...(structure === "firePit" ? { prerequisites: ["site" as OpportunityKey] } : structure === "vedbod" ? { prerequisites: ["build:firePit" as OpportunityKey] } : {}),
   })),
 ];
 
@@ -278,7 +281,7 @@ export function knownCapabilityOpportunityKeys(state: GameState): OpportunityKey
   // A camp is the ground these stand on, so none of them means anything
   // before there is one. The fire site comes with the camp itself; the rest
   // wait for the material or the tool that builds them.
-  if (camp && holds(state, "cordage")) keys.push("build:dryingRack", "build:vedbod");
+  if (camp && holds(state, "cordage")) keys.push("build:dryingRack");
   if (camp && holds(state, "snare")) keys.push("build:snare");
   if (camp && holds(state, "barkBucket")) keys.push("build:seep", "build:waterStore");
   return keys;

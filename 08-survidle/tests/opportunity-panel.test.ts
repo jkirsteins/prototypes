@@ -31,7 +31,7 @@ it("opens title and checklist with one keyboard button and reads stored progress
   // The fire site is its own rung before firewood now, not a step of the fire.
   expect(button.textContent).not.toContain("Build the fire site");
   // Each step names a row in the Do panel, in the order the rows come due.
-  expect(button.textContent).toContain("[ ] Fuel the fire site");
+  expect(button.textContent).toContain("[ ] Lay wood at the fire site");
   expect(button.textContent).toContain("[ ] Have a fire drill");
   expect(button.textContent).toContain("Current");
 });
@@ -62,4 +62,23 @@ it("tells a survivor with no camp to choose where to live, whatever the world ha
   expect(html).not.toContain("No current opportunity");
   // The world's checklist is ticked; it is not shown, because it is not this survivor's.
   expect(html).not.toContain("[x]");
+});
+
+it("a pinned recipe says what it still needs against the pack and the camp pile, and a structure likewise", () => {
+  const { state, world } = newGame(3);
+  regionState(state, world, state.player.region).campCell = cellOf(state, world);
+  discoverOpportunity(state.opportunities, "make:knife", 0, false);
+  setCurrentOpportunity(state.opportunities, "make:knife");
+  const wanting = opportunityPanelHtml(state);
+  expect(wanting).toContain("still needs");
+  expect(wanting).toContain("stone");
+  expect(wanting).toContain("cordage");
+  state.player.pack.items.stone = 2;
+  state.player.pack.items.stick = 1;
+  state.player.pack.items.cordage = 1;
+  expect(opportunityPanelHtml(state)).toContain("everything it needs is at hand");
+  discoverOpportunity(state.opportunities, "build:vedbod", 0, false);
+  setCurrentOpportunity(state.opportunities, "build:vedbod");
+  expect(opportunityPanelHtml(state)).toContain("still needs");
+  expect(opportunityPanelHtml(state)).toContain("log");
 });

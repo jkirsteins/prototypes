@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
-import { discoverAvailableOpportunities, dismissOpportunityPresentation, isOpportunityComplete, isOpportunityDiscovered, opportunityDef, recordOpportunityEvent, setCurrentOpportunity } from "../src/sim/opportunities";
+import { discoverAvailableOpportunities, dismissOpportunityPresentation, isOpportunityComplete, isOpportunityDiscovered, opportunityDef, recordOpportunityEvent, refreshOpportunities, setCurrentOpportunity } from "../src/sim/opportunities";
 import { cellOf } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import type { TaskId } from "../src/sim/types";
@@ -99,5 +99,27 @@ describe("something open is current whenever something open exists", () => {
     for (let i = 0; i < 10; i++) recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: 1 });
     expect(isOpportunityComplete(state.opportunities, "firewood")).toBe(true);
     expect(state.opportunities.current).toBe("fire");
+  });
+});
+
+describe("a loaded save", () => {
+  it("settles an open goal on the next refresh when nothing is current and no choice is pending", () => {
+    const { state } = camped();
+    recordOpportunityEvent(state, { kind: "built", structure: "firePit" });
+    // OK was never pressed on the old save: the notice is gone and current is empty.
+    state.opportunities.notices = [];
+    state.opportunities.current = null;
+    refreshOpportunities(state);
+    expect(state.opportunities.current).toBe("firewood");
+  });
+});
+
+describe("the vedbod", () => {
+  it("arrives with the firewood goal, so keeping wood dry is on the board while the wood is", () => {
+    const { state } = camped();
+    expect(isOpportunityDiscovered(state.opportunities, "build:vedbod")).toBe(false);
+    recordOpportunityEvent(state, { kind: "built", structure: "firePit" });
+    expect(isOpportunityDiscovered(state.opportunities, "build:vedbod")).toBe(true);
+    expect(opportunityDef("firewood")?.note).toContain("vedbod");
   });
 });

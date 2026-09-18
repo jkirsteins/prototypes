@@ -1,6 +1,29 @@
+import { shortOf } from "../sim/inventory";
+import { itemLabel, RECIPES, STRUCTURES, TOOLS } from "../sim/items";
 import { isOpportunityComplete, isOpportunityDiscovered, opportunityDef, opportunitySteps } from "../sim/opportunities";
-import type { GameState, OpportunityKey } from "../sim/types";
+import type { GameState, OpportunityKey, RecipeId, StructureId } from "../sim/types";
 import { esc } from "./render";
+
+/**
+ * The shopping list under a pinned recipe or structure: what it still
+ * wants, against the pack and the camp pile, and the tool if that is
+ * missing too. A tester asked for exactly this - pin "make knife" and see
+ * what it needs, tick it off wherever you happen to be - and "make knife"
+ * as a goal with one step said nothing of the kind. Read-only: the camp
+ * pile is looked at, never created, so an empty camp adds no entry.
+ */
+export function opportunityNeedsHtml(state: GameState, key: OpportunityKey): string {
+  const [kind, id] = key.split(":");
+  const needs = kind === "make" && id in RECIPES ? RECIPES[id as RecipeId].needs : kind === "build" && id in STRUCTURES ? STRUCTURES[id as StructureId].needs : null;
+  if (!needs) return "";
+  const camp = state.regions[state.player.region]?.campCell;
+  const invs = [state.player.pack, camp !== null && camp !== undefined ? state.piles[camp] : undefined].filter((inv) => inv !== undefined);
+  const short = shortOf(invs, needs).map((s) => itemLabel(s.item, s.qty));
+  const tool = kind === "make" ? RECIPES[id as RecipeId].tool : undefined;
+  if (tool && !state.player.tools.some((t) => t.id === tool)) short.push(`a ${TOOLS[tool].name}`);
+  const list = short.length > 1 ? `${short.slice(0, -1).join(", ")} and ${short[short.length - 1]}` : short[0];
+  return `<span class="opportunity-needs dim">${short.length ? `still needs ${esc(list)}` : "everything it needs is at hand"}</span>`;
+}
 
 /** Also used in details; only a discovered leaf may expose its checklist. */
 export function opportunityChecklistHtml(state: GameState, key: OpportunityKey): string {
@@ -41,7 +64,7 @@ export function opportunityPanelHtml(state: GameState): string {
   // survivor who has no camp, not this world.
   const resite = def === undefined && homeless(state) ? opportunityDef("site") : undefined;
   const body = def
-    ? `<button type="button" class="opportunity-summary" data-act="opportunity-goto" data-opportunity="${esc(def.key)}"><span class="opportunity-current">Current</span><strong>${esc(def.title)}</strong>${opportunityChecklistHtml(state, def.key)}</button>`
+    ? `<button type="button" class="opportunity-summary" data-act="opportunity-goto" data-opportunity="${esc(def.key)}"><span class="opportunity-current">Current</span><strong>${esc(def.title)}</strong>${opportunityChecklistHtml(state, def.key)}${opportunityNeedsHtml(state, def.key)}</button>`
     : resite
       ? `<button type="button" class="opportunity-summary" data-act="opportunity-goto" data-opportunity="site"><span class="opportunity-current">Current</span><strong>${esc(resite.title)}</strong></button>`
       : `<p class="dim">No current opportunity</p>`;

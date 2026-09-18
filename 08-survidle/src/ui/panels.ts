@@ -648,7 +648,7 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
   const pitHint = !site?.structures.firePit || st.fire.fuelKg > 1e-9
     ? ""
     : dryInPile > 1e-9
-      ? `<div class="dim">nothing laid in the pit yet: ${dryInPile.toFixed(1)} kg dry in the pile - Fuel the fire site</div>`
+      ? `<div class="dim">nothing laid in the pit yet: ${dryInPile.toFixed(1)} kg dry in the pile - Lay wood at the fire site</div>`
       : wetInPile > 1e-9
         ? `<div class="dim">nothing laid in the pit: the pile is all wet, and wet wood dries by a lit fire or under a roof</div>`
         : "";

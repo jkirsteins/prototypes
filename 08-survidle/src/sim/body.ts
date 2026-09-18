@@ -412,9 +412,13 @@ export function iceHoleSite(state: GameState, world: World, cal: Calendar): numb
   if (st.iceHole) return null;
   if (!axeInHand(state.player)) return null;
   const here = cellOf(state, world);
-  if (watersideCell(world, here)) return here;
+  // The same water the cut itself accepts (tasks.ts iceHole: a lake, the sea
+  // or a river, never a brook). Sited beside a brook, the step said "opening
+  // an ice hole" every minute while the task refused to start, no bar under
+  // it, and the survivor stood there thirsty.
+  if (watersideCell(world, here, "fishing")) return here;
   const r = regionAt(world, state.player.region);
-  const candidates = r.cells.filter((c) => watersideCell(world, c)).sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
+  const candidates = r.cells.filter((c) => watersideCell(world, c, "fishing")).sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
   for (const cell of candidates) if (check(state, world, cal, "walk", `cell:${cell}`).ok) return cell;
   return null;
 }

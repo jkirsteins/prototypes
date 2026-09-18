@@ -90,7 +90,7 @@ export const KEPT_DAYS = 3;
 
 const NOTES: Partial<Record<StaticOpportunityId, string>> = {
   drink: "Below 1 litre, Self-care drinks from water at hand, or walks to some, on the minutes the activity queue gives it.",
-  firewood: "Dead wood burns without felling a tree. Gathered in rain or snow it comes back wet, and only dry wood counts here: light the fire with what is dry and the rest dries beside it.",
+  firewood: "Dead wood burns without felling a tree. Gathered in rain or snow it comes back wet, and only dry wood counts here: light the fire with what is dry and the rest dries beside it. Wood in the open takes the next rain too; a vedbod is a roof over the stack, and wood under it dries in any weather.",
   fire: "Fire needs a site, dry wood laid in it, and a drill to catch it.",
   bed: "A bed keeps sleep off the cold ground.",
   roof: "Shelter reduces wind and rain exposure.",
@@ -139,7 +139,7 @@ export const OPPORTUNITIES: OpportunityDef[] = [
       // The fire site is not a step here: it is the rung before firewood,
       // so it is always built before this goal opens, and a step credited
       // by the building event alone could then never be ticked.
-      step("fuel", "Fuel the fire site", (d) => (d.kind === "fuelled" ? 1 : 0)),
+      step("fuel", "Lay wood at the fire site", (d) => (d.kind === "fuelled" ? 1 : 0)),
       step("ignition", "Have a fire drill", made("fireDrill")),
       { ...step("light", "Light the fire", lit), final: true },
     // Beside the firewood goal, not behind it. Wood gathered in snow is wet
@@ -494,7 +494,12 @@ export function refreshOpportunities(state: GameState, minute = state.minute): v
   captureChapterHome(state);
   if (discovered.length) {
     state.opportunities.notices.push({ id: `${state.minute}:${state.opportunities.nextNoticeId++}`, minute: state.minute, completed: [], completedGroups: [], discovered, messages: [] });
-    if (state.opportunities.current === null && discovered.length === 1) setCurrentOpportunity(state.opportunities, discovered[0]);
+    if (discovered.length === 1) settleCurrent(state.opportunities, discovered);
+  } else if (!state.opportunities.notices.length) {
+    // A save from before goals stepped forward on their own loads with an
+    // open goal and no current; this minute settles it. A pending notice is
+    // a choice still being offered, and is left alone.
+    settleCurrent(state.opportunities);
   }
 }
 
