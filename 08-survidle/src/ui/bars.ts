@@ -246,6 +246,25 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
     for (const pct of root.querySelectorAll<HTMLElement>('[data-pct="task"]')) {
       if (pct.textContent !== share) pct.textContent = share;
     }
+    writeCareEta(state, shown, root);
+  } else {
+    writeCareEta(state, null, root);
+  }
+}
+
+/**
+ * On a care row that has the minute, the wall clock until its current step
+ * ends and the rows under it can run: resting, dozing, an ice hole, a
+ * relight, each in turn, read as one thing the list is waiting on. Written
+ * here per frame onto a span the queue leaves empty, like the task bar's
+ * bracket, so the queue's own markup never carries a moving number.
+ */
+function writeCareEta(state: GameState, shown: number | null, root: ParentNode): void {
+  const it = state.intent;
+  const live = it?.mode === "care" && shown !== null ? it.care : null;
+  for (const el of root.querySelectorAll<HTMLElement>("[data-eta]")) {
+    const text = live !== null && el.dataset.eta === live ? `frees the rows below in ${fmtRealSeconds(shown!)}` : "";
+    if (el.textContent !== text) el.textContent = text;
   }
 }
 

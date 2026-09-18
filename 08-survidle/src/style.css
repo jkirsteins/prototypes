@@ -728,6 +728,7 @@ input[data-do="filter"] {
 }
 #actions .rows { max-height: 50vh; overflow-y: auto; }
 #task .step, #orders .step { color: var(--dim); margin: 4px 0; }
+.care-eta:not(:empty) { display: block; color: var(--dim); font-size: 11px; margin-top: 2px; }
 
 button.act, span.act {
   display: block; width: 100%;

@@ -795,7 +795,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     const btns = care
       ? `<span class="ctl">${move}</span>`
       : `<span class="ctl">${move} ${pin} <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
-    return `<div class="order${care ? " care" : ""}${once ? " once" : ""}${live ? " live" : ""}"><div class="head"><span class="ti"><b>${esc(orderSentence(state, world, cal, o))}</b><span class="meta">${kind}${blockedTag}${skippedTag}</span>${counts}</span>${btns}</div>${second}</div>`;
+    return `<div class="order${care ? " care" : ""}${once ? " once" : ""}${live ? " live" : ""}"><div class="head"><span class="ti"><b>${esc(orderSentence(state, world, cal, o))}</b><span class="meta">${kind}${blockedTag}${skippedTag}</span>${counts}${care ? `<span class="care-eta" data-eta="${o.kind}"></span>` : ""}</span>${btns}</div>${second}</div>`;
   }).join("");
   return `${held}${rows}`;
 }
