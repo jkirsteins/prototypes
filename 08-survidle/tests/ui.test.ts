@@ -905,12 +905,11 @@ describe("the Do panel", () => {
     const roster = regionAt(world, state.player.region);
     for (const species of huntedLand()) if (roster.capacity[species]) noteHuntSign(state, cellOf(state, world), species);
     const html = allPanesHtml(state, world, cal);
-    // Eating and drinking stand over the stores they draw on, in Inventory,
-    // rather than in the Do pane beside the work or under the map, where
-    // they read as a queue with something already in it.
+    // Eating is self-care the survivor does for themselves: no pane offers
+    // an eat button, Inventory included.
     expect(html).not.toContain('data-act="eat"');
     expect(taskHtml(state, world, cal)).not.toContain('data-act="eat"');
-    expect(inventoryHtml(state, world, cal)).toContain('data-act="eat"');
+    expect(inventoryHtml(state, world, cal)).not.toContain('data-act="eat"');
     // Felling is legal from camp because the intent walks to the forest itself.
     expect(html).toContain('data-act="intent" data-id="chop" data-arg=""');
     expect(html).not.toContain('class="opt off" data-opt="intent:chop:"');

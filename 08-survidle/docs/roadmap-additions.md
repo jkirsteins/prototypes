@@ -2114,7 +2114,8 @@ Remaining investigation groups, ordered by player risk:
 `tests/ui.test.ts` on 2026-09-18: thirteen failures, seven repaired as fixture
 work (five ran at the 300 m rung and now pin 50 m; the "cell zoom" knowledge
 test picked a remembered patch off the board; "names black ground" compared
-patch coordinates against the view's width in glyphs). Six remain, each with
+patch coordinates against the view's width in glyphs; the eat button's absence
+from Inventory is intended, eating being self-care). Five remain, each with
 its cause as far as it was read:
 
 - "every road out": neighbour region 18847 gets neither a road button nor an
@@ -2129,8 +2130,6 @@ its cause as far as it was read:
 - "keeps care activity copy short": the label reads the route's length and
   says 0.1 km for the one-patch route; the fixture expects 0.3 km. Confirm
   which is the contract before changing either.
-- "has one row per intent": `inventoryHtml` shows carried dried meat with a
-  drop button and no eat button. Possible regression in the pane.
 - "a build already finished renders as a greyed row": the finished lean-to no
   longer renders as an `opt off` row in the build pane. Possible regression.
 
