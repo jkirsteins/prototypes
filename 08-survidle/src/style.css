@@ -811,6 +811,7 @@ button.act small, span.act small { display: block; color: var(--dim); }
 }
 .mini:hover { border-color: var(--accent); }
 .mini.on { color: var(--accent); border-color: var(--accent); }
+.fire-keep { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; }
 .mini.danger { color: var(--bad); }
 .mini:disabled { color: #5d6570; cursor: default; border-color: var(--line); }
 .mini.off { color: #5d6570; cursor: default; }

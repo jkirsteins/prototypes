@@ -69,7 +69,7 @@ describe("Chapter 3 refuge storm evidence, inherited", () => {
 
     expect(activeOpportunityKeys(state, calendar(state.minute, state.startDoy))).toContain("fieldFire");
     reveal(state, ["fieldFire"]);
-    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 1 };
+    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 1, keep: "burning" };
     recordOpportunityEvent(state, { kind: "fireLit", minute: state.minute, region: state.player.region, cell: cellOf(state, world), atCamp: false }, world);
     expect(state.opportunities.completedAt.fieldFire).toBeDefined();
   });

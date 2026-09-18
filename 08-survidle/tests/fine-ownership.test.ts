@@ -90,7 +90,7 @@ describe("fine ownership of local state", () => {
   it("puts out a field fire the moment its patch is left", () => {
     const { state, world } = forestGame(21);
     const here = cellOf(state, world);
-    state.player.fieldFire = { cell: here, fuelKg: 3 };
+    state.player.fieldFire = { cell: here, fuelKg: 3, keep: "burning" };
     expect(warmthAtFire(state, world, false)).toBeGreaterThan(0);
     placeAtPatch(state, world, passableNeighbor(world, here));
     expect(state.player.fieldFire).toBe(null);

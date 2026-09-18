@@ -171,6 +171,7 @@ export function migrate(state: GameState): void {
   }
   state.player.skyReadDay ??= null;
   state.player.fieldFire ??= null;
+  if (state.player.fieldFire) state.player.fieldFire.keep ??= "burning";
   state.seeps ??= {};
   state.carcasses ??= [];
   state.nextCarcassId ??= 1;
@@ -395,6 +396,7 @@ export function migrate(state: GameState): void {
     st.fire.embers ??= 0;
     st.fire.litSince ??= null;
     st.fire.rainHeld ??= 0;
+    st.fire.keep ??= "burning";
     st.smoke ??= 0;
     st.logsWet ??= 1440;
     st.wettedKg ??= 0;

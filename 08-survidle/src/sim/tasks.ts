@@ -2761,7 +2761,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
         return false;
       }
       if (!camp) {
-        p.fieldFire = { cell: cellOf(state, world), fuelKg: 1 };
+        p.fieldFire = { cell: cellOf(state, world), fuelKg: 1, keep: "burning" };
         recordOpportunityEvent(state, { kind: "fireLit", minute: state.minute, region: state.player.region, cell: cellOf(state, world), atCamp: false }, world);
         cue("fireCatches");
         log(state, "Smoke, then flame. The field fire is lit.", "good");

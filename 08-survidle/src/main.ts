@@ -35,7 +35,7 @@ import { recordOpportunityEvent } from "./sim/opportunities";
 import { canPersist, inspectSave } from "./sim/world-version";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
-import type { GameState, ItemId, OpportunityEvent, OpportunityKey, StockGroupId, TaskId } from "./sim/types";
+import type { FireKeep, GameState, ItemId, OpportunityEvent, OpportunityKey, StockGroupId, TaskId } from "./sim/types";
 import { insertWalkAtTop } from "./sim/walkorders";
 import { ambientTemperature, localWeather } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
@@ -833,6 +833,16 @@ function onClick(ev: Event) {
     case "shopping-clear":
       clearShopping(state);
       break;
+    case "fire-keep": {
+      const keep = target.dataset.keep as FireKeep;
+      if (target.dataset.region === "field") {
+        if (state.player.fieldFire) state.player.fieldFire.keep = keep;
+      } else {
+        const st = state.regions[Number(target.dataset.region)];
+        if (st) st.fire.keep = keep;
+      }
+      break;
+    }
     case "shopping-find": {
       const item = target.dataset.item as ItemId;
       ui.filter = shoppingQuery(item);

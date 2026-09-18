@@ -26,10 +26,14 @@ invariant test.
   that fails to begin drops the intent and says why once (`warn`, keyed
   by the need, cleared when the step next starts), so the strip never
   prints a step with nothing under it.
-- `tests/care-steps-run.test.ts` runs the reference survivor across
+- `tests/slow/care-steps-run.test.ts` runs the reference survivor across
   seeds for two days and fails on any run of minutes where a care intent
   stands with no task under it. That is the structural part: every
-  future fallback that can refuse is caught by the same test.
+  future fallback that can refuse is caught by the same test. It costs
+  about twenty seconds a seed, so it sits in the slow suite; the two
+  clearing rules it found (a claim answered on the spot, a need that
+  ended) are units in `tests/bodyorder-claims.test.ts`, which the gate
+  runs.
 
 ## 2. Thirst under the collapse follows the body, not the latch
 
@@ -73,8 +77,10 @@ a new `until` kind, `dismissed`: never met, so the row stays until the
 player strikes it off with its x. On arrival the row's minute is a rest
 where they stand ("staying here"), so the body is still served (thirst
 pre-empts a rest and the row walks them back after), and the list under
-it waits, which is the point. The row reads "Walk to the shore, until
-dismissed".
+it waits, which is the point. The row reads "Walk to the shore, and stay
+until struck off", tagged "until struck off" where a once row says
+"once". A walk that crosses a region border is adopted onto that
+region's list on arrival, since the list read is the region's own.
 
 ## 5. The fire has a setting, per fire
 
@@ -87,14 +93,21 @@ on the Camp tab, every camp's fire listed.
 `fire.keep` on a region's fire and on the field fire:
 
 - `burning` (default, today's behaviour plus one thing): the camp row
-  feeds a lit fire to full and relights a dead one when a drill and wood
-  are at hand.
-- `coals`: no feeding while lit; the fire is let down to coals and
-  relit only when the coals are about to die, so a kilo a night keeps a
-  pit warm enough to rekindle in five minutes.
-- `out`: the camp row does nothing for it. The body's own needs (cold,
-  the night, a storm) still light a fire; the setting is maintenance,
-  not survival.
+  feeds a lit fire to full, and relights it from its coals when the
+  flame goes out, so a fire that died while the survivor was out is back
+  the minute they are home.
+- `coals`: no feeding while lit; the fire is let down to coals and relit
+  only when the coals are about to die, so a kilo a night keeps a pit
+  warm enough to rekindle in five minutes.
+- `out`: the camp row does nothing for it.
+
+None of the three starts a fire from cold, and the relight ranks under
+the snares, waits for daylight, and yields to any want of the body's.
+The first cut relit a cold pit whenever the survivor was home by day and
+fed it to full from the pile; by bedtime the wood was gone and the sleep
+step was splitting logs. The body's own needs (cold, the night, a storm)
+and the player's Light row are what light a cold pit; the setting is
+maintenance, not survival.
 
 Save files older than the field default to `burning`.
 

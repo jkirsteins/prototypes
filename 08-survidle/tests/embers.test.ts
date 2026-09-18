@@ -81,7 +81,7 @@ describe("embers against a lit fire", () => {
   it("warm less and light less", async () => {
     const { fireWarmth, EMBER_WARMTH, EMBER_LUX } = await import("../src/sim/fire");
     const { CAMP_FIRE_LUX } = await import("../src/sim/light");
-    const lit = { lit: true, fuelKg: 10, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: 0, rainHeld: 0 };
+    const lit = { lit: true, fuelKg: 10, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: 0, rainHeld: 0, keep: "burning" as const };
     expect(EMBER_WARMTH).toBeLessThan(fireWarmth(lit, false));
     expect(EMBER_LUX).toBeLessThan(CAMP_FIRE_LUX);
   });

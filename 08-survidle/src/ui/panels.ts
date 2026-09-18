@@ -37,7 +37,7 @@ import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
   availableTasks, buildMinutes, check, fallChance, type TaskOption, walkTarget, whereIs,
 } from "../sim/tasks";
-import { isWorkIntent, type AtmosphereSample, type GameState, type Garment, type ItemId, type LogEntry, type Person, type RegionState, type SkillId, type StructureId } from "../sim/types";
+import { isWorkIntent, type AtmosphereSample, type GameState, type Garment, type ItemId, type LogEntry, type Person, type RegionState, type SkillId, type StructureId, type FireKeep } from "../sim/types";
 import { campWaterCapacity, THIRSTY_L, WATER_FULL } from "../sim/water";
 import { atmosphereAt, forecastText, groundAt, iceMode, type LocalConditions, localStorm, localWeather, stormComing, stormNow } from "../sim/weather";
 import { fmtDaysAbout, fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
@@ -598,6 +598,14 @@ function producerRate(state: GameState, world: World, st: RegionState, site: Ret
   return "";
 }
 
+const KEEP_CHOICES: readonly FireKeep[] = ["burning", "coals", "out"];
+const KEEP_WORD: Record<FireKeep, string> = { burning: "keep it burning", coals: "keep coals", out: "let it go out" };
+const KEEP_TITLE: Record<FireKeep, string> = {
+  burning: "Camp maintenance feeds it to full and relights it from its coals when the flame goes out",
+  coals: "No feeding: it burns down to coals and is relit only as they go, a kilo a night",
+  out: "Camp maintenance does nothing for it; cold, the night and a storm still light a fire, and so does the Light row",
+};
+
 export function campHtml(state: GameState, world: World, cal: Calendar, display: RateDisplay = DEFAULT_RATE_DISPLAY): string {
   const id = state.player.region;
   const r = regionAt(world, id);
@@ -652,7 +660,22 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
       : wetInPile > 1e-9
         ? `<div class="dim">nothing laid in the pit: the pile is all wet, and wet wood dries by a lit fire or under a roof</div>`
         : "";
-  const fire = site?.structures.firePit ? `<div>fire: ${fireWord}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}${pitHint}` : "";
+  // The fire's setting, per fire: here, at every other camp, and the field
+  // fire under foot. Every fire that exists is on this tab whatever cell
+  // the survivor stands in, until the camp view (roadmap P part 1) takes
+  // them over.
+  const keepButtons = (region: number | "field", keep: FireKeep, choices: readonly FireKeep[]) =>
+    `<span class="fire-keep">${choices.map((k) => `<button class="mini${k === keep ? " on" : ""}" data-act="fire-keep" data-region="${region}" data-keep="${k}" title="${KEEP_TITLE[k]}">${KEEP_WORD[k]}</button>`).join(" ")}</span>`;
+  const fire = site?.structures.firePit
+    ? `<div>fire: ${fireWord} ${keepButtons(id, st.fire.keep, KEEP_CHOICES)}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}${pitHint}`
+    : "";
+  const fieldFire = state.player.fieldFire && state.player.fieldFire.cell === cellOf(state, world)
+    ? `<div>field fire here: ${fmtKg(state.player.fieldFire.fuelKg)} in it ${keepButtons("field", state.player.fieldFire.keep, ["burning", "out"])}</div>`
+    : "";
+  const elsewhere = Object.entries(state.regions)
+    .filter(([rid, other]) => Number(rid) !== id && other.campCell !== null && campSite(other)?.structures.firePit)
+    .map(([rid, other]) => `<div>fire at ${esc(regionAt(world, Number(rid)).name)}: ${other.fire.lit ? "burning" : hasEmbers(other.fire) ? "coals" : "cold"} ${keepButtons(Number(rid), other.fire.keep, KEEP_CHOICES)}</div>`)
+    .join("");
   const rack = site?.structures.dryingRack
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
@@ -689,7 +712,7 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
   // has no place for it and the camp box does: the survivor knows what is
   // about without walking anywhere to look.
   const about = `<div class="roster">${rosterHtml(state, world, id, cal)}</div>`;
-  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${stands}${rack}${wood}${water}${heap}${yard}${limits}${about}`;
+  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${fieldFire}${elsewhere}${stands}${rack}${wood}${water}${heap}${yard}${limits}${about}`;
 }
 
 

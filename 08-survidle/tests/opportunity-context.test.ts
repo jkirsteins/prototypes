@@ -448,7 +448,7 @@ describe("Chapter 2 forecast evidence", () => {
     expect(frozen?.options.find((option) => option.kind === "localShelter")?.inputs.protection).toBe(2);
     expect(frozen?.options.some((option) => option.viable)).toBe(true);
     site.emergencyMinutes = 240;
-    state.player.fieldFire = { cell: meadow, fuelKg: 30 };
+    state.player.fieldFire = { cell: meadow, fuelKg: 30, keep: "burning" };
     expect(state.opportunities.context.weather?.plan).toEqual(frozen);
     expect(state.opportunities.completedAt.prepareWeather).toBeDefined();
   });

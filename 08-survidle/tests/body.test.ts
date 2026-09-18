@@ -835,7 +835,7 @@ describe("the shared storm plan", () => {
     const here = cellOf(state, world);
     const site = siteFor(regionState(state, world, state.player.region), here);
     site.structures.leanTo = true;
-    state.player.fieldFire = { cell: here, fuelKg: 3 };
+    state.player.fieldFire = { cell: here, fuelKg: 3, keep: "burning" };
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(state.player.pack, "firewood", 4);
     state.weather.storm = { id: 32, source: "natural", kind: "rain", from: 60, until: 420, warned: false };
@@ -864,7 +864,7 @@ describe("the shared storm plan", () => {
     siteFor(regionState(state, world, region.id), here).structures.leanTo = true;
     siteFor(regionState(state, world, region.id), camp).cover = 1;
     regionState(state, world, region.id).fire = {
-      lit: true, fuelKg: 12, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: 0, rainHeld: 0,
+      lit: true, fuelKg: 12, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: 0, rainHeld: 0, keep: "burning",
     };
     state.weather.storm = { id: 36, source: "natural", kind: "rain", from: 300, until: 660, warned: false };
 

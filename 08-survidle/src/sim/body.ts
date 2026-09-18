@@ -15,7 +15,7 @@ import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { addFirewood, autoEat, edible, hungerLine } from "./actions";
 import { calendar, type Calendar } from "./calendar";
 import { feedFire } from "./camp";
-import { fireAt, fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
+import { EMBER_RELIGHT_MINUTES, fireAt, fireWarms, fuelTotal, hasEmbers, roofed, SPREAD_FUEL_KG } from "./fire";
 import { AXES, axeInHand, hasTool, pile, pileAt, qty, takeUp, toolNear, transfer, weight } from "./inventory";
 import type { StormPlanInputs, StormPlanOption, StormPlanSnapshot } from "./opportunities";
 import { body, fearsFell } from "./person";
@@ -177,8 +177,14 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
  * entry line for a memory to hold it between.
  */
 export function campNeed(state: GameState, world: World, cal: Calendar): CampNeed | null {
-  if (fireWantsWood(state, world)) return "fire";
+  if (fireWantsWood(state, world) || fieldFireWantsWood(state, world)) return "fire";
   if (snaresWaiting(state, world, cal) !== null) return "snares";
+  // Relighting a pit that has gone out is the least urgent want here: a
+  // catch in a snare is food, the night is the body's own to light for,
+  // and a body that wants something - water, food, rest - gets it before
+  // the pit does, whatever the rows' rank says. So it ranks last, by day,
+  // and only while the body wants nothing.
+  if (!cal.isNight && peekNeed(state, world, cal) === null && fireWantsLight(state, world, cal)) return "fire";
   return null;
 }
 
@@ -904,6 +910,8 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
  */
 function fireWantsWood(state: GameState, world: World): boolean {
   const st = regionState(state, world, state.player.region);
+  // Only a fire set to burn is fed; coals are let down on purpose.
+  if (st.fire.keep !== "burning") return false;
   if (!st.fire.lit || fuelTotal(st.fire) > FIRE_LOW_KG) return false;
   const camp = st.campCell;
   if (camp === null || cellOf(state, world) !== camp) return false;
@@ -920,14 +928,51 @@ function fireWantsWood(state: GameState, world: World): boolean {
  * lighting rather than wood, and fireStep is what answers that.
  */
 function fireNeedStep(state: GameState, world: World, cal: Calendar, dry: boolean): Step | null {
+  const field = state.player.fieldFire;
+  if (field && fieldFireWantsWood(state, world)) {
+    if (dry) return DRY_READY;
+    addFirewood(state, world, SPREAD_FUEL_KG - field.fuelKg);
+    return null;
+  }
   const st = regionState(state, world, state.player.region);
   const camp = st.campCell;
   if (camp === null || cellOf(state, world) !== camp) return null;
+  if (st.fire.keep === "out") return null;
   const fs = fireStep(state, world, cal, camp);
   if (fs || !st.fire.lit) return fs;
+  if (st.fire.keep !== "burning") return null;
   if (dry) return DRY_READY;
   feedFire(state, world, state.player.region, FIRE_MAX_KG - fuelTotal(st.fire));
   return null;
+}
+
+/**
+ * Whether the fire wants relighting and the body stands where it can: the
+ * flame is out but coals remain, the setting asks for it (types.ts,
+ * FireKeep), and fireStep has a way. `burning` relights on any coals, so a
+ * fire that died while the survivor was out is back the minute they are
+ * home; `coals` relights only as the coals go, the rekindle's own length
+ * twice over, so they are caught with a margin rather than on their last
+ * minute. Neither starts a fire from cold: the setting keeps alive a fire
+ * that is alive. A stone-cold pit is lit by the body's own needs, or by
+ * the player's Light row - relighting it whenever the survivor happened to
+ * be home by day fed the pile into the pit all afternoon and left nothing
+ * to sleep by.
+ */
+function fireWantsLight(state: GameState, world: World, cal: Calendar): boolean {
+  const st = regionState(state, world, state.player.region);
+  const camp = st.campCell;
+  if (camp === null || cellOf(state, world) !== camp || st.fire.lit || !hasEmbers(st.fire)) return false;
+  if (!campSite(st)?.structures.firePit) return false;
+  if (st.fire.keep === "out") return false;
+  if (st.fire.keep === "coals" && st.fire.embers > EMBER_RELIGHT_MINUTES * 2) return false;
+  return fireStep(state, world, cal, camp) !== null;
+}
+
+/** A field fire under foot, set to burn, low, with firewood in the pack to give it. */
+function fieldFireWantsWood(state: GameState, world: World): boolean {
+  const f = state.player.fieldFire;
+  return !!f && f.cell === cellOf(state, world) && f.keep === "burning" && f.fuelKg > 0 && f.fuelKg < SPREAD_FUEL_KG && qty(state.player.pack, "firewood") > 1e-9;
 }
 
 /**

@@ -255,6 +255,18 @@ export interface Route {
   lastLand: number;
 }
 
+/**
+ * A fire's setting, one per fire, the field fire included. `burning`: the
+ * camp row feeds it to full and relights it from its coals when the flame
+ * goes out. `coals`: no feeding; it is let down to coals and relit only as
+ * the coals go, so a kilo a night keeps the pit warm enough to rekindle in
+ * minutes. `out`: the camp row does nothing for it. None of them starts a
+ * fire from cold: the body's own needs - cold, the night, a storm - and
+ * the player's Light row do that, whatever this says. It is maintenance,
+ * not survival.
+ */
+export type FireKeep = "burning" | "coals" | "out";
+
 /** When an intent is finished with. */
 export type Until =
   | { kind: "once" }
@@ -548,6 +560,8 @@ export interface RegionState {
   snares: number;
   fire: {
     lit: boolean; fuelKg: number; wetKg: number; indoors: boolean; unattended: number;
+    /** What the camp row does for this fire: keeps it burning, keeps its coals alive, or nothing. */
+    keep: FireKeep;
     /** Minutes of ember life left once the flame is gone. Embers are not lit. */
     embers: number;
     /** Minute this fire was last lit from cold; null once the embers die. A run of keeping is measured from it. */
@@ -621,7 +635,7 @@ export interface Player {
   /** A torch in hand: lit or put out, and the minutes of burn left. Zero means none equipped. */
   torch: { lit: boolean; minutes: number };
   /** A hand-fed fire that dies on leaving its cell; never a hearth or embers. */
-  fieldFire: { cell: number; fuelKg: number } | null;
+  fieldFire: { cell: number; fuelKg: number; keep: FireKeep } | null;
   pack: Inventory;
   /** Litres of water in the body, 0..3. */
   water: number;
