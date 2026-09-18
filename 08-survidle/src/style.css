@@ -382,25 +382,6 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   #maptip { pointer-events: auto; }
 }
 
-/* The ways out, over the map's top right. They sit on the ground they lead
-   off rather than at the foot of a panel a player had to find first. */
-#maptravel {
-  position: absolute;
-  top: var(--map-overlay-inset);
-  right: var(--map-overlay-inset);
-  /* Bounded by the map it hangs off, and scrolling inside itself: a short
-     map used to let this spill over the panels underneath. */
-  max-height: calc(100% - 12px);
-  overflow-y: auto;
-  z-index: 4;
-  max-width: 240px;
-  padding: 4px 7px;
-  background: rgba(12, 15, 20, 0.82);
-  border: 1px solid var(--line);
-  font-size: 11px;
-}
-#maptravel .waylabel { color: var(--dim); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
-#maptravel .way { padding: 1px 0; }
 #maptip .tiphead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; white-space: nowrap; }
 #maptip .tiphead b { color: var(--accent); }
 #maptip > div { padding: 1px 0; }
@@ -968,8 +949,6 @@ button.act small, span.act small { display: block; color: var(--dim); }
 /* A place is one button, and what it costs is inside it: a name in a button
    beside a sentence saying "from here" spent two thirds of the row on words
    that never changed. */
-#maptravel .way .go { display: block; width: 100%; text-align: left; }
-#maptravel .way .go small { color: var(--dim); margin-left: 6px; }
 
 .inv .n { white-space: nowrap; }
 .inv .ctl { white-space: nowrap; }

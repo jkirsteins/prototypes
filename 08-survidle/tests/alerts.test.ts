@@ -9,6 +9,9 @@ import { regionState, siteFor } from "../src/sim/regionstate";
 import { RESTED_AT, SLEEP_AT, SPENT_AT } from "../src/sim/sleep";
 import { THIRSTY_L } from "../src/sim/water";
 import { alerts, alertsHtml } from "../src/ui/alerts";
+import { ensureGround } from "../src/sim/weather";
+import { placeAt } from "../src/sim/position";
+import { cellAt, regionAt } from "../src/world/gen";
 
 function fresh(seed = 3) {
   const { state, world } = newGame(seed);
@@ -59,5 +62,20 @@ describe("the alert stack", () => {
     expect(alerts(state, world, cal).map((a) => a.title)).toContain("Fire burning low");
     st.fire.fuelKg = 20;
     expect(alerts(state, world, cal).map((a) => a.title)).not.toContain("Fire burning low");
+  });
+
+  it("warns on thin ice under foot and cries out when it is giving way", () => {
+    const { state, world, cal } = fresh();
+    const water = regionAt(world, state.player.region).cells.find((c) => cellAt(world, c).terrain === "water");
+    if (water === undefined) throw new Error("no water on this seed");
+    placeAt(state, world, water);
+    ensureGround(state, world, state.player.region).iceCm = 10;
+    expect(alerts(state, world, cal).map((a) => a.title)).toContain("On thin ice");
+    ensureGround(state, world, state.player.region).iceCm = 2;
+    const rows = alerts(state, world, cal);
+    expect(rows[0].title).toBe("Ice giving way");
+    expect(rows[0].level).toBe("bad");
+    ensureGround(state, world, state.player.region).iceCm = 20;
+    expect(alerts(state, world, cal).map((a) => a.title)).not.toContain("On thin ice");
   });
 });

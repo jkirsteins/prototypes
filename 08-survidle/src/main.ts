@@ -92,7 +92,7 @@ import { stockPanelHtml, stocksHtml } from "./ui/stocks";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
-  manualHtml, oldWorldHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
+  manualHtml, oldWorldHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, heldQuery, newUiState, resetPanels, rowRequest, setPanel, setWhenField, simulationPaused, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
@@ -394,7 +394,6 @@ function render(nowMs = performance.now()) {
   if (alertsEl) alertsEl.hidden = ui.rightPage !== "alerts";
   if (weatherEl) weatherEl.hidden = ui.rightPage !== "weather";
   setPanel("camp", campHtml(state, world, cal, ui.rateDisplay));
-  setPanel("maptravel", placesHtml(state, world, cal, ui.travelDisplay));
   setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
   setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));

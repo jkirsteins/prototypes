@@ -193,6 +193,13 @@ export interface Task {
   /** Minutes of work the task needs at full speed. */
   duration: number;
   repeat: boolean;
+  /**
+   * Minutes already done before this start and banked on the camp site (a
+   * build set aside). The bar starts there, so a resumed build reads as
+   * resumed and not as a fresh job over the remainder; setting it aside
+   * again banks only what came after.
+   */
+  carried?: number;
   /** Natural shelter level promised when this search began, before its practice. */
   shelterLevel?: number;
   /** Persistent large-animal subject selected when a detailed hunt begins. */

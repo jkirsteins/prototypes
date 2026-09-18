@@ -200,8 +200,6 @@ describe("the layout", () => {
     expect(rule("#mapinventory")).toMatch(/top:\s*var\(--map-overlay-inset\)/);
     expect(rule("#mapinventory")).toMatch(/left:\s*var\(--map-overlay-inset\)/);
     expect(rule("#mapinventory:empty")).toContain("display: none");
-    expect(rule("#maptravel")).toMatch(/top:\s*var\(--map-overlay-inset\)/);
-    expect(rule("#maptravel")).toMatch(/right:\s*var\(--map-overlay-inset\)/);
     expect(rule("#maptip")).toMatch(/left:\s*var\(--map-overlay-inset\)/);
   });
 

@@ -1383,6 +1383,9 @@ function drawPulses(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: n
     } else {
       const ring = cls.includes("lit-1") ? LIT_RING[1] : cls.includes("lit-2") ? LIT_RING[2] : null;
       if (!ring) continue;
+      // A wildlife mark keeps its own ground: the animal's badge covers most
+      // of the cell and the wash showed as a flickering strip under it.
+      if (cls.includes("mk-animal")) continue;
       const k = breath(t - (g.fd ?? 0), 1.1);
       // Past 100 m a cell is more ground than any fire lights: the spill is
       // half as strong, a soft edge on the pulse rather than lit terrain.

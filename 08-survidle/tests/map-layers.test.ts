@@ -367,6 +367,8 @@ describe("the map's compositing layers", () => {
     expect(pulses).toContain('cls.includes("mk-fire")');
     expect(pulses).toContain('cls.includes("mood-walk")');
     expect(pulses).toContain('cls.includes("lit-0")');
+    // A wildlife mark keeps its own ground under the fire's spill.
+    expect(pulses).toContain('if (cls.includes("mk-animal")) continue;');
   });
 
   it("lets seen liquid water shimmer on the wall clock, out of step per cell, and nothing else", () => {

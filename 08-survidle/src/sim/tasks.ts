@@ -1383,9 +1383,15 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   // A species hunt is an encounter, not a lock on an arbitrary animal elsewhere
   // in the region. Only a known den names a concrete subject before pursuit.
   const wildlifeSubject = id === "hunt" && arg === "bear" ? knownBearDen(state, cal)?.id : undefined;
-  const duration = paused?.duration ?? fresh.duration;
+  // A build's earlier minutes live on the camp site rather than in `paused`
+  // (setAside). They come back onto the task so the bar starts where the
+  // work stopped; the remaining minutes are what the fresh check gave.
+  const carried = id === "build" && arg && arg !== "snare" ? (campSite(regionState(state, world, state.player.region))?.build[arg as StructureId] ?? 0) : 0;
+  const banked = carried > 0.001 ? carried : 0;
+  const duration = (paused?.duration ?? fresh.duration) + banked;
   state.task = {
-    id, arg, progress: duration * fraction, duration, repeat: repeat && o.repeatable,
+    id, arg, progress: banked + (duration - banked) * fraction, duration, repeat: repeat && o.repeatable,
+    ...(banked > 0 ? { carried: banked } : {}),
     ...(any || paused?.any ? { any: true } : {}), ...(wildlifeSubject !== undefined ? { wildlifeSubject } : {}),
     ...(paused?.huntPhase ? { huntPhase: paused.huntPhase } : {}),
     ...(paused?.carcassId !== undefined ? { carcassId: paused.carcassId } : {}),
@@ -1445,7 +1451,7 @@ export function setAside(state: GameState, world: World): void {
     // A build under way was started at a camp; setting it aside cannot have unmade one.
     const site = siteFor(homeSt, homeSt.campCell!);
     const sid = t.arg as StructureId;
-    site.build[sid] = (site.build[sid] ?? 0) + t.progress;
+    site.build[sid] = (site.build[sid] ?? 0) + t.progress - (t.carried ?? 0);
   } else if (t.id === "walk" || t.id === "travel" || t.id === "explore" || t.id === "searchHome") {
     state.route = null;
   } else {

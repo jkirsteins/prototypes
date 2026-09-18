@@ -17,8 +17,9 @@ import { regionState } from "../sim/regionstate";
 import { RESTED_AT, SLEEP_AT, SLEEPY_AT, sleepiness, SPENT_AT } from "../sim/sleep";
 import type { GameState } from "../sim/types";
 import { THIRSTY_L } from "../sim/water";
-import { stormComing } from "../sim/weather";
-import type { World } from "../world/gen";
+import { cellOf } from "../sim/position";
+import { ICE_SAFE_CM, ICE_THIN_CM, localWeather, stormComing } from "../sim/weather";
+import { cellAt, type World } from "../world/gen";
 import { esc } from "./render";
 
 export interface Alert {
@@ -42,6 +43,14 @@ export function alerts(state: GameState, world: World, cal: Calendar): Alert[] {
   if (sleepiness(p.sleepDebt, cal.hour) >= SLEEPY_AT) out.push({ level: "warn", title: "Sleepy", detail: "the body lies down at the onset line" });
   if (st.fire.lit && fuelTotal(st.fire) <= FIRE_LOW_KG) out.push({ level: "warn", title: "Fire burning low", detail: `${fuelTotal(st.fire).toFixed(1)} kg in the pit` });
   if (stormComing(state)) out.push({ level: "warn", title: "Storm coming", detail: "shelter and the fire before it lands" });
+  // Ice under foot thaws while you stand on it: under the bearing line every
+  // minute rolls the fall (hazards.ts, iceUnderFoot), and a fall drowns one
+  // time in two.
+  if (cellAt(world, cellOf(state, world)).terrain === "water") {
+    const ice = localWeather(state, world).iceCm;
+    if (ice < ICE_THIN_CM) out.push({ level: "bad", title: "Ice giving way", detail: `${ice.toFixed(0)} cm under you; every minute here risks the fall - get to land` });
+    else if (ice < ICE_SAFE_CM) out.push({ level: "warn", title: "On thin ice", detail: `${ice.toFixed(0)} cm under you; it bears, and it is thawing toward the fall` });
+  }
   return out.sort((a, b) => Number(b.level === "bad") - Number(a.level === "bad"));
 }
 
