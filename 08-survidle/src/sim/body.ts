@@ -213,7 +213,7 @@ function fireWantsBanking(state: GameState, world: World, cal: Calendar): boolea
   const st = regionState(state, world, state.player.region);
   if (st.fire.keep !== "burning" || !st.fire.lit) return false;
   if (st.campCell === null || cellOf(state, world) !== st.campCell) return false;
-  return !fireUseful(state, world, cal) && fuelTotal(st.fire) > BANKED_KG + 1e-9;
+  return st.fire.fedByRow && !fireUseful(state, world, cal) && fuelTotal(st.fire) > BANKED_KG + 1e-9;
 }
 
 /**
@@ -971,6 +971,7 @@ function fireNeedStep(state: GameState, world: World, cal: Calendar, dry: boolea
   if (fireWantsBanking(state, world, cal)) {
     if (dry) return DRY_READY;
     bankFire(state, world, state.player.region);
+    st.fire.fedByRow = false;
     return null;
   }
   const fs = st.fire.lit ? null : fireStep(state, world, cal, camp, " again");
@@ -978,6 +979,7 @@ function fireNeedStep(state: GameState, world: World, cal: Calendar, dry: boolea
   if (!fireWantsWood(state, world, cal)) return null;
   if (dry) return DRY_READY;
   feedFire(state, world, state.player.region, FIRE_MAX_KG - fuelTotal(st.fire));
+  st.fire.fedByRow = true;
   return null;
 }
 

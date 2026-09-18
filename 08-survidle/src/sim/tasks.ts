@@ -8,7 +8,7 @@ import { ICE_SPEED, passable, routeKm, TERRAIN_SPEED } from "../world/route";
 import { addFirewood, itemLabel, loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, dayNumber, type Calendar } from "./calendar";
-import { cellPossibilities, leaveCamp, needsMending, rackCapacity } from "./camp";
+import { cellPossibilities, leaveCamp, needsMending, rackCapacity, feedFire } from "./camp";
 import { cue } from "./cues";
 import { exploreRoute, exploreRouteCandidates, frontierRoute, routeConditions, survivorRoute, survivorRouteMinutes } from "./routing";
 import {
@@ -37,7 +37,7 @@ import {
   atCamp, campCellOf, cellOf, forestCell, heathCell, hereTerrain, patchAt,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, fuelTotal, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, fuelTotal, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered, BANKED_KG } from "./fire";
 import { recordOpportunityEvent } from "./opportunities";
 import { builtProtection, coverCeiling, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
@@ -2781,12 +2781,17 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       }
       st.fire.lit = true;
       st.fire.embers = 0;
+      st.fire.fedByRow = false;
       // A run of keeping survives the coals; only a fire lit from cold starts a new one.
       if (st.fire.litSince === null) st.fire.litSince = state.minute;
       // The carried kilo goes in; a fire laid beforehand is already holding its
       // own. Either way the wood is in the pit before the flame is reported,
       // because the goal's light step waits on its fuel step being full.
       if (st.fire.fuelKg < 1 - 1e-9) st.fire.fuelKg += 1;
+      // A fire lit on purpose starts with the banked few kilos when dry wood
+      // is in reach: one kilo in heavy rain is out before anyone comes back
+      // to it, and the camp row feeds only a fire the body needs.
+      feedFire(state, world, p.region, BANKED_KG - fuelTotal(st.fire), true);
       recordOpportunityEvent(state, { kind: "fuelled" });
       recordOpportunityEvent(state, { kind: "fireLit", minute: state.minute, region: state.player.region, cell: cellOf(state, world), atCamp: true }, world);
       cue("fireCatches");

@@ -571,6 +571,8 @@ export interface RegionState {
     lit: boolean; fuelKg: number; wetKg: number; indoors: boolean; unattended: number;
     /** What the camp row does for this fire: keeps it burning, keeps its coals alive, or nothing. */
     keep: FireKeep;
+    /** The row fed this fire above the low mark. Only that is taken back when nothing needs the flame; a fire laid or lit by hand burns what it was given. */
+    fedByRow: boolean;
     /** Minutes of ember life left once the flame is gone. Embers are not lit. */
     embers: number;
     /** Minute this fire was last lit from cold; null once the embers die. A run of keeping is measured from it. */

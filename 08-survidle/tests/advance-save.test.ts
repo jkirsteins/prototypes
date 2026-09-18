@@ -309,7 +309,7 @@ describe("save", () => {
     expect(state.weather.nextStormId).toBe(1);
     expect(state.weather.stormFreeSince).toBe(0);
     const st = state.regions[state.player.region];
-    expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0 });
+    expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0, keep: "burning", fedByRow: false });
     expect(st.smoke).toBe(0);
     expect(campSite(st)?.structures.hearth ?? false).toBe(false);
     state.player.tools.push({ id: "barkBucket", durability: 100 });

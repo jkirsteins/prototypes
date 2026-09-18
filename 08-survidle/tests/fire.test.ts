@@ -40,6 +40,8 @@ describe("wet wood", () => {
     // Dries at 2 kg an hour by a lit fire, and keeps at it once it rains again:
     // the fire's own heat does the drying, not a dry sky.
     siteFor(st, st.campCell!).structures.firePit = true;
+    // The physics alone: the camp row would bank a fire nobody needs.
+    st.fire.keep = "out";
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     const dryBefore = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell!), "wetFirewood");
@@ -139,6 +141,8 @@ describe("wet wood", () => {
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell!).structures.firePit = true;
+    // The physics alone: the camp row would bank a fire nobody needs.
+    st.fire.keep = "out";
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     addItem(pile(state, st.campCell!), "wetFirewood", 10);
@@ -303,6 +307,8 @@ describe("spread and smoke", () => {
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell!).structures.firePit = true;
+    // The physics alone: the camp row would bank a fire nobody needs.
+    st.fire.keep = "out";
     siteFor(st, st.campCell!).structures.cabin = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;

@@ -4,6 +4,7 @@
  * line that only ticks at the moment of the light it sits above.
  */
 import { describe, expect, it } from "vitest";
+import { BANKED_KG } from "../src/sim/fire";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
@@ -66,8 +67,10 @@ describe("a fire laid before it is lit", () => {
     expect(startTask(state, world, cal, "light")).toBe(true);
     advance(state, world, l.duration);
     expect(st.fire.lit).toBe(true);
-    // The laid wood is the fire's fuel; no second kilo comes off the pile.
-    expect(qty(pile(state, campCell), "firewood")).toBeCloseTo(inPile, 1);
+    // The laid wood is the fire's fuel: no lighting kilo comes off the pile.
+    // A fire lit on purpose then starts with the banked few kilos, topped up
+    // from the pile, so it is not out before anyone comes back to it.
+    expect(qty(pile(state, campCell), "firewood")).toBeCloseTo(inPile - Math.max(0, BANKED_KG - laid), 1);
     expect(st.fire.fuelKg).toBeGreaterThan(laid - 1);
     expect(state.opportunities.completedAt.fire).toBeDefined();
   });

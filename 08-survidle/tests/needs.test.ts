@@ -256,8 +256,10 @@ describe("the fire", () => {
     st.fire.lit = true;
     st.fire.fuelKg = FIRE_LOW_KG;
     addItem(pile(state, st.campCell!), "firewood", pileKg);
-    // Warm, watered and fed, so nothing above the fire in the order holds.
-    state.player.warmth = 100;
+    // Watered and fed, so nothing above the fire in the order holds; under
+    // the warm line, so the flame is wanted - by day with a warm, dry body
+    // the fire is let down to coals instead (body.ts, fireUseful).
+    state.player.warmth = 40;
     state.player.water = WATER_FULL;
     state.player.kcal = 3000;
     return f;

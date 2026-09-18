@@ -400,6 +400,7 @@ export function migrate(state: GameState): void {
     st.fire.litSince ??= null;
     st.fire.rainHeld ??= 0;
     st.fire.keep ??= "burning";
+    st.fire.fedByRow ??= false;
     // "keep coals" was a setting for one round; banking is a rule now.
     if ((st.fire.keep as string) === "coals") st.fire.keep = "burning";
     st.smoke ??= 0;

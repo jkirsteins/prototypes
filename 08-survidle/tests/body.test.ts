@@ -864,7 +864,7 @@ describe("the shared storm plan", () => {
     siteFor(regionState(state, world, region.id), here).structures.leanTo = true;
     siteFor(regionState(state, world, region.id), camp).cover = 1;
     regionState(state, world, region.id).fire = {
-      lit: true, fuelKg: 12, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: 0, rainHeld: 0, keep: "burning",
+      lit: true, fuelKg: 12, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: 0, rainHeld: 0, keep: "burning", fedByRow: false,
     };
     state.weather.storm = { id: 36, source: "natural", kind: "rain", from: 300, until: 660, warned: false };
 
