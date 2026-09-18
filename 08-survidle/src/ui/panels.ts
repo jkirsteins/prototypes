@@ -45,7 +45,6 @@ import { cellAt, regionAt, speciesHere, type World } from "../world/gen";
 import { remainingKm } from "../world/route";
 import { hurryKind, type HurryState } from "./hurry";
 import { esc, type UiState } from "./render";
-import { shoppingPlaceCueHtml } from "./shopping";
 import { plain, voice } from "../sim/voice";
 import { skyHtml, WALL } from "./sky";
 import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
@@ -457,18 +456,17 @@ export function placesHtml(state: GameState, world: World, cal: Calendar, displa
       // for it.
       if (s.id !== "camp" && cell === camp) return "";
       const name = esc(SPOT_WORDS[s.id]);
-      const shopping = shoppingPlaceCueHtml(state, world, cal, s.id);
-      if (cell === here) return `<div class="way" data-place="${s.id}"><b>${name}</b> <small class="dim">you are here</small>${shopping}</div>`;
+      if (cell === here) return `<div class="way" data-place="${s.id}"><b>${name}</b> <small class="dim">you are here</small></div>`;
       const at = ` data-at="${cell}"`;
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
       const ice = thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk);
       const km = kmBetween(state, world, here, cell, "safe");
-      if (!walk.ok) return `<div class="way" data-place="${s.id}"${at}><span class="dim">${name}: ${esc(plain(walk.why))}</span>${ice}${shopping}</div>`;
+      if (!walk.ok) return `<div class="way" data-place="${s.id}"${at}><span class="dim">${name}: ${esc(plain(walk.why))}</span>${ice}</div>`;
       // The whole row is the button, and what it costs is in its own label:
       // a name in a button beside a sentence saying "from here" spent two
       // thirds of the row on words that never change.
       const cost = km === null ? esc(fmtDuration(walk.duration)) : esc(formatTravel(km, walk.duration, display));
-      return `<div class="way" data-place="${s.id}"${at}><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${ice}${shopping}</div>`;
+      return `<div class="way" data-place="${s.id}"${at}><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${ice}</div>`;
     })
     .join("");
   // The ways out, under the places and in the same corner - but only those
@@ -666,8 +664,17 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
   // them over.
   const keepButtons = (region: number | "field", keep: FireKeep, choices: readonly FireKeep[]) =>
     `<span class="fire-keep">${choices.map((k) => `<button class="mini${k === keep ? " on" : ""}" data-act="fire-keep" data-region="${region}" data-keep="${k}" title="${KEEP_TITLE[k]}">${KEEP_WORD[k]}</button>`).join(" ")}</span>`;
+  // A cold pit with a drill and dry wood in reach is one click from lit:
+  // the setting keeps a fire that is alive and never starts one, so the
+  // start is the player's, and "keep it burning" beside a cold pit and a
+  // full pile read as broken without the click.
+  const light = site?.structures.firePit && !st.fire.lit && st.campCell !== null && cellOf(state, world) === st.campCell
+    ? ((o) => o.ok
+        ? `<button class="mini" data-act="task" data-id="light" title="Lay a kilo from the pile and light it with the drill">light it now</button>`
+        : `<small class="dim">to light it: ${esc(plain(o.why))}</small>`)(check(state, world, cal, "light"))
+    : "";
   const fire = site?.structures.firePit
-    ? `<div>fire: ${fireWord} ${keepButtons(id, st.fire.keep, KEEP_CHOICES)}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}${pitHint}`
+    ? `<div>fire: ${fireWord} ${light} ${keepButtons(id, st.fire.keep, KEEP_CHOICES)}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}${pitHint}`
     : "";
   const fieldFire = state.player.fieldFire && state.player.fieldFire.cell === cellOf(state, world)
     ? `<div>field fire here: ${fmtKg(state.player.fieldFire.fuelKg)} in it ${keepButtons("field", state.player.fieldFire.keep, ["burning", "out"])}</div>`

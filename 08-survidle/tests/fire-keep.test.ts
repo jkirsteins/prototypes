@@ -15,6 +15,7 @@ import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { readSave, serialize } from "../src/sim/save";
+import { campHtml } from "../src/ui/panels";
 import { siteCamp } from "./siting-helpers";
 
 /** A camp with a pit, a drill in the pack and dry wood in the pile, at midday. */
@@ -96,5 +97,18 @@ describe("the camp row and a fire's setting", () => {
     expect(loaded!.state.regions[state.player.region].fire.keep).toBe("burning");
     expect(loaded!.state.player.fieldFire?.keep).toBe("burning");
     void world;
+  });
+});
+
+describe("the fire line", () => {
+  it("offers to light a cold pit when the drill and dry wood are at hand, and says what is missing otherwise", () => {
+    const { state, world, st, cal } = pit();
+    expect(campHtml(state, world, cal)).toContain("light it now");
+    state.player.tools = state.player.tools.filter((t) => t.id !== "fireDrill");
+    const html = campHtml(state, world, cal);
+    expect(html).not.toContain("light it now");
+    expect(html).toContain("to light it: needs a fire drill");
+    st.fire.lit = true;
+    expect(campHtml(state, world, cal)).not.toContain("to light it");
   });
 });

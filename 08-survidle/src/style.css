@@ -914,6 +914,14 @@ button.act small, span.act small { display: block; color: var(--dim); }
    for it, then the pairs a reader scans rather than reads. What the ground
    is doing is one of those pairs and not a headline. */
 #weather { padding: 0; overflow: hidden; position: relative; flex: none; }
+/* The alert stack: worst on top, standing while true. A block a colour
+   and a word, the way RimWorld's right-edge alerts read across a room. */
+#alerts { flex: none; }
+.alerts { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.alert { display: flex; flex-direction: column; padding: 4px 8px; border-left: 4px solid var(--accent); background: rgba(230, 194, 41, 0.08); }
+.alert.bad { border-left-color: var(--bad); background: rgba(224, 96, 96, 0.12); }
+.alert b { font-size: 13px; }
+.alert small { color: var(--dim); }
 .wx { position: relative; padding: 10px 12px 0; min-height: 190px; display: flex; flex-direction: column; }
 
 /* The sky is the widget, not a picture in the corner of it: the same

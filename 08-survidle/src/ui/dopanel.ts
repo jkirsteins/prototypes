@@ -398,12 +398,7 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
   const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";
   // What the face no longer says, said here in full.
   const detail = o.detail ? `<div class="detail"><small>${esc(plain(o.detail))}</small></div>` : "";
-  const target = (o.id === "craft" || o.id === "build") ? shoppingTarget(o.id, arg) : null;
-  const tracked = target && state.shopping?.task === target.task && state.shopping.arg === target.arg;
-  const track = target
-    ? `<button class="mini shopping-track${tracked ? " on" : ""}" data-act="shopping-track" data-id="${o.id}" data-arg="${esc(arg)}">${tracked ? "tracking materials" : "track materials"}</button>`
-    : "";
-  return `${detail}<div class="expand">${buttons}${n}${deliver}${where}${track}</div>${whenHtml(o, arg, ui, state)}`;
+  return `${detail}<div class="expand">${buttons}${n}${deliver}${where}</div>${whenHtml(o, arg, ui, state)}`;
 }
 
 /**
@@ -438,6 +433,13 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   const gives = cap?.producer ? `<small class="gives">${esc(cap.gives)}</small>` : "";
   const canOpen = !NOT_ORDERS.includes(o.id);
   const open = canOpen && ui.open !== null && ui.open.id === o.id && ui.open.arg === arg;
+  // The shopping list's pin sits on the row's face beside "more": under
+  // "more" it was the feature nobody found (playtest 2026-09-17, 19).
+  const target = (o.id === "craft" || o.id === "build") ? shoppingTarget(o.id, arg) : null;
+  const tracked = target && state.shopping?.task === target.task && state.shopping.arg === target.arg;
+  const track = target
+    ? `<button class="mini shopping-track${tracked ? " on" : ""}" data-act="shopping-track" data-id="${o.id}" data-arg="${esc(arg)}" title="${tracked ? "Stop tracking its materials" : "Track its materials in the Shopping list"}">${tracked ? "tracking" : "track"}</button>`
+    : "";
   const more = canOpen ? `<button class="mini row-more${open ? " on" : ""}" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}" aria-expanded="${open}">more</button>` : "";
   const expand = open ? rowExpandHtml(o, arg, ui, state, world) : "";
   const openCls = open ? " open" : "";
@@ -449,7 +451,7 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     // is not coming, at the head of a list it stops.
     const queueable = o.id !== "makeCamp" && !o.never;
     const act = queueable ? ` data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start"` : " disabled";
-    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}${gives}</button>${tags}${more}${expand}</div>`;
+    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}${gives}</button>${tags}${track}${more}${expand}</div>`;
   }
   // Binding a camp is one click, no undo, and it decides every walk the run
   // makes afterwards. It was done by accident, immediately after learning that
@@ -485,7 +487,7 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     ? `<small class="initial-walk">will walk to ${initial.nearest ? "nearest " : ""}${esc(initial.destination)} - ${esc(formatTravel(initial.km, initial.minutes, ui.travelDisplay))}</small>`
     : "";
   const possibilities = o.id === "makeCamp" && o.detail ? `<small>${esc(o.detail)}</small>` : "";
-  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${walk}${possibilities}${bar}${gives}</button>${tags}${more}${expand}</div>`;
+  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${walk}${possibilities}${bar}${gives}</button>${tags}${track}${more}${expand}</div>`;
 }
 
 /**
