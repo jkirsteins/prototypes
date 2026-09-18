@@ -248,6 +248,9 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
     }
     writeCareEta(state, shown, root);
   } else {
+    // The strip drops its bar when nothing runs; a bar that stays in the
+    // markup (the Queue tab's foot) must not keep the last task's width.
+    setBar("task", 0, undefined, root);
     writeCareEta(state, null, root);
   }
 }

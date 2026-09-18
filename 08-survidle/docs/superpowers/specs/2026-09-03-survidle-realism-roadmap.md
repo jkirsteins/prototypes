@@ -458,10 +458,13 @@ needs exists (a death that persists,
 a producer, a camp that holds and was chosen, orders, a forecast that
 makes away risk legible, a person to lose), so twenty testers go in there, as a kill-or-continue check of the hybrid and
 not the commercial gate, before any content deepens a loop that has not
-earned it; then the save sync if the round asks for it (the section of
+earned it; then the save sync (the section of
 that name below: a sync code, a Cloudflare Worker with one Durable Object
 per code, and a lease that lets one device run the world at a time;
-spec `2026-09-11-survidle-save-sync-design.md`), then the phone check-in
+spec `2026-09-11-survidle-save-sync-design.md`; slotted after the round
+and only if its testers asked for the phone, built 2026-09-18 ahead of it
+for the author's own use on the go, runbook `docs/sync.md`), then the
+phone check-in
 page on top of it once P's camp view and camp sheet stand (the same
 section: a second entry page over the same engine, no map), and the south if the round's first deaths are not followed by a restart
 (the section of that name below: the landing month first, then the map
@@ -2173,8 +2176,9 @@ after the round, if the round's testers ask for the phone, and not
 before, so that the round is recruited as single-device and the asking
 is a finding.
 
-Specced 2026-09-11 in `2026-09-11-survidle-save-sync-design.md`, not
-built. The spec replaces "last writer by save time wins": with
+Specced 2026-09-11 in `2026-09-11-survidle-save-sync-design.md`; built
+2026-09-18, pulled ahead of the round (the Built paragraph at the end of
+this section). The spec replaces "last writer by save time wins": with
 permadeath it lets the survivor die on one device and live on the
 other. Instead one device holds a lease and runs the world; any other
 device shows the latest save read-only and can take over, and the old
@@ -2223,6 +2227,27 @@ The sync spec states these four (its principles, routes, store, boot
 and testing sections): the save version is the world's version because
 a generator change bumps it, `PUT /save` refuses a lower version, and a
 device never takes a lease on a save it cannot run.
+
+**Built, 2026-09-18.** The slot said after the round, and only if the
+round's testers asked for the phone, so that the asking would be a
+finding; the author develops on the go and needed to check the run from
+a phone, and that need outranked the finding. What shipped is the spec's
+first sub-project whole: `src/sync/lease.ts`, the pure rules the Worker
+and the client both import; `worker/` (the fetch handler, the
+`WorldObject` Durable Object on SQLite storage with hibernating sockets,
+`wrangler.toml`, the route-level smoke test), with its own
+`package.json` so the Pages build never installs wrangler; the store
+client and the session state machine (`off`, `checking`, `running`,
+`readonly`, `revoked`, `unreachable`, `outdated`, `older`) with the rule
+in front of every catch-up and every live frame; the settings block, the
+banner, and the world in the address - always on, `?w=<code>` kept in
+the page's address so a tab handed to the phone is the world, no link to
+copy; five fast suites, none needing wrangler. The Worker was deployed the same day and its URL is the
+constant in `src/sync/config.ts` (`docs/sync.md`). Open, in order: the browser
+pass against a deployed store; the beacon counting one player on two
+devices as two; the phone solve untimed, with the R2 escape hatch waiting
+on that number. The departures from the spec's text are listed at the
+top of the spec.
 
 **The phone check-in page** is the second half, and waits for both the
 sync and P. The phone is a companion to a desktop run, not a smaller

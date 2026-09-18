@@ -1,0 +1,18 @@
+{
+  "name": "survidle-sync-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The save sync store: one Durable Object per sync code. Its own package so the Pages build never installs wrangler.",
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.toml --port 8787",
+    "deploy": "wrangler deploy --config wrangler.toml",
+    "smoke": "node smoke.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260918.1",
+    "typescript": "^5.5.4",
+    "wrangler": "^4.134.0"
+  }
+}

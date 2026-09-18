@@ -14,6 +14,11 @@
   <body>
     <!-- Shown while the worker solves the world; the run does not start until it is done. -->
     <div id="loading" role="status" aria-live="polite"><div class="bar"><i></i></div><p>Loading...</p></div>
+    <!-- The sync banner: over the page whenever this device is not the one
+         running the world (another device holds it, the store is out of
+         reach, or it was taken over). Rendered through setPanel; hidden
+         when it has nothing to say. -->
+    <div id="syncbanner" class="panel" role="status" hidden></div>
     <!-- Stocks span the page above the columns: what the camp holds, what it
          can hold, and which way each is moving. The map's own inventory strip
          answers a different question and stays where it is. Positioned so
@@ -38,8 +43,6 @@
           <div id="forecast"></div>
           <div id="away">
             <input type="range" min="1" max="24" step="1" data-away="hours" aria-label="hours away" />
-            <button type="button" class="mini" data-act="manual-open">how to survive</button>
-            <button type="button" class="mini" data-act="settings-open">settings</button>
           </div>
         </section>
         <section id="skills" class="panel"></section>
@@ -59,8 +62,6 @@
           <!-- One element, in the markup from the start, so it is shown and
                hidden rather than created and destroyed under the pointer. -->
           <div id="maptip" hidden></div>
-          <!-- The ways out, in a corner of the ground they lead off. -->
-          <div class="legend"></div>
         </section>
         <section id="task" class="panel"></section>
         <!-- The tab container, where the HERE panel used to be. All four
@@ -119,6 +120,11 @@
       <div id="beacon">
         <label><input type="checkbox" data-beacon="on" /> share anonymous play data</label>
         <span class="dim" data-beacon="note"></span>
+      </div>
+      <!-- The world this page is for, always synced: static markup mounted once, like the beacon's. -->
+      <div id="sync">
+        <div><b>World</b> <span class="dim" data-sync="line"></span></div>
+        <div data-sync="actions"></div>
       </div>
       <div><button type="button" class="mini bad" data-act="reset-world">reset world data</button></div>
     </div>

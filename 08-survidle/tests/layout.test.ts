@@ -213,8 +213,8 @@ describe("the layout", () => {
 
   it("the sound and the beacon live in a settings panel that is hidden until it is asked for", () => {
     const html = readFileSync("index.html", "utf8");
-    const open = html.indexOf('data-act="settings-open"');
-    expect(open).toBeGreaterThan(0);
+    // The button that opens it is the footer's (buildHtml), not the page's.
+    expect(buildHtml("x", "")).toContain('data-act="settings-open"');
     const settings = html.indexOf('id="settings"');
     expect(settings).toBeGreaterThan(0);
     // Hidden on the same element, so a fresh page spends no room on either control.
@@ -377,5 +377,68 @@ describe("a mark owns its whole cell", () => {
         expect(look.fg, `${grid.season} ${ground.join(" ")}`).toBe(you.fg);
       }
     }
+  });
+});
+
+describe("the phone", () => {
+  // The audit of 2026-09-18 at 390 wide with touch emulation found the
+  // board a 94px strip of the empty west of the world, the boat's three
+  // cards 40px each over 200px of person, and the page tabs three panels
+  // above the panel they switch. Each of these is one declaration.
+  const narrow = css.slice(css.indexOf("@media (max-width: 700px) {\n  /* One column"));
+
+  it("centres the board on the survivor in both axes, whatever the panel's width", () => {
+    const track = rule(".scroll-x");
+    expect(track).toContain("grid-template-rows: minmax(0, 1fr)");
+    expect(track).toContain("grid-template-columns: minmax(0, 1fr)");
+    // An auto margin on the item would beat that alignment and, once the
+    // board overflows, resolve to zero: the board pinned to the left.
+    expect(rule(".grid")).not.toMatch(/margin:\s*0 auto/);
+  });
+
+  it("gives the board a height of its own instead of what the legend leaves", () => {
+    expect(narrow).toMatch(/#map \{ height: auto; \}/);
+    expect(narrow).toMatch(/#mapdyn \{[^}]*flex: none;[^}]*height: 70vh;/);
+  });
+
+  it("keeps the manual and the settings as links in the footer and nowhere else on the page", () => {
+    expect(buildHtml("abc1234", "")).toBe('<span class="links"><button type="button" class="linkish" data-act="manual-open">how to survive</button><button type="button" class="linkish" data-act="settings-open">settings</button></span><span>survidle abc1234</span>');
+    const page = readFileSync("index.html", "utf8");
+    expect(page).not.toContain("manual-open");
+    expect(page).not.toContain("settings-open");
+    expect(rule(".build .linkish")).toContain("text-decoration: underline");
+  });
+
+  it("draws no legend anywhere: a tap on a cell is the key", () => {
+    expect(css).not.toMatch(/\.legend\b/);
+    expect(readFileSync("index.html", "utf8")).not.toContain("legend");
+  });
+
+  it("makes the map and the queue pages of the right slot, and drops If-you-leave", () => {
+    expect(narrow).toMatch(/#rightpages \{ order: 3; \}/);
+    expect(narrow).toMatch(/#map \{ order: 4; \}/);
+    expect(narrow).toMatch(/#orders \{ order: 4; \}/);
+    expect(narrow).toMatch(/#alerts \{ order: 4; \}/);
+    expect(narrow).toMatch(/#weather \{ order: 4; \}/);
+    expect(narrow).toMatch(/#forecastbox \{ display: none; \}/);
+    // #map's own display rule would beat [hidden]; the page must actually go.
+    expect(rule("#map[hidden]")).toContain("display: none");
+  });
+
+  it("keeps the activity strip over the tabs, and the task's progress on the Queue tab's foot", () => {
+    expect(narrow).toMatch(/#task \{ order: 3;/);
+    expect(narrow).not.toMatch(/#task \{ order: 1; \}/);
+    expect(rule("#rightpages .tabfill")).toContain("width: 0");
+    expect(rule("#rightpages .tabfill")).toContain("bottom: 0");
+  });
+
+  it("stacks the boat's cards at their own height", () => {
+    expect(narrow).toMatch(/\.card \{ flex: none; \}/);
+  });
+
+  it("keeps the page tabs with the pages they switch", () => {
+    expect(narrow).toMatch(/#rightpages \{ order: 3; \}/);
+    expect(narrow).toMatch(/#alerts \{ order: 4; \}/);
+    expect(narrow).toMatch(/#weather \{ order: 4; \}/);
   });
 });

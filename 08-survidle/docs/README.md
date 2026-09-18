@@ -584,6 +584,14 @@ worth a run when the reference player, the lineage or the landing moves.
 Every browser pass runs at 1440 by 900 and at 390 wide against
 `docs/ux.md`.
 
+The save sync - the run following the player to a phone, one device
+running the world at a time - is always on: the world is in the address
+(`?w=heron-pine-ember`), and a build with no store URL in
+`src/sync/config.ts` is the one case with no sync at all. `docs/sync.md` is the runbook: `npm run worker:dev`
+and `npm run worker:smoke` drive the store locally, `npm run
+worker:deploy` publishes it, and the Worker's dependencies are its own
+under `worker/` so none of this touches `npm install` here.
+
 The browser check plays the real game. Run the development server in one
 shell and `npm run e2e` in another: headless Chrome opens seed 42 on day
 200, lands through the real candidate and landing controls, clicks the
@@ -712,3 +720,7 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/sim/reference.ts`: the reference player's order list and checkpoints.
 - `src/sim/probe.ts`: the without probe, a source disabled for a year run so no single one reads as mandatory.
 - `src/sim/forecast.ts`: the forecast's runs per horizon and the horizons themselves; `src/sim/forecast.worker.ts`: the worker that runs them off the main thread; `src/sim/forecaster.ts`: the worker client and the month number; `src/ui/dial.ts`: the away dial.
+- `src/sync/lease.ts`: who may run the world - the grace period, the
+  heartbeat, the forced take - shared by the Worker and the page;
+  `src/sync/session.ts`: the sync's states and the rule in front of every
+  catch-up; `src/sync/config.ts`: the store's URL; `worker/`: the store.

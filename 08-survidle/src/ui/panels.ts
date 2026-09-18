@@ -672,18 +672,20 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
         ? `<button class="mini" data-act="task" data-id="light" title="Lay a kilo from the pile and light it with the drill">light it now</button>`
         : `<small class="dim">to light it: ${esc(plain(o.why))}</small>`)(check(state, world, cal, "light"))
     : "";
+  // The state and the one click on one row, the setting on its own: the two
+  // buttons beside a sentence read as part of it.
   const fire = site?.structures.firePit
-    ? `<div>fire: ${fireWord} ${light} ${keepButtons(id, st.fire.keep, KEEP_CHOICES)}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}${pitHint}`
+    ? `<div class="camp-row">fire: ${fireWord} ${light}</div><div class="camp-row">${keepButtons(id, st.fire.keep, KEEP_CHOICES)}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}${pitHint}`
     : "";
   const fieldFire = state.player.fieldFire && state.player.fieldFire.cell === cellOf(state, world)
-    ? `<div>field fire here: ${fmtKg(state.player.fieldFire.fuelKg)} in it <small class="dim">the body's own; fed from the pack while it is wanted</small></div>`
+    ? `<div class="camp-row">field fire here: ${fmtKg(state.player.fieldFire.fuelKg)} in it <small class="dim">the body's own; fed from the pack while it is wanted</small></div>`
     : "";
   const elsewhere = Object.entries(state.regions)
     .filter(([rid, other]) => Number(rid) !== id && other.campCell !== null && campSite(other)?.structures.firePit)
-    .map(([rid, other]) => `<div>fire at ${esc(regionAt(world, Number(rid)).name)}: ${other.fire.lit ? "burning" : hasEmbers(other.fire) ? "coals" : "cold"} ${keepButtons(Number(rid), other.fire.keep, KEEP_CHOICES)}</div>`)
+    .map(([rid, other]) => `<div class="camp-row">fire at ${esc(regionAt(world, Number(rid)).name)}: ${other.fire.lit ? "burning" : hasEmbers(other.fire) ? "coals" : "cold"} ${keepButtons(Number(rid), other.fire.keep, KEEP_CHOICES)}</div>`)
     .join("");
   const rack = site?.structures.dryingRack
-    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
+    ? `<div class="camp-row">rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
   // A store line says what it holds, what it can hold, and what it loses,
   // because every cap here is lossy rather than merely full.
@@ -694,31 +696,38 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
   // not an edge case, so it says plainly that there is no cover rather than
   // reading "of 0 g covered".
   const wood = woodKg > 0 || covered > 0
-    ? `<div>wood: ${fmtKg(woodKg)}${covered > 0 ? ` of ${fmtKg(covered)} covered` : ", no cover"}${exposed > 0 ? `, <span class="bad">${covered > 0 ? `${fmtKg(exposed)} ` : ""}out in the weather</span>` : ""}</div>`
+    ? `<div class="camp-row">wood: ${fmtKg(woodKg)}${covered > 0 ? ` of ${fmtKg(covered)} covered` : ", no cover"}${exposed > 0 ? `, <span class="bad">${covered > 0 ? `${fmtKg(exposed)} ` : ""}out in the weather</span>` : ""}</div>`
     : "";
 
   const cap = campWaterCapacity(campPile, site);
   const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
-    ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
+    ? `<div class="camp-row">water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
     : "";
   const lying = weight(campPile);
-  const heap = lying > 0 ? `<div class="dim">${fmtKg(lying)} lying here</div>` : "";
-  const yard = site ? `<div>yard: ${Math.round(yardUsed(site))} of ${Math.round(site.yardM2)} m2</div>` : "";
+  const heap = lying > 0 ? `<div class="camp-row dim">${fmtKg(lying)} lying here</div>` : "";
+  const yard = site ? `<div class="camp-row">yard: ${Math.round(yardUsed(site))} of ${Math.round(site.yardM2)} m2</div>` : "";
   const limits = CAPABILITIES.filter((c) => c.producer && standingHere(state, st, world, c))
     .map((c) => {
       const rate = producerRate(state, world, st, site, cal, c.id, display);
-      return `<div><small>${esc(c.id)}: ${esc(c.limits)}${rate ? ` - ${esc(rate)}` : ""}</small></div>`;
+      return `<div class="camp-row"><small>${esc(c.id)}: ${esc(c.limits)}${rate ? ` - ${esc(rate)}` : ""}</small></div>`;
     })
     .join("");
 
+  // One line per thing that stands or is planned, never a comma-run: a
+  // camp of six structures and two plans was one sentence nobody could scan.
   const stands = built.length || planned.length
-    ? `<div>${[...built, ...planned].join(", ")}</div>`
-    : `<div class="dim">nothing built</div>`;
+    ? `<ul class="camp-list">${[...built, ...planned].map((s) => `<li>${s}</li>`).join("")}</ul>`
+    : `<div class="camp-row dim">nothing built</div>`;
   // What lives here is a region's reading, not a cell's, so the map's hover
   // has no place for it and the camp box does: the survivor knows what is
   // about without walking anywhere to look.
   const about = `<div class="roster">${rosterHtml(state, world, id, cal)}</div>`;
-  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${fieldFire}${elsewhere}${stands}${rack}${wood}${water}${heap}${yard}${limits}${about}`;
+  // Four groups under their own small headings, each drawn only when it
+  // has something to say: the fire, what stands, what is stored, what
+  // lives about. Every container carries a data-camp key so a redraw
+  // morphs the group in place rather than by position.
+  const group = (key: string, title: string, body: string) => (body ? `<section class="camp-sec" data-camp="${key}"><h3>${title}</h3>${body}</section>` : "");
+  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${group("fire", "Fire", fire + fieldFire + elsewhere)}${group("stands", "Standing", stands + yard)}${group("stores", "Stores", rack + wood + water + heap + limits)}${group("about", "About", about)}`;
 }
 
 
