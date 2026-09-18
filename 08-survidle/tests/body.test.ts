@@ -13,8 +13,9 @@ import { mapRegion } from "../src/sim/mapped";
 import { orderByHand } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, stepPlayer } from "../src/sim/player";
-import { cellOf, placeAt, placeAtSpot, watersideCell } from "../src/sim/position";
+import { cellOf, placeAt, watersideCell } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
+import { survivorRoute } from "../src/sim/routing";
 import { addOrder, ordersHere } from "../src/sim/orders";
 import { check, startTask } from "../src/sim/tasks";
 import { PACK_COMFORTABLE_KG } from "../src/units";
@@ -22,7 +23,7 @@ import { isWorkOrder } from "../src/sim/types";
 import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 import { requireCamp, siteCamp } from "./siting-helpers";
-import { forestCampOnWater, forestPairNear, leeCellNear, openCampWithForestNear, shoreCampWithDryForest, terrainCellNear, unnamedShoreRegion } from "./world-facts";
+import { forestCampOnWater, forestPairNear, leeCellNear, openCampWithForestNear, regionsOutward, shoreCampWithDryForest, terrainCellNear, unnamedShoreRegion } from "./world-facts";
 import { ensureGround, iceMode } from "../src/sim/weather";
 import { testAtmosphere, testRain } from "./weather-helpers";
 import { levelMinutes } from "../src/sim/skills";
@@ -323,18 +324,21 @@ describe("the body's row against the work", () => {
     // region's camp is moved to a waterside cell of its own region for this test.
     // The named forest spot (rather than "nearest") keeps the felling cell distinct
     // from the new camp cell, so the intent actually walks off camp and provisions.
-    // The waterside cell also needs a real route to the forest spot: not every
-    // waterside cell in a region connects to it.
+    // The waterside cell also needs a real route to the forest spot over the
+    // region's own mapped ground: not every waterside cell in a region connects
+    // to it, and a world route is no proof, since it will go hundreds of cells
+    // round through country the survivor has never seen, and a walk only that
+    // route connects is refused as "no way there" before it can provision.
     const g = newGame(42);
     siteCamp(g.state, g.world);
     const { state, world } = g;
+    mapRegion(state, world, state.player.region);
     const st = regionState(state, world, state.player.region);
     const r = regionAt(world, state.player.region);
     const forestCell = r.spots.find((s) => s.id === "forest")!.cell;
-    const waterside = r.cells.find((c) => c !== st.campCell! && watersideCell(world, c) && findRoute(world, c, forestCell))!;
+    const waterside = r.cells.find((c) => c !== st.campCell! && watersideCell(world, c) && survivorRoute(state, world, c, forestCell))!;
     st.campCell = waterside;
     placeAt(state, world, waterside);
-    mapRegion(state, world, state.player.region);
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 0 });
     addItem(state.player.pack, "driedMeat", 2);
     startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "once" }, deliver: "leave", where: "forest" });
@@ -708,7 +712,11 @@ describe("the runner in the elements", () => {
     ensureGround(state, world, state.player.region).iceCm = 8;
     let sawThin = false;
     let sawHomeOnThin = false;
+    // Where the felling stands: the nearest forest to a camp found by rule,
+    // which the home phase returns to below.
+    let felled: number | null = null;
     const sample = () => {
+      if (state.task?.id === "chop") felled = cellOf(state, world);
       if (state.route?.ice === "thin") sawThin = true;
       if (state.player.bodyNeed === "home" && iceMode(ensureGround(state, world, state.player.region)) === "thin") sawHomeOnThin = true;
     };
@@ -737,8 +745,14 @@ describe("the runner in the elements", () => {
     testAtmosphere();
 
     // Home before dark, deep winter; reserves topped off so the trace runs to night rather than to a death.
+    // Back where the felling stood rather than at the region's named forest
+    // spot: the camp here is found by rule and is not the region's own, and
+    // the named spot need not connect to it dry-shod. A cell with no way home
+    // but over the water raises no home need at all (minutesToCamp is null),
+    // and the walk this phase is about would never be asked for.
     state.minute = 320 * 1440 + 240;
-    placeAtSpot(state, world, state.player.region, "forest");
+    expect(felled).not.toBeNull();
+    placeAt(state, world, felled!);
     // The time jump catches the old April record through hundreds of warm
     // days. Put thin ice back into the authoritative ground for this phase.
     ensureGround(state, world, state.player.region).iceCm = 8;
@@ -912,10 +926,22 @@ describe("the shared storm plan", () => {
     const here = cellOf(state, world);
     siteFor(regionState(state, world, state.player.region), here).structures.leanTo = true;
     const homeRegion = regionAt(world, state.player.region);
-    const remoteRegion = regionAt(world, homeRegion.neighbours[0].id);
     mapRegion(state, world, homeRegion.id);
-    mapRegion(state, world, remoteRegion.id);
-    siteFor(regionState(state, world, remoteRegion.id), requireCamp(remoteRegion)).structures.turfHut = true;
+    // Distant means more than an hour's walk. A turf hut is a level above the
+    // lean-to and the plan prices each level at 100 against 40 for staying
+    // put, so a hut nearer than that is rightly walked to; which region's camp
+    // lies far enough off is the map's business, so it is found by that rule,
+    // outward from home and mapping the way there as it goes.
+    let refuge: { region: number; camp: number } | null = null;
+    for (const id of regionsOutward(world, homeRegion.id, 40)) {
+      const camp = regionAt(world, id).campCell;
+      if (id === homeRegion.id || camp === null) continue;
+      mapRegion(state, world, id);
+      const walk = check(state, world, calendar(0), "walk", `cell:${camp}`);
+      if (walk.ok && walk.duration > 60) { refuge = { region: id, camp }; break; }
+    }
+    expect(refuge).not.toBeNull();
+    siteFor(regionState(state, world, refuge!.region), refuge!.camp).structures.turfHut = true;
     state.weather.storm = { id: 35, source: "natural", kind: "rain", from: 1000, until: 1360, warned: false };
     expect(stormOptions(state, world, state.weather.storm).recommended).toBe("localShelter");
     expect(bodyStep(state, world, calendar(0), new Rng(1), "storm", true)?.id).toBe("rest");
@@ -965,7 +991,10 @@ describe("the shared storm plan", () => {
 
   it("does not treat newly found cover below an exposed frame as adequate gale shelter", () => {
     const { state, world } = newGame(17);
-    const pine = terrainCellNear(world, state.player.region, "pine").cell;
+    // Pine with nothing upwind of it: the first pine near home is as likely
+    // to stand in a lee, where the same frame reads as adequate, and the
+    // case is the exposed one.
+    const pine = leeCellNear(world, state.player.region, "pine", testAtmosphere().windBearingDeg, false);
     placeAt(state, world, pine);
     siteFor(regionState(state, world, state.player.region), pine).structures.leanTo = true;
     state.skills.weatherSense.xp = levelMinutes(13);
