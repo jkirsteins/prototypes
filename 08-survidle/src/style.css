@@ -257,6 +257,9 @@ small, .dim { color: var(--dim); }
 .bar.water .fill { background: var(--water); }
 .bar.fire .fill { background: var(--fire); }
 .bar.task .fill { background: #3c8f4a; transition: none; }
+/* The running row's own copy of the task bar: a thin line under the row's label. */
+.bar.task.row { height: 4px; margin: 3px 0 1px; }
+.opt.live button.act { border-left: 2px solid var(--accent); }
 .clockrow .hurrying { color: var(--accent); }
 .bar.dur { height: 8px; margin: 2px 0 6px; }
 .bar.dur .fill { background: #6a7a8f; }
@@ -734,6 +737,10 @@ input[data-do="filter"] {
 #task .step, #orders .step { color: var(--dim); margin: 4px 0; }
 .care-eta:not(:empty) { display: block; color: var(--dim); font-size: 11px; margin-top: 2px; }
 
+/* A double tap on a control is two clicks, not a zoom: manipulation drops
+   the browser's double-tap zoom on these and keeps pinch zoom everywhere,
+   the map included, which is why it is not on the body. */
+button, [data-act], .tab { touch-action: manipulation; }
 button.act, span.act {
   display: block; width: 100%;
   text-align: left;
@@ -844,6 +851,7 @@ button.act small, span.act small { display: block; color: var(--dim); }
   white-space: nowrap;
 }
 #orders .order.once .kind { color: var(--accent); border-color: var(--accent); }
+#orders .order .kind.count { font-weight: 700; }
 #orders .order .kind.blocked { color: var(--bad); border-color: var(--bad); }
 /* A row the list passed over: the loud one of the three, since it is the
    one the player asked for and is not getting. The reason under it carries

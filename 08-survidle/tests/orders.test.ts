@@ -4,13 +4,13 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { bodyRowOf, campRowOf, isCareRow } from "../src/sim/bodyorder";
 import { calendar, START_DOY } from "../src/sim/calendar";
-import { deliveryPending, resolveCell, startIntent, type IntentRequest } from "../src/sim/intent";
+import { deliveryPending, nearestCell, startIntent, type IntentRequest } from "../src/sim/intent";
 import { normalizeOrder } from "../src/sim/ladder";
 import { mapRegion } from "../src/sim/mapped";
 import { seeFrom } from "../src/sim/sight";
 import { newGame } from "../src/sim/newgame";
 import { body } from "../src/sim/person";
-import { cellOf, placeAt, placeAtSpot, rockCell } from "../src/sim/position";
+import { cellOf, forestCell, placeAt, placeAtSpot, rockCell } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { catchUp, readSave, serialize } from "../src/sim/save";
 import { beginTask, startTask, stopTask } from "../src/sim/tasks";
@@ -197,6 +197,14 @@ describe("when an order is met", () => {
     expect(orderMet(state, world, cal, once, false)).toBe(false);
     once.done = 1;
     expect(orderMet(state, world, cal, once, false)).toBe(true);
+    // The same click again is the same row, counted up, and met at its count.
+    const twice = addOrder(state, world, { task: "deadwood", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    expect(addOrder(state, world, { task: "deadwood", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job")).toBe(twice);
+    expect(twice.req.until).toEqual({ kind: "once", n: 2 });
+    twice.done = 1;
+    expect(orderMet(state, world, cal, twice, false)).toBe(false);
+    twice.done = 2;
+    expect(orderMet(state, world, cal, twice, false)).toBe(true);
     const times = addOrder(state, world, { task: "sticks", until: { kind: "times", n: 3 }, deliver: "leave", where: "nearest" }, "job");
     times.done = 2;
     expect(orderMet(state, world, cal, times, false)).toBe(false);
@@ -321,7 +329,7 @@ describe("the scheduler", () => {
     // Before anything is live every row is asked, so the first minute still
     // reads cabin's own reason and logs it, once, against what ran instead.
     expect(cabin.skipped).toMatch(/^short .* at camp$/);
-    const line = `log cabin: ${cabin.skipped}. Split a log, forever instead.`;
+    const line = `Build log cabin: ${cabin.skipped}. Split a log, forever instead.`;
     expect(state.log.filter((e) => e.text === line).length).toBe(1);
     // With the grind live and mid-chunk, runOrders asks the list nothing
     // more - judging costs nothing there is anything to act on the answer
@@ -728,7 +736,7 @@ describe("the away report", () => {
     expect(away.orders.map((o) => o.label)).toEqual([
       orderSentence(state, world, calendar(state.minute), keep),
       "Gather sticks",
-      "log cabin",
+      "Build log cabin",
       orderSentence(state, world, calendar(state.minute), grind),
     ]);
     const [k, j, c, t] = away.orders;
@@ -1346,11 +1354,16 @@ describe("pre-emption", () => {
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     const away = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
-    const { cell } = resolveCell(state, world, cal, "sticks", undefined, "nearest");
     // The shape deliveryPending reads - a live order away from camp with sticks
     // already in the pack - built directly rather than run out from a click and
     // hoped into the walk home, which a fast gather on a lucky cell can finish
     // inside the same minute it started and never leave this state to catch.
+    // Named off camp on purpose: seed 3 lands the survivor on the camp cell
+    // and the camp stands in pine, so the "nearest" sticks ground is camp
+    // itself, where a delivery is an unload on the spot that ends the intent
+    // inside this same minute and leaves nothing for the higher row to wait on.
+    const cell = nearestCell(state, world, (c) => c !== st.campCell && forestCell(world, c));
+    expect(cell).not.toBe(st.campCell);
     placeAt(state, world, cell);
     addItem(state.player.pack, "stick", 1);
     state.intent = {

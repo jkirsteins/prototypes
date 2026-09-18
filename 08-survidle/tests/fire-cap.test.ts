@@ -54,10 +54,12 @@ describe("one fire to a cell", () => {
     const second = addOrder(state, world, { task: "build", arg: "firePit", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     expect(second).toBe(first);
     expect(ordersHere(state, world).filter((o) => isWorkOrder(o) && o.req.task === "build")).toHaveLength(1);
-    // A vedbod is a count, so a second one is a second order.
+    // A vedbod is a count, so a second one is a second vedbod: the same
+    // click again, which is the one row counted up.
+    const shed = addOrder(state, world, { task: "build", arg: "vedbod", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     addOrder(state, world, { task: "build", arg: "vedbod", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
-    addOrder(state, world, { task: "build", arg: "vedbod", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
-    expect(ordersHere(state, world).filter((o) => isWorkOrder(o) && o.req.arg === "vedbod")).toHaveLength(2);
+    expect(ordersHere(state, world).filter((o) => isWorkOrder(o) && o.req.arg === "vedbod")).toHaveLength(1);
+    expect(shed.req.until).toEqual({ kind: "once", n: 2 });
   });
 
   it("stops drawing the build row once the pit stands", () => {

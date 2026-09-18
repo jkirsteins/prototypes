@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { SAVE_VERSION, WORLD_VERSION } from "../src/sim/world-version";
+import { SAVE_VERSION } from "../src/sim/save-version";
 import { itemLabel } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
@@ -7,6 +7,7 @@ import { yieldItem } from "../src/sim/intent";
 import { addItem, hasTool, pile, qty, takeUp, tool, wearTool } from "../src/sim/inventory";
 import { ITEM_KG, RECIPES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
+import { discoverAvailableOpportunities } from "../src/sim/opportunities";
 import { addOrder, keepTarget } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
@@ -86,6 +87,11 @@ describe("tools as items", () => {
     addItem(p.pack, "stone", 2);
     addItem(p.pack, "stick", 1);
     addItem(p.pack, "cordage", 1);
+    // The knife is no day-one capability: the stone in hand opens it, and
+    // only a discovered leaf earns credit. The game refreshes at the next
+    // look or Do click; a fixture that adds the stone by hand refreshes here.
+    discoverAvailableOpportunities(state, world, cal, false);
+    expect(state.opportunities.discoveredAt["make:knife"]).toBeDefined();
     expect(beginTask(state, world, cal, "craft", "knife")).toBe(true);
     advance(state, world, 60);
     expect(hasTool(p, "knife")).toBe(true);
@@ -107,11 +113,10 @@ describe("tools as items", () => {
     expect(itemLabel("fishingSpear", 2)).toBe("2 fishing spears");
   });
 
-  it("saves carry the current envelope, and one from another world is refused", () => {
+  it("saves carry the current envelope, and one from another version is not read", () => {
     const { state } = newGame(17);
     const raw = JSON.parse(serialize(state));
     expect(raw.version).toBe(SAVE_VERSION);
-    expect(raw.worldVersion).toBe(WORLD_VERSION);
     expect(readSave(JSON.stringify(raw))).not.toBeNull();
     raw.version = SAVE_VERSION - 1;
     expect(readSave(JSON.stringify(raw))).toBeNull();

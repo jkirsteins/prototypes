@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
+import { orderByHand } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import * as position from "../src/sim/position";
@@ -33,6 +35,23 @@ describe("the purposes and the filter", () => {
     noteHuntSign(state, cellOf(state, world), "hare");
     expect(doHtml(state, world, cal, ui)).toContain("Hunt mountain hare");
   });
+  it("the row whose work is under way carries the task bar, as markup only", () => {
+    const { state, world } = newGame(3);
+    const cal = calendar(state.minute, state.startDoy);
+    const idle = paneHtml(state, world, cal, "sticks");
+    expect(idle).not.toContain('data-bar="task"');
+    expect(idle).not.toContain('class="opt live');
+    orderByHand(state, world, cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    expect(state.intent?.task).toBe("sticks");
+    const html = paneHtml(state, world, cal, "sticks");
+    const row = html.slice(html.indexOf('data-opt="intent:sticks:"'), html.indexOf("</button>", html.indexOf('data-opt="intent:sticks:"')));
+    expect(row).toContain('<div class="bar task row"><div class="fill" data-bar="task"></div></div>');
+    expect(row).not.toMatch(/width/);
+    expect(html).toContain('class="opt live');
+    // One live row: the one the work is under.
+    expect(html.split('class="opt live')).toHaveLength(2);
+  });
+
   it("shows an initial walk separately from work duration in the selected format", () => {
     const { state, world } = newGame(3);
     placeAtSpot(state, world, state.player.region, "heath");

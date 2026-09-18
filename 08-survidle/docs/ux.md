@@ -166,10 +166,15 @@ rows carry a compact `blocked` label; their position already shows what is
 ahead of them.
 
 The queue contains every same-region action the survivor will perform.
-When an action needs another cell, it places an exact once-only Walk
-immediately before itself. A direct map click creates the same kind of Walk
-at the top. The central strip shows the active row's current task and its
-only progress bar.
+A direct map click is the only thing that puts a Walk on it: one row, at
+the top, that stays until the player strikes it off. Walking that another
+row needs - to the work, home with a load, to water because the body
+asked - is a step of that row, shown on the central strip under the row's
+own name, and never a row of its own: an order nobody gave has no place
+on the list, and a walk the body started is not the player's to strike
+off. A save round-trip adds no such row either
+(`tests/walkorders.test.ts` holds both). The central strip shows the
+active row's current task and its only progress bar.
 
 ## Event logs put the newest entry first
 

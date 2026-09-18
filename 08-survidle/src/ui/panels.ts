@@ -27,6 +27,7 @@ import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
 import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation, walkManner } from "../sim/player";
 import { campCellOf, cellOf, describeWhere, kmBetween, SPOT_WORDS } from "../sim/position";
+import { isWalkOrder } from "../sim/walkorders";
 import { survivorRoute } from "../sim/routing";
 import { current, worldDate } from "../sim/record";
 import { campSite, regionState } from "../sim/regionstate";
@@ -715,9 +716,13 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
 
   // One line per thing that stands or is planned, never a comma-run: a
   // camp of six structures and two plans was one sentence nobody could scan.
+  // With no camp there is nothing for "nothing built" to be the state of:
+  // snares and a trap are the region's and still list, an empty list draws
+  // no Standing group at all.
+  const noCamp = st.campCell === null;
   const stands = built.length || planned.length
     ? `<ul class="camp-list">${[...built, ...planned].map((s) => `<li>${s}</li>`).join("")}</ul>`
-    : `<div class="camp-row dim">nothing built</div>`;
+    : noCamp ? "" : `<div class="camp-row dim">nothing built</div>`;
   // What lives here is a region's reading, not a cell's, so the map's hover
   // has no place for it and the camp box does: the survivor knows what is
   // about without walking anywhere to look.
@@ -727,7 +732,24 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
   // lives about. Every container carries a data-camp key so a redraw
   // morphs the group in place rather than by position.
   const group = (key: string, title: string, body: string) => (body ? `<section class="camp-sec" data-camp="${key}"><h3>${title}</h3>${body}</section>` : "");
-  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${group("fire", "Fire", fire + fieldFire + elsewhere)}${group("stands", "Standing", stands + yard)}${group("stores", "Stores", rack + wood + water + heap + limits)}${group("about", "About", about)}`;
+  // No camp is a state the tab says outright, not an empty camp. A first
+  // survivor makes camp before anything else; an heir lands in a region
+  // with no camp of its own, the old camp a region away. Either way a page
+  // headed "Camp" with nothing under it read as a camp with nothing in it,
+  // and the survivor kept giving it camp-addressed work. The old camps are
+  // named because their fires are the rows below, and the way to a camp of
+  // this region is named because it is one row in one subtab.
+  const oldCamps = Object.entries(state.regions)
+    .filter(([rid, other]) => Number(rid) !== id && other.campCell !== null)
+    .map(([rid]) => esc(regionAt(world, Number(rid)).name));
+  const none = noCamp
+    ? `<section class="camp-sec" data-camp="none"><div class="camp-row"><b>No camp in ${esc(r.name)}.</b> No fire is kept here, nothing is stored here, and there is no roof to sleep under.</div>`
+      + `<div class="camp-row">Make camp here, under Do &gt; Build &gt; Site, to start one.</div>`
+      + (oldCamps.length ? `<div class="camp-row dim">The camp from before stands at ${oldCamps.join(" and ")}${elsewhere ? "; its fire is below" : ""}.</div>` : "")
+      + `</section>`
+    : "";
+  const heading = noCamp ? `<h2>No camp <span class="r">${esc(r.name)}</span></h2>` : `<h2>Camp <span class="r">${esc(r.name)}</span></h2>`;
+  return `${heading}${none}${group("fire", "Fire", fire + fieldFire + elsewhere)}${group("stands", "Standing", stands + yard)}${group("stores", "Stores", rack + wood + water + heap + limits)}${group("about", "About", about)}`;
 }
 
 
@@ -739,13 +761,21 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
   // One judgement for the whole list: waitingLine reads it per row, and running
   // it per row would judge a ten-row list ten times a frame.
   const judged = judgeOrders(state, world, cal);
-  // A pin is the only thing that stops the list, so the one moment the list
-  // is stopped is the one moment it owes the player a banner: the row, why it
-  // cannot run, and the one click that lets the rest of the list go on.
+  // Two things stop the list, and the moment it is stopped is the moment it
+  // owes the player a banner: the row, why, and the one click that lets the
+  // rest go on. A pin holds the list at a row that cannot run. A walk that
+  // stays holds it at its own cell - nothing under it runs until its x -
+  // and it is drawn the same way, since it is the same stop.
+  const staying = judged.work && isWalkOrder(judged.work) && judged.work.req.until.kind === "dismissed"
+    && typeof judged.work.req.where === "object" && judged.work.req.where.cell === cellOf(state, world)
+    ? judged.work : null;
+  const stopper = judged.blockedBy ?? staying;
   const held = judged.blockedBy
     ? `<div class="held bad">Queue stopped at <b>${esc(orderSentence(state, world, cal, judged.blockedBy))}</b>${judged.blockedBy.skipped ? ` - ${esc(judged.blockedBy.skipped)}` : ""}</div>`
-    : "";
-  const blockedAt = judged.blockedBy ? orders.indexOf(judged.blockedBy) : -1;
+    : staying
+      ? `<div class="held bad">Queue stopped at <b>${esc(orderSentence(state, world, cal, staying))}</b> - here; its x lets the rest go on</div>`
+      : "";
+  const blockedAt = stopper ? orders.indexOf(stopper) : -1;
   const rows = orders.map((o, i) => {
     const care = isCareRow(o);
     const blocked = blockedAt >= 0 && i >= blockedAt;
@@ -755,9 +785,11 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     // once order is done and gone, a standing one is kept - and the list
     // treats them differently enough that which is which has to be visible:
     // a once order works through the night and cuts into work in hand, a
-    // standing one waits for the light and for the chunk to end.
+    // standing one waits for the light and for the chunk to end. A click
+    // repeated is the once row with its count.
     const once = !care && (o.req.until.kind === "once" || o.req.until.kind === "dismissed");
-    const kind = care ? "" : `<span class="kind">${o.req.until.kind === "dismissed" ? "until struck off" : once ? "once" : "standing"}</span>`;
+    const times = !care && o.req.until.kind === "once" && (o.req.until.n ?? 1) > 1 ? o.req.until.n! : 0;
+    const kind = care ? "" : `<span class="kind">${o.req.until.kind === "dismissed" ? "stays" : once ? "once" : "standing"}</span>${times ? `<span class="kind count">×${times}</span>` : ""}`;
     const blockedTag = blocked ? `<span class="kind blocked">blocked</span>` : "";
     // A row the list walked past. The work was asked for and is not
     // happening, and without a word for it the row reads as broken rather
@@ -1165,14 +1197,6 @@ export function landingHtml(state: GameState, world: World): string {
  * is the new-world action. Its own text already asks the question reset-world's
  * generic confirm() would ask again, so this button skips that dialog.
  */
-export function oldWorldHtml(): string {
-  return `<div class="box">
-<h1>Old save</h1>
-<p>This saved world used the old 300 m terrain model. Start a new world to use the 50 m simulation.</p>
-<button class="act" data-act="old-world-new">Start a new world</button>
-</div>`;
-}
-
 export function manualHtml(): string {
   const sections = MANUAL_SECTIONS.map((s) => `<h2>${esc(s.title)}</h2>${s.lines.map((l) => `<p>${esc(l)}</p>`).join("")}`).join("");
   const links = MANUAL_LINKS.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join("");

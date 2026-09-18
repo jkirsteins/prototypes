@@ -120,6 +120,24 @@ export function addOrder(state: GameState, world: World, req: IntentRequest, kin
     if (pending) return pending;
   }
   const n = normalizeOrder(req, kind);
+  // The same click again, while the first still waits, is one row counted
+  // up and not a second row: two "Gather sticks" one under the other read
+  // as a mistake, and the count says what the two clicks meant. It is still
+  // the click's own row - a once, ranked and started as a click is - and
+  // only a once merges: a standing order clicked twice is two policies.
+  if (n.req.until.kind === "once") {
+    const same = st.orders.find((o): o is WorkOrder => isWorkOrder(o) && o.req.until.kind === "once"
+      && o.req.task === n.req.task && (o.req.arg ?? "") === (n.req.arg ?? "") && o.req.deliver === n.req.deliver
+      && JSON.stringify(o.req.where) === JSON.stringify(n.req.where));
+    if (same) {
+      same.req = { ...same.req, until: { kind: "once", n: (same.req.until.kind === "once" ? same.req.until.n ?? 1 : 1) + 1 } };
+      if (rank !== undefined) {
+        st.orders = st.orders.filter((o) => o !== same);
+        st.orders.splice(placeOf(st.orders, rank), 0, same);
+      }
+      return same;
+    }
+  }
   // A build the player has asked for is a thing the camp is waiting on, not
   // a row in a list. Writing the site entry at placement rather than at the
   // first minute of work is what lets the camp sheet say so, and it is what
@@ -450,7 +468,7 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
   }
   const u = o.req.until;
   switch (u.kind) {
-    case "once": return o.done >= 1;
+    case "once": return o.done >= (u.n ?? 1);
     case "times": return o.done >= u.n;
     case "campHas": return qty(pileAt(state, st.campCell), yieldItem(o.req.task, o.req.arg)!) >= u.qty - 1e-9;
     case "forever": return false;
@@ -477,7 +495,7 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
   else if (u.kind === "campHas") parts.push(`until camp has ${itemLabel(yieldItem(o.req.task, o.req.arg)!, u.qty)}`);
   else if (u.kind === "forever") parts.push("forever");
   else if (u.kind === "daily") parts.push(`${u.n} a day`);
-  else if (u.kind === "dismissed") parts.push("and stay until struck off");
+  else if (u.kind === "dismissed") parts.push("and stay");
   // The conditions read after the target, in the order they bite: what the target
   // is due by and whether it is held or spent after, the line it restarts at, the
   // window it runs in, the stock it waits on.

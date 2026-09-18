@@ -64,8 +64,9 @@ a different presentation contract.
 
 **Raised** 2026-09-09, during the post-implementation scale audit. **Partly
 settled** by the authoritative-close-zoom migration: the grid is the 50 m patch
-lattice now, saves from the 300 m world are refused rather than reinterpreted,
-and `CELL_KM` is gone in favour of `PATCH_KM`. The two bullets below about
+lattice now, saves from the 300 m world were refused rather than reinterpreted
+(and that gate is gone since, nobody having such a save), and `CELL_KM` is
+gone in favour of `PATCH_KM`. The two bullets below about
 old-save migration and cell-size literals are closed by that; the rest still
 stand as what any further change of scale would need.
 
@@ -83,8 +84,8 @@ still has several prerequisites beyond predator reach:
   claiming that a changed simulation grid has been exercised end to end.
 - Closed. Saves written before exact positions stored only a cell, and their
   migration read the world geometry of the day, so a grid change would have
-  reinterpreted an old cell under the new one. The saved world carries its
-  version now and a save from the 300 m world is refused rather than read.
+  reinterpreted an old cell under the new one. A save carries its schema
+  version and one of another version is not read.
 - Animal visibility and occlusion still use the containing terrain cell even
   though disturbance geometry is exact. Define how exact sight rays sample
   cover on a finer grid and test an animal crossing into and out of cover.
@@ -2073,8 +2074,7 @@ Simple cases addressed in this follow-up:
 - Counted yard clearing gets its missing Building delegation gate. A real order
   now refuses below the rung and succeeds at it instead of throwing.
 - Save round-trip expectations preserve Maps/typed arrays through an independent
-  structured snapshot; old-world saves assert the explicit refusal result rather
-  than expecting null. These repair obsolete fixtures, not save behavior.
+  structured snapshot. These repair obsolete fixtures, not save behavior.
 - Fire fixtures clear leftover laid fuel before testing carried-wood consumption.
   The drying test checks both 2 kg/h drying and 1 kg/h exposed-stack rewetting,
   including dry wood and wetted accounting, rather than mistaking the net rate

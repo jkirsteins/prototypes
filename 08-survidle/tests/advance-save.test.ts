@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { SAVE_VERSION, WORLD_VERSION } from "../src/sim/world-version";
+import { SAVE_VERSION } from "../src/sim/save-version";
 import { calendar } from "../src/sim/calendar";
 import { alertness, SLEEP_ONSET } from "../src/sim/sleep";
 import { bodyRowOf, isCampRow, isBodyRow } from "../src/sim/bodyorder";
@@ -285,15 +285,10 @@ describe("save", () => {
     expect(file.state).toEqual(uninterrupted.state);
   });
 
-  it("refuses a save written before the fine lattice, and fills the carry into one that is current", () => {
-    // A save from the old cell world has no reading at all here: its cell ids
-    // are not patch ids, so it is turned away rather than migrated.
+  it("reads nothing from a save of another version, and fills the carry into one that is current", () => {
     const legacy = JSON.parse(serialize(newGame(9).state));
     legacy.version = SAVE_VERSION - 1;
-    expect(deserialize(JSON.stringify(legacy))).toMatchObject({ refused: expect.any(String) });
-    const stale = JSON.parse(serialize(newGame(9).state));
-    stale.worldVersion = WORLD_VERSION - 1;
-    expect(deserialize(JSON.stringify(stale))).toMatchObject({ refused: expect.any(String) });
+    expect(deserialize(JSON.stringify(legacy))).toBeNull();
     const current = JSON.parse(serialize(newGame(9).state));
     delete current.state.advanceCarry;
     expect(readSave(JSON.stringify(current))!.state.advanceCarry).toBe(0);
@@ -587,7 +582,6 @@ describe("the world save", () => {
   it("writes the current envelope and wraps a lone survivor as the first of the world", () => {
     const { state } = newGame(8);
     expect(JSON.parse(serialize(state)).version).toBe(SAVE_VERSION);
-    expect(JSON.parse(serialize(state)).worldVersion).toBe(WORLD_VERSION);
     const v4 = JSON.parse(serialize(state)) as { version: number; savedAt: number; state: Record<string, unknown> };
     delete v4.state.advanceCarry;
     delete v4.state.survivors;

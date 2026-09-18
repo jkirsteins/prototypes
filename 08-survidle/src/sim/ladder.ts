@@ -123,14 +123,17 @@ export function giveOrder(state: GameState, world: World, req: IntentRequest, ki
  * once order is the player's own choice in the moment: it goes to the top
  * of the whole list, above both care rows, and starts now, whatever
  * the body says and whatever the runner was doing, which is set aside with
- * its minutes kept. A second click displaces the first, because that is
- * what clicking a thing means.
+ * its minutes kept. A second click of something else displaces the first,
+ * because that is what clicking a thing means; the same thing clicked again
+ * counts its row up instead (addOrder), and a row already running is left
+ * running rather than started over.
  */
 export function orderByHand(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, kind: OrderKind): WorkOrder {
   // Refresh at the Do-list interaction too, so a loaded capability cannot remain hidden until another skill or map change.
   discoverAvailableOpportunities(state, world, cal);
   if (normalizeOrder(req, kind).req.until.kind !== "once") return giveOrder(state, world, req, kind);
   const o = giveOrder(state, world, req, kind, "top");
+  if (state.intent?.orderId === o.id) return o;
   // A click that starts nothing says so. startIntent refuses when the check at
   // the target cell fails, and its false was thrown away here: the order was
   // left on the list reading "waiting" with nothing anywhere saying the click

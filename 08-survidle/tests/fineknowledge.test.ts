@@ -83,13 +83,4 @@ describe("knowledge in a save", () => {
     expect(knowledgeCounts(structuredClone(state).knowledge)).toEqual(before);
   });
 
-  it("opens a save whose knowledge was a property per cell", () => {
-    const { state } = newGame(1);
-    const legacy = JSON.parse(serialize(state)) as { state: Record<string, unknown> };
-    legacy.state.knowledge = undefined;
-    legacy.state.mapped = { 5: 1, 6: 3 };
-    const loaded = readSave(JSON.stringify(legacy))!;
-    expect(knowledgeAt(loaded.state.knowledge, 5)).toBe("seen");
-    expect(knowledgeAt(loaded.state.knowledge, 6)).toBe("inherited");
-  });
 });

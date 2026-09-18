@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { newGame } from "../src/sim/newgame";
-import { deserialize, loadGame, readSave, SAVE_KEY, serialize } from "../src/sim/save";
-import { canPersist, inspectSave, SAVE_VERSION, WORLD_VERSION } from "../src/sim/world-version";
+import { loadGame, readSave, SAVE_KEY, serialize } from "../src/sim/save";
+import { inspectSave, SAVE_VERSION } from "../src/sim/save-version";
 
 function memoryStorage(): Storage {
   const m = new Map<string, string>();
@@ -15,21 +15,17 @@ function memoryStorage(): Storage {
   };
 }
 
-/** The refusal sentence a save from another world comes back with, or "" when it was read. */
-function refusal(text: string): string {
-  const file = deserialize(text);
-  return file && "refused" in file ? file.refused : "";
-}
-
-describe("the fine world's version boundary", () => {
-  it("rejects a version 9 world before interpreting old cell ids", () => {
-    const old = JSON.stringify({ version: 9, savedAt: 1, state: { seed: 21 } });
-    expect(inspectSave(old)).toBe("old-world");
+describe("the save version", () => {
+  it("calls another schema version stale, and reads nothing from it", () => {
+    const old = JSON.stringify({ version: SAVE_VERSION - 1, savedAt: 1, state: { seed: 21 } });
+    expect(inspectSave(old)).toBe("stale");
     expect(readSave(old)).toBeNull();
-    expect(refusal(old)).toMatch(/world/i);
+    const newer = JSON.stringify({ version: SAVE_VERSION + 1, savedAt: 1, state: { seed: 21 } });
+    expect(inspectSave(newer)).toBe("stale");
+    expect(readSave(newer)).toBeNull();
   });
 
-  it("calls unparsable text invalid, not old-world", () => {
+  it("calls unparsable text invalid, not stale", () => {
     expect(inspectSave("not json")).toBe("invalid");
     expect(inspectSave(JSON.stringify({ savedAt: 1, state: {} }))).toBe("invalid");
     expect(inspectSave(JSON.stringify({ version: 9, state: {} }))).toBe("invalid");
@@ -49,30 +45,17 @@ describe("the fine world's version boundary", () => {
     expect(back?.state.knowledge).toEqual(state.knowledge);
   });
 
-  it("writes both the schema and world version into a current save", () => {
+  it("writes the schema version and nothing else into the envelope", () => {
     const { state } = newGame(21);
-    const envelope = JSON.parse(serialize(state, 1000)) as { version: number; worldVersion: number };
+    const envelope = JSON.parse(serialize(state, 1000)) as Record<string, unknown>;
     expect(envelope.version).toBe(SAVE_VERSION);
-    expect(envelope.worldVersion).toBe(WORLD_VERSION);
+    expect(Object.keys(envelope).sort()).toEqual(["savedAt", "state", "version"]);
   });
 
-  it("calls a current schema version with a stale world version old-world", () => {
-    const stale = JSON.stringify({ version: SAVE_VERSION, worldVersion: WORLD_VERSION - 1, savedAt: 1, state: { seed: 21 } });
-    expect(inspectSave(stale)).toBe("old-world");
-    expect(readSave(stale)).toBeNull();
-  });
-
-  it("loads nothing from storage holding a save of another world, and tells the caller why", () => {
+  it("loads nothing from storage holding a save of another version", () => {
     const { state } = newGame(21);
     const storage = memoryStorage();
-    storage.setItem(SAVE_KEY, JSON.stringify({ version: 9, savedAt: 1, state }));
-    let reason = "";
-    expect(loadGame(storage, (r) => { reason = r; })).toBeNull();
-    expect(reason).toMatch(/world/i);
-  });
-
-  it("never lets a throwaway world persist over the save an old-world message is about", () => {
-    expect(canPersist(true)).toBe(false);
-    expect(canPersist(false)).toBe(true);
+    storage.setItem(SAVE_KEY, JSON.stringify({ version: SAVE_VERSION - 1, savedAt: 1, state }));
+    expect(loadGame(storage)).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, judgeOrders, ordersHere, removeOrderByHand } from "../src/sim/orders";
 import { cellOf, placeAtSpot } from "../src/sim/position";
+import { deserialize, type SaveFile, serialize } from "../src/sim/save";
 import { RESTED_AT } from "../src/sim/sleep";
 import { insertWalkAtTop, isWalkOrder } from "../src/sim/walkorders";
 import { siteCamp } from "./siting-helpers";
@@ -66,6 +67,43 @@ describe("visible walk orders", () => {
     advance(state, world, 1);
     expect(ordersHere(state, world).some(isWalkOrder)).toBe(false);
     expect(state.task?.id).toBe("walk");
+  });
+
+  it("a walk another row started gets no row of its own through a save either", () => {
+    // The order's own leg, saved mid-way, comes back as the order's leg.
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    mapRegion(state, world, state.player.region);
+    placeAtSpot(state, world, state.player.region, "heath");
+    addOrder(state, world, { task: "deadwood", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    advance(state, world, 1);
+    expect(state.task?.id).toBe("walk");
+    const owned = (deserialize(serialize(state)) as SaveFile).state;
+    expect(ordersHere(owned, world).some(isWalkOrder)).toBe(false);
+    expect(owned.task?.id).toBe("walk");
+    // The same walk with nothing behind it any more - a care row's claim
+    // ends the minute its want is answered, and the feet are still moving -
+    // finishes as what it was. The load used to turn it into a Walk row,
+    // an order nobody gave, sitting on the list until struck off.
+    state.intent = null;
+    const ownerless = (deserialize(serialize(state)) as SaveFile).state;
+    expect(ordersHere(ownerless, world).some(isWalkOrder)).toBe(false);
+    expect(ownerless.intent).toBeNull();
+    expect(ownerless.task?.id).toBe("walk");
+    expect(ownerless.route?.target).toBe(state.route?.target);
+  });
+
+  it("a map click's row survives a save wherever it sits on the list", () => {
+    const { state, world } = newGame(3);
+    mapRegion(state, world, state.player.region);
+    const row = insertWalkAtTop(state, world, cellOf(state, world) + 1);
+    const st = regionState(state, world, state.player.region);
+    // Dragged under the care rows: still the click's own row, still kept.
+    st.orders = [...st.orders.filter((o) => o.id !== row.id), row];
+    const back = (deserialize(serialize(state)) as SaveFile).state;
+    const kept = ordersHere(back, world).filter(isWalkOrder);
+    expect(kept.map((o) => o.id)).toEqual([row.id]);
+    expect(kept[0].req.until).toEqual({ kind: "dismissed" });
   });
 
   it("holds a collapsed explicit walk until recovery instead of retrying it after every sleep chunk", () => {

@@ -59,7 +59,7 @@ function stateLine(view: SessionView | null): string {
     case "revoked": return "Another device took it over.";
     case "unreachable": return "The store cannot be reached.";
     case "outdated": return "It was saved by a newer game.";
-    case "older": return "The save in the store cannot be loaded by this build; start a new world.";
+    case "older": return "The save in the store is from another build of the game; start a new world.";
     default: return "";
   }
 }
@@ -90,7 +90,7 @@ export function syncBannerHtml(view: SessionView | null, now: number): string {
     case "outdated":
       return `<span class="bad">This world was saved by a newer game. Update to run it.</span> ${b("sync-refresh", "refresh")}`;
     case "older":
-      return `<span class="bad">The world in the store was saved by an older map and cannot be loaded here.</span> <span class="dim">Settings offers a new world.</span>`;
+      return `<span class="bad">The world in the store was saved by another build and cannot be loaded here.</span> <span class="dim">Settings offers a new world.</span>`;
   }
 }
 

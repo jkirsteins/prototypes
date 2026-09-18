@@ -5,7 +5,7 @@ import { derived, grades, medianPerson, QUIRKS, quirkFear, quirkLine, rollCandid
 import { BASE_KCAL_PER_HOUR, COMFORT_C } from "../src/sim/player";
 import { readSave, serialize } from "../src/sim/save";
 import type { Person } from "../src/sim/types";
-import { SAVE_VERSION } from "../src/sim/world-version";
+import { SAVE_VERSION } from "../src/sim/save-version";
 import { PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../src/units";
 import { siteCamp } from "./siting-helpers";
 

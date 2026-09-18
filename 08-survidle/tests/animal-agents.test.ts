@@ -1,5 +1,5 @@
 import { encodeKnowledge, setKnowledge } from "../src/sim/fineknowledge";
-import { SAVE_VERSION } from "../src/sim/world-version";
+import { SAVE_VERSION } from "../src/sim/save-version";
 import { afterEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { activateWildlife, CARRY_ACROSS_BORDER_M, MAX_CARRIED_SUBJECTS, claimHuntableAnimal, dailyWildlife, emptyWildlife, evaluateWildlifeDisturbance, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";

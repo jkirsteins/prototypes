@@ -278,7 +278,8 @@ export type FireKeep = "burning" | "out";
 
 /** When an intent is finished with. */
 export type Until =
-  | { kind: "once" }
+  /** A click. Clicked again while it waits, the same row counts up: n is how many, absent for one. */
+  | { kind: "once"; n?: number }
   | { kind: "times"; n: number }
   | { kind: "campHas"; item: ItemId; qty: number }
   | { kind: "forever" }
@@ -290,7 +291,7 @@ export type Where = "nearest" | SpotId | { cell: number };
 
 /** The row's chosen kind, before the yield item is filled in. A daily count is cleared at the day roll and never drops off. */
 export type UntilChoice =
-  | { kind: "once" } | { kind: "times"; n: number } | { kind: "campHas"; qty: number } | { kind: "forever" }
+  | { kind: "once"; n?: number } | { kind: "times"; n: number } | { kind: "campHas"; qty: number } | { kind: "forever" }
   | { kind: "daily"; n: number }
   /** A map click's walk: never met, struck off by the player. The Do panel never offers it. */
   | { kind: "dismissed" };

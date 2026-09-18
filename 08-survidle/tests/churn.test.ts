@@ -21,10 +21,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
+import { cellOf } from "../src/sim/position";
 import { startTask } from "../src/sim/tasks";
 import { Rng } from "../src/rng";
 import { doHtml } from "../src/ui/dopanel";
-import { levelAt, mapKey, mapTargetAtPoint } from "../src/ui/map";
+import { levelAt, mapKey, mapTargetAtPoint, viewOrigin } from "../src/ui/map";
 import { board } from "./board";
 import { tipHtml, tipKey } from "../src/ui/tip";
 import { campHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, logHtml, skillsHtml, statsHtml, taskHtml, travelHtml, weatherHtml, weatherKey } from "../src/ui/panels";
@@ -274,13 +275,23 @@ describe("sweeping the pointer does not redraw the map", () => {
     const ui = newUiState();
     const cal = calendar(state.minute, state.startDoy);
     const l = levelAt(ui.zoom);
-    // Two hundred moves along one row of glyphs, a pixel at a time.
+    // Two hundred moves along one row of glyphs, a pixel at a time. The row
+    // is the survivor's own and the sweep is centred on them: at the default
+    // 300 m rung a glyph names a patch only through what the survivor knows,
+    // and a fresh landing knows the few glyphs around it and nothing at the
+    // board's corners, so a sweep there would cross no cell at all.
+    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+    const here = cellOf(state, world);
+    const gx = Math.floor((here % world.w - x0) / l.finePerGlyph);
+    const gy = Math.floor((Math.floor(here / world.w) - y0) / l.finePerGlyph);
+    const startX = Math.round((gx + 0.5) * l.px) - 100;
+    const y = (gy + 0.5) * l.line;
     let redraws = 0;
     let last = "";
     let cells = 0;
     let lastCell: number | null = null;
-    for (let x = 0; x < 200; x++) {
-      const cell = mapTargetAtPoint(world, state, ui, x, l.line / 2)?.patch ?? null;
+    for (let x = startX; x < startX + 200; x++) {
+      const cell = mapTargetAtPoint(world, state, ui, x, y)?.patch ?? null;
       if (cell === null) continue;
       if (cell !== lastCell) cells++;
       lastCell = cell;

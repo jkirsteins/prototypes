@@ -16,7 +16,6 @@ import { setWildlifeEventSink } from "./sim/wildlife-events";
 import type { WildlifeStartleEvent } from "./sim/wildlife-encounter";
 import { since } from "./sim/epitaph";
 import { createForecaster, noteMonthRow } from "./sim/forecaster";
-import { log } from "./sim/log";
 import { startIntent, type Where } from "./sim/intent";
 import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
@@ -32,7 +31,7 @@ import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, knowLoadedGround, loadGame, readSave, SAVE_KEY, type SaveFile, serialize } from "./sim/save";
 import { recordOpportunityEvent } from "./sim/opportunities";
-import { canPersist, inspectSave, SAVE_VERSION } from "./sim/world-version";
+import { inspectSave, SAVE_VERSION } from "./sim/save-version";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
 import type { FireKeep, GameState, ItemId, OpportunityEvent, OpportunityKey, StockGroupId, TaskId } from "./sim/types";
@@ -99,7 +98,7 @@ import { stockPanelHtml, stocksHtml } from "./ui/stocks";
 import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
-  manualHtml, oldWorldHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
+  manualHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml, weatherKey,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, enqueueWildlifeStartle, heldQuery, newUiState, resetPanels, rowRequest, setPanel, setWhenField, simulationPaused, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
@@ -156,8 +155,6 @@ let sinkMade = beaconConfigured && beaconRec.on;
 let sink: Sink | null = sinkMade ? makeSink() : null;
 const beacon = createBeacon(localStorage, sink, beaconRec);
 let wasDead = false;
-/** Set when boot() finds a save from before the fine lattice; cleared the moment fresh() builds a real world. */
-let oldWorldSave = false;
 
 // Assigned by boot()/fresh() before anything reads it; the assertion is for TS,
 // which cannot see the assignment through the function call.
@@ -167,7 +164,6 @@ let world!: World;
 let startleRestore: (() => void) | null = null;
 let startleStep: (() => void) | null = null;
 function persistGame(): void {
-  if (!canPersist(oldWorldSave)) return;
   if (import.meta.env.DEV && startleRestore) return;
   // With sync on, only the device running the world writes anything. A
   // read-only, revoked or checking device is showing a save that is not
@@ -282,10 +278,9 @@ function syncHolds(): boolean {
  * A new run: the world is solved behind the bar first, so nothing starts on a
  * world that is not there yet.
  *
- * `persist` is false only for the world boot() builds under an old-world
- * message: that world exists so the page has something to render behind the
- * overlay, and saving it here would silently overwrite the very save the
- * message is about, before the player has chosen to discard it.
+ * `persist` is false for a world built to stand behind a sync banner: the
+ * page has to show something, but that world is not the save, and the join
+ * path writes its own copy under the code once the session exists.
  */
 async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0, persist = true): Promise<void> {
   if (solving) return;
@@ -319,13 +314,7 @@ async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: numbe
   ui.confirmCamp = false;
   resetPanels();
   resetForecastAt();
-  // Only a persisted fresh world is a real commit away from old-world: the
-  // one boot() builds to render behind the message (persist: false) must
-  // leave the flag - and the save on disk it is warning about - alone.
-  if (persist) {
-    oldWorldSave = false;
-    persistGame();
-  }
+  if (persist) persistGame();
   awayDial?.refresh();
   tellForecaster?.(world);
   if (startupReady) {
@@ -338,27 +327,15 @@ async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: numbe
 async function boot() {
   ui.panes = loadPanes(localStorage);
   ui.rightPage = loadRightPage(localStorage, phoneLayout() ? "map" : "weather");
-  const savedText = forcedSeed || startDoy !== undefined ? null : localStorage.getItem(SAVE_KEY);
-  if (savedText && inspectSave(savedText) === "old-world") {
-    oldWorldSave = true;
-    await fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy, 0, false);
-    return;
-  }
   if (session && !forcedSeed && startDoy === undefined) {
     // The store decides what this device shows and whether it runs it.
     const local = localSave();
     await applySync(await session.boot(local), local?.text ?? null, false);
     return;
   }
-  let refusal = "";
-  const saved = forcedSeed || startDoy !== undefined ? null : loadGame(localStorage, (reason) => { refusal = reason; });
-  if (saved) {
-    await loadSaved(saved, true);
-  } else {
-    await fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy);
-    // A save this build cannot read is not silently dropped: the new run says why it is new.
-    if (refusal) log(state, refusal);
-  }
+  const saved = forcedSeed || startDoy !== undefined ? null : loadGame(localStorage);
+  if (saved) await loadSaved(saved, true);
+  else await fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy);
 }
 
 /**
@@ -710,11 +687,8 @@ function render(nowMs = performance.now()) {
   if (rates && rates.value !== ui.rateDisplay) rates.value = ui.rateDisplay;
 
   const overlay = document.getElementById("overlay")!;
-  if (!oldWorldSave && !ui.opportunityPresentation) ui.opportunityPresentation = nextOpportunityPresentation(state, ui);
-  if (oldWorldSave) {
-    setPanel("overlay", oldWorldHtml());
-    overlay.hidden = false;
-  } else if (ui.manual) {
+  if (!ui.opportunityPresentation) ui.opportunityPresentation = nextOpportunityPresentation(state, ui);
+  if (ui.manual) {
     setPanel("overlay", manualHtml());
     setHidden(overlay, false);
   } else if (ui.cemetery) {
@@ -1050,15 +1024,6 @@ function onClick(ev: Event) {
       clearSave();
       void fresh();
       ui.settings = false;
-      lastReal = performance.now();
-      render();
-      return;
-    // The old-world message is its own confirmation - it already named the
-    // incompatible save - so this skips reset-world's generic confirm()
-    // rather than asking the same question twice.
-    case "old-world-new":
-      clearSave();
-      fresh();
       lastReal = performance.now();
       render();
       return;

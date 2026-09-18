@@ -12,10 +12,12 @@ import { describe, expect, it } from "vitest";
 import { addItem, pile } from "../src/sim/inventory";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
+import { placeAt, setRegion } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { SEEP_LIFE_DAYS } from "../src/sim/seep";
 import { FOOTPRINT_M2, YARD_START_M2 } from "../src/sim/yard";
 import { campHtml } from "../src/ui/panels";
+import { regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 
 describe("the camp box", () => {
@@ -59,7 +61,52 @@ describe("the camp box", () => {
 
   it("says nothing is built rather than showing an empty line", () => {
     const { state, world } = newGame(21);
-    expect(campHtml(state, world, calendar(state.minute, state.startDoy))).toContain("nothing");
+    siteCamp(state, world);
+    expect(campHtml(state, world, calendar(state.minute, state.startDoy))).toContain("nothing built");
+  });
+
+  it("with no camp, says so outright instead of drawing an empty camp", () => {
+    // A first survivor has not made camp yet. The tab used to head itself
+    // "Camp <region>" over "Standing: nothing built", which reads as a camp
+    // with nothing in it, and camp-addressed work kept being asked of it.
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    expect(regionState(state, world, state.player.region).campCell).toBeNull();
+    const html = campHtml(state, world, cal);
+    expect(html).toContain("No camp in");
+    expect(html).toContain('data-camp="none"');
+    expect(html).toContain("Make camp here");
+    expect(html).toContain("Build &gt; Site");
+    expect(html).not.toContain("nothing built");
+    expect(html).not.toContain("Standing");
+    expect(html).not.toMatch(/<h2>Camp /);
+    // Once camp is made the same tab is the camp's, and the notice is gone.
+    siteCamp(state, world);
+    const made = campHtml(state, world, cal);
+    expect(made).not.toContain("No camp in");
+    expect(made).toMatch(/<h2>Camp /);
+  });
+
+  it("an heir with no camp is told where the camp from before stands, and its fire is still on the tab", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    siteCamp(state, world);
+    const home = state.player.region;
+    const st = regionState(state, world, home);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    // An heir lands a region away from the old camp (tests/sites.test.ts
+    // holds the landing to that); this is that state without the months
+    // the landing simulates: the survivor stood in the next region over,
+    // which has no camp of its own.
+    const next = regionAt(world, home).neighbours.find((n) => n.id !== home)!.id;
+    setRegion(state, world, next);
+    placeAt(state, world, regionAt(world, next).campCell!);
+    expect(regionState(state, world, next).campCell).toBeNull();
+    const html = campHtml(state, world, cal);
+    expect(html).toContain("No camp in");
+    expect(html).toContain(`The camp from before stands at ${regionAt(world, home).name}; its fire is below`);
+    expect(html).toContain(`fire at ${regionAt(world, home).name}`);
+    expect(html).not.toContain("nothing built");
   });
 
   it("says what a producer is limited by, which is why a camp that feeds itself still runs out", () => {
