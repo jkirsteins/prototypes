@@ -332,6 +332,22 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 #settings > div { padding: 6px 0; }
 #settings > div + div { border-top: 1px solid var(--line); }
 
+/* Sync: the settings block, and the banner over the page while this device
+   does not run the world. Fixed and centred so it never moves the game about;
+   the page under it takes no pointer but for the settings button, so no order
+   can be given against a world this device does not run. */
+#sync code { color: var(--accent); font-size: 13px; }
+#sync [data-sync="actions"] { margin-top: 4px; }
+#syncbanner {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 12;
+  max-width: min(600px, calc(100vw - 24px));
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+#syncbanner[hidden] { display: none; }
+html.sync-readonly #app, html.sync-readonly #stockswrap { pointer-events: none; }
+html.sync-readonly [data-act="settings-open"], html.sync-readonly #settings { pointer-events: auto; }
+
 #sound { display: flex; gap: 12px; align-items: center; }
 #sound input[type="range"] { width: 120px; }
 #sound button.off { color: var(--dim); text-decoration: line-through; }

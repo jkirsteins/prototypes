@@ -1,0 +1,23 @@
+# The sync store: one Durable Object per sync code, holding the latest save
+# and the lease that says which device runs the world. Deployed by hand with
+# `npm run worker:deploy` from the prototype; `npm run worker:dev` runs it on
+# 127.0.0.1:8787, which is where a development build looks for it.
+# Design: docs/superpowers/specs/2026-09-11-survidle-save-sync-design.md
+name = "survidle-sync"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+[vars]
+# Origin prefixes allowed to call the store, comma-separated. A prefix match
+# on the Pages origin covers branch previews, which share it; the two local
+# origins are the dev server and cost nothing in production, since anyone
+# on them already holds the code they are asking about.
+ALLOWED_ORIGINS = "https://jkirsteins.github.io,http://127.0.0.1:5173,http://localhost:5173"
+
+[[durable_objects.bindings]]
+name = "WORLD"
+class_name = "WorldObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WorldObject"]

@@ -30,9 +30,9 @@ import { abandon, feltTemperature } from "./sim/player";
 import { campCellOf, cellOf, placeAtPatch } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
-import { awaySeconds, catchUp, clearSave, knowLoadedGround, loadGame, SAVE_KEY, saveGame } from "./sim/save";
+import { awaySeconds, catchUp, clearSave, knowLoadedGround, loadGame, readSave, SAVE_KEY, type SaveFile, saveGame, serialize } from "./sim/save";
 import { recordOpportunityEvent } from "./sim/opportunities";
-import { canPersist, inspectSave } from "./sim/world-version";
+import { canPersist, inspectSave, SAVE_VERSION } from "./sim/world-version";
 import { clearShopping, trackShopping } from "./sim/shopping";
 import { putOutTorch, startTask, stopTask } from "./sim/tasks";
 import type { FireKeep, GameState, ItemId, OpportunityEvent, OpportunityKey, StockGroupId, TaskId } from "./sim/types";
@@ -41,6 +41,12 @@ import { ambientTemperature, localWeather } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars, updateFills } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
+import { createStoreClient } from "./sync/client";
+import { drawCode, normalizeCode } from "./sync/code";
+import { SYNC_URL } from "./sync/config";
+import { deviceLabel, loadIdentity, saveCode } from "./sync/identity";
+import { type BootOutcome, createSession, type LocalSave, type Session } from "./sync/session";
+import { mountSyncPanel, type SyncPanel, syncBannerHtml } from "./ui/sync-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, doPurposesHtml, KW_PREFIX, purposeCounts, subtabCounts } from "./ui/dopanel";
@@ -161,7 +167,16 @@ let startleRestore: (() => void) | null = null;
 let startleStep: (() => void) | null = null;
 function persistGame(): void {
   if (!canPersist(oldWorldSave)) return;
-  if (!(import.meta.env.DEV && startleRestore)) saveGame(state);
+  if (import.meta.env.DEV && startleRestore) return;
+  // With sync on, only the device running the world writes anything. A
+  // read-only, revoked or checking device is showing a save that is not
+  // its own to keep, and a save written from it would be a stale world
+  // put back over a live one.
+  if (session && session.view().state !== "running") return;
+  const now = Date.now();
+  const text = serialize(state, now);
+  localStorage.setItem(SAVE_KEY, text);
+  session?.offer(text, now);
 }
 const ui = newUiState();
 ui.travelDisplay = loadTravelDisplay(localStorage);
@@ -202,6 +217,64 @@ let tellForecaster: ((w: World) => void) | null = null;
 // frame does nothing, and a second click cannot start a second solve.
 let solving = false;
 let startupReady = false;
+
+// The save sync. Off without a code: no network call, no new UI beyond the
+// settings block. With one, `session` is the state machine that says
+// whether this device runs the world, and every catch-up and live frame
+// asks it first. Design: docs/superpowers/specs/2026-09-11-survidle-save-sync-design.md
+const syncConfigured = SYNC_URL !== "";
+const syncIdentity = loadIdentity(localStorage);
+const syncLabel = deviceLabel(window.matchMedia("(pointer: coarse)").matches);
+{
+  // The sync link sets the code once and leaves the address, the way the tester link does.
+  const raw = params.get("sync");
+  if (raw !== null) {
+    const code = normalizeCode(raw);
+    params.delete("sync");
+    const q = params.toString();
+    history.replaceState(null, "", `${location.pathname}${q ? `?${q}` : ""}${location.hash}`);
+    if (code && code !== syncIdentity.code && syncConfigured) {
+      // A survivor already saved here is replaced by the store's, once the player says so.
+      const hasSave = localStorage.getItem(SAVE_KEY) !== null;
+      if (!hasSave || window.confirm("Join this world? The survivor saved in this browser is replaced.")) {
+        syncIdentity.code = code;
+        saveCode(localStorage, code);
+      }
+    }
+  }
+}
+let session: Session | null = null;
+let syncPanel: SyncPanel | null = null;
+let lastSyncKey = "";
+function makeSession(code: string): Session {
+  const store = createStoreClient({ baseUrl: SYNC_URL, code, device: syncIdentity.device, label: syncLabel });
+  return createSession({
+    store,
+    device: syncIdentity.device,
+    label: syncLabel,
+    version: SAVE_VERSION,
+    canRun: (text) => inspectSave(text) === "current",
+    now: () => Date.now(),
+    onChange: () => { if (startupReady && !solving) render(); },
+  });
+}
+if (syncIdentity.code && syncConfigured) session = makeSession(syncIdentity.code);
+/** The local save as the store would take it, or nothing when there is none this build can run. */
+function localSave(): LocalSave | null {
+  const text = localStorage.getItem(SAVE_KEY);
+  if (!text || inspectSave(text) !== "current") return null;
+  let savedAt = 0;
+  try {
+    savedAt = Number((JSON.parse(text) as { savedAt?: unknown }).savedAt) || 0;
+  } catch {
+    // The envelope passed inspectSave, so this does not happen; a zero only means "long ago".
+  }
+  return { text, savedAt };
+}
+/** Whether the frame may advance the world: with sync on, only while this device holds it. */
+function syncHolds(): boolean {
+  return session !== null && session.view().state !== "running";
+}
 
 /**
  * A new run: the world is solved behind the bar first, so nothing starts on a
@@ -269,40 +342,205 @@ async function boot() {
     await fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy, 0, false);
     return;
   }
+  if (session && !forcedSeed && startDoy === undefined) {
+    // The store decides what this device shows and whether it runs it.
+    const local = localSave();
+    await applySync(await session.boot(local), local?.text ?? null, false);
+    return;
+  }
   let refusal = "";
   const saved = forcedSeed || startDoy !== undefined ? null : loadGame(localStorage, (reason) => { refusal = reason; });
   if (saved) {
-    state = saved.state;
-    // Set before the catch-up below runs, so a death the catch-up itself deals
-    // is not already read as "seen": the first frame must still emit died for it.
-    wasDead = Boolean(saved.state.dead);
+    await loadSaved(saved, true);
+  } else {
+    await fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy);
+    // A save this build cannot read is not silently dropped: the new run says why it is new.
+    if (refusal) log(state, refusal);
+  }
+}
+
+/**
+ * A saved run becomes the run: its world is read from the cache or solved
+ * behind the bar, and, when `live`, the time since the save is caught up
+ * the way a reload always has. A read-only device passes `live` false: the
+ * save is shown as it was written, and never advanced.
+ */
+async function loadSaved(saved: SaveFile, live: boolean): Promise<void> {
+  state = saved.state;
+  // Set before the catch-up below runs, so a death the catch-up itself deals
+  // is not already read as "seen": the first frame must still emit died for it.
+  wasDead = Boolean(saved.state.dead);
+  // The same seed is the same world; a read-only refresh reads a new save
+  // over it without solving or reading the cache again.
+  if (!world || world.seed !== state.seed) {
     solving = true;
     try {
       world = await loadWorld(state.seed, showLoading);
     } finally {
       solving = false;
     }
-    // Before anything reads terrain: the loaded run's clearings are part of it.
-    bindGround(world, state);
-    fillPopulations(state, world);
-    knowLoadedGround(state, world);
-    const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
-    if (elapsed > 30 && !state.dead && !state.landing) {
-      setCueSink(null);
-      setWildlifeEventSink(null);
-      ui.awayFromDay = calendar(state.minute, state.startDoy).day;
-      ui.away = catchUp(state, world, elapsed, speed);
-      ui.hurry = newHurry();
-      setCueSink((c) => sounds.cue(c));
-      setWildlifeEventSink(onWildlifeStartle);
-      awayInfo = { seconds: Math.min(elapsed, awaySeconds(state)), capped: elapsed > awaySeconds(state) };
-      persistGame();
-    }
-  } else {
-    await fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy);
-    // A save this build cannot read is not silently dropped: the new run says why it is new.
-    if (refusal) log(state, refusal);
   }
+  // Before anything reads terrain: the loaded run's clearings are part of it.
+  bindGround(world, state);
+  fillPopulations(state, world);
+  knowLoadedGround(state, world);
+  const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
+  if (live && elapsed > 30 && !state.dead && !state.landing) {
+    catchUpNow(elapsed);
+    persistGame();
+  }
+  if (startupReady) settleLoaded();
+}
+
+/** The catch-up a reload and a resumed tab share: the time away, run forward, and the report of it. */
+function catchUpNow(seconds: number): void {
+  setCueSink(null);
+  setWildlifeEventSink(null);
+  ui.wildlifeStartles = [];
+  ui.awayFromDay = calendar(state.minute, state.startDoy).day;
+  ui.away = catchUp(state, world, seconds, speed);
+  ui.hurry = newHurry();
+  setCueSink((c) => sounds.cue(c));
+  setWildlifeEventSink(onWildlifeStartle);
+  awayInfo = { seconds: Math.min(seconds, awaySeconds(state)), capped: seconds > awaySeconds(state) };
+}
+
+/** After a run is swapped under a page that is already up: the UI forgets the old run, the forecaster learns the new world. */
+function settleLoaded(): void {
+  ui.selected = null;
+  ui.hover = null;
+  ui.destination = null;
+  ui.confirmAbandon = false;
+  ui.confirmCamp = false;
+  ui.wildlifeStartles = [];
+  ui.wildlifeStartleIds.clear();
+  resetPanels();
+  resetForecastAt();
+  awayDial?.refresh();
+  tellForecaster?.(world);
+  lastReal = performance.now();
+  render();
+  updateEffects();
+  hideLoading();
+}
+
+/**
+ * What the store said, made into what the page shows. `localText` is the
+ * save in this browser, for when the store has none or cannot be reached;
+ * `current` says the run in memory already is that local save (it was just
+ * written), so an empty store uploading it is no reason to load it again.
+ */
+async function applySync(outcome: BootOutcome, localText: string | null, current: boolean): Promise<void> {
+  switch (outcome.kind) {
+    case "run": {
+      shownReadOnly = null;
+      if (outcome.text === null && current) return;
+      const text = outcome.text ?? localText;
+      const file = text ? readSave(text) : null;
+      if (file) {
+        await loadSaved(file, true);
+      } else {
+        await fresh(undefined, undefined);
+        await session?.flush(false);
+      }
+      return;
+    }
+    case "readonly":
+    case "outdated":
+    case "older":
+      await showReadOnly(outcome.text ?? localText);
+      return;
+    case "unreachable":
+      await showReadOnly(localText);
+      return;
+  }
+}
+
+/** The save a read-only device last showed, so a refresh that finds the store unchanged loads nothing again. */
+let shownReadOnly: string | null = null;
+/** A save shown and never advanced: the other device's, or this one's while the store is out of reach. */
+async function showReadOnly(text: string | null): Promise<void> {
+  if (text !== null && text === shownReadOnly && startupReady) return;
+  const file = text ? readSave(text) : null;
+  if (file) {
+    shownReadOnly = text;
+    await loadSaved(file, false);
+  } else if (!startupReady) {
+    // Nothing readable anywhere, and the page has to show something behind
+    // the banner; persistGame refuses to keep this world while sync holds.
+    await fresh(undefined, undefined, 0, false);
+  }
+}
+
+/** A sync action from a button: the outcome is applied, then the frame is told the wait was not time away. */
+async function syncAct(run: () => Promise<BootOutcome>): Promise<void> {
+  if (!session || solving) return;
+  const local = localSave();
+  await applySync(await run(), local?.text ?? null, false);
+  lastReal = performance.now();
+  render();
+}
+
+/** A tab that was in the background asks the store before it catches up: the world may have moved to another device meanwhile. */
+async function resumeAfterSleep(seconds: number): Promise<void> {
+  if (!session) return;
+  const verdict = await session.resumeCheck();
+  if (verdict === "run") catchUpNow(seconds);
+  lastReal = performance.now();
+  render();
+}
+
+async function turnSyncOn(): Promise<void> {
+  if (session || !syncConfigured || solving) return;
+  // The local save is written first, so the store gets the run as it stands.
+  saveGame(state);
+  const code = drawCode();
+  syncIdentity.code = code;
+  saveCode(localStorage, code);
+  session = makeSession(code);
+  const local = localSave();
+  await applySync(await session.boot(local), local?.text ?? null, true);
+  lastReal = performance.now();
+  render();
+}
+
+/** Forgets the code and this device's lease; the store is left as it is, and the world stays reachable by the code. */
+async function turnSyncOff(): Promise<void> {
+  if (!session || solving) return;
+  const wasRunning = session.view().state === "running";
+  if (wasRunning) await session.flush(false);
+  session.stop();
+  session = null;
+  syncIdentity.code = null;
+  saveCode(localStorage, null);
+  document.documentElement.classList.remove("sync-readonly");
+  // A device that was reading the store's save goes back to its own.
+  if (!wasRunning) await boot();
+  lastReal = performance.now();
+  render();
+}
+
+async function copySyncLink(): Promise<void> {
+  if (!syncIdentity.code) return;
+  const link = `${location.origin}${location.pathname}?sync=${syncIdentity.code}`;
+  try {
+    await navigator.clipboard.writeText(link);
+  } catch {
+    window.prompt("Copy this link", link);
+  }
+}
+
+/** For a store holding a save this build refuses: a fresh world goes up on the code under a forced lease. */
+async function syncNewWorld(): Promise<void> {
+  if (session?.view().state !== "older" || solving) return;
+  if (!window.confirm("Start a new world on this code? The save in the store is replaced.")) return;
+  await fresh(undefined, undefined, 0, false);
+  const now = Date.now();
+  const text = serialize(state, now);
+  localStorage.setItem(SAVE_KEY, text);
+  await applySync(await session.startNewWorld({ text, savedAt: now }), text, true);
+  lastReal = performance.now();
+  render();
 }
 
 let lastTipKey = "";
@@ -448,6 +686,21 @@ function render(nowMs = performance.now()) {
   // The settings panel is static markup with its own listeners (the slider must
   // not be redrawn mid-drag), so it is shown and hidden rather than rewritten.
   setHidden(document.getElementById("settings"), !ui.settings);
+  // The sync banner stands over the page while this device does not run the
+  // world, and the page under it takes no pointer. The settings block's line
+  // is static markup, refreshed only when what it says would change.
+  {
+    const sv = session?.view() ?? null;
+    const banner = syncBannerHtml(sv, Date.now());
+    setPanel("syncbanner", banner);
+    setHidden(document.getElementById("syncbanner"), banner === "");
+    document.documentElement.classList.toggle("sync-readonly", syncHolds());
+    const key = `${syncIdentity.code ?? ""}|${sv?.state ?? ""}|${sv?.lease?.label ?? ""}`;
+    if (key !== lastSyncKey) {
+      lastSyncKey = key;
+      syncPanel?.refresh();
+    }
+  }
   const travelSelect = heldQuery<HTMLSelectElement>(document, "[data-display=travel]");
   if (travelSelect && travelSelect.value !== ui.travelDisplay) travelSelect.value = ui.travelDisplay;
   const cloudShadows = document.querySelector<HTMLInputElement>("[data-display=cloud-shadows]");
@@ -523,18 +776,18 @@ function frame(now: number) {
     requestAnimationFrame(frame);
     return;
   }
-  if (!simulationPaused(state, ui)) {
+  if (syncHolds()) {
+    // Not this device's world to advance: another device holds it, the
+    // store is out of reach, or a check is in flight. The clock moves on
+    // and the run does not, as while a world is solved.
+    lastReal = now;
+  } else if (!simulationPaused(state, ui)) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
-      setCueSink(null);
-      setWildlifeEventSink(null);
-      ui.wildlifeStartles = [];
-      ui.awayFromDay = calendar(state.minute, state.startDoy).day;
-      ui.away = catchUp(state, world, dtSec, speed);
-      ui.hurry = newHurry();
-      setCueSink((c) => sounds.cue(c));
-      setWildlifeEventSink(onWildlifeStartle);
-      awayInfo = { seconds: Math.min(dtSec, awaySeconds(state)), capped: dtSec > awaySeconds(state) };
+      // With sync on, the store is asked first, and the check itself holds
+      // the frame until it answers.
+      if (session) void resumeAfterSleep(dtSec);
+      else catchUpNow(dtSec);
     } else {
       // The hurry: extra minutes for work chosen by hand, on top of the frame's own. The speed test aid does not scale it.
       const extra = advanceHurry(ui.hurry, state, world, dtSec);
@@ -776,6 +1029,21 @@ function onClick(ev: Event) {
     case "settings-close":
       ui.settings = false;
       break;
+    // The sync banner's buttons. Each asks the store and applies its answer;
+    // the frame is held meanwhile by the session's own checking state.
+    case "sync-take-over":
+      void syncAct(() => session!.takeOver());
+      return;
+    case "sync-refresh":
+    case "sync-retry":
+      void syncAct(() => session!.boot(localSave()));
+      return;
+    case "sync-reload":
+      void syncAct(() => session!.boot(null));
+      return;
+    case "sync-offline":
+      void turnSyncOff();
+      return;
     case "reset-world":
       if (!window.confirm("Reset all world data? This cannot be undone.")) break;
       clearSave();
@@ -1092,6 +1360,20 @@ mountBeaconPanel(document.getElementById("beacon")!, beacon, beaconConfigured, (
   // Off cannot wait for the next event: the vendor session ends now, not on its next send.
   if (!on) sink?.stop?.();
 });
+syncPanel = mountSyncPanel(document.getElementById("sync")!, {
+  configured: syncConfigured,
+  code: () => syncIdentity.code,
+  view: () => session?.view() ?? null,
+  turnOn: () => { void turnSyncOn(); },
+  turnOff: () => { void turnSyncOff(); },
+  copyLink: () => { void copySyncLink(); },
+  newWorld: () => { void syncNewWorld(); },
+});
+// A device reading the store's save re-reads it every minute, and takes the
+// world if the holder has gone quiet past the grace period meanwhile.
+setInterval(() => {
+  if (session && session.view().state === "readonly" && !solving) void syncAct(() => session!.boot(localSave()));
+}, 60_000);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") audio.suspend();
   else audio.resume();
@@ -1191,6 +1473,9 @@ document.addEventListener("change", (ev) => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "hidden") return;
   persistGame();
+  // A tab going to the background puts what it has now, with keepalive, so
+  // the phone opened next finds the save as it stood a moment ago.
+  void session?.flush(true);
   // A tab in the background is a tab a browser may reclaim, and Safari says
   // so out loud: "This web page was reloaded because it was using
   // significant memory." Everything released here is rebuilt from the seed
@@ -1200,7 +1485,10 @@ document.addEventListener("visibilitychange", () => {
   trimFineChunks(world, FINE_CHUNK_HIDDEN_LIMIT);
   releaseBoard();
 });
-window.addEventListener("pagehide", persistGame);
+window.addEventListener("pagehide", () => {
+  persistGame();
+  void session?.flush(true);
+});
 // The terrain letters never change, so the legend is set once rather than rebuilt with the map.
 document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
 

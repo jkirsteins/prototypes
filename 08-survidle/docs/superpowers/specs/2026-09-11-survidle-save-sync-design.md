@@ -1,15 +1,58 @@
 # Survidle Save Sync and Lease Design
 
-**Status:** specced 2026-09-11, not built, postponed to its roadmap slot:
-after the first tester round, and only if the round's testers ask for the
-phone. The round is recruited as single-device so that the asking is a
-finding. The phone check-in page that builds on this waits further, for
-roadmap item P's camp view and camp sheet. See "The save sync" in
-`2026-09-03-survidle-realism-roadmap.md`.
+**Status:** specced 2026-09-11; built 2026-09-18, pulled forward from its
+roadmap slot. The slot was "after the first tester round, and only if the
+round's testers ask for the phone", so that the asking would be a finding.
+The author's own need came first - developing on the go and needing to
+check the run from a phone - and that finding is given up for it. The
+phone check-in page that builds on this still waits for roadmap item P's
+camp view. See "The save sync" in `2026-09-03-survidle-realism-roadmap.md`,
+and `docs/sync.md` for deploying the store and turning it on.
 
-Before building, re-read the two catch-up sites in `src/main.ts` named
-under "The rule in front of every catch-up". Item P restructures the page,
-and the code this spec names by behaviour may have moved.
+What was built departs from the text below in these places, each decided
+while building:
+
+- **The store's URL is a constant**, `SYNC_URL` in `src/sync/config.ts`,
+  blank until the Worker is deployed once and its URL pasted in, the way
+  the beacon's ids are. Blank keeps the whole sync inert: the settings
+  block says so in one line and nothing is fetched. `VITE_SYNC_URL` in the
+  environment overrides it; a development build talks to `wrangler dev`.
+- **The Worker's dependencies live in `worker/package.json`**, not the
+  prototype's, so the Pages build never installs wrangler (its workerd
+  binary is most of a gigabyte on disk). `npm run worker:dev`,
+  `worker:deploy`, `worker:smoke` and `worker:typecheck` on the prototype
+  forward to it.
+- **The version handshake carries `SAVE_VERSION` alone**, as written, and
+  the client also runs `inspectSave` on the store's text before it takes
+  a lease: a world version behind this build's reads as `older`, the same
+  as a save version behind it. `canRun` on the session is that check, and
+  `older` is a state of its own beside `outdated`, since the two banners
+  and the two next steps differ.
+- **A put that lands also moves the lease's `lastSeen`.** A holder that is
+  putting is alive, whatever its socket is doing.
+- **One `ALLOWED_ORIGINS` list**, with the two local origins in production
+  too. They cost nothing: anyone on them already holds the code they are
+  asking about.
+- **A read-only device's minute refresh takes the lease without force**
+  when the holder has lapsed, exactly as boot does, so "close the laptop,
+  open the phone, leave it open" ends with the phone running the world
+  without a tap. A tab in the background lapses the same way: browsers
+  throttle a hidden tab's timers to once a minute, its heartbeat falls
+  behind the grace period, and a phone opened meanwhile takes the world.
+  The tab learns it when it wakes, from the check in front of its
+  catch-up, and offers the reload. That is the rule working rather than a
+  leak: a hidden tab does not advance the world either.
+- **`turn off` puts once more** when the device was running, so the store
+  holds the run as it stood when the code was forgotten.
+- **The same seed is the same world.** A read-only device re-reading a new
+  save over the seed it already holds swaps the state under the page
+  without solving or reading the cache again, and a refresh that finds
+  the store's text unchanged loads nothing at all.
+
+The two catch-up sites `main.ts` had are one function now, `catchUpNow`,
+called from `loadSaved` on a reload and from the frame's resumed-tab
+branch through `resumeAfterSleep`; `syncHolds()` in front of the frame is
+the live half of the rule.
 
 ## Purpose
 
