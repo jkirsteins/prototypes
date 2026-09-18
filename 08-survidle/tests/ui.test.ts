@@ -282,10 +282,18 @@ describe("panels", () => {
   it("distinguishes visible, remembered, inherited, and unknown ground at cell zoom", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
-    const ui = newUiState();
+    const ui = { ...newUiState(), zoom: 0 };
     mapRegion(state, world, state.player.region);
     const visible = visibleCells(state, world, cal, cellOf(state, world));
-    const remembered = regionAt(world, state.player.region).cells.find((cell) => !visible.has(cell));
+    // A remembered patch inside the board, and not on its edge, so its neighbour is on the board too.
+    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+    const l = LEVELS[ui.zoom];
+    const onBoard = (cell: number) => {
+      const x = cell % world.w - x0;
+      const y = Math.floor(cell / world.w) - y0;
+      return x > 0 && y > 0 && x < l.w - 1 && y < l.h - 1;
+    };
+    const remembered = regionAt(world, state.player.region).cells.find((cell) => !visible.has(cell) && onBoard(cell));
     expect(remembered).toBeDefined();
     const inherited = neighbours(world, remembered!).find((cell) => !visible.has(cell));
     expect(inherited).toBeDefined();
@@ -332,7 +340,7 @@ describe("panels", () => {
     state.minute = 15 * 60;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
-    const fire = glyphOfCell(board(world, state, newUiState(), calendar(state.minute, state.startDoy)), camp);
+    const fire = glyphOfCell(board(world, state, { ...newUiState(), zoom: 0 }, calendar(state.minute, state.startDoy)), camp);
     expect(fire?.classes).toContain("mk-fire");
     expect(fire?.classes).toContain("lit-0");
     expect(fire?.classes).not.toContain("memory");
@@ -409,7 +417,7 @@ describe("panels", () => {
     state.minute = 15 * 60;
     state.weather.clear = false;
     const cal = { ...calendar(state.minute, state.startDoy), moonLight: 0 };
-    const b = board(world, state, newUiState(), cal);
+    const b = board(world, state, { ...newUiState(), zoom: 0 }, cal);
     const ringed = (index: number) => { const g = glyphOfCell(b, index)!; return has(g, "lit-1") || has(g, "lit-2"); };
     expect(ringed(scenario!.exposed)).toBe(true);
     expect(ringed(scenario!.hidden)).toBe(false);
@@ -463,7 +471,7 @@ describe("panels", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const cal = calendar(0);
-    const ui = newUiState();
+    const ui = { ...newUiState(), zoom: 0 };
     const z = ZOOMS[ui.zoom];
     const glyphs = (cells: number[]) => {
       const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -506,7 +514,7 @@ describe("panels", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const cal = calendar(0);
-    const ui = newUiState();
+    const ui = { ...newUiState(), zoom: 0 };
     const st = regionState(state, world, state.player.region);
     expect(glyphsWith(board(world, state, ui, cal), "mk-camp").length).toBe(0);
     const nb = neighbours(world, st.campCell!).find((c) => cellAt(world, c).terrain !== "water")!;
@@ -662,7 +670,7 @@ describe("panels", () => {
   it("draws a corridor as a thread, not an open polygon", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
-    const ui = newUiState();
+    const ui = { ...newUiState(), zoom: 0 };
     const cal = calendar(state.minute, state.startDoy);
     const home = regionAt(world, state.player.region);
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -714,15 +722,14 @@ describe("panels", () => {
     const b = board(world, state, ui, cal);
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const l = LEVELS[ui.zoom];
+    const z = ZOOMS[ui.zoom];
     const cellInView = nb.cells.find((c) => {
       const x = c % world.w;
       const y = Math.floor(c / world.w);
-      return x >= x0 && y >= y0 && x < x0 + l.w && y < y0 + l.h;
+      return x >= x0 && y >= y0 && x < x0 + l.w * z && y < y0 + l.h * z;
     });
     expect(cellInView).toBeDefined();
-    const x = cellInView! % world.w;
-    const y = Math.floor(cellInView! / world.w);
-    const glyph = b.glyphs[(y - y0) * l.w + (x - x0)];
+    const glyph = glyphOfCell(b, cellInView!)!;
     expect(has(glyph, "fog")).toBe(true);
     const tip = tipHtml(state, world, cal, cellInView!);
     expect(tip).toContain("Unknown ground");
