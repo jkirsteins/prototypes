@@ -23,10 +23,12 @@ npx wrangler login        # once per machine; opens the browser
 npm run deploy            # prints https://survidle-sync.<account>.workers.dev
 ```
 
-Paste the URL the deploy prints into `SYNC_URL` in `src/sync/config.ts`
-and commit. A production build reads that constant; a development build
-ignores it and talks to `wrangler dev` on `127.0.0.1:8787`; `VITE_SYNC_URL`
-in the environment overrides both. The Durable Object uses SQLite storage
+The URL the deploy prints is `SYNC_URL` in `src/sync/config.ts`
+(`https://survidle-sync.janis-kirsteins.workers.dev`, deployed
+2026-09-18); a new deploy under another name goes there. A production
+build reads that constant; a development build ignores it and talks to
+`wrangler dev` on `127.0.0.1:8787`; `VITE_SYNC_URL` in the environment
+overrides both. The Durable Object uses SQLite storage
 (`new_sqlite_classes` in `worker/wrangler.toml`), which the free plan
 allows.
 

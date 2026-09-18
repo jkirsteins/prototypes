@@ -2241,9 +2241,8 @@ client and the session state machine (`off`, `checking`, `running`,
 `readonly`, `revoked`, `unreachable`, `outdated`, `older`) with the rule
 in front of every catch-up and every live frame; the settings block, the
 banner, and the `?sync=<code>` join; four fast suites, 47 tests, none
-needing wrangler. The store URL is a blank constant until the Worker is
-deployed once (`docs/sync.md`), so the deployed build is inert until the
-author fills it in, the way the beacon was. Open, in order: the browser
+needing wrangler. The Worker was deployed the same day and its URL is the
+constant in `src/sync/config.ts` (`docs/sync.md`). Open, in order: the browser
 pass against a deployed store; the beacon counting one player on two
 devices as two; the phone solve untimed, with the R2 escape hatch waiting
 on that number. The departures from the spec's text are listed at the

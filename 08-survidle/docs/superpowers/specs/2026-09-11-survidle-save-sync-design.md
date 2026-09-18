@@ -13,10 +13,11 @@ What was built departs from the text below in these places, each decided
 while building:
 
 - **The store's URL is a constant**, `SYNC_URL` in `src/sync/config.ts`,
-  blank until the Worker is deployed once and its URL pasted in, the way
-  the beacon's ids are. Blank keeps the whole sync inert: the settings
-  block says so in one line and nothing is fetched. `VITE_SYNC_URL` in the
-  environment overrides it; a development build talks to `wrangler dev`.
+  the way the beacon's ids are; the Worker was deployed 2026-09-18 as
+  `survidle-sync.janis-kirsteins.workers.dev`. A blank constant keeps the
+  whole sync inert: the settings block says so in one line and nothing is
+  fetched. `VITE_SYNC_URL` in the environment overrides it; a development
+  build talks to `wrangler dev`.
 - **The Worker's dependencies live in `worker/package.json`**, not the
   prototype's, so the Pages build never installs wrangler (its workerd
   binary is most of a gigabyte on disk). `npm run worker:dev`,
