@@ -9,8 +9,9 @@ import { SPENT_AT } from "../src/sim/sleep";
 import { addOrder, removeOrder, ordersHere, orderSentence, judgeOrders } from "../src/sim/orders";
 import { bodyRowOf, campRowOf, isBodyRow, isCampRow, judgeBodyRow, judgeCampRow, serveCampRow, BODY_SENTENCE, CAMP_SENTENCE } from "../src/sim/bodyorder";
 import { addItem, pile, qty } from "../src/sim/inventory";
+import { publishFireNeed } from "../src/sim/needs";
 import { placeAt, placeAtSpot } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { siteCamp } from "./siting-helpers";
 import { Rng } from "../src/rng";
 import { hurryKind } from "../src/ui/hurry";
@@ -164,9 +165,14 @@ describe("the body row", () => {
     const st = regionState(state, world, state.player.region);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = FIRE_LOW_KG;
     addItem(pile(state, st.campCell!), "firewood", 5);
+    // A full fire has to be wanted for the low mark to mean anything: by
+    // day, warm and dry, the row keeps the pit at coals and a fire burnt
+    // down is left to burn down. A cook that could not run has asked.
+    publishFireNeed(state, "full", "Cook raw meat");
     expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("ready");
     for (let i = 0; i < 20; i++) judgeCampRow(state, world, cal, new Rng(1));
     expect(st.fire.fuelKg).toBe(FIRE_LOW_KG);
@@ -179,9 +185,14 @@ describe("the body row", () => {
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
     expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("met");
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = FIRE_LOW_KG;
     addItem(pile(state, st.campCell!), "firewood", 5);
+    // Still met: nothing wants a full fire by day, so the low mark is no
+    // want. A row asking for one is what turns it into something to keep.
+    expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("met");
+    publishFireNeed(state, "full", "Cook raw meat");
     expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("ready");
     // The wet read is what actually puts the wood on, and the row has
     // nothing left to ask for after it.

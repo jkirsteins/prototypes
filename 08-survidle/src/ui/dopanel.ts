@@ -11,7 +11,7 @@ import { RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand, type Species } from "../sim/species";
 import { plain } from "../sim/voice";
 import { check, leftBehind, type TaskOption, withProgression } from "../sim/tasks";
-import type { GameState, ItemId, OrderWhen, RecipeId, TaskId, ToolId, Where, StructureId } from "../sim/types";
+import { type GameState, isWorkIntent, type ItemId, type OrderWhen, type RecipeId, type TaskId, type ToolId, type Where, type StructureId } from "../sim/types";
 import { fmtDuration, fmtRealSeconds } from "../units";
 import { realSecondsForOrder } from "./hurry";
 import { regionState, campSite } from "../sim/regionstate";
@@ -487,7 +487,13 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     ? `<small class="initial-walk">will walk to ${initial.nearest ? "nearest " : ""}${esc(initial.destination)} - ${esc(formatTravel(initial.km, initial.minutes, ui.travelDisplay))}</small>`
     : "";
   const possibilities = o.id === "makeCamp" && o.detail ? `<small>${esc(o.detail)}</small>` : "";
-  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${walk}${possibilities}${bar}${gives}</button>${tags}${track}${more}${expand}</div>`;
+  // The row whose work is under way carries the work's own bar, the same
+  // reading the strip and the Queue tab draw (bars.ts writes every element
+  // named task): markup only, no width, so the row's string is stable for
+  // the whole of the work.
+  const live = isWorkIntent(state.intent) && state.intent.task === o.id && (state.intent.arg ?? "") === arg;
+  const progress = live ? `<div class="bar task row"><div class="fill" data-bar="task"></div></div>` : "";
+  return `<div class="opt${live ? " live" : ""}${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${progress}${walk}${possibilities}${bar}${gives}</button>${tags}${track}${more}${expand}</div>`;
 }
 
 /**

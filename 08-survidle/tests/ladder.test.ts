@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { gateSkill, giveOrder, GRIND_STAND_IN, NOT_ORDERS, normalizeOrder, orderByHand, orderGate, rungsNeeded, withinLadder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
+import { isCareRow } from "../src/sim/bodyorder";
 import { moveOrder, ordersHere } from "../src/sim/orders";
 import { levelMinutes, RUNG_LEVEL, RUNG_LINE, RUNG_ORDER, SKILL_IDS, train } from "../src/sim/skills";
 import { TASK_IDS, type IntentRequest, type SkillId } from "../src/sim/types";
@@ -155,7 +156,7 @@ describe("where a row lands", () => {
     expect(state.intent?.orderId).toBe(o.id);
   });
 
-  it("a second click displaces the first", () => {
+  it("a second click of something else displaces the first", () => {
     const { state, world } = newGame(3);
     const a = orderByHand(state, world, cal, new Rng(1), req("sticks", { kind: "once" }), "job");
     const b = orderByHand(state, world, cal, new Rng(1), req("deadwood", { kind: "once" }), "job");
@@ -163,6 +164,25 @@ describe("where a row lands", () => {
     expect(list[0].id).toBe(b.id);
     expect(list[1].id).toBe(a.id);
     expect(state.intent?.orderId).toBe(b.id);
+  });
+
+  it("the same thing clicked again counts its row up rather than adding a second row", () => {
+    const { state, world } = newGame(3);
+    const a = orderByHand(state, world, cal, new Rng(1), req("sticks", { kind: "once" }), "job");
+    orderByHand(state, world, cal, new Rng(1), req("deadwood", { kind: "once" }), "job");
+    const again = orderByHand(state, world, cal, new Rng(1), req("sticks", { kind: "once" }), "job");
+    expect(again.id).toBe(a.id);
+    expect(again.req.until).toEqual({ kind: "once", n: 2 });
+    const list = ordersHere(state, world).filter((o) => !isCareRow(o));
+    expect(list).toHaveLength(2);
+    // Back on top, and running, as any click is.
+    expect(list[0].id).toBe(a.id);
+    expect(state.intent?.orderId).toBe(a.id);
+    // A third click, with the row already running, leaves the work alone.
+    const task = state.task;
+    orderByHand(state, world, cal, new Rng(1), req("sticks", { kind: "once" }), "job");
+    expect(a.req.until).toEqual({ kind: "once", n: 3 });
+    expect(state.task).toBe(task);
   });
 
   it("a standing order lands at the bottom, under the care rows and the day's requests alike", () => {
@@ -207,8 +227,12 @@ describe("where a row lands", () => {
     const { state, world } = newGame(3);
     mapRegion(state, world, state.player.region);
     const camp = siteCamp(state, world);
-    const spot = neighbours(world, camp).find((n) => cellAt(world, n).terrain !== "water")!;
-    placeAt(state, world, spot);
+    // The forest spot, not a neighbour of camp: the click shoulders the log
+    // and a 50 m walk lands at camp inside the first minute, so the carry
+    // would be over before any snapshot could see it. The forest is most of
+    // a kilometre off, a walk of twenty-odd minutes with the log on.
+    placeAtSpot(state, world, state.player.region, "forest");
+    const spot = cellOf(state, world);
     addItem(state.player.pack, "driedMeat", 2);
     addItem(pile(state, spot), "log", 1);
     const haul = orderByHand(state, world, cal, new Rng(1), { task: "haul", until: { kind: "once" }, deliver: "camp", where: { cell: spot } }, "job");

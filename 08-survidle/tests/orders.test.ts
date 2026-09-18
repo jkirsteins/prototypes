@@ -197,6 +197,14 @@ describe("when an order is met", () => {
     expect(orderMet(state, world, cal, once, false)).toBe(false);
     once.done = 1;
     expect(orderMet(state, world, cal, once, false)).toBe(true);
+    // The same click again is the same row, counted up, and met at its count.
+    const twice = addOrder(state, world, { task: "deadwood", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    expect(addOrder(state, world, { task: "deadwood", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job")).toBe(twice);
+    expect(twice.req.until).toEqual({ kind: "once", n: 2 });
+    twice.done = 1;
+    expect(orderMet(state, world, cal, twice, false)).toBe(false);
+    twice.done = 2;
+    expect(orderMet(state, world, cal, twice, false)).toBe(true);
     const times = addOrder(state, world, { task: "sticks", until: { kind: "times", n: 3 }, deliver: "leave", where: "nearest" }, "job");
     times.done = 2;
     expect(orderMet(state, world, cal, times, false)).toBe(false);

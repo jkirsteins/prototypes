@@ -3,9 +3,13 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { BODY_SENTENCE, bodyRowOf } from "../src/sim/bodyorder";
+import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, judgeOrders, pinOrderByHand } from "../src/sim/orders";
+import { cellOf } from "../src/sim/position";
+import { insertWalkAtTop } from "../src/sim/walkorders";
 import { ordersHtml, queueHtml } from "../src/ui/panels";
+import { cellAt, neighbours } from "../src/world/gen";
 import { css } from "./css";
 
 /** A cabin with nothing to build it from: a row that reads blocked wherever it is ranked, which is what a pin needs to hold the list. */
@@ -13,6 +17,47 @@ const CABIN = { task: "build" as const, arg: "cabin", until: { kind: "once" as c
 const STICKS = { task: "sticks" as const, until: { kind: "forever" as const }, deliver: "camp" as const, where: "nearest" as const };
 
 describe("the order panel", () => {
+  it("a click repeated is one row with its count, not two rows", () => {
+    const { state, world } = newGame(1);
+    const cal = calendar(state.minute, state.startDoy);
+    const once = { task: "sticks" as const, until: { kind: "once" as const }, deliver: "leave" as const, where: "nearest" as const };
+    const o = addOrder(state, world, once, "job");
+    expect(ordersHtml(state, world, cal)).not.toContain("×");
+    addOrder(state, world, once, "job");
+    const html = ordersHtml(state, world, cal);
+    expect(html).toContain('<span class="kind count">×2</span>');
+    expect(html.split(`data-act="order-remove" data-id="${o.id}"`)).toHaveLength(2);
+    expect(html.split("Gather sticks")).toHaveLength(2);
+  });
+
+  it("a walk that stays is tagged in a word, and holds the list the way a stop does", () => {
+    const { state, world } = newGame(3);
+    mapRegion(state, world, state.player.region);
+    const from = cellOf(state, world);
+    const target = neighbours(world, from).find((cell) => cellAt(world, cell).terrain !== "water")!;
+    const walk = insertWalkAtTop(state, world, target);
+    const below = addOrder(state, world, STICKS, "grind");
+    const before = ordersHtml(state, world, calendar(state.minute, state.startDoy));
+    // On the way there it is the live row and nothing more.
+    expect(before).toContain("and stay</b>");
+    expect(before).toContain('<span class="kind">stays</span>');
+    expect(before).not.toContain("until struck off");
+    expect(before).not.toContain("Queue stopped");
+    for (let minute = 0; minute < 300 && cellOf(state, world) !== target; minute++) advance(state, world, 1);
+    expect(cellOf(state, world)).toBe(target);
+    advance(state, world, 2);
+    // Arrived and staying, it stops the list: the banner, and the blocked
+    // tag on it and on every row under it, as under a pinned row.
+    const html = ordersHtml(state, world, calendar(state.minute, state.startDoy));
+    expect(html).toContain("Queue stopped at <b>Walk to");
+    expect(html).toContain("its x lets the rest go on");
+    const rows = html.split('<div class="order');
+    const walkRow = rows.find((r) => r.includes(`data-id="${walk.id}"`))!;
+    const belowRow = rows.find((r) => r.includes(`data-id="${below.id}"`))!;
+    expect(walkRow).toContain('<span class="kind blocked">blocked</span>');
+    expect(belowRow).toContain('<span class="kind blocked">blocked</span>');
+  });
+
   it("names whether a blocked row stops or skips the rows below it", () => {
     const { state, world } = newGame(1);
     const o = addOrder(state, world, STICKS, "grind");

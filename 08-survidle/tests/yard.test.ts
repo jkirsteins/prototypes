@@ -4,7 +4,7 @@ import { newGame } from "../src/sim/newgame";
 import { orderByHand, orderGate } from "../src/sim/ladder";
 import { levelMinutes } from "../src/sim/skills";
 import type { IntentRequest } from "../src/sim/types";
-import { removeOrderByHand } from "../src/sim/orders";
+import { addOrder, removeOrderByHand } from "../src/sim/orders";
 import { regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { calendar } from "../src/sim/calendar";
@@ -137,7 +137,9 @@ describe("a planned build", () => {
     const st = regionState(state, world, state.player.region);
     const req = { task: "build", arg: "vedbod", until: { kind: "once" }, deliver: "camp", where: { cell: st.campCell! } } as const;
     const first = orderByHand(state, world, cal, new Rng(1), req, "job");
-    orderByHand(state, world, cal, new Rng(2), req, "job");
+    // The same click again would count the first row up rather than add a
+    // second, so the second wanter is a counted job, a row of its own.
+    addOrder(state, world, { ...req, until: { kind: "times", n: 2 } }, "job");
     removeOrderByHand(state, world, cal, new Rng(3), first.id);
     expect(siteAt(st, st.campCell!)?.build.vedbod).toBe(0);
   });
