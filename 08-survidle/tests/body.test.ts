@@ -104,8 +104,12 @@ describe("the body's row against the work", () => {
     expect(cellOf(state, world)).toBe(camp);
     expect(state.intent?.step).toBe("resting after the day's work");
     expect(until(g, () => state.task?.id !== "rest", 700)).toBe(true);
-    expect(state.player.bodyNeed).toBeNull();
     expect(state.player.energy).toBeGreaterThanOrEqual(RESTED_AT - 0.2);
+    // The rest is one task to the work line, so it ends on the minute the
+    // collapse clears; a hunger that grew under it surfaces on that minute
+    // and is eaten from the pack on the next. Read the need after that.
+    advance(state, world, 2);
+    expect(state.player.bodyNeed).toBeNull();
     // Back to the tree it left, and on with the same intent.
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     expect(state.task!.progress).toBeGreaterThan(15);
@@ -131,7 +135,7 @@ describe("the body's row against the work", () => {
     expect(other.state.task?.id).toBe("chop");
   });
 
-  it("makes a fire before collapse recovery when the means are at camp: the site, a split log, then light", () => {
+  it("makes the night's fire when the means are at camp - the site, a split log, then light - and a warm evening rest makes none", () => {
     const { g, state, world, camp } = felling();
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, camp), "stone", 6);
@@ -139,12 +143,15 @@ describe("the body's row against the work", () => {
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.energy = 20;
     const steps: string[] = [];
+    // The collapse rest by a warm body is on the ground: a fire is made for
+    // a body under the warm line, or before bed, not for every evening.
     expect(until(g, () => {
       const s = state.intent?.step ?? "";
       if (steps.at(-1) !== s) steps.push(s);
-      return s === "resting by the fire after the day's work";
+      return s === "sleeping";
     }, 1500)).toBe(true);
-    expect(steps).toEqual(expect.arrayContaining(["walking to camp for the evening", "clearing the fire site", "splitting a log for the fire", "lighting the fire", "resting by the fire after the day's work"]));
+    expect(steps).toEqual(expect.arrayContaining(["walking to camp for the evening", "resting after the day's work", "clearing the fire site before bed", "splitting a log for the fire before bed", "lighting the fire before bed", "sleeping"]));
+    expect(steps).not.toContain("resting by the fire after the day's work");
     expect(regionState(state, world, state.player.region).fire.lit).toBe(true);
   });
 
@@ -439,7 +446,9 @@ describe("the body's row against the work", () => {
     expect(until(g, () => state.intent?.task !== "sticks", 1500)).toBe(true);
     orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), cabin, "job");
     expect(until(g, () => state.task?.id === "build", 200)).toBe(true);
-    expect(state.task!.duration).toBeCloseTo(3600 - banked, 0);
+    // The whole scope, with the banked minutes already on the bar (Task.carried).
+    expect(state.task!.duration - state.task!.progress).toBeCloseTo(3600 - banked, 0);
+    expect(state.task!.carried).toBeCloseTo(banked, 0);
   });
 });
 
@@ -860,7 +869,7 @@ describe("the shared storm plan", () => {
     siteFor(regionState(state, world, region.id), here).structures.leanTo = true;
     siteFor(regionState(state, world, region.id), camp).cover = 1;
     regionState(state, world, region.id).fire = {
-      lit: true, fuelKg: 12, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: 0, rainHeld: 0,
+      lit: true, fuelKg: 12, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: 0, rainHeld: 0, keep: "burning", fedByRow: false,
     };
     state.weather.storm = { id: 36, source: "natural", kind: "rain", from: 300, until: 660, warned: false };
 

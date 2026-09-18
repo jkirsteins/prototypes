@@ -559,7 +559,7 @@ describe("sight", () => {
     expect(reads).toBeLessThan(visible.size / 4);
   });
 
-  it("reads far over open ground and no further than the next cell through closed spruce", () => {
+  it("reads far over open ground", () => {
     const { state, world } = newGame(1);
     testAtmosphere({ extinctionPerKm: 0.06 });
     const region = state.player.region;
@@ -567,22 +567,33 @@ describe("sight", () => {
     forget(state);
     seeFrom(state, world, NOON, vantage);
     expect(isKnown(state, end)).toBe(true);
+  });
 
-    const { state: state2, world: world2 } = newGame(1);
-    const spruce = spruceCell(world2, state2.player.region);
-    const sx = spruce % world2.w;
-    const sy = Math.floor(spruce / world2.w);
-    const neighbour = (sx > 0 ? sy * world2.w + (sx - 1) : sy * world2.w + (sx + 1));
-    forget(state2);
-    seeFrom(state2, world2, NOON, spruce);
-    expect(isKnown(state2, spruce)).toBe(true);
-    // The ring you stand in: a cell is 300 m and a survivor walks across it, so
-    // the ground a few strides away is known even under a canopy that shows
-    // nothing at any distance.
-    expect(isKnown(state2, neighbour)).toBe(true);
-    // And no further. The canopy still takes everything past the neighbour.
-    const beyond = sx > 0 ? sy * world2.w + (sx - 2) : sy * world2.w + (sx + 2);
-    expect(isKnown(state2, beyond)).toBe(false);
+  it("takes the view a patch at a time through closed spruce: standing among trunks, two more patches and no further", () => {
+    // Flat ground, so only the trees are in the way: a survivor standing in
+    // spruce starts with a quarter of the view gone; the next patch of closed
+    // spruce takes half more, and the one after that fills the measure and
+    // is the last seen. Trees take the view a patch at a time, not as a wall
+    // at the first trunk.
+    const scene = fineSightFixture(["@TTTT"]);
+    const terrain = scene.world.fineChunks.get(0)!.terrain;
+    terrain[SCENE_ORIGIN * FINE_CHUNK + SCENE_ORIGIN] = TERRAIN_INDEX.spruce;
+    forget(scene.state);
+    seeFrom(scene.state, scene.world, NOON, scene.vantage);
+    expect(isKnown(scene.state, scene.vantage)).toBe(true);
+    expect(isKnown(scene.state, scene.id(1, 0))).toBe(true);
+    expect(isKnown(scene.state, scene.id(2, 0))).toBe(true);
+    expect(isKnown(scene.state, scene.id(3, 0))).toBe(false);
+    expect(isKnown(scene.state, scene.id(4, 0))).toBe(false);
+  });
+
+  it("shows the closing trunks inside dense spruce, not just its immediate ring", () => {
+    const scene = fineSightFixture(["TTTTTTT", "TTTTTTT", "TTT@TTT", "TTTTTTT", "TTTTTTT"]);
+    scene.world.fineChunks.get(0)!.terrain[10 * FINE_CHUNK + 11] = TERRAIN_INDEX.spruce;
+    forget(scene.state);
+    seeFrom(scene.state, scene.world, NOON, scene.vantage);
+    expect(isKnown(scene.state, scene.id(5, 2))).toBe(true);
+    expect(isKnown(scene.state, scene.id(6, 2))).toBe(false);
   });
 
   it("takes the ring away again once the light is under what walking wants", () => {
@@ -626,18 +637,22 @@ describe("sight", () => {
     expect(visible.has(end)).toBe(false);
   });
 
-  it("stops at the first blocking canopy", () => {
+  it("stops where the standing wood has taken the whole view: two patches of closed spruce", () => {
     const { state, world, vantage } = openWorld();
     const water = at(world, vantage, 1, 0);
     const spruce = at(world, vantage, 2, 0);
-    const behind = at(world, vantage, 3, 0);
+    const deeper = at(world, vantage, 3, 0);
+    const behind = at(world, vantage, 4, 0);
     const terrain = world.fineChunks.get(0)!.terrain;
     terrain[48 * FINE_CHUNK + 49] = TERRAIN_INDEX.water;
     terrain[48 * FINE_CHUNK + 50] = TERRAIN_INDEX.spruce;
+    terrain[48 * FINE_CHUNK + 51] = TERRAIN_INDEX.spruce;
     forget(state);
     seeFrom(state, world, NOON, vantage);
     expect(isKnown(state, water)).toBe(true);
+    // The first patch of spruce shows the wood; the second closes it and is the last seen.
     expect(isKnown(state, spruce)).toBe(true);
+    expect(isKnown(state, deeper)).toBe(true);
     expect(isKnown(state, behind)).toBe(false);
   });
 });

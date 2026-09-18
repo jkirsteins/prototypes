@@ -4,15 +4,15 @@ import { COLD_UNDER, SLEEP_AT, SOAKED_WETNESS, stormOptions, workResumeAt } from
 import { isCareRow } from "../sim/bodyorder";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
-import { needsMending, rackCapacity } from "../sim/camp";
+import { coveredWoodKg, needsMending, rackCapacity, woodOnHandKg } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, hasEmbers, smoky } from "../sim/fire";
-import { herePile, listItems, pileAt, qty, weight } from "../sim/inventory";
+import { herePile, listItems, pileAt, qty, shortOf, weight } from "../sim/inventory";
 import { body, fatLandmarks } from "../sim/person";
 import { groundOf } from "../sim/intent";
-import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_KG, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
-import { knownShare } from "../sim/mapped";
+import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_KG, ITEM_NAMES, KG_ITEMS, RACK_DRY_MINUTES, SNARE_ODDS_PER_NIGHT, STRUCTURES, TOOLS } from "../sim/items";
+import { knownShare, knowledgeGen } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
@@ -23,7 +23,7 @@ import { faceSvg } from "./face";
 import { liveFaceHtml, livePortraitState } from "./portrait";
 import { sleepForecast } from "./sleep";
 import { fmtName } from "../sim/names";
-import { sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "../sim/sleep";
+import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
 import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation, walkManner } from "../sim/player";
 import { campCellOf, cellOf, describeWhere, kmBetween, SPOT_WORDS } from "../sim/position";
@@ -31,12 +31,13 @@ import { survivorRoute } from "../sim/routing";
 import { current, worldDate } from "../sim/record";
 import { campSite, regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
+import { seepRate } from "../sim/seep";
 import { CARRY_SHARE, keyName, level, levelMinutes, masteryMilestone, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
-  availableTasks, check, fallChance, type TaskOption, walkTarget, whereIs,
+  availableTasks, buildMinutes, check, fallChance, type TaskOption, walkTarget, whereIs,
 } from "../sim/tasks";
-import { isWorkIntent, type AtmosphereSample, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
+import { isWorkIntent, type AtmosphereSample, type GameState, type Garment, type ItemId, type LogEntry, type Person, type RegionState, type SkillId, type StructureId, type FireKeep } from "../sim/types";
 import { campWaterCapacity, THIRSTY_L, WATER_FULL } from "../sim/water";
 import { atmosphereAt, forecastText, groundAt, iceMode, type LocalConditions, localStorm, localWeather, stormComing, stormNow } from "../sim/weather";
 import { fmtDaysAbout, fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
@@ -44,10 +45,11 @@ import { cellAt, regionAt, speciesHere, type World } from "../world/gen";
 import { remainingKm } from "../world/route";
 import { hurryKind, type HurryState } from "./hurry";
 import { esc, type UiState } from "./render";
-import { shoppingPlaceCueHtml } from "./shopping";
 import { plain, voice } from "../sim/voice";
 import { skyHtml, WALL } from "./sky";
 import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
+import { DEFAULT_RATE_DISPLAY, formatRate, type RateDisplay } from "./rate";
+import { FOOTPRINT_M2, yardFree, yardUsed } from "../sim/yard";
 import { activeEquipmentHtml } from "./equipment";
 
 /**
@@ -69,17 +71,32 @@ import { activeEquipmentHtml } from "./equipment";
  * bars.ts writes its position each frame, since a share that changed in the
  * markup would redraw the panel sixty times a second (tests/churn.test.ts).
  */
-interface BarMark { at: number | string; title: string }
+interface BarMark { at: number | string; title: string; /** On the lower band of a dual bar. */ band?: boolean }
+
+function markHtml(k: BarMark): string {
+  const cls = k.band ? "mark band" : "mark";
+  return typeof k.at === "number"
+    ? `<div class="${cls}" style="left:${(k.at * 100).toFixed(1)}%" title="${esc(k.title)}"></div>`
+    : `<div class="${cls}" data-mark="${k.at}" title="${esc(k.title)}"></div>`;
+}
 
 function bar(id: string, cls: string, label: string, marks: BarMark[] = []): string {
-  const m = marks
-    .map((k) => (typeof k.at === "number"
-      ? `<div class="mark" style="left:${(k.at * 100).toFixed(1)}%" title="${esc(k.title)}"></div>`
-      : `<div class="mark" data-mark="${k.at}" title="${esc(k.title)}"></div>`))
-    .join("");
+  const m = marks.map(markHtml).join("");
   // The trend mark carries no direction in the markup: updateBars writes it
   // from the reading's own history, the way it writes the fill's width.
   return `<div class="bar readout ${cls}"><div class="fill" id="bar-${id}" data-bar="${id}"></div>${m}<span class="lbl"><span>${label}</span><span class="val"><i class="trend" data-trend="${id}"></i><b id="val-${id}" data-val="${id}"></b></span></span></div>`;
+}
+
+/**
+ * Two readings of one body on one bar, both lower-is-worse: the upper fill
+ * is the first, the lower band the second, each with its own marks, value
+ * and trend. Stamina and alertness share a bar this way, since they are
+ * read together (can they work; should they sleep) and each used to take a
+ * bar to itself with the second one counting the wrong way up.
+ */
+function dualBar(id: string, band: string, cls: string, label: string, bandLabel: string, marks: BarMark[]): string {
+  const m = marks.map(markHtml).join("");
+  return `<div class="bar readout dual ${cls}"><div class="fill" id="bar-${id}" data-bar="${id}"></div><div class="fill band" id="bar-${band}" data-bar="${band}"></div>${m}<span class="lbl"><span>${label} <span class="dim">/ ${bandLabel}</span></span><span class="val"><i class="trend" data-trend="${id}"></i><b id="val-${id}" data-val="${id}"></b><span class="dim">/</span><i class="trend" data-trend="${band}"></i><b id="val-${band}" data-val="${band}"></b></span></span></div>`;
 }
 
 /**
@@ -163,15 +180,14 @@ ${bar("kcal", "kcal", "Food", [{ at: "hunger", title: "eats below here" }])}
 ${bar("fat", "fat", "Fat", [{ at: marks.floor / marks.upper, title: "dies here" }, { at: marks.lower / marks.upper, title: "thin below here" }, { at: marks.upper / marks.upper, title: "well fed above here" }])}
 ${bar("water", "water", "Water", [{ at: THIRSTY_L / WATER_FULL, title: "thirsty below here" }])}
 ${bar("warmth", "warmth", "Warmth", [{ at: COLD_UNDER / 100, title: "goes to the fire below here" }, { at: 0.2, title: "hypothermia below here" }])}
-${bar("energy", "energy", "Stamina", [
-  { at: SPENT_AT / 100, title: "stops work below here" },
+${dualBar("energy", "alertness", "energy", "Stamina", "alert", [
+  { at: SPENT_AT / 100, title: "stops work and rests below here" },
+  { at: RESTED_AT / 100, title: "rest ends here" },
   { at: SLEEP_AT / 100, title: "collapses below here" },
   ...(resumeAt === null ? [] : [{ at: resumeAt / 100, title: "work resumes here after collapse" }]),
-])}
-${bar("sleepiness", "sleepiness", "Sleepiness", [
-  { at: WAKE_AT / 100, title: "wakes below here" },
-  { at: SLEEPY_AT / 100, title: "sleepy above here" },
-  { at: SLEEP_ONSET / 100, title: "falls asleep above here" },
+  { at: (100 - SLEEP_ONSET) / 100, title: "falls asleep below here", band: true },
+  { at: (100 - SLEEPY_AT) / 100, title: "sleepy below here", band: true },
+  { at: (100 - WAKE_AT) / 100, title: "wakes above here", band: true },
 ])}
 <div class="sleep-forecast" data-sleep-forecast>${esc(sleepForecast(state, world, cal))}</div>
 ${bar("wet", "wet", "Wet", [{ at: SOAKED_WETNESS / 100, title: "soaked above here" }])}
@@ -396,7 +412,35 @@ export function thinIceButton(state: GameState, world: World, cal: Calendar, id:
  * off. The tooltip answers "what is that cell"; this answers "where are
  * the places", which is a different question and the one he was asking.
  */
+interface PlacesCache {
+  state: GameState;
+  world: World;
+  key: string;
+  html: string;
+}
+
+let placesCache: PlacesCache | null = null;
+
+/**
+ * Every row here runs a real pathfind for its distance, over the region's
+ * spots and its mapped neighbours, and the render tick asks for this box
+ * unconditionally every 100 ms. What can move the answer: the survivor's own
+ * cell, the region the rows are drawn for, where that region's camp stands,
+ * ground newly walked, seen close, or mapped (knowledgeGen), and the
+ * chosen distance format. The floored game-minute folds in everything
+ * slower than a render tick and faster than those four - weather's pull on
+ * walking speed and thin ice, the shopping list's own shortages - at the
+ * same grain currentViewshed in map.ts already samples the world at, rather
+ * than the render loop's own real-time tick.
+ */
+function placesCacheKey(state: GameState, world: World, display: TravelDisplay): string {
+  const minute = Math.floor(state.minute + state.weather.elapsedMinutes);
+  return `${state.player.region}:${cellOf(state, world)}:${campCellOf(state, world)}:${knowledgeGen()}:${display}:${minute}`;
+}
+
 export function placesHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
+  const key = placesCacheKey(state, world, display);
+  if (placesCache && placesCache.state === state && placesCache.world === world && placesCache.key === key) return placesCache.html;
   const r = regionAt(world, state.player.region);
   const camp = campCellOf(state, world);
   const here = cellOf(state, world);
@@ -412,18 +456,17 @@ export function placesHtml(state: GameState, world: World, cal: Calendar, displa
       // for it.
       if (s.id !== "camp" && cell === camp) return "";
       const name = esc(SPOT_WORDS[s.id]);
-      const shopping = shoppingPlaceCueHtml(state, world, cal, s.id);
-      if (cell === here) return `<div class="way" data-place="${s.id}"><b>${name}</b> <small class="dim">you are here</small>${shopping}</div>`;
+      if (cell === here) return `<div class="way" data-place="${s.id}"><b>${name}</b> <small class="dim">you are here</small></div>`;
       const at = ` data-at="${cell}"`;
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
       const ice = thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk);
       const km = kmBetween(state, world, here, cell, "safe");
-      if (!walk.ok) return `<div class="way" data-place="${s.id}"${at}><span class="dim">${name}: ${esc(plain(walk.why))}</span>${ice}${shopping}</div>`;
+      if (!walk.ok) return `<div class="way" data-place="${s.id}"${at}><span class="dim">${name}: ${esc(plain(walk.why))}</span>${ice}</div>`;
       // The whole row is the button, and what it costs is in its own label:
       // a name in a button beside a sentence saying "from here" spent two
       // thirds of the row on words that never change.
       const cost = km === null ? esc(fmtDuration(walk.duration)) : esc(formatTravel(km, walk.duration, display));
-      return `<div class="way" data-place="${s.id}"${at}><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${ice}${shopping}</div>`;
+      return `<div class="way" data-place="${s.id}"${at}><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${ice}</div>`;
     })
     .join("");
   // The ways out, under the places and in the same corner - but only those
@@ -433,7 +476,9 @@ export function placesHtml(state: GameState, world: World, cal: Calendar, displa
     .filter((n) => knownShare(state, world, n.id) >= 1)
     .map((n) => wayIntoHtml(state, world, cal, n.id, true, display))
     .join("");
-  return `<div class="waylabel">places</div>${rows}${out ? `<div class="waylabel">ways out</div>${out}` : ""}`;
+  const html = `<div class="waylabel">places</div>${rows}${out ? `<div class="waylabel">ways out</div>${out}` : ""}`;
+  placesCache = { state, world, key, html };
+  return html;
 }
 
 /**
@@ -512,7 +557,53 @@ export function rosterHtml(state: GameState, world: World, id: number, cal: Cale
   return lines;
 }
 
-export function campHtml(state: GameState, world: World, cal: Calendar): string {
+/**
+ * The rate beside a producer, through the same formatRate the toolbar
+ * reads, only where the simulation can answer it exactly: the rack's
+ * throughput at its own capacity and drying time, the snares' flat odds
+ * scaled by the region's live hare density and how many stand, and every
+ * seep refilling in this region added up through the one place that knows
+ * whether a seep is actually running (`seepRate`, shared with the water
+ * line so a frozen or dried-out seep cannot read as live here while it
+ * already reads stopped there). The basket trap draws on a daily roll over
+ * whichever species are present and the water trough is filled by a fetch,
+ * neither of which is an hourly figure the sim has on hand, so both carry
+ * their limits line with no rate beside it.
+ */
+function producerRate(state: GameState, world: World, st: RegionState, site: ReturnType<typeof campSite>, cal: Calendar, id: string, display: RateDisplay): string {
+  if (id === "drying rack" && site) {
+    return formatRate(rackCapacity(site) / (RACK_DRY_MINUTES / 60), "kg", display);
+  }
+  if (id === "snares" && st.snares > 0) {
+    const density = regionDensity(state, world, state.player.region, "hare", cal);
+    return formatRate((st.snares * SNARE_ODDS_PER_NIGHT * density) / 24, "hare", display);
+  }
+  if (id === "seep") {
+    let lPerHour = 0;
+    const whys = new Set<string>();
+    for (const k of Object.keys(state.seeps)) {
+      const cell = Number(k);
+      if (cellAt(world, cell).region !== state.player.region) continue;
+      const rate = seepRate(state, world, cell);
+      lPerHour += rate.lPerHour;
+      if (rate.why) whys.add(rate.why);
+    }
+    if (lPerHour > 0) return formatRate(lPerHour, "l", display);
+    // Stopped, not silent: a seep standing here that is not refilling
+    // still owes the sheet a reason, the same one the water line gives.
+    if (whys.size > 0) return `0 l/h, ${[...whys].join(", ")}`;
+  }
+  return "";
+}
+
+const KEEP_CHOICES: readonly FireKeep[] = ["burning", "out"];
+const KEEP_WORD: Record<FireKeep, string> = { burning: "keep it burning", out: "let it go out" };
+const KEEP_TITLE: Record<FireKeep, string> = {
+  burning: "Kept alive: fed to full while the flame is useful (night, cold, wet, cooking), let down to coals and banked when it is not, rekindled when a need comes back, banked when you leave",
+  out: "Camp maintenance does nothing for it; the night, the cold and the Light row still light a fire",
+};
+
+export function campHtml(state: GameState, world: World, cal: Calendar, display: RateDisplay = DEFAULT_RATE_DISPLAY): string {
   const id = state.player.region;
   const r = regionAt(world, id);
   const st = regionState(state, world, id);
@@ -528,7 +619,22 @@ export function campHtml(state: GameState, world: World, cal: Calendar): string 
   if (site?.structures.snowShelter) built.push("snow shelter");
   if (st.snares) built.push(`${st.snares} snare${st.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
   if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
-  const unfinished = site ? (Object.keys(site.build) as (keyof typeof site.build)[]).filter((k) => (site.build[k] ?? 0) > 0).map((k) => `${k} in progress`) : [];
+  // A build order raises its site entry the moment it is given, so this list
+  // is what the camp is waiting on: planned work with nothing done yet reads
+  // the same as work half finished, each naming what it still wants.
+  const campPile = pileAt(state, st.campCell);
+  const planned = site
+    ? (Object.keys(site.build) as StructureId[]).map((k) => {
+        const done = site.build[k] ?? 0;
+        const total = buildMinutes(state, world, k, st.campCell!);
+        const short = shortOf([campPile, state.player.pack], STRUCTURES[k].needs);
+        const wants = FOOTPRINT_M2[k] ?? 0;
+        const noRoom = wants > 0 && yardFree(site) < wants ? `${wants} m2 of yard, ${Math.round(yardFree(site))} free` : "";
+        const blockers = [...short.map((n) => `${n.qty} ${ITEM_NAMES[n.item]}`), noRoom].filter(Boolean).join(", ");
+        const phase = done > 0 ? `${Math.round((done / total) * 100)}% built` : "planned";
+        return `${STRUCTURES[k].name}, ${phase}${blockers ? `: needs ${blockers}` : ""}`;
+      })
+    : [];
   // A third word between burning and cold: coals are live but not fed, the
   // routine state after every tended night rather than an exception. How
   // long they last is the fuel bar's job, and the figure moves with every
@@ -539,29 +645,80 @@ export function campHtml(state: GameState, world: World, cal: Calendar): string 
     : hasEmbers(st.fire)
       ? '<span class="ember">coals</span>'
       : '<span class="dim">cold</span>';
-  const fire = site?.structures.firePit ? `<div>fire: ${fireWord}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}` : "";
+  // An empty pit beside a full woodpile read as a bug: "53 kg of wood, why
+  // is fuel 0?". Fuel is what has been laid in the pit, the pile is what
+  // waits beside it, and the line between them says which step is missing.
+  const dryInPile = campPile ? qty(campPile, "firewood") : 0;
+  const wetInPile = campPile ? qty(campPile, "wetFirewood") : 0;
+  const pitHint = !site?.structures.firePit || st.fire.fuelKg > 1e-9
+    ? ""
+    : dryInPile > 1e-9
+      ? `<div class="dim">nothing laid in the pit yet: ${dryInPile.toFixed(1)} kg dry in the pile - Lay wood at the fire site</div>`
+      : wetInPile > 1e-9
+        ? `<div class="dim">nothing laid in the pit: the pile is all wet, and wet wood dries by a lit fire or under a roof</div>`
+        : "";
+  // The fire's setting, per fire: here, at every other camp, and the field
+  // fire under foot. Every fire that exists is on this tab whatever cell
+  // the survivor stands in, until the camp view (roadmap P part 1) takes
+  // them over.
+  const keepButtons = (region: number, keep: FireKeep, choices: readonly FireKeep[]) =>
+    `<span class="fire-keep">${choices.map((k) => `<button class="mini${k === keep ? " on" : ""}" data-act="fire-keep" data-region="${region}" data-keep="${k}" title="${KEEP_TITLE[k]}">${KEEP_WORD[k]}</button>`).join(" ")}</span>`;
+  // A cold pit with a drill and dry wood in reach is one click from lit:
+  // the setting keeps a fire that is alive and never starts one, so the
+  // start is the player's, and "keep it burning" beside a cold pit and a
+  // full pile read as broken without the click.
+  const light = site?.structures.firePit && !st.fire.lit && st.campCell !== null && cellOf(state, world) === st.campCell
+    ? ((o) => o.ok
+        ? `<button class="mini" data-act="task" data-id="light" title="Lay a kilo from the pile and light it with the drill">light it now</button>`
+        : `<small class="dim">to light it: ${esc(plain(o.why))}</small>`)(check(state, world, cal, "light"))
+    : "";
+  const fire = site?.structures.firePit
+    ? `<div>fire: ${fireWord} ${light} ${keepButtons(id, st.fire.keep, KEEP_CHOICES)}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}${pitHint}`
+    : "";
+  const fieldFire = state.player.fieldFire && state.player.fieldFire.cell === cellOf(state, world)
+    ? `<div>field fire here: ${fmtKg(state.player.fieldFire.fuelKg)} in it <small class="dim">the body's own; fed from the pack while it is wanted</small></div>`
+    : "";
+  const elsewhere = Object.entries(state.regions)
+    .filter(([rid, other]) => Number(rid) !== id && other.campCell !== null && campSite(other)?.structures.firePit)
+    .map(([rid, other]) => `<div>fire at ${esc(regionAt(world, Number(rid)).name)}: ${other.fire.lit ? "burning" : hasEmbers(other.fire) ? "coals" : "cold"} ${keepButtons(Number(rid), other.fire.keep, KEEP_CHOICES)}</div>`)
+    .join("");
   const rack = site?.structures.dryingRack
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
-  const campPile = pileAt(state, st.campCell);
+  // A store line says what it holds, what it can hold, and what it loses,
+  // because every cap here is lossy rather than merely full.
+  const woodKg = woodOnHandKg(campPile);
+  const covered = coveredWoodKg(site);
+  const exposed = Math.max(0, woodKg - covered);
+  // A camp with nothing built to keep wood dry is the common early state,
+  // not an edge case, so it says plainly that there is no cover rather than
+  // reading "of 0 g covered".
+  const wood = woodKg > 0 || covered > 0
+    ? `<div>wood: ${fmtKg(woodKg)}${covered > 0 ? ` of ${fmtKg(covered)} covered` : ", no cover"}${exposed > 0 ? `, <span class="bad">${covered > 0 ? `${fmtKg(exposed)} ` : ""}out in the weather</span>` : ""}</div>`
+    : "";
+
   const cap = campWaterCapacity(campPile, site);
   const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
     ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
     : "";
   const lying = weight(campPile);
   const heap = lying > 0 ? `<div class="dim">${fmtKg(lying)} lying here</div>` : "";
+  const yard = site ? `<div>yard: ${Math.round(yardUsed(site))} of ${Math.round(site.yardM2)} m2</div>` : "";
   const limits = CAPABILITIES.filter((c) => c.producer && standingHere(state, st, world, c))
-    .map((c) => `<div><small>${esc(c.id)}: ${esc(c.limits)}</small></div>`)
+    .map((c) => {
+      const rate = producerRate(state, world, st, site, cal, c.id, display);
+      return `<div><small>${esc(c.id)}: ${esc(c.limits)}${rate ? ` - ${esc(rate)}` : ""}</small></div>`;
+    })
     .join("");
 
-  const stands = built.length || unfinished.length
-    ? `<div>${[...built, ...unfinished].join(", ")}</div>`
+  const stands = built.length || planned.length
+    ? `<div>${[...built, ...planned].join(", ")}</div>`
     : `<div class="dim">nothing built</div>`;
   // What lives here is a region's reading, not a cell's, so the map's hover
   // has no place for it and the camp box does: the survivor knows what is
   // about without walking anywhere to look.
   const about = `<div class="roster">${rosterHtml(state, world, id, cal)}</div>`;
-  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${stands}${rack}${water}${heap}${limits}${about}`;
+  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${fieldFire}${elsewhere}${stands}${rack}${wood}${water}${heap}${yard}${limits}${about}`;
 }
 
 
@@ -590,9 +747,15 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     // treats them differently enough that which is which has to be visible:
     // a once order works through the night and cuts into work in hand, a
     // standing one waits for the light and for the chunk to end.
-    const once = !care && o.req.until.kind === "once";
-    const kind = care ? "" : `<span class="kind">${once ? "once" : "standing"}</span>`;
+    const once = !care && (o.req.until.kind === "once" || o.req.until.kind === "dismissed");
+    const kind = care ? "" : `<span class="kind">${o.req.until.kind === "dismissed" ? "until struck off" : once ? "once" : "standing"}</span>`;
     const blockedTag = blocked ? `<span class="kind blocked">blocked</span>` : "";
+    // A row the list walked past. The work was asked for and is not
+    // happening, and without a word for it the row reads as broken rather
+    // than as passed over on purpose: the tag says the list made a choice,
+    // and the line under it says what the choice was made on.
+    const fellThrough = !care && !live && !blocked && Boolean(o.skipped);
+    const skippedTag = fellThrough ? `<span class="kind skipped">skipped</span>` : "";
     // waitingLine is the plain reading and writes nothing; the scheduler's own read
     // is what moves a restart band's mark, so drawing a row never advances the list.
     // Task progress and the concrete step live in the central strip. The
@@ -602,7 +765,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
       ? ""
       : blocked && o !== judged.blockedBy
         ? ""
-        : ((line) => line ? `<div class="step">${esc(cap(plain(line)))}</div>` : "")(waitingLine(state, world, cal, o, judged));
+        : ((line) => line ? `<div class="step${fellThrough ? " bad" : ""}">${esc(cap(plain(line)))}</div>` : "")(waitingLine(state, world, cal, o, judged));
     // A care row ranks like any other row and draws the same up and down,
     // since where it sits against the work is the whole of what the player
     // says to it. It draws no x: it cannot be struck off, and a button that
@@ -631,7 +794,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     const btns = care
       ? `<span class="ctl">${move}</span>`
       : `<span class="ctl">${move} ${pin} <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
-    return `<div class="order${care ? " care" : ""}${once ? " once" : ""}${live ? " live" : ""}"><div class="head"><span class="ti"><b>${esc(orderSentence(state, world, cal, o))}</b><span class="meta">${kind}${blockedTag}</span>${counts}</span>${btns}</div>${second}</div>`;
+    return `<div class="order${care ? " care" : ""}${once ? " once" : ""}${live ? " live" : ""}"><div class="head"><span class="ti"><b>${esc(orderSentence(state, world, cal, o))}</b><span class="meta">${kind}${blockedTag}${skippedTag}</span>${counts}${care ? `<span class="care-eta" data-eta="${o.kind}"></span>` : ""}</span>${btns}</div>${second}</div>`;
   }).join("");
   return `${held}${rows}`;
 }
@@ -714,7 +877,10 @@ function activityStep(state: GameState, world: World, cal: Calendar): string {
  */
 const CARE_NEED_WORD = {
   sleep: "sleepy", storm: "storm coming", cold: "cold", hungry: "hungry",
-  thirsty: "thirsty", spent: "exhausted", home: "going home", fire: "the fire", snares: "the snares",
+  // A state, never a second gerund: "Self-care: spent, resting" is the
+  // action and what it is doing; "recovering stamina, resting" said three
+  // things where the strip has room to read two.
+  thirsty: "thirsty", spent: "spent", home: "before dark", fire: "the fire", snares: "the snares",
 } as const;
 
 export function activity(state: GameState, world: World, cal: Calendar): Activity | null {

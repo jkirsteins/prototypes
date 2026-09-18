@@ -193,7 +193,9 @@ describe("save", () => {
     const file = readSave(serialize(state, 1234));
     expect(file).not.toBeNull();
     expect(file!.savedAt).toBe(1234);
-    const expected = JSON.parse(JSON.stringify(state));
+    // JSON discards Maps and typed-array identity in fine knowledge. Compare
+    // the restored state with a genuine independent structured snapshot.
+    const expected = structuredClone(state);
     delete (expected as unknown as Record<string, unknown>).plan;
     expect(file!.state).toEqual(expected);
   });
@@ -288,10 +290,10 @@ describe("save", () => {
     // are not patch ids, so it is turned away rather than migrated.
     const legacy = JSON.parse(serialize(newGame(9).state));
     legacy.version = SAVE_VERSION - 1;
-    expect(deserialize(JSON.stringify(legacy))).toBeNull();
+    expect(deserialize(JSON.stringify(legacy))).toMatchObject({ refused: expect.any(String) });
     const stale = JSON.parse(serialize(newGame(9).state));
     stale.worldVersion = WORLD_VERSION - 1;
-    expect(deserialize(JSON.stringify(stale))).toBeNull();
+    expect(deserialize(JSON.stringify(stale))).toMatchObject({ refused: expect.any(String) });
     const current = JSON.parse(serialize(newGame(9).state));
     delete current.state.advanceCarry;
     expect(readSave(JSON.stringify(current))!.state.advanceCarry).toBe(0);
@@ -307,7 +309,7 @@ describe("save", () => {
     expect(state.weather.nextStormId).toBe(1);
     expect(state.weather.stormFreeSince).toBe(0);
     const st = state.regions[state.player.region];
-    expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0 });
+    expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0, keep: "burning", fedByRow: false });
     expect(st.smoke).toBe(0);
     expect(campSite(st)?.structures.hearth ?? false).toBe(false);
     state.player.tools.push({ id: "barkBucket", durability: 100 });

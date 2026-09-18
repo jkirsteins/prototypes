@@ -29,3 +29,13 @@ export function solvedFor(seed: number, w: number, h: number): SolvedWorld {
 export function rememberSolved(s: SolvedWorld, seed: number): void {
   inProcess.set(`${seed}:${s.w}x${s.h}`, s);
 }
+
+/** Browser sessions play one seed at a time; old arrays must not stay rooted by this cache after a reset. */
+export function retainSolved(seed: number): void {
+  for (const key of inProcess.keys()) if (!key.startsWith(`${seed}:`)) inProcess.delete(key);
+}
+
+/** Whether `s` is the solved world this process holds for `seed` - the real one, not a fixture that borrowed the seed. */
+export function isRememberedSolved(seed: number, s: SolvedWorld): boolean {
+  return inProcess.get(`${seed}:${s.w}x${s.h}`) === s;
+}

@@ -1,0 +1,133 @@
+/**
+ * A fire's setting, per fire (types.ts, FireKeep).
+ *
+ * The camp row obeys it: `burning` feeds and relights, `coals` lets the
+ * fire down and relights only as the coals go, `out` asks nothing. The
+ * field fire has the same setting. An older save reads `burning`.
+ */
+import { describe, expect, it } from "vitest";
+import { Rng } from "../src/rng";
+import { bodyStep, campNeed, raiseFire } from "../src/sim/body";
+import { clearNeeds, publishFireNeed } from "../src/sim/needs";
+import { calendar } from "../src/sim/calendar";
+import { BANKED_KG, EMBER_RELIGHT_MINUTES, SPREAD_FUEL_KG } from "../src/sim/fire";
+import { addItem, pile } from "../src/sim/inventory";
+import { newGame } from "../src/sim/newgame";
+import { cellOf, placeAt } from "../src/sim/position";
+import { regionState, siteFor } from "../src/sim/regionstate";
+import { readSave, serialize } from "../src/sim/save";
+import { campHtml } from "../src/ui/panels";
+import { neighbourLandCell, siteCamp } from "./siting-helpers";
+
+/** A camp with a pit, a drill in the pack and dry wood in the pile, at midday. */
+function pit(seed = 3) {
+  const { state, world } = newGame(seed);
+  siteCamp(state, world);
+  const st = regionState(state, world, state.player.region);
+  placeAt(state, world, st.campCell!);
+  siteFor(st, st.campCell!).structures.firePit = true;
+  state.player.tools.push({ id: "fireDrill", durability: 100 });
+  addItem(pile(state, st.campCell!), "firewood", 10);
+  // Midday by the calendar: the clock's minute zero is the landing hour, not midnight.
+  while (Math.abs(calendar(state.minute, state.startDoy).hour - 12) > 0.05) state.minute++;
+  // A body wanting nothing: the relight yields to thirst, hunger and rest.
+  state.player.water = 3;
+  state.player.kcal = 3000;
+  state.player.energy = 90;
+  state.player.sleepDebt = 0;
+  state.player.warmth = 80;
+  state.player.wetness = 0;
+  return { state, world, st, cal: calendar(state.minute, state.startDoy), rng: new Rng(1) };
+}
+
+describe("the camp row and a fire's setting", () => {
+  it("rekindles coals when a row has asked for a full fire, leaves a fire set to go out, and never starts one from cold", () => {
+    const { state, world, st, cal, rng } = pit();
+    expect(st.fire.keep).toBe("burning");
+    // Stone cold: the pit is the body's or the player's to light, not the row's, whatever is asked.
+    publishFireNeed(state, "full", "Cook raw meat");
+    expect(campNeed(state, world, cal)).toBeNull();
+    expect(bodyStep(state, world, cal, rng, "fire")).toBeNull();
+    // Coals with nobody asking and hours in them: left as coals.
+    clearNeeds(state);
+    st.fire.embers = EMBER_RELIGHT_MINUTES * 20;
+    expect(campNeed(state, world, cal)).toBeNull();
+    // A row asks for a full fire: rekindled, and still under "let it go
+    // out" - the setting is the row's floor, not a veto on the other rows.
+    publishFireNeed(state, "full", "Cook raw meat");
+    expect(campNeed(state, world, cal)).toBe("fire");
+    expect(bodyStep(state, world, cal, rng, "fire")?.id).toBe("light");
+    st.fire.keep = "out";
+    expect(campNeed(state, world, cal)).toBe("fire");
+    clearNeeds(state);
+    expect(campNeed(state, world, cal)).toBeNull();
+  });
+
+  it("keeps the floor: coals about to go are rekindled with nobody asking, and not under let-it-go-out", () => {
+    const { state, world, st, cal, rng } = pit();
+    st.fire.embers = EMBER_RELIGHT_MINUTES;
+    expect(campNeed(state, world, cal)).toBe("fire");
+    expect(bodyStep(state, world, cal, rng, "fire")?.id).toBe("light");
+    st.fire.keep = "out";
+    expect(campNeed(state, world, cal)).toBeNull();
+  });
+
+  it("feeds a low fire while a full one is wanted, and banks the row's own feeding when nothing wants it", () => {
+    const { state, world, st, cal, rng } = pit();
+    st.fire.lit = true;
+    st.fire.fuelKg = 0.5;
+    // Nothing asks: half a kilo is under the banked few kilos, so nothing to bank either.
+    expect(campNeed(state, world, cal)).toBeNull();
+    publishFireNeed(state, "full", "Melt snow");
+    expect(campNeed(state, world, cal)).toBe("fire");
+    expect(bodyStep(state, world, cal, rng, "fire")).toBeNull();
+    expect(st.fire.fuelKg).toBeGreaterThan(5);
+    expect(st.fire.fedByRow).toBe(true);
+    // The need gone: the surplus the row put in goes back to the pile in the minute.
+    clearNeeds(state);
+    const pileBefore = pile(state, st.campCell!).items.firewood ?? 0;
+    expect(campNeed(state, world, cal)).toBe("fire");
+    expect(bodyStep(state, world, cal, rng, "fire")).toBeNull();
+    expect(st.fire.fuelKg).toBeLessThanOrEqual(BANKED_KG + 1e-9);
+    expect(pile(state, st.campCell!).items.firewood ?? 0).toBeGreaterThan(pileBefore);
+    expect(campNeed(state, world, cal)).toBeNull();
+  });
+
+  it("feeds a field fire under foot from the pack as the body's own fire, not the camp row's", () => {
+    const { state, world, cal } = pit();
+    addItem(state.player.pack, "firewood", 5);
+    const here = regionState(state, world, state.player.region).campCell!;
+    placeAt(state, world, neighbourLandCell(world, here));
+    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 2 };
+    expect(campNeed(state, world, cal)).toBeNull();
+    expect(raiseFire(state, world, cal, cellOf(state, world), "full", true)).toBeNull();
+    expect(state.player.fieldFire.fuelKg).toBeGreaterThan(2);
+    expect(state.player.fieldFire.fuelKg).toBeLessThanOrEqual(SPREAD_FUEL_KG + 1e-9);
+  });
+
+  it("reads burning from a save that predates the setting, and from one that said coals", () => {
+    const { state, world, st } = pit();
+    state.player.fieldFire = { cell: st.campCell!, fuelKg: 2 };
+    const raw = JSON.parse(serialize(state)) as { state: { regions: Record<string, { fire: { keep?: string } }>; player: { fieldFire: { keep?: string } } } };
+    for (const region of Object.values(raw.state.regions)) region.fire.keep = "coals";
+    raw.state.player.fieldFire.keep = "burning";
+    const loaded = readSave(JSON.stringify(raw));
+    expect(loaded).not.toBeNull();
+    expect(loaded!.state.regions[state.player.region].fire.keep).toBe("burning");
+    expect((loaded!.state.player.fieldFire as { keep?: string } | null)?.keep).toBeUndefined();
+    void world;
+  });
+});
+
+describe("the fire line", () => {
+  it("offers to light a cold pit when the drill and dry wood are at hand, and says what is missing otherwise", () => {
+    const { state, world, st, cal } = pit();
+    expect(campHtml(state, world, cal)).toContain("light it now");
+    state.player.tools = state.player.tools.filter((t) => t.id !== "fireDrill");
+    const html = campHtml(state, world, cal);
+    expect(html).not.toContain("light it now");
+    expect(html).toContain("to light it: needs a fire drill");
+    st.fire.lit = true;
+    expect(campHtml(state, world, cal)).not.toContain("to light it");
+  });
+});

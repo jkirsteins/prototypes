@@ -8,18 +8,24 @@ import { type SolveProgress, STAGES } from "./solve";
 import type { SolveMessage } from "./solve.worker";
 import { WORLD_CELL_H, WORLD_CELL_W } from "./terrain";
 import { readSolved, worldKey, writeSolved } from "./worldstore";
+import { retainSolved } from "./solvecache";
 
 export async function loadWorld(seed: number, onProgress: SolveProgress = () => {}): Promise<World> {
+  const build = (solved?: import("./solve").SolvedWorld): World => {
+    const world = generateWorld(seed, solved);
+    if (import.meta.env.MODE !== "test") retainSolved(seed);
+    return world;
+  };
   // Vitest's DOM shim may define Worker; the tests want the synchronous cache either way.
   if (typeof Worker === "undefined" || import.meta.env.MODE === "test") {
     onProgress("reading the ground", 0);
-    return generateWorld(seed);
+    return build();
   }
   const key = worldKey(seed, WORLD_CELL_W, WORLD_CELL_H);
   const cached = await readSolved(key);
   if (cached) {
     onProgress("reading the ground", 1);
-    return generateWorld(seed, cached);
+    return build(cached);
   }
   return new Promise((resolve, reject) => {
     // A slow world beats no world: a worker that will not start or that dies
@@ -28,7 +34,7 @@ export async function loadWorld(seed: number, onProgress: SolveProgress = () => 
     const onTheMainThread = () => {
       onProgress("solving on the main thread", 0);
       try {
-        resolve(generateWorld(seed));
+        resolve(build());
       } catch (e) {
         reject(e);
       }
@@ -45,7 +51,7 @@ export async function loadWorld(seed: number, onProgress: SolveProgress = () => 
       if (m.kind === "progress") onProgress(m.stage, m.fraction);
       else {
         worker.terminate();
-        const world = generateWorld(seed, m.solved);
+        const world = build(m.solved);
         // The arrays were transferred to the main thread; write from that copy now that generateWorld holds it.
         void writeSolved(key, m.solved);
         resolve(world);

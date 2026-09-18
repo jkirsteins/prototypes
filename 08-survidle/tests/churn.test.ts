@@ -24,10 +24,12 @@ import { newGame } from "../src/sim/newgame";
 import { startTask } from "../src/sim/tasks";
 import { Rng } from "../src/rng";
 import { doHtml } from "../src/ui/dopanel";
-import { levelAt, mapHtml, mapKey, mapTargetAtPoint } from "../src/ui/map";
+import { levelAt, mapKey, mapTargetAtPoint } from "../src/ui/map";
+import { board } from "./board";
 import { tipHtml, tipKey } from "../src/ui/tip";
 import { campHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, logHtml, skillsHtml, statsHtml, taskHtml, travelHtml, weatherHtml, weatherKey } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
+import { stockPanelHtml, stocksHtml } from "../src/ui/stocks";
 import { fillShare } from "../src/ui/bars";
 import { emptyView } from "../src/sim/forecaster";
 import { feltTemperature } from "../src/sim/player";
@@ -79,6 +81,13 @@ const BUDGET: Record<string, number> = {
   journal: 5,
   log: 5,
   map: MINUTE,
+  // The strip reads the same burn-today rate the stats panel does, so it
+  // turns over on the same clock: about once a game minute, not per frame.
+  stocks: MINUTE,
+  // The opened panel reads the same causes the strip sums, plus the task
+  // bar's own progress rounded to the tenth of a kilo it is already shown
+  // at elsewhere - none of that moves faster than the strip itself does.
+  stockpanel: MINUTE,
 };
 
 function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]): Record<string, string> {
@@ -87,6 +96,11 @@ function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<ty
   const ambient = ambientTemperature(cal, state.weather);
   return {
     stats: statsHtml(state, world, cal, ambient, ui),
+    stocks: stocksHtml(state, world, cal, ui),
+    // Wood: the one group with a stand line and, when work is in hand, a
+    // "coming" line - the two ways this panel can churn that the strip's
+    // own cells cannot.
+    stockpanel: stockPanelHtml(state, world, cal, ui, "wood"),
     gear: gearHtml(state, feltTemperature(state, world, ambient)),
     skills: skillsHtml(state),
     camp: campHtml(state, world, cal),
@@ -240,16 +254,16 @@ describe("no panel redraws faster than what it is showing", () => {
  * coordinate back out is.
  */
 describe("sweeping the pointer does not redraw the map", () => {
-  it("the map's markup and key are the same still as swept", () => {
+  it("the map's model and key are the same still as swept", () => {
     const { state, world } = newGame(21);
     const ui = newUiState();
     const cal = calendar(state.minute, state.startDoy);
-    const still = `${mapKey(state, world, ui, cal)}|${mapHtml(world, state, ui, cal)}`;
+    const still = `${mapKey(state, world, ui, cal)}|${JSON.stringify(board(world, state, ui, cal))}`;
     const l = levelAt(ui.zoom);
     let changed = 0;
     for (let f = 0; f < FRAMES; f++) {
       ui.hover = mapTargetAtPoint(world, state, ui, (f * 7) % (l.w * l.px), (f * 11) % (l.h * l.line))?.patch ?? null;
-      const now = `${mapKey(state, world, ui, cal)}|${mapHtml(world, state, ui, cal)}`;
+      const now = `${mapKey(state, world, ui, cal)}|${JSON.stringify(board(world, state, ui, cal))}`;
       if (now !== still) changed++;
     }
     expect(changed).toBe(0);

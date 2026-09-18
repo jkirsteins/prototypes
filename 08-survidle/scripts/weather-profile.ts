@@ -11,7 +11,7 @@ import { cellOf, placeAt } from "../src/sim/position";
 import { opticalCandidateRangeCells, visibleCells, sightRangeCells } from "../src/sim/sight";
 import { atmosphereAt, ensureGround } from "../src/sim/weather";
 import { current } from "../src/sim/record";
-import { mapHtml } from "../src/ui/map";
+import { mapModel } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { heightAt, terrainPeek, WORLD_H, WORLD_W, type World } from "../src/world/gen";
 import { installNodeWorldCache } from "../src/world/solvecache.node";
@@ -182,10 +182,9 @@ export function profileWeather(seed = 17, options: WeatherProfileOptions = {}): 
   map.state.minute = 24 * 60 - 1;
   const ui = newUiState();
   workloads.push(measured("late-day map render", WEATHER_PROFILE_DEFAULTS.mapGlyphs, () => {
-    const html = mapHtml(map.world, map.state, ui, calendar(map.state.minute, map.state.startDoy));
-    const glyphs = html.match(/class="c(?: |")/g)?.length ?? 0;
-    const weatherLayers = html.match(/class="cell-weather"/g)?.length ?? 0;
-    return `${glyphs}:${weatherLayers}:${html.length}`;
+    const model = mapModel(map.world, map.state, ui, calendar(map.state.minute, map.state.startDoy));
+    const weathered = model.glyphs.filter((g) => g.classes.includes("wx-local")).length;
+    return `${model.glyphs.length}:${weathered}`;
   }));
 
   return { seed, workloads };

@@ -3,9 +3,9 @@
  * docs/close-zoom-simulation-shots. The browser runs the ordinary application:
  * this harness opens a seeded run, lands through the real candidate and landing
  * controls, dismisses the real overlays, presses the real zoom buttons, and
- * photographs the map panel. It reads state, terrain, weather, visibility,
- * markup and CSS; it assigns none of them, so an image is whatever the
- * generator, simulation and renderer actually produced.
+ * photographs the map panel. It reads state, terrain, weather, visibility
+ * and the board model the canvas drew; it assigns none of them, so an image
+ * is whatever the generator, simulation and renderer actually produced.
  *
  * The scene is fixed by URL alone - seed 21, start day 90, game minute 10 -
  * and the application has no idea a screenshot is being taken.
@@ -150,7 +150,7 @@ async function capture(evalJs, send, shot) {
   await runToMinute(evalJs, MINUTE);
   const facts = await evalJs(`(() => {
     const state = window.survidle.state;
-    const cells = [...document.querySelectorAll('#map .c')];
+    const model = window.survidle.mapModel;
     const rect = document.querySelector('#map').getBoundingClientRect();
     return {
       seed: state.seed,
@@ -158,9 +158,9 @@ async function capture(evalJs, send, shot) {
       startDoy: state.startDoy,
       player: { xM: state.player.xM, yM: state.player.yM, region: state.player.region },
       zoom: document.querySelector('.maptools span').textContent,
-      renderedCells: cells.length,
-      cosmeticDetails: document.querySelectorAll('#map .micro-ground').length,
-      playerMarks: document.querySelectorAll('#map .grid .mk-player').length,
+      renderedCells: model.glyphs.length,
+      cosmeticDetails: 0,
+      playerMarks: model.glyphs.filter((g) => g.classes.includes('mk-player')).length,
       overlayHidden: document.querySelector('#overlay').hidden,
       cacheStats: window.survidle.cacheStats(),
       box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },

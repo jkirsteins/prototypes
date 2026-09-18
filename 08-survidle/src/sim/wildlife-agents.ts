@@ -216,13 +216,44 @@ function makeSubject(state: GameState, species: AgentSpecies, region: number, co
   };
 }
 
-/** Collapses every cell and materializes a bounded cohort in the current region. */
+/**
+ * How far from the survivor an animal of a neighbouring region keeps its
+ * exact position. A region border is a line on the map and not a wall: an
+ * elk grazing 200 m away does not vanish because the survivor stepped over
+ * it, and a wolf that followed them to the edge is still there. Beyond this
+ * the subject collapses to its region's count, as every other region's do.
+ */
+export const CARRY_ACROSS_BORDER_M = 1_200;
+
+/**
+ * How many animals of other regions may stay at their positions at once.
+ * Every active subject is stepped, disturbed and drawn every tick, and the
+ * region's own cohort is already capped at MAX_ACTIVE_SUBJECTS: without a
+ * cap here a survivor walking a border would carry a second region's herds
+ * on top of this one's and pay for both every minute. The nearest keep
+ * their places; the rest collapse to their region's count.
+ */
+export const MAX_CARRIED_SUBJECTS = 4;
+
+/**
+ * Collapses the cells of every animal that is not near the survivor and
+ * materializes a bounded cohort in the current region. Animals of other
+ * regions inside CARRY_ACROSS_BORDER_M stay where they are, at their
+ * positions, until the survivor has walked away from them.
+ */
 export function activateWildlife(state: GameState, world: World, rng: Rng): void {
   const region = state.player.region;
-  if (state.wildlife.activeRegion !== region) {
-    for (const s of state.wildlife.subjects) s.active = null;
-    state.wildlife.activeRegion = region;
+  const here = cellOf(state, world);
+  const carried: { subject: WildlifeSubject; away: number }[] = [];
+  for (const s of state.wildlife.subjects) {
+    if (s.region === region || !s.active) continue;
+    const away = metresBetween(s.active.cell, here);
+    if (away > CARRY_ACROSS_BORDER_M) s.active = null;
+    else carried.push({ subject: s, away });
   }
+  carried.sort((a, b) => a.away - b.away || a.subject.id - b.subject.id);
+  for (const { subject } of carried.slice(MAX_CARRIED_SUBJECTS)) subject.active = null;
+  state.wildlife.activeRegion = region;
   const cal = calendar(state.minute, state.startDoy);
   reconcileRegion(state, world, region, cal);
   const st = regionState(state, world, region);
@@ -409,13 +440,13 @@ function advanceWildlifeTravel(state: GameState, world: World, subject: Wildlife
 /** Advances authoritative positions without running a new behavior decision. */
 export function advanceWildlifeMotion(state: GameState, world: World, rng: Rng, dtMinutes: number): void {
   for (const subject of state.wildlife.subjects) {
-    if (subject.region === state.player.region) advanceWildlifeTravel(state, world, subject, rng, dtMinutes);
+    if (subject.active) advanceWildlifeTravel(state, world, subject, rng, dtMinutes);
   }
 }
 
 /** Evaluated after player movement/work and again after a detailed animal tick. */
 export function evaluateWildlifeDisturbance(state: GameState, world: World, cal: Calendar, live: boolean, rolls: EncounterRolls = {}): void {
-  if (state.wildlife.activeRegion !== state.player.region) return;
+  if (state.wildlife.activeRegion === null) return;
   const actor = metricPointForPlayer(state, world);
   if (!actor) return;
   const playerTerrain = cellAt(world, cellOf(state, world)).terrain;
@@ -430,7 +461,7 @@ export function evaluateWildlifeDisturbance(state: GameState, world: World, cal:
   for (const subject of state.wildlife.subjects) {
     const active = subject.active;
     const profile = DISTURBANCE_PROFILES[subject.species];
-    if (!active || subject.region !== state.player.region || profile.alarmGain === 0) continue;
+    if (!active || profile.alarmGain === 0) continue;
     const area = metricAreaForCell(world, active.cell);
     if (!area) continue;
     // Broad-phase bounds come from the metric adapter, never a fixed cell radius.
@@ -753,7 +784,7 @@ export function stepWildlife(state: GameState, world: World, cal: Calendar, rng:
   const tick = Math.floor(state.minute / WILDLIFE_TICK_MINUTES);
   if (tick <= state.wildlife.lastSpatialTick) return;
   state.wildlife.lastSpatialTick = tick;
-  for (const subject of [...state.wildlife.subjects]) if (subject.region === state.player.region) moveOne(state, world, cal, subject, rng);
+  for (const subject of [...state.wildlife.subjects]) if (subject.active) moveOne(state, world, cal, subject, rng);
   evaluateWildlifeDisturbance(state, world, cal, live);
   const visible = visibleWildlife(state, world, cal).map((s) => s.id);
   const previous = new Set(state.wildlife.visible);
@@ -884,10 +915,24 @@ export function unknownBearDen(state: GameState, cal: Calendar): WildlifeSubject
   return state.wildlife.subjects.find((subject) => subject.species === "bear" && subject.region === state.player.region && subject.denCell !== null && !state.wildlife.knownDens[subject.denCell] && wildlifeMembers(subject) > 0) ?? null;
 }
 
-export function visibleWildlife(state: GameState, world: World, cal: Calendar): WildlifeSubject[] {
-  if (state.wildlife.activeRegion !== state.player.region) return [];
-  const visible = visibleCells(state, world, cal, cellOf(state, world));
-  return state.wildlife.subjects.filter((s) => s.region === state.player.region && s.active !== null && visible.has(s.active.cell));
+/**
+ * The subjects standing on ground the survivor can see right now.
+ *
+ * `visible` is the survivor's current viewshed, for a caller that already
+ * holds one. Working it out is the expensive half of a frame - a contrast
+ * pass over every candidate patch - and the map asks this question six
+ * times while building one picture, from the same cell, for the same
+ * minute. Left to compute its own, this ran the pass six times over. A
+ * caller that passes nothing still gets an exact answer computed here, so
+ * the meaning of the function does not depend on who is asking.
+ */
+export function visibleWildlife(state: GameState, world: World, cal: Calendar, visible?: ReadonlySet<number>): WildlifeSubject[] {
+  // Nothing is at a place while the spatial layer is down: an aggregate tick
+  // collapses every cell and leaves activeRegion null, and the positions
+  // still hanging off the subjects are last week's.
+  if (state.wildlife.activeRegion === null) return [];
+  const seen = visible ?? visibleCells(state, world, cal, cellOf(state, world));
+  return state.wildlife.subjects.filter((s) => s.active !== null && seen.has(s.active.cell));
 }
 
 /** One cheap life-history pass for persistent subjects, whether spatial or dormant. */

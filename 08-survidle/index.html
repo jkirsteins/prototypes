@@ -1,14 +1,29 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-loading="true">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="data:," />
     <title>08 - Survidle</title>
+    <style>
+      html[data-loading="true"] body > :not(#loading) { visibility: hidden; pointer-events: none; }
+      #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0c0f13; color: #c9cdd2; font-family: monospace; z-index: 50; }
+      #loading[hidden] { display: none; }
+    </style>
   </head>
   <body>
     <!-- Shown while the worker solves the world; the run does not start until it is done. -->
-    <div id="loading" hidden><div class="bar"><i></i></div><p>raising the land</p></div>
+    <div id="loading" role="status" aria-live="polite"><div class="bar"><i></i></div><p>Loading...</p></div>
+    <!-- Stocks span the page above the columns: what the camp holds, what it
+         can hold, and which way each is moving. The map's own inventory strip
+         answers a different question and stays where it is. Positioned so
+         the opened panel can anchor under the strip rather than the page. -->
+    <div id="stockswrap">
+      <div id="stocks"></div>
+      <!-- One element, in the markup from the start, so it is shown and
+           hidden rather than created and destroyed under the pointer. -->
+      <div id="stockpanel" hidden></div>
+    </div>
     <!-- Left is info, middle is interactive, right is the queue. The left
          column is read-only but for the away slider, which only changes what
          is being read beside it. -->
@@ -31,6 +46,12 @@
       </aside>
       <main id="center" class="col">
         <section id="map" class="panel">
+          <!-- The effects canvas (water shimmer, cloud shadow, weather
+               motion) is mapHtml's own markup, inside .scroll-x, so it
+               shares that element's isolated stacking context and its
+               z-index is actually comparable to the route line and the
+               marks - not a sibling of mapdyn, which would sit outside
+               the isolation boundary and paint over everything. -->
           <div id="mapdyn"></div>
           <!-- Camp stores stay visible on the map; a non-empty cell under
                the pointer joins them while it is highlighted. -->
@@ -39,7 +60,6 @@
                hidden rather than created and destroyed under the pointer. -->
           <div id="maptip" hidden></div>
           <!-- The ways out, in a corner of the ground they lead off. -->
-          <div id="maptravel"></div>
           <div class="legend"></div>
         </section>
         <section id="task" class="panel"></section>
@@ -49,7 +69,10 @@
         <section id="panes" class="panel">
           <div id="panetabs" class="tabs"></div>
           <div id="pane-do" class="pane">
-            <input type="search" data-do="filter" placeholder="filter actions" aria-label="Filter actions" />
+            <div class="dofind">
+              <input type="search" data-do="filter" placeholder="filter actions" aria-label="Filter actions" />
+              <button type="button" class="mini" data-act="do-clear" title="Back to what the game is asking for">clear</button>
+            </div>
             <div id="dosubs" class="subs"></div>
             <div class="dosplit">
               <div id="dopurposes"></div>
@@ -64,6 +87,8 @@
         </section>
       </main>
       <aside id="right" class="col">
+        <div id="rightpages"></div>
+        <section id="alerts" class="panel" hidden></section>
         <section id="weather" class="panel"></section>
         <section id="orders" class="panel"></section>
       </aside>
@@ -85,6 +110,12 @@
         </select>
       </label>
       <label><input type="checkbox" data-display="cloud-shadows" checked /> clouds cast map shadows</label>
+      <label>rates read in
+        <select data-display="rates">
+          <option value="game">game time (per hour)</option>
+          <option value="real">real time (per second)</option>
+        </select>
+      </label>
       <div id="beacon">
         <label><input type="checkbox" data-beacon="on" /> share anonymous play data</label>
         <span class="dim" data-beacon="note"></span>

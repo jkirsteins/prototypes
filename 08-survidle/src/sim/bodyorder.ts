@@ -21,10 +21,10 @@ import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { bodyStep, campNeed, currentNeed, NEED_ASIDE, NEED_LOG_LINES, NEED_WORDS, peekNeed } from "./body";
 import { intentSentence } from "./intent";
-import { log } from "./log";
+import { log, warn } from "./log";
 import { regionState } from "./regionstate";
 import { isRunning, takeStep } from "./steps";
-import { setAside } from "./tasks";
+import { check, setAside } from "./tasks";
 import { isWorkIntent, type CareNeed, type CareOrder, type GameState, type Order, type RegionState, type Verdict } from "./types";
 
 /** Neither row's own task is ever begun as work; their sentences are fixed, since neither carries a target for orderSentence to describe. */
@@ -146,9 +146,18 @@ export function careLogLine(state: GameState, world: World, cal: Calendar, o: Ca
  * finds any other row that has the minute. The need's concrete step is the
  * whole of that minute.
  */
+/** This row's own care claim, if the live intent is one. */
+function ownClaim(state: GameState, o: CareOrder): boolean {
+  return state.intent?.mode === "care" && state.intent.orderId === o.id;
+}
+
 function serveNeed(state: GameState, world: World, cal: Calendar, rng: Rng, o: CareOrder, need: CareNeed): void {
   const s = bodyStep(state, world, cal, rng, need);
-  if (!s) return;
+  // A want answered on the spot, or one with nothing to do, leaves no claim
+  // standing: a hole cut and drunk from at minute 555 left "opening an ice
+  // hole" on the strip with no task under it, which reads as a stall
+  // (tests/care-steps-run.test.ts holds every need to this).
+  if (!s) { if (ownClaim(state, o)) state.intent = null; return; }
   // A storm step also claims a matching work task through the normal
   // set-aside path, so its progress survives under the care row's name.
   if (isRunning(state, s) && (need !== "storm" || state.intent?.orderId === o.id)) return;
@@ -167,7 +176,12 @@ function serveNeed(state: GameState, world: World, cal: Calendar, rng: Rng, o: C
     state.intent = { mode: "care", care: o.kind, need, orderId: o.id, step: s.step };
   }
   if (state.intent?.mode === "care" && state.intent.orderId === o.id) state.intent.need = need;
-  takeStep(state, world, cal, s);
+  // A claim the body could not start is not kept: the strip would print a
+  // step with no task under it, and nothing would say why. The refusal is
+  // said once, in the task's own words, and the minute is given back.
+  const started = takeStep(state, world, cal, s);
+  warn(state, `care:${need}`, !started, `${s.step.charAt(0).toUpperCase()}${s.step.slice(1)}: ${check(state, world, cal, s.id, s.arg).why || "cannot start"}.`);
+  if (!started && ownClaim(state, o)) state.intent = null;
 }
 
 /**
@@ -188,14 +202,17 @@ export function serveBodyRow(state: GameState, world: World, cal: Calendar, rng:
     state.intent = null;
   }
   if (state.task?.id === "sleep" && need !== "sleep") setAside(state, world);
-  if (!need) return;
+  // A need that has ended takes its claim with it, for the same reason a
+  // want answered on the spot does (serveNeed): words with no task under
+  // them are a stall on the strip.
+  if (!need) { if (ownClaim(state, o) && !state.task) state.intent = null; return; }
   serveNeed(state, world, cal, rng, o, need);
 }
 
 /** The camp row's minute: a log on the fire, or the walk to the snares. */
 export function serveCampRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: CareOrder & { kind: "camp" }): void {
   const need = campNeed(state, world, cal);
-  if (!need) return;
+  if (!need) { if (ownClaim(state, o) && !state.task) state.intent = null; return; }
   serveNeed(state, world, cal, rng, o, need);
 }
 

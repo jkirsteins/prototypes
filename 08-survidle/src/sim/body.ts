@@ -1,4 +1,5 @@
 import { localWeather } from "./weather";
+import { needsOf, setFireRefusal } from "./needs";
 /**
  * The needs read off the player and the camp rather than off whatever is
  * running, and what to do about each. The body wants sleep, shelter from a
@@ -15,13 +16,13 @@ import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { addFirewood, autoEat, edible, hungerLine } from "./actions";
 import { calendar, type Calendar } from "./calendar";
 import { feedFire } from "./camp";
-import { fireAt, fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
+import { BANKED_KG, bankFire, fireAt, fireWarms, fuelTotal, hasEmbers, roofed, SPREAD_FUEL_KG, EMBER_RELIGHT_MINUTES, fireAtLeast, type FireLevel, fireLevelOf, higherFire, splitIsWet, splitSheltered } from "./fire";
 import { AXES, axeInHand, hasTool, pile, pileAt, qty, takeUp, toolNear, transfer, weight } from "./inventory";
 import type { StormPlanInputs, StormPlanOption, StormPlanSnapshot } from "./opportunities";
 import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { log } from "./log";
-import { baseWalkSpeed, workSpeed } from "./player";
+import { baseWalkSpeed, taskDrain, workSpeed } from "./player";
 import { isKnown } from "./mapped";
 import { cellOf, straightKm, watersideCell } from "./position";
 import { campSite, newSite, regionState, siteAt } from "./regionstate";
@@ -29,15 +30,15 @@ import { survivorRoute, survivorRouteMinutes } from "./routing";
 import { seepStopped } from "./seep";
 import { coverCeiling, EMERGENCY_MINUTES, findCover, galeProtection, improveCoverMinutes, protectionOf } from "./shelter";
 import { skillLevel } from "./skills";
-import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
-import { isRunning, type Step, walkStep } from "./steps";
+import { RESTED_AT, SLEEP_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
+import { type Step, canStart, isRunning, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
 import { isWorkIntent, type BodyNeed, type CampNeed, type CareNeed, type GameState, type ItemId, type Protection, type Task, type TaskId, type ToolId, type WorkIntent } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
 import { ambientTemperature, forecastKnowledge, stormComing, stormNow, walkableIce } from "./weather";
 
 /** Stamina at which work gives way to forced Rest. This does not start sleep. */
-export const SLEEP_AT = 20;
+export { SLEEP_AT } from "./sleep";
 export const COLD_UNDER = 30;
 export const WARM_AT = 45;
 export const PROVISION_KG = 2;
@@ -99,7 +100,7 @@ export function snaresWaiting(state: GameState, world: World, cal: Calendar): nu
  */
 interface NeedMemory {
   need: BodyNeed | null;
-  sleeping: { collapsed: false } | null;
+  sleeping: { collapsed: false; doze?: true } | null;
   collapsed: boolean;
   coldSpent: boolean;
   night: boolean;
@@ -135,11 +136,18 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   if (mem.sleeping) {
     if (sleepy <= WAKE_AT) mem.sleeping = null;
   } else if (sleepy >= SLEEP_ONSET && !drinkFirst) {
-    mem.sleeping = { collapsed: false };
+    mem.sleeping = cal.isNight ? { collapsed: false } : { collapsed: false, doze: true };
   }
+  // A thirst the body can answer wakes it: a sleeper wakes thirsty and
+  // drinks, and a thirst slept through with water in reach was a death
+  // (playtest 2026-09-17, 36). The sleep goes on after.
+  if (mem.sleeping && thirsty && !storming) return "thirsty";
   if (mem.sleeping || mem.night) return "sleep";
   if (storming) return "storm";
-  if (mem.collapsed) return "spent";
+  // The collapse holds the body to rest, not to dying of thirst beside a
+  // stream: what it can still afford is read off the same store the
+  // collapse reads (spentCanDrink).
+  if (mem.collapsed) return thirsty && spentCanDrink(state, world, cal) ? "thirsty" : "spent";
   // Warm again: whatever a spent rest gave up on is worth trying afresh next time it turns cold.
   if (p.warmth >= WARM_AT) mem.coldSpent = false;
   const wetCold = p.wetness > SOAKED_WETNESS && ambientTemperature(cal, localWeather(state, world)) < WET_COLD_C;
@@ -174,9 +182,111 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
  * entry line for a memory to hold it between.
  */
 export function campNeed(state: GameState, world: World, cal: Calendar): CampNeed | null {
-  if (fireWantsWood(state, world)) return "fire";
+  const want = campFireWant(state, world);
+  if (want === "feed" || want === "bank") return "fire";
   if (snaresWaiting(state, world, cal) !== null) return "snares";
+  // Raising the pit takes minutes with the drill, and it is the least
+  // urgent want here: a catch in a snare is food, and a body that wants
+  // something - water, food, rest - gets it before the pit does, whatever
+  // the rows' rank says. So it ranks last, and only while the body wants
+  // nothing.
+  if (want === "raise" && peekNeed(state, world, cal) === null) return "fire";
   return null;
+}
+
+/**
+ * The fire level the camp row keeps the pit at: the keep-burning floor
+ * (coals: alive, rekindled as they go), the highest level the blocked rows
+ * published to the ledger this pass, and a full fire while wet wood in
+ * the pit is drying. The body's own warmth is not read here: a cold or
+ * soaked body raises the fire itself, under its own row's rank
+ * (thermalFireLevel), so the camp's rank never decides whether a cold
+ * survivor gets a fire.
+ */
+export function campFireLevel(state: GameState, world: World): FireLevel {
+  const st = regionState(state, world, state.player.region);
+  let level: FireLevel = st.fire.keep === "burning" ? "coals" : "none";
+  level = higherFire(level, needsOf(state).fire);
+  if (st.fire.wetKg > 1e-9 && st.fire.lit) level = higherFire(level, "full");
+  return level;
+}
+
+/**
+ * What the camp row would do to the pit this minute: feed it (a full fire
+ * wanted and the pit under the low mark, no minute), bank it (nothing
+ * wants a full fire and the row's own feeding is above the banked few
+ * kilos, no minute), raise it (coals to be rekindled, minutes with the
+ * drill), or nothing. Never from cold: the rows that publish a need are
+ * refused with "light one first", and the body's needs or the player's
+ * Light row start a fire.
+ */
+function campFireWant(state: GameState, world: World): "feed" | "bank" | "raise" | null {
+  const st = regionState(state, world, state.player.region);
+  const camp = st.campCell;
+  if (camp === null || cellOf(state, world) !== camp || !campSite(st)?.structures.firePit) return null;
+  const required = campFireLevel(state, world);
+  const current = fireLevelOf(st.fire);
+  if (current === "full") {
+    if (required === "full") return fuelTotal(st.fire) <= FIRE_LOW_KG && dryWoodInReach(state, camp) > 1e-9 ? "feed" : null;
+    return st.fire.fedByRow && fuelTotal(st.fire) > BANKED_KG + 1e-9 ? "bank" : null;
+  }
+  if (current === "coals") {
+    // Wanted full, or the floor's coals about to go: rekindled, with dry
+    // wood enough to keep it (the rekindle's own length twice over is the
+    // margin, so the coals are caught before their last minute).
+    const dying = st.fire.embers <= EMBER_RELIGHT_MINUTES * 2;
+    if ((required === "full" || (required === "coals" && dying)) && dryWoodForAFire(state, world, camp)) return "raise";
+    return null;
+  }
+  return null;
+}
+
+function dryWoodInReach(state: GameState, at: number): number {
+  return qty(state.player.pack, "firewood") + qty(pile(state, at), "firewood");
+}
+
+/**
+ * The fire a body wants for itself, where it stands: a full fire when it
+ * is cold or soaked, and before bed, when the night's fire is lit and fed
+ * as a habit; during the sleep only a body under the warm line keeps it
+ * fed, so a warm sleeper in good shelter lets it burn down. None
+ * otherwise. Read by the body's own row, under its own rank.
+ */
+export function thermalFireLevel(state: GameState, need: "cold" | "sleep" | "spent" | "storm" | "thirsty", asleep: boolean): FireLevel {
+  const p = state.player;
+  const chilled = p.warmth < WARM_AT || p.wetness > SOAKED_WETNESS;
+  // The evening rest after the day's work is by a fire only when the body
+  // is under the warm line or soaked; a warm body rests on coals.
+  if (need === "spent") return chilled ? "full" : "none";
+  if (need === "cold" || need === "thirsty" || need === "storm") return "full";
+  if (!asleep) return "full";
+  return chilled ? "full" : "none";
+}
+
+/**
+ * Raises the fire at this cell toward a level: the one helper both rows
+ * use. Feeding is done here in the minute; a rekindle or a light is
+ * handed back as the step to take; `ignite` says whether a cold pit may be
+ * lit at all - the body's needs may, the camp row's never. A refusal is
+ * handed back in words so the row that wanted the fire can say them.
+ */
+export function raiseFire(state: GameState, world: World, cal: Calendar, at: number, level: FireLevel, ignite: boolean, why = ""): Step | { refused: string } | null {
+  if (level === "none") return null;
+  const st = regionState(state, world, state.player.region);
+  const camp = at === st.campCell;
+  const current: FireLevel = camp ? fireLevelOf(st.fire) : fireAt(state, world, at) ? "full" : "none";
+  if (fireAtLeast(current, level)) {
+    if (camp && level === "full" && fuelTotal(st.fire) <= FIRE_LOW_KG && dryWoodInReach(state, at) > 1e-9) feedFire(state, world, state.player.region, FIRE_MAX_KG - fuelTotal(st.fire), true);
+    // The field fire is the body's own: fed from the pack to the spread mark.
+    const field = state.player.fieldFire;
+    if (!camp && level === "full" && field && field.cell === at && field.fuelKg < SPREAD_FUEL_KG && qty(state.player.pack, "firewood") > 1e-9) addFirewood(state, world, SPREAD_FUEL_KG - field.fuelKg);
+    return null;
+  }
+  if (current === "none" && !ignite) return { refused: "no fire to raise; light one first" };
+  if (camp && !dryWoodForAFire(state, world, at)) return { refused: "no dry wood to keep a fire" };
+  const step = fireStep(state, world, cal, at, why);
+  if (step) return step;
+  return { refused: check(state, world, cal, "light", undefined, at).why || "no way to light it" };
 }
 
 /**
@@ -412,9 +522,13 @@ export function iceHoleSite(state: GameState, world: World, cal: Calendar): numb
   if (st.iceHole) return null;
   if (!axeInHand(state.player)) return null;
   const here = cellOf(state, world);
-  if (watersideCell(world, here)) return here;
+  // The same water the cut itself accepts (tasks.ts iceHole: a lake, the sea
+  // or a river, never a brook). Sited beside a brook, the step said "opening
+  // an ice hole" every minute while the task refused to start, no bar under
+  // it, and the survivor stood there thirsty.
+  if (watersideCell(world, here, "fishing")) return here;
   const r = regionAt(world, state.player.region);
-  const candidates = r.cells.filter((c) => watersideCell(world, c)).sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
+  const candidates = r.cells.filter((c) => watersideCell(world, c, "fishing")).sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
   for (const cell of candidates) if (check(state, world, cal, "walk", `cell:${cell}`).ok) return cell;
   return null;
 }
@@ -481,6 +595,28 @@ function canDrinkOnTheSpot(state: GameState, world: World): boolean {
 }
 
 /**
+ * Whether a collapsed body can still go and drink. Water at hand costs the
+ * minute nothing and is always taken. A walk is a task, and a task drains
+ * the energy store at taskDrain an hour, so the walk to water is afforded
+ * when it costs less than the store holds: a spent body still crawls a
+ * hundred metres to a stream and does not set out on a two-hour march. The
+ * ruling (2026-09-18): if realistically the survivor could address thirst
+ * they should, and if they would collapse despite it, they collapse; the
+ * model's own numbers decide which, not a distance. Hunger stays under the
+ * rest, since it kills slower and the same rule would send a spent body
+ * hunting.
+ */
+function spentCanDrink(state: GameState, world: World, cal: Calendar): boolean {
+  if (canDrinkOnTheSpot(state, world)) return true;
+  const p = state.player;
+  const need = Math.max(0.1, THIRSTY_L - p.water);
+  const option = waterOptions(state, world, cal).find((o) => o.litres >= need);
+  if (!option) return false;
+  const walk = check(state, world, cal, "walk", `cell:${option.cell}`);
+  return walk.ok && (walk.duration / 60) * taskDrain(body(state).workHours) < p.energy;
+}
+
+/**
  * Drink in reach; else the nearest source that would put the reserve back over
  * the thirsty line; else cut an ice hole; else wait at the fullest seep,
  * drinking as it fills; else melt snow at the fire, last because it burns the
@@ -498,14 +634,19 @@ function thirstyStep(state: GameState, world: World, cal: Calendar, dry: boolean
   const options = waterOptions(state, world, cal);
   const enough = options.find((o) => o.litres >= need);
   if (enough) return walkStep(state, world, enough.cell, enough.why);
+  // Every step below is asked whether it can start before it is named:
+  // a named step the task refuses is a stall (steps.ts, canStart).
+  const can = (s: Step): Step | null => (canStart(state, world, cal, s) ? s : null);
   const site = iceHoleSite(state, world, cal);
   if (site !== null) {
     if (site !== here) return walkStep(state, world, site, " to open an ice hole");
-    return { id: "iceHole", step: "opening an ice hole" };
+    const hole = can({ id: "iceHole", step: "opening an ice hole" });
+    if (hole) return hole;
   }
   const seepHere = state.seeps[here];
   if (seepHere && seepStopped(state, world, here, ambientTemperature(cal, localWeather(state, world))) !== "frozen") {
-    return { id: "rest", step: "waiting at the seep" };
+    const wait = can({ id: "rest", step: "waiting at the seep" });
+    if (wait) return wait;
   }
   const seeps = options.filter((o) => o.why === " for the seep" && state.seeps[o.cell].ice <= 1e-9);
   if (seeps.length) {
@@ -518,9 +659,10 @@ function thirstyStep(state: GameState, world: World, cal: Calendar, dry: boolean
   if (camp !== null && campMeltReady(state, world, cal)) {
     if (!atCamp) return walkStep(state, world, camp, " for water");
     // The cold step's fire, for the same reason: no fire, no melt.
-    const fs = fireStep(state, world, cal, camp);
-    if (fs) return fs;
-    return { id: "melt", step: "melting snow" };
+    const raised = raiseFire(state, world, cal, camp, "full", true, " to melt snow");
+    if (raised !== null && "refused" in raised) return null;
+    if (raised) return raised;
+    return can({ id: "melt", step: "melting snow" });
   }
   return null;
 }
@@ -836,7 +978,7 @@ function homeStep(state: GameState, world: World, cal: Calendar): Step | null {
  * a body already at camp and one still deciding whether the walk is worth
  * it never disagree about what camp offers.
  */
-export function fireStep(state: GameState, world: World, cal: Calendar, at: number): Step | null {
+export function fireStep(state: GameState, world: World, cal: Calendar, at: number, why = ""): Step | null {
   const p = state.player;
   const st = regionState(state, world, p.region);
   if (fireAt(state, world, at)) return null;
@@ -846,15 +988,15 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
   if (!toolNear(p, "fireDrill", [p.pack, pile(state, at)])) return null;
   const site = campSite(st);
   if (at === st.campCell && !site?.structures.firePit) {
-    return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: "clearing the fire site" } : null;
+    return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: `clearing the fire site${why}` } : null;
   }
   // The body's own choice of method, allowed to a reflex: the fire indoors where a hut or a hearth stands, the pit otherwise.
   const indoors = at === st.campCell && (site?.structures.turfHut || (site?.structures.cabin && site.structures.hearth));
-  if (indoors && check(state, world, cal, "lightIndoors", undefined, at).ok) return { id: "lightIndoors", step: "lighting the fire indoors" };
-  if (check(state, world, cal, "light", undefined, at).ok) return { id: "light", step: "lighting the fire" };
+  if (indoors && check(state, world, cal, "lightIndoors", undefined, at).ok) return { id: "lightIndoors", step: `lighting the fire indoors${why}` };
+  if (check(state, world, cal, "light", undefined, at).ok) return { id: "light", step: `lighting the fire${why}` };
   const firewood = qty(state.player.pack, "firewood") + qty(pile(state, at), "firewood");
   if (firewood < 1 && check(state, world, cal, "split", undefined, at).ok) {
-    return { id: "split", step: "splitting a log for the fire" };
+    return { id: "split", step: `splitting a log for the fire${why}` };
   }
   return null;
 }
@@ -868,14 +1010,7 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
  * bringing the body back to it. A fire nothing here can feed is no more a
  * need than a hunger with nothing safe to eat.
  */
-function fireWantsWood(state: GameState, world: World): boolean {
-  const st = regionState(state, world, state.player.region);
-  if (!st.fire.lit || fuelTotal(st.fire) > FIRE_LOW_KG) return false;
-  const camp = st.campCell;
-  if (camp === null || cellOf(state, world) !== camp) return false;
-  return [state.player.pack, pileAt(state, camp)]
-    .reduce((a, inv) => a + qty(inv, "firewood") + qty(inv, "wetFirewood"), 0) > 1e-9;
-}
+
 
 /**
  * Put wood on the fire the body is standing at. The wood goes on where it
@@ -889,12 +1024,48 @@ function fireNeedStep(state: GameState, world: World, cal: Calendar, dry: boolea
   const st = regionState(state, world, state.player.region);
   const camp = st.campCell;
   if (camp === null || cellOf(state, world) !== camp) return null;
-  const fs = fireStep(state, world, cal, camp);
-  if (fs || !st.fire.lit) return fs;
-  if (dry) return DRY_READY;
-  feedFire(state, world, state.player.region, FIRE_MAX_KG - fuelTotal(st.fire));
-  return null;
+  const want = campFireWant(state, world);
+  if (want === null) return null;
+  if (want === "bank") {
+    if (dry) return DRY_READY;
+    bankFire(state, world, state.player.region);
+    st.fire.fedByRow = false;
+    return null;
+  }
+  if (want === "feed") {
+    if (dry) return DRY_READY;
+    feedFire(state, world, state.player.region, FIRE_MAX_KG - fuelTotal(st.fire), true);
+    st.fire.fedByRow = true;
+    setFireRefusal(state, "");
+    return null;
+  }
+  const raised = raiseFire(state, world, cal, camp, "full", false, " again");
+  if (raised === null) return null;
+  if ("refused" in raised) {
+    setFireRefusal(state, raised.refused);
+    return null;
+  }
+  setFireRefusal(state, "");
+  return raised;
 }
+
+/**
+ * Dry wood in reach enough to light a fire and keep it past the low mark:
+ * the kilo the drill takes and the low mark on top. Under that a fire is a
+ * few minutes of flame and coals again.
+ */
+export function dryWoodForAFire(state: GameState, world: World, at: number): boolean {
+  // A log in reach is ten kilos of firewood once split, and dry when the
+  // split is sheltered or the weather is: the fire step splits one itself.
+  const logs = qty(state.player.pack, "log") + qty(pile(state, at), "log");
+  const fromLogs = logs > 0 && (splitSheltered(state, world, at) || !splitIsWet(state, world)) ? logs * ITEM_KG.log : 0;
+  return qty(state.player.pack, "firewood") + qty(pile(state, at), "firewood") + fromLogs + st_fuel(state, world) >= 1 + FIRE_LOW_KG;
+}
+function st_fuel(state: GameState, world: World): number {
+  return regionState(state, world, state.player.region).fire.fuelKg;
+}
+
+
 
 /**
  * Whether this region's camp can actually warm a cold body: a fire already
@@ -944,14 +1115,23 @@ function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" |
     }
     return s;
   }
-  const fs = fireStep(state, world, cal, camp!);
-  if (fs) return fs;
+  // The fire before the night, or for warmth, says which - "lighting the
+  // fire" under "Self-care: sleepy" read as nonsense. And a cold body with
+  // no dry wood to keep a fire past the low mark does not light its last
+  // kilo: that was a light-sleep-light loop, thirteen minutes a turn,
+  // until the dry wood was gone. It rests by the coals and the alert says
+  // why (ui/alerts.ts).
+  const asleep = state.task?.id === "sleep";
+  const raised = raiseFire(state, world, cal, camp!, thermalFireLevel(state, need, asleep), true, need === "sleep" ? " before bed" : need === "cold" ? " to warm up" : "");
+  if (raised !== null && "refused" in raised) {
+    if (need === "cold") return { id: "rest", step: `${hasEmbers(st.fire) ? "resting by the coals" : "resting"}; ${raised.refused}` };
+  } else if (raised) return raised;
   if (need === "sleep") {
     // A sleep that starts in daylight at camp is a doze by the fire and says
     // so, so an away report that reads forty minutes of it at two in the
     // afternoon is telling the truth. The wording is set when the task
     // starts, so a doze that runs into the night keeps its word for it.
-    const s: Step = { id: "sleep", step: cal.isNight ? "sleeping" : "dozing by the fire" };
+    const s: Step = { id: "sleep", step: p.sleeping?.doze ? "dozing by the fire" : "sleeping" };
     // A live intent's campCell is the home the minute set out for, fixed
     // when that intent began; st.campCell is wherever the survivor has
     // actually settled just now. The two agree unless a night

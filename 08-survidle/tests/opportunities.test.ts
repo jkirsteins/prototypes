@@ -47,9 +47,10 @@ describe("opportunity focus", () => {
     expect(state.opportunities.discoveredAt.site).toBeDefined();
     recordOpportunityEvent(state, { kind: "task", id: "makeCamp" });
     expect(state.opportunities.discoveredAt.drink).toBeDefined();
-    recordOpportunityEvent(state, { kind: "drank" });
-    recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: 10 });
+    // The fire site is the rung after the camp now; firewood is asked for
+    // once it stands, so the wood must come after it to count.
     recordOpportunityEvent(state, { kind: "built", structure: "firePit" });
+    recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: 10 });
     recordOpportunityEvent(state, { kind: "fuelled" });
     recordOpportunityEvent(state, { kind: "crafted", recipe: "fireDrill" });
     recordOpportunityEvent(state, { kind: "lit" });
@@ -93,19 +94,19 @@ describe("opportunity focus", () => {
   });
   it("credits a discovered opportunity while another leaf is current", () => {
     const opportunities = newOpportunities("winter");
-    discoverOpportunity(opportunities, "drink", 0);
+    discoverOpportunity(opportunities, "bed", 0);
     discoverOpportunity(opportunities, "firewood", 0);
-    setCurrentOpportunity(opportunities, "drink");
+    setCurrentOpportunity(opportunities, "bed");
     applyOpportunityEvent(opportunities, { kind: "gathered", item: "firewood", kg: 10 }, 1);
     expect(opportunities.completedAt.firewood).toBe(1);
-    expect(opportunities.current).toBe("drink");
+    expect(opportunities.current).toBe("bed");
   });
 
   it("does not replay an event from before discovery", () => {
     const opportunities = newOpportunities("winter");
-    applyOpportunityEvent(opportunities, { kind: "drank" }, 1);
-    discoverOpportunity(opportunities, "drink", 2);
-    expect(opportunities.completedAt.drink).toBeUndefined();
+    applyOpportunityEvent(opportunities, { kind: "built", structure: "firePit" }, 1);
+    discoverOpportunity(opportunities, "build:firePit", 2);
+    expect(opportunities.completedAt["build:firePit"]).toBeUndefined();
   });
 
   it("credits an inherited discovery after the life clock resets", () => {
@@ -118,20 +119,20 @@ describe("opportunity focus", () => {
   });
 
   it("keeps a group incomplete while an unknown child remains", () => {
+    // Not the seasons: those are FYIs and done from the first minute.
     const opportunities = newOpportunities("winter");
-    discoverOpportunity(opportunities, "season:spring", 0);
-    opportunities.completedAt["season:spring"] = 1;
-    expect(opportunityGroupView(opportunities, "seasons")).toMatchObject({ done: false });
+    discoverOpportunity(opportunities, "forage:berries", 0);
+    opportunities.completedAt["forage:berries"] = 1;
+    expect(opportunityGroupView(opportunities, "forage-foods")).toMatchObject({ done: false });
   });
 
   it("reports a completed group only on the event that completes its last child", () => {
     const opportunities = newOpportunities("winter");
-    for (const season of ["spring", "summer", "autumn"] as const) {
-      opportunities.completedAt[`season:${season}`] = 1;
-    }
-    applyOpportunityEvent(opportunities, { kind: "season", season: "winter" }, 2);
+    for (const food of ["berries", "eggs", "barkFlour", "cookedRoots", "seaweed"] as const) discoverOpportunity(opportunities, `forage:${food}`, 0, false);
+    for (const food of ["berries", "eggs", "barkFlour", "cookedRoots"] as const) opportunities.completedAt[`forage:${food}`] = 1;
+    applyOpportunityEvent(opportunities, { kind: "foraged", item: "seaweed" }, 2);
     expect(applyOpportunityEvent(opportunities, { kind: "drank" }, 3).completedGroups).toEqual([]);
-    expect(opportunities.notices.filter((notice) => notice.completedGroups.includes("seasons"))).toHaveLength(1);
+    expect(opportunities.notices.filter((notice) => notice.completedGroups.includes("forage-foods"))).toHaveLength(1);
   });
 
   it("uses the one-based calendar day at day 8 and day 31 boundaries", () => {

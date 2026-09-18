@@ -30,7 +30,8 @@ import { patchOf } from "../src/sim/position";
 import { addOrder, runOrders } from "../src/sim/orders";
 import { serialize } from "../src/sim/save";
 import { clearObstacleReadCount, obstacleReadCount, sightReachCells, visibleCells } from "../src/sim/sight";
-import { LEVELS, mapHtml } from "../src/ui/map";
+import { LEVELS } from "../src/ui/map";
+import { board } from "./board";
 import { newUiState, type UiState } from "../src/ui/render";
 import { worldCacheStats } from "../src/world/aggregate";
 import { knownRoute } from "../src/world/route";
@@ -50,7 +51,7 @@ function open(zoom: number): UiState {
 }
 
 function render(world: World, state: GameState, zoom: number): void {
-  document.body.innerHTML = `<div id="map">${mapHtml(world, state, open(zoom), CAL)}</div>`;
+  board(world, state, open(zoom), CAL);
 }
 
 /**
@@ -72,7 +73,7 @@ function schedulerRouteScene(seed: number) {
 describe("the lazy fine lattice", () => {
   it("does not allocate the whole fine world during boot or whole-map render", () => {
     const { state, world } = newGame(21);
-    mapHtml(world, state, { ...newUiState(), zoom: LEVELS.length - 1 }, calendar(0));
+    board(world, state, { ...newUiState(), zoom: LEVELS.length - 1 }, calendar(0));
     const stats = worldCacheStats(world);
     expect(stats.fineChunks).toBeLessThan(96);
     expect(stats.generatedPatches).toBeLessThan(96 * 96 * 96);
@@ -255,13 +256,13 @@ describe("the cost of the close ground", () => {
     const ui = open(0);
     // The cold draw pays for the chunks and the summaries; the frame gate is
     // what a redraw of the same rung costs once they are in hand.
-    mapHtml(world, state, ui, CAL);
+    board(world, state, ui, CAL);
     const before = worldCacheStats(world);
     const started = performance.now();
-    const html = mapHtml(world, state, ui, CAL);
+    const drawn = board(world, state, ui, CAL);
     const ms = performance.now() - started;
     const after = worldCacheStats(world);
-    expect(html.length).toBeGreaterThan(0);
+    expect(drawn.glyphs.length).toBeGreaterThan(0);
     // 1 patch per glyph at this rung, so the board is patches and no
     // aggregate: a cached draw refines nothing and summarises nothing.
     expect(LEVELS[0].finePerGlyph).toBe(1);

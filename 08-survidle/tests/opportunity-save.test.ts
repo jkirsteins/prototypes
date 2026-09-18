@@ -102,14 +102,16 @@ describe("one-way opportunity save migration", () => {
       progress: { firewood: 6, huntMeal: 10, obsolete: 2 },
       stepProgress: { fire: { site: 1, fuel: -2, light: "1", obsolete: 8 }, bed: { bed: null } },
     }));
-    expect(loaded.opportunities.completedAt).toEqual({ site: 0 });
+    // The seasons are FYIs, done from the first minute.
+    expect(loaded.opportunities.completedAt).toEqual({ site: 0, "season:spring": 0, "season:summer": 0, "season:autumn": 0, "season:winter": 0 });
     expect(loaded.opportunities.discoveredAt.roof).toBeUndefined();
     // A day-one capability is seeded by the fresh state, not honoured from the
     // legacy save, so it arrives known and uncredited either way.
     expect(loaded.opportunities.discoveredAt["build:leanTo"]).toBe(0);
     expect(loaded.opportunities.completedAt["build:leanTo"]).toBeUndefined();
     expect(loaded.opportunities.discoveredAt["hunt:deer"]).toBeUndefined();
-    expect(loaded.opportunities.stepProgress).toEqual({ firewood: { wood: 6 }, fire: { site: 1 } });
+    // The legacy fire-site tick has no step to land on: the site is a rung of its own now.
+    expect(loaded.opportunities.stepProgress).toEqual({ firewood: { wood: 6 } });
   });
 
   it("keeps explicit step progress instead of replacing it with an aggregate", () => {
@@ -161,7 +163,7 @@ describe("one-way opportunity save migration", () => {
     region.sites[123] = newSite();
     region.sites[123].structures.leanTo = true;
     const loaded = read(raw);
-    expect(loaded.opportunities.completedAt).toEqual({});
+    expect(loaded.opportunities.completedAt).toEqual({ "season:spring": 0, "season:summer": 0, "season:autumn": 0, "season:winter": 0 });
     expect(loaded.opportunities.stepProgress).toEqual({});
     const seeded = new Set<string>([...DAY_ONE_CAPABILITY_KEYS]);
     expect(Object.keys(loaded.opportunities.discoveredAt).filter((key) => key.includes(":") && !key.startsWith("season:") && !seeded.has(key))).toEqual([]);

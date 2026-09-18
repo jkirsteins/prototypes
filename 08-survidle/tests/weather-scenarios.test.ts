@@ -1,6 +1,7 @@
 import { knowledgeCounts } from "../src/sim/fineknowledge";
 import { describe, expect, it } from "vitest";
-import { mapHtml } from "../src/ui/map";
+import { effectsSnapshot } from "../src/ui/map";
+import { board, boardText, glyphOfCell, glyphsWith } from "./board";
 import { newUiState } from "../src/ui/render";
 import { conditionsAt, iceMode, patchGroundModifiers } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture, weatherShotSimulation } from "../src/sim/weather-scenarios";
@@ -43,11 +44,11 @@ describe("simulation-backed weather screenshot fixtures", () => {
     expect(here.cloud).toBeLessThan(0.72);
 
     const fixture = weatherShotFixture("sunny-clouds");
-    const root = document.createElement("div");
-    root.innerHTML = mapHtml(fixture.world, fixture.state, { ...newUiState(), zoom: fixture.definition.zoom }, fixture.cal);
-    expect(root.querySelectorAll(".cloud-shadow").length).toBeGreaterThan(0);
-    expect(root.querySelector(".wx-rain, .wx-snowing")).toBeNull();
-    expect(root.querySelector(".ground-snow")).toBeNull();
+    const b = board(fixture.world, fixture.state, { ...newUiState(), zoom: fixture.definition.zoom }, fixture.cal);
+    // The wash is a canvas draw (map.ts, drawShadows), not an element.
+    expect(effectsSnapshot()!.shadow.length).toBeGreaterThan(0);
+    expect(glyphsWith(b, "wx-rain").length + glyphsWith(b, "wx-snowing").length).toBe(0);
+    expect(glyphsWith(b, "ground-snow")).toHaveLength(0);
   });
 
   it("provides a naturally frozen water reference with safe ice across the visible surface", () => {
@@ -58,14 +59,13 @@ describe("simulation-backed weather screenshot fixtures", () => {
     expect(iceMode({ iceCm: here.ground.iceCm })).toBe("safe");
 
     const fixture = weatherShotFixture("frozen-water");
-    const root = document.createElement("div");
-    root.innerHTML = mapHtml(fixture.world, fixture.state, { ...newUiState(), zoom: fixture.definition.zoom }, fixture.cal);
-    expect(root.querySelectorAll(".t-water.ice-safe").length).toBeGreaterThan(20);
-    const hereCell = root.querySelector<HTMLElement>(`[data-map-cell="${fixture.cell}"]`)!;
-    const visibleIce = root.querySelector<HTMLElement>(".t-water.ice-safe:not(.mk) .terrain-visual")!;
-    expect(hereCell.getAttribute("aria-label")).toContain("safe ice over water");
-    expect(visibleIce.textContent).toMatch(/[~-]/);
-    expect(visibleIce.textContent).not.toContain("=");
+    const b = board(fixture.world, fixture.state, { ...newUiState(), zoom: fixture.definition.zoom }, fixture.cal);
+    expect(glyphsWith(b, "t-water", "ice-safe").length).toBeGreaterThan(20);
+    const hereCell = glyphOfCell(b, fixture.cell)!;
+    const visibleIce = glyphsWith(b, "t-water", "ice-safe", "!mk")[0];
+    expect(hereCell.info).toContain("safe ice over water");
+    expect(visibleIce.glyph).toMatch(/[~-]/);
+    expect(visibleIce.glyph).not.toContain("=");
     expect(tipHtml(fixture.state, fixture.world, fixture.cal, fixture.cell)).toContain("Safe ice over water");
     expect(describeWhere(fixture.state, fixture.world)).toContain("on safe ice");
   });
@@ -93,23 +93,23 @@ describe("simulation-backed weather screenshot fixtures", () => {
 
   it("renders live weather only on the fixture's known visible ground", () => {
     const shot = weatherShotFixture("local-rain");
-    const html = mapHtml(shot.world, shot.state, { ...newUiState(), zoom: shot.definition.zoom }, shot.cal);
-    const root = document.createElement("div");
-    root.innerHTML = html;
-    expect(html).toContain("wx-rain");
-    expect(html).not.toContain('class="fog-field"');
-    expect(html).toContain("unknown ground");
-    expect(root.querySelector(".c.fog.wx-local")).toBeNull();
-    expect(root.querySelector(".c.memory.wx-local, .c.dim.wx-local")).toBeNull();
+    const b = board(shot.world, shot.state, { ...newUiState(), zoom: shot.definition.zoom }, shot.cal);
+    const text = boardText(b);
+    expect(text).toContain("wx-rain");
+    expect(text).not.toContain("fog-field");
+    expect(text).toContain("unknown ground");
+    expect(glyphsWith(b, "fog", "wx-local")).toHaveLength(0);
+    expect(glyphsWith(b, "memory", "wx-local").length + glyphsWith(b, "dim", "wx-local").length).toBe(0);
   });
 
   it("draws fog where the air is foggy rather than over the whole viewport", () => {
     // The rain scene has no fog to draw; the fog scene is where that layer has
     // to be a per-patch glyph and not a sheet laid over the map.
     const shot = weatherShotFixture("valley-fog");
-    const html = mapHtml(shot.world, shot.state, { ...newUiState(), zoom: shot.definition.zoom }, shot.cal);
-    expect(html).toContain("fog-ripple");
-    expect(html).not.toContain('class="fog-field"');
+    const b = board(shot.world, shot.state, { ...newUiState(), zoom: shot.definition.zoom }, shot.cal);
+    // Fog is a canvas glyph (map.ts, drawGlyphs), one per foggy cell in the model.
+    expect(effectsSnapshot()!.glyph.some((cell) => cell.kind === "fog")).toBe(true);
+    expect(boardText(b)).not.toContain("fog-field");
   });
 
   it("makes a dense band's actual current sight footprint smaller than clear air at the same rock", () => {

@@ -2,23 +2,26 @@ import { itemLabel } from "../sim/actions";
 import { calendar, type Calendar, monthName, monthStartDoy } from "../sim/calendar";
 import { capabilityFor } from "../sim/capabilities";
 import { knownHuntSpecies } from "../sim/hunting";
-import { groundOf, intentOption, yieldItem } from "../sim/intent";
-import { DECAYING, ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
+import { directIntentCell, groundOf, intentOption, yieldItem } from "../sim/intent";
+import { DECAYING, ITEM_NAMES, RECIPE_IDS, RECIPES, STRUCTURE_IDS, oneOfAKind } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
+import { knowledgeGen } from "../sim/mapped";
 import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand, type Species } from "../sim/species";
 import { plain } from "../sim/voice";
 import { check, leftBehind, type TaskOption, withProgression } from "../sim/tasks";
-import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
+import type { GameState, ItemId, OrderWhen, RecipeId, TaskId, ToolId, Where, StructureId } from "../sim/types";
 import { fmtDuration, fmtRealSeconds } from "../units";
 import { realSecondsForOrder } from "./hurry";
-import { regionState } from "../sim/regionstate";
+import { regionState, campSite } from "../sim/regionstate";
 import { shoppingTarget } from "../sim/shopping";
 import { regionAt, type RegionDef, type World } from "../world/gen";
 import { masteryLine } from "./panels";
 import { purposesHtml } from "./panes";
-import { PURPOSES, purposeOf, subtabOf } from "./purpose";
+import { isOpportunityDiscovered } from "../sim/opportunities";
+import { hasTool } from "../sim/inventory";
+import { PURPOSES, purposeOf, revealOf, type SubtabId, SUBTABS, subtabOf, TOOL_FOR_ROW } from "./purpose";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
 import { formatTravel } from "./travel";
 
@@ -46,18 +49,18 @@ const TREE_TERRAINS = ["spruce", "pine", "birch"] as const;
  */
 const VOCABULARY: { name: string; words: string; rows: string[] }[] = [
   { name: "weather", words: "sky forecast storm warning rain snow", rows: ["readSky"] },
-  { name: "fire", words: "tinder kindling", rows: ["light", "lightIndoors", "lightTorch", "craft:torch", "craft:fireDrill", "build:firePit", "chop", "deadwood", "sticks", "bark", "split", "splitWedges", "melt"] },
-  { name: "fuel", words: "firewood", rows: ["chop", "deadwood", "sticks", "split", "splitWedges"] },
+  { name: "fire", words: "tinder kindling", rows: ["light", "lightIndoors", "lightTorch", "fuel", "craft:torch", "craft:fireDrill", "build:firePit", "chop", "deadwood", "sticks", "bark", "split", "splitWedges", "melt"] },
+  { name: "fuel", words: "firewood", rows: ["fuel", "chop", "deadwood", "sticks", "split", "splitWedges"] },
   { name: "food", words: "eat hunger", rows: ["hunt", "findDen", "fish", "cook", "berries", "eggs", "roots", "innerBark", "seaweed", "tapSap", "crack", "grindBark", "hang", "setTrap", "emptyTrap", "build:snare", "build:dryingRack", "craft:snare", "craft:bow", "craft:arrows", "craft:fishingSpear", "craft:basketTrap"] },
   { name: "water", words: "drink thirst", rows: ["fill", "melt", "thaw", "iceHole", "tapSap", "build:seep", "build:waterStore", "craft:barkBucket", "craft:waterskin"] },
-  { name: "warmth", words: "heat cold", rows: ["light", "lightIndoors", "lightTorch", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "build:boughBed", "repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens", "craft:hideBlanket"] },
+  { name: "warmth", words: "heat cold", rows: ["light", "lightIndoors", "lightTorch", "fuel", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "build:boughBed", "repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens", "craft:hideBlanket"] },
   { name: "sleep", words: "rest bed", rows: ["rest", "build:boughBed", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "craft:hideBlanket"] },
   { name: "shelter", words: "roof cover weather", rows: ["findShelter", "improveCover", "emergencyShelter", "makeCamp", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter"] },
   { name: "tool", words: "gear", rows: ["craft", "sharpen", "hone"] },
   { name: "clothing", words: "clothes", rows: ["repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"] },
   { name: "dark", words: "darkness", rows: ["lightTorch", "craft:torch"] },
   // The fire site is a fire pit and a hearth to everyone who has not read its label.
-  { name: "firepit", words: "hearth", rows: ["build:firePit", "light"] },
+  { name: "firepit", words: "hearth", rows: ["build:firePit", "fuel", "light"] },
 ];
 
 /** Every row the vocabulary names, for the test that each one is a row that exists. */
@@ -85,10 +88,18 @@ for (const { name, words, rows } of VOCABULARY) {
  * the whole task, and the ones named for this recipe or structure. Splitting
  * a log is fire and fuel; a lean-to is warmth, sleep and shelter.
  */
+const CONCEPTS_FOR = new Map<string, string[]>();
 export function conceptsFor(id: string | undefined, arg: string | undefined): string[] {
   if (!id) return [];
+  // Memoised: the answer depends on nothing but the row, and the chip strip
+  // asks it of every candidate on every draw.
+  const key = arg ? `${id}:${arg}` : id;
+  const hit = CONCEPTS_FOR.get(key);
+  if (hit) return hit;
   const both = [...(CONCEPTS.get(id) ?? []), ...(arg ? (CONCEPTS.get(`${id}:${arg}`) ?? []) : [])];
-  return VOCABULARY.map((v) => v.name).filter((n) => both.includes(n));
+  const out = VOCABULARY.map((v) => v.name).filter((n) => both.includes(n));
+  CONCEPTS_FOR.set(key, out);
+  return out;
 }
 
 /** A row's invisible keywords: the ones for the whole task, plus the ones for this recipe or structure. */
@@ -201,7 +212,27 @@ export function makeFirst<T extends { ok: boolean }>(rows: T[]): T[] {
  * not here is not offered, plus the shore's own reading and the trap it
  * sets and empties.
  */
+/**
+ * Memoised per region, because it is a pure function of one and the panel
+ * asks for it several times a render.
+ *
+ * It allocates roughly eighty objects a call. The rows, the counts on the
+ * subtab strip, the counts in the purpose column and the concept chips all
+ * want the same list, and rebuilding it for each of them was allocation
+ * churn on every frame that redraws. Nothing mutates what comes back - the
+ * callers filter and spread - so one list can serve them all.
+ */
+const INTENT_GROUPS = new WeakMap<RegionDef, { label: string; items: { id: TaskId; arg?: string }[] }[]>();
+
 export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId; arg?: string }[] }[] {
+  const cached = INTENT_GROUPS.get(r);
+  if (cached) return cached;
+  const built = buildIntentGroups(r);
+  INTENT_GROUPS.set(r, built);
+  return built;
+}
+
+function buildIntentGroups(r: RegionDef): { label: string; items: { id: TaskId; arg?: string }[] }[] {
   return [
     { label: "Gather", items: [
       { id: "chop" },
@@ -223,7 +254,7 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
       ...r.neighbours.map((n) => ({ id: "explore" as TaskId, arg: `region:${n.id}` })),
       { id: "searchHome" as TaskId },
     ] },
-    { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "splitWedges" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "cook", arg: "oilyFish" }, { id: "cook", arg: "rawFat" }, { id: "cook", arg: "roots" }, { id: "crack" }, { id: "grindBark" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill", arg: "shore" }, { id: "fill", arg: "hole" }, { id: "fill", arg: "seep" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "hone" }, { id: "rest" }] },
+    { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "splitWedges" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "cook", arg: "oilyFish" }, { id: "cook", arg: "rawFat" }, { id: "cook", arg: "roots" }, { id: "crack" }, { id: "grindBark" }, { id: "fuel" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill", arg: "shore" }, { id: "fill", arg: "hole" }, { id: "fill", arg: "seep" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "hone" }, { id: "rest" }] },
     { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
     // Mending sits with building because it is the same act on the same things: a
     // lean-to whose roof has gone is a lean-to to build again. It had no row of its
@@ -250,7 +281,7 @@ function kindLabel(id: TaskId, arg: string | undefined, until: RowChoice["until"
   if (until === "times") return `${n}x`;
   if (until === "daily") return `${n}/day`;
   if (until === "campHas") return item ? `camp: ${itemLabel(item, n)}` : "once";
-  if (until === "keep") return item ? `keep: ${itemLabel(item, n)}` : id === "light" || id === "lightIndoors" ? "keep lit" : "once";
+  if (until === "keep") return item ? `keep: ${itemLabel(item, n)}` : id === "light" || id === "lightIndoors" ? "keep lit" : id === "fuel" ? "keep fuelled" : "once";
   if (until === "forever") return "forever";
   return "once";
 }
@@ -367,12 +398,7 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
   const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";
   // What the face no longer says, said here in full.
   const detail = o.detail ? `<div class="detail"><small>${esc(plain(o.detail))}</small></div>` : "";
-  const target = (o.id === "craft" || o.id === "build") ? shoppingTarget(o.id, arg) : null;
-  const tracked = target && state.shopping?.task === target.task && state.shopping.arg === target.arg;
-  const track = target
-    ? `<button class="mini shopping-track${tracked ? " on" : ""}" data-act="shopping-track" data-id="${o.id}" data-arg="${esc(arg)}">${tracked ? "tracking materials" : "track materials"}</button>`
-    : "";
-  return `${detail}<div class="expand">${buttons}${n}${deliver}${where}${track}</div>${whenHtml(o, arg, ui, state)}`;
+  return `${detail}<div class="expand">${buttons}${n}${deliver}${where}</div>${whenHtml(o, arg, ui, state)}`;
 }
 
 /**
@@ -407,6 +433,13 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   const gives = cap?.producer ? `<small class="gives">${esc(cap.gives)}</small>` : "";
   const canOpen = !NOT_ORDERS.includes(o.id);
   const open = canOpen && ui.open !== null && ui.open.id === o.id && ui.open.arg === arg;
+  // The shopping list's pin sits on the row's face beside "more": under
+  // "more" it was the feature nobody found (playtest 2026-09-17, 19).
+  const target = (o.id === "craft" || o.id === "build") ? shoppingTarget(o.id, arg) : null;
+  const tracked = target && state.shopping?.task === target.task && state.shopping.arg === target.arg;
+  const track = target
+    ? `<button class="mini shopping-track${tracked ? " on" : ""}" data-act="shopping-track" data-id="${o.id}" data-arg="${esc(arg)}" title="${tracked ? "Stop tracking its materials" : "Track its materials in the Shopping list"}">${tracked ? "tracking" : "track"}</button>`
+    : "";
   const more = canOpen ? `<button class="mini row-more${open ? " on" : ""}" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}" aria-expanded="${open}">more</button>` : "";
   const expand = open ? rowExpandHtml(o, arg, ui, state, world) : "";
   const openCls = open ? " open" : "";
@@ -418,7 +451,7 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     // is not coming, at the head of a list it stops.
     const queueable = o.id !== "makeCamp" && !o.never;
     const act = queueable ? ` data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start"` : " disabled";
-    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}${gives}</button>${tags}${more}${expand}</div>`;
+    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}${gives}</button>${tags}${track}${more}${expand}</div>`;
   }
   // Binding a camp is one click, no undo, and it decides every walk the run
   // makes afterwards. It was done by accident, immediately after learning that
@@ -454,17 +487,27 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     ? `<small class="initial-walk">will walk to ${initial.nearest ? "nearest " : ""}${esc(initial.destination)} - ${esc(formatTravel(initial.km, initial.minutes, ui.travelDisplay))}</small>`
     : "";
   const possibilities = o.id === "makeCamp" && o.detail ? `<small>${esc(o.detail)}</small>` : "";
-  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${walk}${possibilities}${bar}${gives}</button>${tags}${more}${expand}</div>`;
+  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${walk}${possibilities}${bar}${gives}</button>${tags}${track}${more}${expand}</div>`;
 }
 
-/** A group's rows, built at the open row's own chosen spot, so its duration and ok reflect that spot. */
-function groupRows(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
+/**
+ * A group's rows, built at the open row's own chosen spot, so its duration
+ * and ok reflect that spot. `build` is intentOption itself for the pane
+ * view, which only ever builds the current purpose's handful of rows and
+ * was never the expensive path; the search list passes cachedRouteOption
+ * instead, since it builds every row in every group on every call.
+ */
+function groupRows(
+  g: { label: string; items: { id: TaskId; arg?: string }[] },
+  state: GameState, world: World, cal: Calendar, ui: UiState,
+  build: (state: GameState, world: World, cal: Calendar, id: TaskId, arg: string | undefined, where: Where) => TaskOption = intentOption,
+): TaskOption[] {
   const knownGame = new Set(knownHuntSpecies(state, world));
   return g.items.filter(({ id, arg }) => id !== "hunt" || arg === "any" || knownGame.has(arg as Species)).map(({ id, arg }) => {
     const argKey = arg ?? "";
     const open = ui.open !== null && ui.open.id === id && ui.open.arg === argKey;
     const where = open ? ui.choice.where : "nearest";
-    const option = withProgression(state, world, intentOption(state, world, cal, id, arg, where));
+    const option = withProgression(state, world, build(state, world, cal, id, arg, where));
     if (id !== "explore" || !arg?.startsWith("region:")) return option;
     const region = Number(arg.slice("region:".length));
     const label = region === state.player.region ? "Explore this region" : `Explore ${regionAt(world, region).name}`;
@@ -487,6 +530,117 @@ function rowsBox(key: string, heading: string, rows: string): string {
   return `<div class="grp" data-rows="${key}">${head}${rows}</div>`;
 }
 
+interface RouteCacheEntry {
+  cell: number;
+  initialWalk: TaskOption["initialWalk"];
+}
+
+interface RouteCache {
+  world: World;
+  key: string;
+  rows: Map<string, RouteCacheEntry>;
+}
+
+// A search in an old run must not keep that run and its solved world alive
+// after a reset if the player never searches in the replacement run.
+const routeCaches = new WeakMap<GameState, RouteCache>();
+
+/**
+ * What can move a row's route, or the cell its work happens at: the
+ * survivor's own cell, the region, ground newly walked, seen close, or
+ * mapped (knowledgeGen), and the in-game minute - resolveCell and
+ * initialWalk both read the season and the weather (a winter dig goes to
+ * the ice hole instead of the bog; walking speed and thin-ice legality both
+ * read localWeather), at the same grain placesHtml's own route cache
+ * already samples the world at. Filter text plays no part: a route does
+ * not depend on what was typed to find the row that names it.
+ */
+function routeCacheKey(state: GameState, world: World): string {
+  const minute = Math.floor(state.minute + state.weather.elapsedMinutes);
+  return `${state.player.region}:${cellOf(state, world)}:${knowledgeGen()}:${minute}`;
+}
+
+/**
+ * A row's option with its pathfind cached and its legality always fresh.
+ *
+ * intentOption bundles four things into one call: resolveCell (which itself
+ * pathfinds up to eight candidate routes for most gather, hunt and fish
+ * tasks - often the larger cost, not initialWalk's own single route), the
+ * fetch allowance a blocked build gets when a pile elsewhere in the region
+ * can supply it (another regional pathfind), initialWalk's route, and
+ * check(), which is the cheap part that decides ok/why/label/detail/duration
+ * from skill, stock and season. Caching the whole bundle, as the search list
+ * used to, kept that cheap part stale for as long as the expensive part had
+ * no reason to recompute: a row greyed out for a skill not yet earned, or
+ * materials not yet delivered, stayed greyed out with its old reason for as
+ * long as the survivor stood still with the same filter text open.
+ *
+ * So only what resolveCell and initialWalk settled on - the cell and the
+ * route - is cached, keyed by routeCacheKey plus which row this is; check()
+ * runs fresh against that cell on every call, cache hit or not, which is
+ * what keeps ok/why/detail current. The one thing this drops on a cache
+ * hit: a build blocked only for want of materials elsewhere in the region
+ * loses the "fetching X from Y first" hint (fetchAllowance's own regional
+ * pathfind is not cheap enough to run every call either) until the route
+ * cache's key next turns over - it reads as "blocked" a little longer than
+ * it has to, never as workable when it is not, which is the asymmetry that
+ * actually matters.
+ */
+function cachedRouteOption(state: GameState, world: World, cal: Calendar, id: TaskId, arg: string | undefined, where: Where, description?: TaskOption): TaskOption {
+  const outerKey = routeCacheKey(state, world);
+  let cache = routeCaches.get(state);
+  if (!cache || cache.world !== world || cache.key !== outerKey) {
+    cache = { world, key: outerKey, rows: new Map() };
+    routeCaches.set(state, cache);
+  }
+  const rowKey = `${id}:${arg ?? ""}:${where}`;
+  let entry = cache.rows.get(rowKey);
+  if (!entry) {
+    const full = intentOption(state, world, cal, id, arg, where);
+    // resolveCell always settles on a real cell for a real intentOption call; only the
+    // bare shape check() alone returns leaves cell optional.
+    entry = { cell: full.cell!, initialWalk: full.initialWalk };
+    cache.rows.set(rowKey, entry);
+  }
+  const live = description?.cell === entry.cell ? description : check(state, world, cal, id, arg, entry.cell);
+  return { ...live, cell: entry.cell, initialWalk: entry.initialWalk };
+}
+
+/** The search list's rows: every candidate across every group, its route cached, its legality always current. */
+function searchRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
+  const concept = conceptAsked(ui.filter);
+  const words = filterWords(ui.filter);
+  const stored = routeCaches.get(state);
+  const cache = stored?.world === world && stored.key === routeCacheKey(state, world) ? stored : undefined;
+  const descriptions = new Map<string, TaskOption>();
+  return intentGroups(regionAt(world, state.player.region)).flatMap((g) => {
+    const candidates = {
+      ...g, items: g.items.filter(({ id, arg }) => {
+        // Search reaches only what the run has revealed, like the panes do.
+        // A filter that found a row the panel will not draw would be a way
+        // back to the wall of refusals this gate removes.
+        if (!revealed(state, id, arg)) return false;
+        if (concept !== null) return conceptsFor(id, arg).includes(concept);
+        // groupRows rewrites region survey labels after the task check.
+        if (id === "explore" && arg?.startsWith("region:")) return true;
+        const open = ui.open?.id === id && ui.open.arg === (arg ?? "");
+        const where = open ? ui.choice.where : "nearest";
+        const cell = cache?.rows.get(`${id}:${arg ?? ""}:${where}`)?.cell ?? directIntentCell(state, world, id, arg, where);
+        // Location-dependent descriptions must remain candidates until their
+        // real destination is resolved. Direct rows use the same live check
+        // as cachedRouteOption, including details/refusals, never names alone.
+        if (cell === null) return true;
+        const description = { ...check(state, world, cal, id, arg, cell), cell };
+        if (matchTier(withProgression(state, world, description), words) < 0) return false;
+        descriptions.set(`${id}:${arg ?? ""}:${where}`, description);
+        return true;
+      }),
+    };
+    return candidates.items.length ? groupRows(candidates, state, world, cal, ui, (s, w, c, id, arg, where) =>
+      cachedRouteOption(s, w, c, id, arg, where, descriptions.get(`${id}:${arg ?? ""}:${where}`))) : [];
+  });
+}
+
 /**
  * What a filter shows instead of the pane: one ranked list across every
  * subtab, the rows that say the words above the rows that merely answer to
@@ -495,7 +649,7 @@ function rowsBox(key: string, heading: string, rows: string): string {
  * looking at is the search that sent them looking by hand.
  */
 function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
-  const rows = intentGroups(regionAt(world, state.player.region)).flatMap((g) => groupRows(g, state, world, cal, ui));
+  const rows = searchRows(state, world, cal, ui);
   const { direct, related } = rankRows(rows, ui.filter);
   // A concept heading says the concept, not the "kw:" that addressed it: the
   // prefix is how a tag asks, and no part of it is for a reader.
@@ -518,10 +672,62 @@ function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState):
  * those choices undiscoverable. What a player cannot do yet still shows,
  * and says why.
  */
+/**
+ * Whether the run has revealed this row.
+ *
+ * Two object lookups, and that is deliberate: this is asked of every
+ * candidate on every draw. `REVEAL` is a static table and `discoveredAt` is
+ * a plain record on the save, so nothing here walks a dependency graph.
+ * The walk that proves the table honest lives in `tests/reveal-graph.ts`
+ * and never ships - `tests/reveal.test.ts` holds it to that.
+ *
+ * A row no table names draws, rather than vanishing: a missing entry is a
+ * fault the coverage test reports, not a row the player silently loses.
+ */
+function revealed(state: GameState, id: TaskId, arg?: string): boolean {
+  const key = revealOf(id, arg);
+  if (key !== null && !isOpportunityDiscovered(state.opportunities, key)) return false;
+  // A row that needs a tool draws only while the survivor holds it. What
+  // the world knows is world-scoped and what a survivor carries is not: an
+  // heir inherits the knowledge of wedges from an ancestor who held a
+  // knife, lands without one, and "needs a knife" beside a knife recipe
+  // blocked on stone this region has none of is two honest rows and a
+  // wall. A knife recipe appears with stone in hand; knife work appears
+  // with the knife. Possession, not discovery, and life-scoped on purpose.
+  const tool = toolFor(id, arg);
+  return tool === null || toolInReach(state, tool);
+}
+
+/** The tool a row cannot be started without: the recipe's own, or the task's from the table beside REVEAL. */
+function toolFor(id: TaskId, arg?: string): ToolId | null {
+  if (id === "craft" && arg) return RECIPES[arg as RecipeId]?.tool ?? null;
+  return TOOL_FOR_ROW[id] ?? null;
+}
+
+/** Held, or lying in the pile at camp: the same reach the row's own check allows. */
+function toolInReach(state: GameState, tool: ToolId): boolean {
+  if (hasTool(state.player, tool)) return true;
+  const cell = state.regions[state.player.region]?.campCell;
+  if (cell === null || cell === undefined) return false;
+  return (state.piles[cell]?.items[tool] ?? 0) > 0;
+}
+
+/**
+ * A build row for a structure the camp already holds one of. "Build fire
+ * site - already built here" is not a row a survivor cannot start yet, it
+ * is one with nothing left to offer, and a second pit was ordered from it.
+ */
+function alreadyStands(state: GameState, world: World, id: TaskId, arg?: string): boolean {
+  if (id !== "build" || !arg || !oneOfAKind(arg as StructureId)) return false;
+  const structures = campSite(regionState(state, world, state.player.region))?.structures as Record<string, boolean | undefined> | undefined;
+  return Boolean(structures?.[arg]);
+}
+
 function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
   const currentRegion = `region:${state.player.region}`;
   const wanted = intentGroups(regionAt(world, state.player.region))
     .flatMap((g) => g.items)
+    .filter((i) => revealed(state, i.id, i.arg) && !alreadyStands(state, world, i.id, i.arg))
     .filter((i) => subtabOf(i.id, i.arg) === ui.panes.subtab && purposeOf(i.id, i.arg) === ui.panes.purpose)
     .filter((i) => i.id !== "chop" || !i.arg || ui.specific.trees)
     .filter((i) => i.id !== "fish" || i.arg === "any" || ui.specific.fish)
@@ -529,11 +735,35 @@ function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): T
   return makeFirst(groupRows({ label: ui.panes.subtab, items: wanted }, state, world, cal, ui));
 }
 
+/**
+ * How many rows each subtab holds, so a subtab holding none can be left out
+ * of the strip entirely.
+ *
+ * Once rows are revealed a rung at a time, most subtabs are empty on a
+ * landing. Drawing six tabs where five open onto nothing is the same lie
+ * the eighty-four-row panel told: it advertises a game that is not there
+ * yet. The strip grows as the run does.
+ */
+export function subtabCounts(state: GameState, world: World, ui: UiState): Record<SubtabId, number> {
+  const counts = Object.fromEntries(SUBTABS.map((s) => [s, 0])) as Record<SubtabId, number>;
+  for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
+    if (!revealed(state, i.id, i.arg) || alreadyStands(state, world, i.id, i.arg)) continue;
+    if (i.id === "chop" && i.arg && !ui.specific.trees) continue;
+    if (i.id === "fish" && i.arg !== "any" && !ui.specific.fish) continue;
+    if (i.id === "explore" && i.arg !== `region:${state.player.region}` && !ui.specific.regions) continue;
+    if ((i.id === "explore" || i.id === "searchHome") && !check(state, world, calendar(state.minute, state.startDoy), i.id, i.arg).ok) continue;
+    const subtab = subtabOf(i.id, i.arg);
+    if (subtab !== null) counts[subtab]++;
+  }
+  return counts;
+}
+
 /** How many rows each purpose of the showing subtab holds, for the counts the left pane carries. */
 export function purposeCounts(state: GameState, world: World, ui: UiState): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const q of PURPOSES[ui.panes.subtab]) counts[q] = 0;
   for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
+    if (!revealed(state, i.id, i.arg) || alreadyStands(state, world, i.id, i.arg)) continue;
     if (subtabOf(i.id, i.arg) !== ui.panes.subtab) continue;
     if (i.id === "chop" && i.arg && !ui.specific.trees) continue;
     if (i.id === "fish" && i.arg !== "any" && !ui.specific.fish) continue;

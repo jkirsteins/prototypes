@@ -14,6 +14,7 @@ import { watersideCell } from "./position";
 import { record } from "./record";
 import { seedSeasonalStocks } from "./stocks";
 import type { GameState, RegionState, Site, Species } from "./types";
+import { YARD_START_M2 } from "./yard";
 
 /** Starting numbers: seven tenths of what the land can hold. */
 export function startingPop(world: World, id: number): Partial<Record<Species, number>> {
@@ -30,11 +31,12 @@ export function newRegionState(world: World, id: number): RegionState {
     campCell: null,
     sites: {},
     snares: 0,
-    fire: { lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0 },
+    fire: { lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0, keep: "burning", fedByRow: false },
     rack: { kg: 0, dried: 0 },
     snareCatch: { count: 0, age: 0 },
     smoke: 0,
     logsWet: 1440,
+    wettedKg: 0,
     orders: [],
     nextOrderId: 1,
     iceHole: null,
@@ -59,6 +61,8 @@ export function newSite(): Site {
     emergencyMinutes: 0,
     emergencyAge: 0,
     racks: 0,
+    woodsheds: 0,
+    yardM2: YARD_START_M2,
     boughBedAge: 0,
     meltDays: 0,
     structureAge: {},

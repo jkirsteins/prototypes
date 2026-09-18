@@ -24,17 +24,9 @@ const EYE_HEIGHT_M = 1.7;
 /** The geometric horizon: km = this times the square root of the eye's height in metres. */
 const HORIZON_KM_PER_SQRT_M = 3.57;
 /**
- * Closed spruce lets almost nothing through: the trunks and the dark below
- * them close the view down to the ground the survivor is already standing
- * on, whatever the horizon formula would say. Closed means wood on every
- * side; trees at a lakeshore or a clearing's edge open onto whatever lies
- * that way, and only the wooded sides stay shut.
- */
-const SPRUCE_RANGE_CELLS = 0;
-/**
- * Pine and birch keep about 150 m of visibility between the trunks: three
- * 50 m patches. Nearer than this their crowns hide nothing, which is why
- * EXACT_SIGHT_M must not be shorter - see the note there.
+ * A 150 m local envelope lets rays read the ground between trunks. Actual
+ * cover closes dense spruce earlier than pine or birch, through WOOD_COVER;
+ * a zero-range shortcut here would bypass that gradual obstruction.
  */
 export const FOREST_VISIBILITY_M = 150;
 const FOREST_RANGE_CELLS = Math.round(FOREST_VISIBILITY_M / PATCH_M);
@@ -85,6 +77,17 @@ const viewshedCache = new Map<string, ReadonlySet<number>>();
 let viewshedCacheCells = 0;
 const viewshedWorldIds = new WeakMap<World, number>();
 let nextViewshedWorldId = 1;
+
+/**
+ * Drops every held viewshed. A backgrounded tab is doing nothing with them,
+ * and they are the largest thing the sight model keeps: up to
+ * VIEWSHED_CACHE_CELL_BUDGET patch numbers in Sets. They rebuild on demand,
+ * so this costs the next look and nothing else.
+ */
+export function releaseViewsheds(): void {
+  viewshedCache.clear();
+  viewshedCacheCells = 0;
+}
 
 function viewshedWorldId(world: World): number {
   let id = viewshedWorldIds.get(world);
@@ -195,6 +198,23 @@ function isForest(t: Terrain): boolean {
 }
 
 /**
+ * How much of the view one patch of standing wood takes, at full canopy:
+ * two patches of closed spruce and the view is gone, three of pine, four
+ * of birch. A stand that has been cut takes nothing and young growth takes
+ * its share by height, through the same canopy the obstruction reads.
+ * Trees obstruct unevenly, not as solid 50 m walls: the first patch of a
+ * wood shows the wood, and what is behind it fades out over the next few.
+ */
+const WOOD_COVER: Partial<Record<Terrain, number>> = { spruce: 0.5, pine: 0.34, birch: 0.25 };
+
+function woodCoverAt(world: World, x: number, y: number, terrain: Terrain): number {
+  const full = WOOD_COVER[terrain];
+  if (!full) return 0;
+  const tall = CANOPY_HEIGHT_M[terrain] ?? 0;
+  return tall > 0 ? full * Math.min(1, canopyHeightAt(world, patchId(x, y)) / tall) : 0;
+}
+
+/**
  * Whether a wooded cell touches open ground or water on any side. A cell is
  * 300 m across and a survivor walks it: standing in trees at a lakeshore they
  * go to the edge and look out, so the wood closes only the sides where the
@@ -219,7 +239,7 @@ function atWoodEdge(world: World, x: number, y: number): boolean {
  * ground beside it.
  */
 function vantageBaseCells(world: World, t: Terrain, x: number, y: number): number {
-  if (isForest(t) && !atWoodEdge(world, x, y)) return t === "spruce" ? SPRUCE_RANGE_CELLS : FOREST_RANGE_CELLS;
+  if (isForest(t) && !atWoodEdge(world, x, y)) return FOREST_RANGE_CELLS;
   if (t === "fell" || t === "rock" || t === "river") return Math.max(OPEN_RANGE_CELLS, horizonCells(prominenceM(world, x, y) + EYE_HEIGHT_M));
   return OPEN_RANGE_CELLS;
 }
@@ -335,14 +355,20 @@ function groundHeightM(world: World, x: number, y: number): number {
   return height;
 }
 
-/** Height in metres of the surface that can hide ground behind this cell. */
+/**
+ * Height in metres of the surface that can hide ground behind this cell.
+ * Close in, a canopy is not a wall: the trees take the view gradually
+ * (WOOD_COVER, in marchRay) and the ground under them is what the ray
+ * reads. Past FOREST_VISIBILITY_M the canopy stands at its height, so a
+ * wood on the far side of a lake still hides the country behind it and a
+ * fell still sees over the lot.
+ */
 function obstacleHeightM(world: World, x: number, y: number, distM: number): number {
   obstacleReads++;
   const ground = groundHeightM(world, x, y);
-  const terrain = terrainOf(world, x, y);
   // Canopy from the one door, so a clearing lets a ray through and the young
   // growth that follows it stops one at its own height.
-  const canopy = terrain === "spruce" || distM > FOREST_VISIBILITY_M ? canopyHeightAt(world, patchId(x, y)) : 0;
+  const canopy = distM > FOREST_VISIBILITY_M ? canopyHeightAt(world, patchId(x, y)) : 0;
   return ground + canopy;
 }
 
@@ -440,15 +466,18 @@ const UNIFORM_RELIEF_M = 1;
  * Marches one sightline, retaining the highest apparent surface angle met so
  * ridges and canopies hide lower ground beyond them. Close in it reads every
  * patch; farther out it takes a parent at a time whenever that parent's
- * bounds settle the whole run of patches the ray crosses inside it. From
- * inside a wood the trees close each side whose first patch is more wood: that
- * patch is the ring and nothing lies past it, whatever the ground would say.
+ * bounds settle the whole run of patches the ray crosses inside it. Through
+ * a wood the trees take the view a patch at a time (WOOD_COVER): each patch
+ * of standing wood crossed inside FOREST_VISIBILITY_M adds its cover, the
+ * patch that fills the measure is the last one seen, and a survivor standing
+ * among trunks starts with half their own wood's cover already round them.
  */
 function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, range: number, inWood: boolean, seen: Set<number>): void {
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
   const observerM = groundHeightM(world, cx, cy) + EYE_HEIGHT_M;
   let horizonSlope = -Infinity;
   let previous = -1;
+  let cover = inWood ? woodCoverAt(world, cx, cy, terrainOf(world, cx, cy)) / 2 : 0;
   const xAt = (i: number) => cx + Math.round((dx * i) / steps);
   const yAt = (i: number) => cy + Math.round((dy * i) / steps);
   for (let i = 1; i <= steps; i++) {
@@ -459,10 +488,16 @@ function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, 
     if (distance > range) return;
     const cell = y * world.w + x;
     if (cell === previous) continue;
-    const first = previous === -1;
-    if (first && inWood && isForest(terrainOf(world, x, y))) {
-      seen.add(cell);
-      return;
+    if (distance <= FOREST_RANGE_CELLS) {
+      const terrain = terrainOf(world, x, y);
+      if (isForest(terrain)) {
+        cover += woodCoverAt(world, x, y, terrain);
+        if (cover >= 1 - 1e-9) {
+          // The trees that close the view are themselves in it.
+          seen.add(cell);
+          return;
+        }
+      }
     }
 
     // A run of steps inside one parent, past the close view, may be settled whole.

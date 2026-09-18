@@ -35,7 +35,21 @@ export interface Panes {
 
 export const PANES_KEY = "survidle.panes";
 
-export function defaultPanes(): Panes {
+/**
+ * Where a player who has expressed no preference should be standing.
+ *
+ * It used to be Gather > Woodcutting for every player, on every day, of
+ * every run - while the game's own stated first job, making camp, sat in
+ * Build > Site, the sixth subtab of six. Once rows are revealed a rung at
+ * a time that default is worse than misleading: on a landing, Woodcutting
+ * holds no rows at all, so the game opened on an empty panel.
+ *
+ * So it follows the current opportunity, which is the one thing the game
+ * is actually asking for. `at` is where that opportunity's row lives; the
+ * old default is the fallback for when there is no current opportunity.
+ */
+export function defaultPanes(at?: { subtab: SubtabId; purpose: string } | null): Panes {
+  if (at) return { pane: "do", subtab: at.subtab, purpose: at.purpose };
   return { pane: "do", subtab: "Gather", purpose: PURPOSES.Gather[0] };
 }
 
@@ -45,8 +59,8 @@ export function defaultPanes(): Panes {
  * than leaving the player looking at an empty pane and wondering what
  * they broke.
  */
-export function loadPanes(storage: Storage): Panes {
-  const def = defaultPanes();
+export function loadPanes(storage: Storage, at?: { subtab: SubtabId; purpose: string } | null): Panes {
+  const def = defaultPanes(at);
   try {
     const p = JSON.parse(storage.getItem(PANES_KEY) ?? "{}") as Partial<Panes>;
     const pane = PANE_IDS.includes(p.pane as PaneId) ? (p.pane as PaneId) : def.pane;
@@ -73,15 +87,32 @@ export function paneTabsHtml(p: Panes): string {
   ).join("");
 }
 
-export function subtabsHtml(p: Panes): string {
-  return SUBTABS.map(
-    (s) => `<button class="sub${s === p.subtab ? " on" : ""}" data-act="subtab" data-subtab="${esc(s)}">${esc(s)}</button>`,
-  ).join("");
+/**
+ * The subtab strip, leaving out any subtab holding nothing.
+ *
+ * Rows are revealed a rung at a time, so most subtabs are empty on a
+ * landing. Drawing six tabs where five open onto nothing advertises a game
+ * that is not there yet - the same lie the eighty-four-row panel told. The
+ * strip grows as the run does.
+ *
+ * The subtab being shown always draws, even at zero, so the strip cannot
+ * lose the tab under the player while they are standing in it.
+ */
+export function subtabsHtml(p: Panes, counts?: Record<SubtabId, number>): string {
+  return SUBTABS
+    .filter((s) => counts === undefined || s === p.subtab || (counts[s] ?? 0) > 0)
+    .map(
+      (s) => `<button class="sub${s === p.subtab ? " on" : ""}" data-act="subtab" data-subtab="${esc(s)}">${esc(s)}</button>`,
+    ).join("");
 }
 
 /** The left pane, each purpose carrying how many rows it holds so an empty one reads as empty rather than as a mistake. */
 export function purposesHtml(p: Panes, counts: Record<string, number>): string {
   return PURPOSES[p.subtab]
+    // A purpose holding nothing is left out for the same reason an empty
+    // subtab is. The one being shown always draws, so the column cannot
+    // lose the entry the player is standing in.
+    .filter((q) => q === p.purpose || (counts[q] ?? 0) > 0)
     .map(
       (q) =>
         `<button class="grp${q === p.purpose ? " on" : ""}" data-act="purpose" data-purpose="${esc(q)}">${esc(q)} <small>${counts[q] ?? 0}</small></button>`,

@@ -5,10 +5,10 @@ import { type PatchId, patchCenter, patchXY } from "../world/spatial";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, neighbours, regionAt, spotOf, type World } from "../world/gen";
 import { ICE_SPEED, passable, routeKm, TERRAIN_SPEED } from "../world/route";
-import { itemLabel, loadRack } from "./actions";
+import { addFirewood, itemLabel, loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, dayNumber, type Calendar } from "./calendar";
-import { cellPossibilities, leaveCamp, needsMending, rackCapacity } from "./camp";
+import { cellPossibilities, leaveCamp, needsMending, rackCapacity, feedFire } from "./camp";
 import { cue } from "./cues";
 import { exploreRoute, exploreRouteCandidates, frontierRoute, routeConditions, survivorRoute, survivorRouteMinutes } from "./routing";
 import {
@@ -17,14 +17,14 @@ import {
 } from "./inventory";
 import {
   BARK_DRY_RATIO, BARK_FLOUR_MINUTES_PER_KG, BARK_FRESH_KG_PER_HOUR, BARK_FROM_DOY, BARK_TO_DOY, BARK_TREE_SHARE,
-  BERRY_PICK_KG, BERRY_WINTER_SHARE, CLOTHING, DECAYING, type Need, EGG_CLUTCH_KG, EGG_FROM_DOY, EGG_KG_PER_HOUR, EGG_TO_DOY, FOODS, ITEM_KG, ITEM_NAMES, KCAL_FULL, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND,
+  BERRY_PICK_KG, BERRY_WINTER_SHARE, CLOTHING, DECAYING, type Need, EGG_CLUTCH_KG, EGG_FROM_DOY, EGG_KG_PER_HOUR, EGG_TO_DOY, FIRE_MAX_KG, FOODS, ITEM_KG, ITEM_NAMES, KCAL_FULL, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND,
   RECIPES, RECIPE_IDS, ROE_SHARE, ROOT_FROM_DOY, ROOT_KG_PER_HOUR, ROOT_TO_DOY, ROOT_WINTER_KG_PER_HOUR, SAP_FROM_DOY, SAP_KCAL, SAP_LITRES, SAP_TAPS_PER_DAY, SAP_TO_DOY,
   SEAWEED_KG_PER_HOUR, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditEaten, creditYield } from "./ledger";
 import { attemptOdds, illuminance, lightFactor, lightWord, NIGHT_WORK, SPOT_LUX } from "./light";
 import { log } from "./log";
-import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
+import { baseWalkSpeed, die, restMinutes, walkSpeed, workSpeed } from "./player";
 import { disabled } from "./probe";
 import { hasEvent, record } from "./record";
 import {
@@ -37,11 +37,11 @@ import {
   atCamp, campCellOf, cellOf, forestCell, heathCell, hereTerrain, patchAt,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, fuelTotal, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered, BANKED_KG, type FireLevel } from "./fire";
 import { recordOpportunityEvent } from "./opportunities";
 import { builtProtection, coverCeiling, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
-import { isKnown, knownShare, markWalked } from "./mapped";
+import { isKnown, knowledgeGen, knownShare, markWalked } from "./mapped";
 import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { seeFrom, vantageRevealCells } from "./sight";
@@ -54,6 +54,7 @@ import {
 } from "./types";
 import { isWorkIntent } from "./types";
 import { owningOrder } from "./orderowner";
+import { clearM2PerHour, FOOTPRINT_M2, yardFree } from "./yard";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, forecastKnowledge, forecastText, ICE_SAFE_CM, sameForecastKnowledge, skyReadDay, stormNow, walkableIce } from "./weather";
 import { plain } from "./voice";
@@ -102,6 +103,8 @@ export interface TaskOption {
   mastery?: { level: number; share: number; skill: SkillId; key: string };
   /** The recommended level, whether you are under it, and by how many levels. */
   recommended?: { text: string; under: boolean; short: number };
+  /** What the row would need to run, when it cannot: published to the needs ledger by the judgement (sim/needs.ts). */
+  needs?: { fire: FireLevel };
 }
 
 /** Work that stays where it was left: the half-felled tree is on that 50 m patch of forest, and its key names the patch. */
@@ -187,6 +190,9 @@ export function buildMinutes(state: GameState, world: World, sid: StructureId, a
   return fireSiteMinutes(cellAt(world, at).terrain, localWeather(state, world, at).snowCm);
 }
 
+/** Ground opened by one widening: fifty minutes on meadow, two and a half hours on peat. */
+export const WIDEN_M2 = 10;
+
 /**
  * What a build still wants, in the words a reader would use: "short 2
  * stone", not "missing materials" beside a recipe list reading "2 stone,
@@ -198,6 +204,17 @@ export function buildMinutes(state: GameState, world: World, sid: StructureId, a
  * rewording this silently turned fetching off.
  */
 const AT_CAMP = " at camp";
+
+/**
+ * Why there is no dry kilo to light or lay. Wet wood is the trap worth
+ * naming: dead wood gathered in the rain comes back wet, weighs the same,
+ * and reads as firewood everywhere the player looks, so a refusal that said
+ * only "needs 1 kg firewood" was denying wood they could see on their back.
+ */
+function dryWoodWanted(invs: Inventory[]): string {
+  const wet = totalQty(invs, "wetFirewood");
+  return wet > 1e-9 ? `needs 1 kg of dry wood; ${itemLabel("wetFirewood", wet)} to hand` : "needs 1 kg firewood";
+}
 
 function shortList(invs: Inventory[], needs: Need[]): string {
   const short = shortOf(invs, needs);
@@ -504,7 +521,10 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "deadwood": {
-      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Gather dead wood", detail: `${DEADWOOD_KG} kg of firewood off the forest floor; no axe`, duration: 60, repeatable: true }));
+      // Dead wood off a wet floor comes back wet, and wet wood lights nothing:
+      // the detail says so before the hour is spent, not after.
+      const wet = splitIsWet(state, world, at);
+      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Gather dead wood", detail: `${DEADWOOD_KG} kg of ${wet ? "wet wood off a wet floor; it must dry before it lights" : "firewood off the forest floor"}; no axe`, duration: 60, repeatable: true }));
       if (!o.ok) return o;
       if (woodPatchLeft(st, world, at) < DEADWOOD_TREE_SHARE) return { ...o, ok: false, why: "the forest is picked clean" };
       return o;
@@ -725,7 +745,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const label = food === "rawFat" ? "Render fat" : `Cook ${ITEM_NAMES[food]}`;
       const detail = food === "rawFat" ? "1 kg at a time; raw fat rots in three warm days, rendered it keeps" : "1 kg at a time over the fire";
       const o = opt({ group: "camp", label, detail, duration: Math.max(1, 10 * kg), repeatable: true });
-      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire" };
+      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire", needs: { fire: "full" } };
       if (kg <= TRACE_KG) return { ...o, ok: false, why: `no ${ITEM_NAMES[food]} here` };
       if (food === "roots" && disabled("roots")) return { ...o, ok: false, why: "disabled for the probe" };
       return o;
@@ -797,7 +817,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const site = campSite(st);
       const done = site?.build[sid] ?? 0;
       const total = buildMinutes(state, world, sid, at);
-      const o = opt({ group: "build", label: def.name, detail: def.needs.length ? `${needsList(def.needs)}; ${def.desc}` : def.desc, duration: Math.max(1, total - done) });
+      // Verb first, like every other row: "Build fire site" beside "Make
+      // stone knife" and "Fell any tree", not a bare "fire site".
+      const o = opt({ group: "build", label: `Build ${def.name}`, detail: def.needs.length ? `${needsList(def.needs)}; ${def.desc}` : def.desc, duration: Math.max(1, total - done) });
       if (sid === "snare") {
         const o2 = ground(heathCell(world, at), "heath", "heath", o);
         if (!o2.ok) return o2;
@@ -819,6 +841,10 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         if (sticks < def.needs[0].qty) return { ...o2, ok: false, why: "needs 4 sticks" };
         return o2;
       }
+      const wants = FOOTPRINT_M2[sid] ?? 0;
+      if (wants > 0 && site && yardFree(site) < wants) {
+        return { ...o, ok: false, why: `needs ${wants} m2 of yard, ${Math.round(yardFree(site))} free` };
+      }
       const o3 = needCamp(o);
       if (!o3.ok) return o3;
       if (sid === "snowShelter") {
@@ -830,10 +856,21 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       }
       if (sid === "dryingRack") {
         if ((site?.racks ?? 0) >= MAX_RACKS) return { ...o, ok: false, why: "two racks stand here already" };
-      } else if (site?.structures[sid]) return { ...o, ok: false, why: "already built here" };
+      } else if (sid !== "vedbod" && site?.structures[sid]) return { ...o, ok: false, why: "already built here" };
+      // One fire to a cell: a field fire burning where the pit would go is
+      // that cell's fire until it is out.
+      if (sid === "firePit" && p.fieldFire && p.fieldFire.cell === at && p.fieldFire.fuelKg > 0) return { ...o, ok: false, why: "a fire is burning here; let it go out first" };
       if ((sid === "cabin" || sid === "turfHut") && !site?.structures.firePit) return { ...o, ok: false, why: "clear the fire site first" };
       if (done > 0) return { ...o, detail: `${Math.round((done / total) * 100)}% ${def.needs.length ? "built; materials already laid out" : "done"}` };
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: shortList(invs, def.needs) };
+      return o;
+    }
+    case "widenYard": {
+      const st2 = regionState(state, world, state.player.region);
+      const rate = clearM2PerHour(cellAt(world, at).terrain, localWeather(state, world, at).snowCm);
+      const o = opt({ group: "build", label: "Widen the yard", detail: `${WIDEN_M2} m2 of cleared ground, ${Math.round(rate)} m2 an hour on this ground`, duration: (WIDEN_M2 / rate) * 60, repeatable: true });
+      if (st2.campCell === null) return { ...o, ok: false, why: "no camp here" };
+      if (at !== st2.campCell) return { ...o, ok: false, why: "at camp" };
       return o;
     }
     case "mend": {
@@ -858,20 +895,36 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: shortList(invs, def.needs) };
       return o;
     }
+    case "fuel": {
+      // Cold, the pit is laid; lit, the fire is fed. "Fuel the fire site" beside
+      // "Light the fire at the site" read as the same thing said twice.
+      const o = needCamp(opt({ group: "camp", label: st.fire.lit ? "Add wood to the fire" : "Lay wood at the fire site", detail: `dry wood from the pile into the pit, up to ${FIRE_MAX_KG} kg`, duration: 10, repeatable: true }));
+      if (!o.ok) return o;
+      if (!campSite(st)?.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
+      if (fuelTotal(st.fire) >= FIRE_MAX_KG - 1e-9) return { ...o, ok: false, why: "the pit is full" };
+      if (totalQty(invs, "firewood") < 1e-9) return { ...o, ok: false, why: dryWoodWanted(invs) };
+      return o;
+    }
     case "light": {
       const rekindle = camp && hasEmbers(st.fire);
       const weather = localWeather(state, world, at);
       const lr = lightingInRain(weather, ambientTemperature(cal, weather), roofed(siteAt(st, at)), hasQuirk(state, "steadyByTheFire"));
+      // Wood already laid in the pit is what the drill catches, so the kilo is
+      // asked of the pit first and only then of what is carried.
+      const laid = camp && st.fire.fuelKg >= 1 - 1e-9;
       const o = opt({
         group: "camp", label: camp ? "Light the fire at the site" : "Light a field fire",
-        detail: rekindle ? "1 kg firewood" : `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
+        detail: rekindle ? "1 kg firewood" : `fire drill and ${laid ? "the wood laid in the pit" : "1 kg firewood"}${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
         duration: rekindle ? EMBER_RELIGHT_MINUTES : lr.minutes,
       });
       if (terrain === "water") return { ...o, ok: false, why: "needs dry ground" };
       if (camp && !campSite(st)?.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
       if (fireAt(state, world, at)) return { ...o, ok: false, why: "already burning" };
+      // One fire to a cell: a pit that stands here, at a camp given up, is
+      // this cell's fire, and it is lit as camp, not beside as a field fire.
+      if (!camp && siteAt(st, at)?.structures.firePit) return { ...o, ok: false, why: "a fire site stands here; make camp here to light it" };
       if (!rekindle && !toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
-      if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
+      if (!laid && totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: dryWoodWanted(invs) };
       if (!rekindle && lr.blocked) return { ...o, ok: false, why: lr.blocked };
       return o;
     }
@@ -882,7 +935,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!relight && totalQty(invs, "torch") < 1) return { ...o, ok: false, why: "needs a torch" };
       if (fireAt(state, world, at)) return { ...o, detail: `${o.detail}; lit from the fire` };
       if (hasTool(p, "fireDrill")) return { ...o, duration: 10, detail: `${o.detail}; with the fire drill` };
-      return { ...o, ok: false, why: "needs a fire or a fire drill" };
+      return { ...o, ok: false, why: "needs a fire or a fire drill", needs: { fire: "full" } };
     }
     case "travel":
     case "walk": {
@@ -914,9 +967,13 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!target) return { ...o, ok: false, why: "no such place" };
       const region = cellAt(world, target.cell).region;
       if (discovery(state, region) === 0) return { ...o, ok: false, why: "{you} {know} nothing of that country" };
-      const water = localWeather(state, world, at).iceCm < ICE_SHORE_CM ? nextSurveyWater(state, world, region, []) : null;
+      // Legality asks whether any water is left to read, not which shore
+      // wins or how to get there: the row is judged on every render tick,
+      // and routing to every unread shore from here took seconds a tick
+      // and froze the page for the length of a survey.
+      const water = localWeather(state, world, at).iceCm < ICE_SHORE_CM && unreadSurveyWater(state, world, region);
       if (knownShare(state, world, region) >= 1 && !water) return { ...o, ok: false, why: "{you} {know} that country" };
-      if (!water && !hasReachableFrontier(state, world, region, [here])) return { ...o, ok: false, why: "no reachable frontier" };
+      if (!water && !frontierReachable(state, world, region, here)) return { ...o, ok: false, why: "no reachable frontier" };
       // No duration is promised: how long it takes is how long the ground takes.
       return { ...o, duration: 0, detail: "maps the region and reads its waters" };
     }
@@ -990,8 +1047,10 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "night":
       return haveCamp(opt({ group: "camp", label: "Camp for the night", detail: `go to camp, make a fire if you can, sleep; ${bedText(state, world)}`, duration: 0 }));
-    case "rest":
-      return opt({ group: "camp", label: "Rest", detail: "an hour off your feet", duration: 60, repeatable: true });
+    case "rest": {
+      const minutes = restMinutes(p.energy);
+      return opt({ group: "camp", label: "Rest", detail: minutes === 60 ? "an hour off your feet" : `to the work line, about ${fmtDuration(minutes)}`, duration: minutes, repeatable: true });
+    }
     case "sleep": {
       // However long the model says this body will lie there: the minutes
       // from now to the wake line, with no dawn under it and no cap over it.
@@ -1002,8 +1061,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = opt({ group: "camp", label: "Melt snow", detail: "1 kg of the fire's wood for a litre", duration: 15, repeatable: true });
       if (!camp && !toolNear(p, "barkBucket", toolInvs)) return { ...o, ok: false, why: "needs a bark bucket" };
       const fire = fireAt(state, world, at);
-      if (!fire) return { ...o, ok: false, why: "needs a lit fire" };
-      if (fire.fuelKg < 1) return { ...o, ok: false, why: "the fire is too low" };
+      if (!fire) return { ...o, ok: false, why: "needs a lit fire", needs: { fire: "full" } };
+      if (fire.fuelKg < 1) return { ...o, ok: false, why: "the fire is too low", needs: { fire: "full" } };
       if (localWeather(state, world, at).snowCm < 1) return { ...o, ok: false, why: "no snow to melt" };
       return o;
     }
@@ -1326,9 +1385,15 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   // A species hunt is an encounter, not a lock on an arbitrary animal elsewhere
   // in the region. Only a known den names a concrete subject before pursuit.
   const wildlifeSubject = id === "hunt" && arg === "bear" ? knownBearDen(state, cal)?.id : undefined;
-  const duration = paused?.duration ?? fresh.duration;
+  // A build's earlier minutes live on the camp site rather than in `paused`
+  // (setAside). They come back onto the task so the bar starts where the
+  // work stopped; the remaining minutes are what the fresh check gave.
+  const carried = id === "build" && arg && arg !== "snare" ? (campSite(regionState(state, world, state.player.region))?.build[arg as StructureId] ?? 0) : 0;
+  const banked = carried > 0.001 ? carried : 0;
+  const duration = (paused?.duration ?? fresh.duration) + banked;
   state.task = {
-    id, arg, progress: duration * fraction, duration, repeat: repeat && o.repeatable,
+    id, arg, progress: banked + (duration - banked) * fraction, duration, repeat: repeat && o.repeatable,
+    ...(banked > 0 ? { carried: banked } : {}),
     ...(any || paused?.any ? { any: true } : {}), ...(wildlifeSubject !== undefined ? { wildlifeSubject } : {}),
     ...(paused?.huntPhase ? { huntPhase: paused.huntPhase } : {}),
     ...(paused?.carcassId !== undefined ? { carcassId: paused.carcassId } : {}),
@@ -1388,7 +1453,7 @@ export function setAside(state: GameState, world: World): void {
     // A build under way was started at a camp; setting it aside cannot have unmade one.
     const site = siteFor(homeSt, homeSt.campCell!);
     const sid = t.arg as StructureId;
-    site.build[sid] = (site.build[sid] ?? 0) + t.progress;
+    site.build[sid] = (site.build[sid] ?? 0) + t.progress - (t.carried ?? 0);
   } else if (t.id === "walk" || t.id === "travel" || t.id === "explore" || t.id === "searchHome") {
     state.route = null;
   } else {
@@ -1808,6 +1873,27 @@ function frontierCells(state: GameState, world: World, region: number, visited: 
   return out;
 }
 
+/**
+ * hasReachableFrontier, remembered while nothing it reads has changed: the
+ * survivor's patch, what is mapped, the ice, the region. The row is asked
+ * on every render tick and the answer can cost a route search.
+ */
+const frontierMemo = new WeakMap<GameState, Map<string, boolean>>();
+function frontierReachable(state: GameState, world: World, region: number, here: number): boolean {
+  const key = `${region}:${here}:${knowledgeGen()}:${walkIceMode(state, world, false)}`;
+  let memo = frontierMemo.get(state);
+  if (!memo) {
+    memo = new Map();
+    frontierMemo.set(state, memo);
+  }
+  const held = memo.get(key);
+  if (held !== undefined) return held;
+  const answer = hasReachableFrontier(state, world, region, [here]);
+  if (memo.size >= 16) memo.delete(memo.keys().next().value!);
+  memo.set(key, answer);
+  return answer;
+}
+
 /** Legality asks only whether a frontier exists, not which one wins a survey. */
 function hasReachableFrontier(state: GameState, world: World, region: number, visited: readonly number[]): boolean {
   const from = cellOf(state, world);
@@ -1955,6 +2041,11 @@ export function surveyWaters(world: World, region: number): SurveyWater[] {
   return systems;
 }
 
+/** Whether the region has a water system none of whose shores has been read. */
+function unreadSurveyWater(state: GameState, world: World, region: number): boolean {
+  return surveyWaters(world, region).some((system) => !system.shores.some((shore) => isRead(state, shore)));
+}
+
 function nextSurveyWater(state: GameState, world: World, region: number, handled: number[]): { key: number; shore: number; path: number[] } | null {
   const from = cellOf(state, world);
   const ice = walkIceMode(state, world, false);
@@ -1965,7 +2056,9 @@ function nextSurveyWater(state: GameState, world: World, region: number, handled
       continue;
     }
     let best: { shore: number; path: number[] } | null = null;
-    for (const shore of system.shores) {
+    // A shore nothing known leads to is settled by the connectivity pass,
+    // not by an exhaustive route search each.
+    for (const shore of exploreRouteCandidates(state, world, from, system.shores, region, ice)) {
       const path = exploreRoute(state, world, from, shore, region, ice);
       if (path && (!best || path.length < best.path.length)) best = { shore, path };
     }
@@ -2619,9 +2712,11 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
           state.seeps[here] = { class: seepGround(world, here)!, litres: 0, ice: 0, dug: state.minute };
           delete site.build[sid];
         } else {
-          site.structures[sid] = true;
+          // A vedbod has no boolean of its own: only the count, added below.
+          if (sid !== "vedbod") site.structures[sid] = true;
           delete site.build[sid];
           if (sid === "dryingRack") site.racks = Math.min(MAX_RACKS, site.racks + 1);
+          if (sid === "vedbod") site.woodsheds++;
           if (sid === "boughBed") site.boughBedAge = 0;
           if (sid === "leanTo" || sid === "dryingRack" || sid === "turfHut") site.structureAge[sid] = 0;
         }
@@ -2654,11 +2749,24 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       log(state, `The ${STRUCTURES[sid].name} is mended.`, "good");
       return;
     }
+    case "widenYard": {
+      siteFor(st, st.campCell!).yardM2 += WIDEN_M2;
+      log(state, `{You} {clear} another ${WIDEN_M2} square metres of yard.`, "good");
+      return;
+    }
+    case "fuel": {
+      const laid = addFirewood(state, world, FIRE_MAX_KG - fuelTotal(st.fire));
+      if (laid <= 1e-9) return false;
+      log(state, `{You} {lay} ${laid.toFixed(1)} kg of wood in the fire pit.`);
+      return;
+    }
     case "light":
     case "lightIndoors": {
       const camp = atCamp(state, world);
       const rekindle = camp && hasEmbers(st.fire);
-      consume(invs, [{ item: "firewood", qty: 1 }]);
+      // A laid fire is lit from the wood already in the pit; only a bare pit
+      // asks the kilo of what is carried.
+      if (!camp || st.fire.fuelKg < 1 - 1e-9) consume(invs, [{ item: "firewood", qty: 1 }]);
       if (!rekindle && wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
       const weather = localWeather(state, world);
       const lr = lightingInRain(weather, ambientTemperature(cal, weather), roofed(siteAt(st, cellOf(state, world))), hasQuirk(state, "steadyByTheFire"));
@@ -2675,12 +2783,20 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       }
       st.fire.lit = true;
       st.fire.embers = 0;
+      st.fire.fedByRow = false;
       // A run of keeping survives the coals; only a fire lit from cold starts a new one.
       if (st.fire.litSince === null) st.fire.litSince = state.minute;
+      // The carried kilo goes in; a fire laid beforehand is already holding its
+      // own. Either way the wood is in the pit before the flame is reported,
+      // because the goal's light step waits on its fuel step being full.
+      if (st.fire.fuelKg < 1 - 1e-9) st.fire.fuelKg += 1;
+      // A fire lit on purpose starts with the banked few kilos when dry wood
+      // is in reach: one kilo in heavy rain is out before anyone comes back
+      // to it, and the camp row feeds only a fire the body needs.
+      feedFire(state, world, p.region, BANKED_KG - fuelTotal(st.fire), true);
       recordOpportunityEvent(state, { kind: "fuelled" });
       recordOpportunityEvent(state, { kind: "fireLit", minute: state.minute, region: state.player.region, cell: cellOf(state, world), atCamp: true }, world);
       cue("fireCatches");
-      st.fire.fuelKg += 1;
       // The row names the method: the pit fire is outdoors whatever stands, the fire indoors is indoors.
       st.fire.indoors = id === "lightIndoors";
       log(state, "Smoke, then flame. The fire is lit.", "good");

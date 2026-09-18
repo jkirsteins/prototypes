@@ -3,8 +3,8 @@ import type { Calendar } from "../sim/calendar";
 import { itemLabel } from "../sim/actions";
 import { itemName } from "../sim/items";
 import { campCellOf, cellOf } from "../sim/position";
-import { shoppingList, shoppingSourceSpots, type ShoppingNeed } from "../sim/shopping";
-import type { GameState, ItemId, SpotId } from "../sim/types";
+import { shoppingList, type ShoppingNeed } from "../sim/shopping";
+import type { GameState, ItemId } from "../sim/types";
 import type { World } from "../world/gen";
 import { esc } from "./render";
 
@@ -58,20 +58,4 @@ export function shoppingHtml(state: GameState, world: World, cal: Calendar): str
   }).join("");
   const tool = list.tool ? `<div class="shopping-tool">Also needs: ${esc(list.tool)}</div>` : "";
   return `<h2>Shopping list</h2><div class="shopping-head"><b>${esc(list.title)}</b><button class="mini" data-act="shopping-clear">stop tracking</button></div><ul>${rows}</ul>${tool}`;
-}
-
-/** A compact promise beside a known place that can answer one direct shortage. */
-export function shoppingPlaceCueHtml(state: GameState, world: World, cal: Calendar, spot: SpotId): string {
-  const list = shoppingList(state, world, cal);
-  if (!list) return "";
-  const names = list.needs.flatMap((need) => {
-    if (need.short <= 1e-9) return [];
-    const items: ItemId[] = shoppingSourceSpots(state, world, cal, need.item).includes(spot) ? [need.item] : [];
-    if (need.alt && shoppingSourceSpots(state, world, cal, need.alt).includes(spot)) items.push(need.alt);
-    return items.map((item) => itemName(item, need.need));
-  });
-  if (!names.length) return "";
-  const materials = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  const target = list.title.replace(/^(Make|Build) /, "");
-  return `<small class="shopping-place">${esc(materials)} for ${esc(target)}</small>`;
 }

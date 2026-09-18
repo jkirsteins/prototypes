@@ -2,13 +2,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
+import * as position from "../src/sim/position";
+import { mapRegion } from "../src/sim/mapped";
 import { hasSpot, regionAt } from "../src/world/gen";
 import { levelMinutes } from "../src/sim/skills";
+import { setSkillLevel } from "../src/sim/horizon";
+import { addItem } from "../src/sim/inventory";
 import { noteHuntSign } from "../src/sim/hunting";
 import { availableTasks } from "../src/sim/tasks";
 import { doHtml, doPurposesHtml, filterRows, intentGroups, keyedRows, makeFirst, purposeCounts, rankRows } from "../src/ui/dopanel";
 import { purposeOf, subtabOf } from "../src/ui/purpose";
-import { paneHtml } from "./pane";
+import { paneHtml, revealEverything } from "./pane";
 import { defaultChoice, defaultChoiceFor, newUiState, rowRequest, setWhenField } from "../src/ui/render";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { regionState, siteFor } from "../src/sim/regionstate";
@@ -22,6 +26,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("the purposes and the filter", () => {
   it("does not expose a specific game species until the survivor has fresh local sign", () => {
     const { state, world } = newGame(3);
+    revealEverything(state);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Hunt" as const, purpose: "Game" } };
     const cal = calendar(state.minute, state.startDoy);
     expect(doHtml(state, world, cal, ui)).not.toContain("Hunt mountain hare");
@@ -78,6 +83,7 @@ describe("the purposes and the filter", () => {
     // would park it at the head of the list, stopping every order under it
     // until it was struck off by hand. A storm or a missing tool still queues.
     const { state, world } = newGame(1);
+    revealEverything(state);
     const home = regionAt(world, state.player.region);
     // A neighbour with no outcrop and somewhere to stand: a region that is
     // all water has no camp cell and cannot host a survivor to tell about it.
@@ -117,6 +123,7 @@ describe("the purposes and the filter", () => {
     // it still says why: learning what is available is most of learning the
     // game, so nothing is tucked behind a "more" any more.
     const { state, world } = newGame(17);
+    revealEverything(state);
     placeAtSpot(state, world, state.player.region, "forest");
     // The task under test is skill ordering, not the local storm field.
     testAtmosphere();
@@ -146,8 +153,9 @@ describe("the purposes and the filter", () => {
     expect(html).not.toContain('data-opt="intent:night:');
   });
 
-  it("offers material tracking only inside an eligible Make or Build row", () => {
+  it("offers material tracking on the face of an eligible Make or Build row, and not on one with no materials", () => {
     const { state, world } = newGame(3);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = {
       ...newUiState(),
@@ -162,7 +170,13 @@ describe("the purposes and the filter", () => {
       panes: { pane: "do" as const, subtab: "Build" as const, purpose: "Fire" },
       open: { id: "build" as TaskId, arg: "firePit" },
     };
-    expect(doHtml(state, world, cal, noMaterials)).not.toContain('data-act="shopping-track"');
+    // The pit needs nothing, so its own row carries no pin; rows beside it with materials do.
+    const pane = doHtml(state, world, cal, noMaterials);
+    const at = pane.indexOf('data-opt="intent:build:firePit"');
+    expect(at).toBeGreaterThan(-1);
+    const next = pane.indexOf('data-opt="', at + 1);
+    const row = pane.slice(at, next < 0 ? undefined : next);
+    expect(row).not.toContain('data-act="shopping-track"');
   });
 
   it("the invisible keywords find a row whose own words never say what it is for", () => {
@@ -234,6 +248,7 @@ describe("the purposes and the filter", () => {
 
   it("the filter narrows doHtml's rows and puts the groups and their folds away", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const cal = calendar(state.minute);
     state.skills.woodcraft.xp = levelMinutes(5);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "tree" });
@@ -245,6 +260,7 @@ describe("the purposes and the filter", () => {
 
   it("a broad word leads with the rows that say it and puts the rest under their own heading", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "fire" });
     const split = html.indexOf('also answers to "fire"');
@@ -253,13 +269,14 @@ describe("the purposes and the filter", () => {
     // whose second line says it, and the split holds back the ones that answer
     // to it only through the invisible keywords.
     const opts = [...html.matchAll(/data-opt="intent:([^"]*)"/g)].map((m) => m[1]);
-    expect(opts.slice(0, 4)).toEqual(["light:", "lightIndoors:", "craft:fireDrill", "build:firePit"]);
+    expect(opts.slice(0, 5)).toEqual(["fuel:", "light:", "lightIndoors:", "craft:fireDrill", "build:firePit"]);
     expect(html.indexOf('data-opt="intent:deadwood:"')).toBeLessThan(split);
     expect(html.indexOf('data-opt="intent:sticks:"')).toBeGreaterThan(split);
   });
 
   it("a filter nothing answers says so rather than emptying the panel", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "kayak" });
     expect(html).toContain('nothing answers to "kayak"');
@@ -272,6 +289,7 @@ describe("the purposes and the filter", () => {
     // Cooking lives under Camp/Food. A search that only looked where the
     // reader happened to be is the search that sent them looking by hand.
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Fuel" }, filter: "cook" };
     expect(doHtml(state, world, cal, ui)).toContain('data-opt="intent:cook:');
@@ -279,6 +297,7 @@ describe("the purposes and the filter", () => {
 
   it("a purpose shows its own rows and no others", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const food = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Wild food" } };
     const html = doHtml(state, world, cal, food);
@@ -288,6 +307,7 @@ describe("the purposes and the filter", () => {
 
   it("Explore has one Shelter row in Do", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Explore" as const, purpose: "Shelter" } };
     const html = doHtml(state, world, cal, ui);
@@ -297,6 +317,7 @@ describe("the purposes and the filter", () => {
 
   it("Build has one improve-cover Shelter row in Do", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const here = siteCamp(state, world);
     placeAt(state, world, here);
     siteFor(regionState(state, world, state.player.region), here).cover = 1;
@@ -310,6 +331,7 @@ describe("the purposes and the filter", () => {
 
   it("Build offers one emergency Shelter row whose face names the next protection threshold", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Build" as const, purpose: "Shelter" } };
     const html = doHtml(state, world, cal, ui);
@@ -325,6 +347,7 @@ describe("the purposes and the filter", () => {
 
   it("Camp is no longer one heap of twenty-six rows", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const water = { ...newUiState(), panes: { pane: "do" as const, subtab: "Camp" as const, purpose: "Water" } };
     const html = doHtml(state, world, cal, water);
@@ -334,6 +357,7 @@ describe("the purposes and the filter", () => {
 
   it("the left pane counts what each purpose holds", () => {
     const { state, world } = newGame(21);
+    revealEverything(state);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Camp" as const, purpose: "Fire" } };
     const counts = purposeCounts(state, world, ui);
     // Every purpose Camp offers is present, and none of them is empty.
@@ -344,6 +368,7 @@ describe("the purposes and the filter", () => {
 
   it("an unfiltered pane with nothing in it says so rather than going blank", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Hunt" as const, purpose: "Scout" } };
     const html = doHtml(state, world, cal, ui);
@@ -354,6 +379,7 @@ describe("the purposes and the filter", () => {
 
   it("a far row still renders under a filter, with no more line", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "coat" });
     expect(html).toContain("hide coat");
@@ -362,6 +388,7 @@ describe("the purposes and the filter", () => {
 
   it("once is a kind button, carrying the row's own choice of deliver and where", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Kindling" } };
     ui.open = { id: "sticks", arg: "" };
@@ -393,6 +420,7 @@ describe("the condition fields", () => {
 
   it("the season, the stock line and the daily count open at the condition rung and are named under it", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = {
       ...newUiState(),
@@ -416,6 +444,7 @@ describe("the condition fields", () => {
 
   it("keeps scheduling prose out of an open row", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const shut = rowHtml(doHtml(state, world, cal, newUiState()), "intent:chop:");
     expect(shut).not.toContain("the rest are the runner's");
@@ -429,6 +458,7 @@ describe("the condition fields", () => {
 
   it("the restart line shows at the condition rung and the due date at the pace rung, and only a keep carries them", () => {
     const { state, world } = newGame(17);
+    revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
     const ui = { ...newUiState(), open: { id: "chop" as const, arg: "" } };
     state.skills.woodcraft.xp = levelMinutes(15);
@@ -559,5 +589,118 @@ describe("a row says what it is, and what stops it", () => {
     const html = paneHtml(state, world, cal, "build", "dryingRack");
     const at = html.indexOf('data-opt="intent:build:dryingRack"');
     expect(html.slice(at, at + 600)).toContain("gives");
+  });
+});
+
+describe("the search list's route cache", () => {
+  // Every candidate row's route (its resolved cell and its initial walk)
+  // pathfinds; its legality (ok/why/label/detail/duration) does not - it
+  // comes straight from check() on every call, cache hit or not, which is
+  // what the next two tests are for. Route work does not repeat, but "Hunt
+  // anything" reads its own live candidate weights straight from check() on
+  // every call too - a couple of real routes, not the ~90-row cost the
+  // cache exists to avoid - so the right claim about repeat calls is that
+  // they cost the same small, fixed amount, not that they cost nothing.
+  it("does not repeat the search's route pathfind when nothing it depends on has changed", () => {
+    const { state, world } = newGame(11);
+    revealEverything(state);
+    placeAtSpot(state, world, state.player.region, "heath");
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), filter: "wood" };
+    const spy = vi.spyOn(position, "kmBetween");
+    try {
+      doHtml(state, world, cal, ui);
+      const afterFirst = spy.mock.calls.length;
+      expect(afterFirst).toBeGreaterThan(0);
+      // Same state, same filter, called again as the next render tick would.
+      doHtml(state, world, cal, ui);
+      const perCallFloor = spy.mock.calls.length - afterFirst;
+      expect(perCallFloor).toBeLessThan(5);
+      doHtml(state, world, cal, ui);
+      expect(spy.mock.calls.length - afterFirst - perCallFloor).toBe(perCallFloor);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("recomputes routes once the survivor moves, once new ground is known, and once the in-game minute turns over - but not for a changed filter alone", () => {
+    const { state, world } = newGame(11);
+    revealEverything(state);
+    placeAtSpot(state, world, state.player.region, "heath");
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = { ...newUiState(), filter: "wood" };
+    const spy = vi.spyOn(position, "kmBetween");
+    try {
+      doHtml(state, world, cal, ui);
+      const afterFirst = spy.mock.calls.length;
+      doHtml(state, world, cal, ui);
+      const perCallFloor = spy.mock.calls.length - afterFirst;
+      let last = spy.mock.calls.length;
+
+      // The survivor's own cell moved: every route from here is stale.
+      placeAtSpot(state, world, state.player.region, "shore");
+      doHtml(state, world, cal, ui);
+      expect(spy.mock.calls.length - last).toBeGreaterThan(perCallFloor);
+      last = spy.mock.calls.length;
+
+      // The world learned new ground: a route through it may now be shorter,
+      // or may now exist at all, even though the survivor did not move.
+      mapRegion(state, world, regionAt(world, state.player.region).neighbours[0].id);
+      doHtml(state, world, cal, ui);
+      expect(spy.mock.calls.length - last).toBeGreaterThan(perCallFloor);
+      last = spy.mock.calls.length;
+
+      // The in-game clock crossed a minute: weather moves a route's walking
+      // speed and its thin-ice legality, and the season can move resolveCell
+      // to different ground for a season-bound task, without the survivor
+      // moving at all.
+      state.minute += 3;
+      doHtml(state, world, cal, ui);
+      expect(spy.mock.calls.length - last).toBeGreaterThan(perCallFloor);
+      last = spy.mock.calls.length;
+
+      // A changed filter asks a different question about the same rows: it
+      // re-ranks what is already on hand rather than giving any route a
+      // reason to recompute, so the call count holds at its per-call floor.
+      const ui2 = { ...ui, filter: "stick" };
+      doHtml(state, world, cal, ui2);
+      expect(spy.mock.calls.length - last).toBe(perCallFloor);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // The whole point of splitting check() out of the cache: a row's reason
+  // for being blocked has to track what is actually true right now, even
+  // while the survivor stands still with the same filter open and no new
+  // ground has been mapped - the scenario a player waiting on a skill or a
+  // delivery is in for as long as the wait lasts.
+  it("refreshes a row's ok and why once a skill is earned or stock arrives, with cell, filter and knowledgeGen unchanged", () => {
+    const { state, world } = newGame(12);
+    revealEverything(state);
+    const cal = calendar(state.minute, state.startDoy);
+
+    // Skill: finding a bear den needs Hunting 5. Below it the row names the
+    // level it is short by; earning the level changes the reason to
+    // whatever the ground itself says, which only happens if check() is
+    // reading the survivor's actual skill and not a cached one.
+    const uiFindDen = { ...newUiState(), filter: "find bear den" };
+    const beforeSkill = doHtml(state, world, cal, uiFindDen);
+    expect(beforeSkill).toContain("needs Hunting 5");
+    setSkillLevel(state, "hunting", 5);
+    const afterSkill = doHtml(state, world, cal, uiFindDen);
+    expect(afterSkill).not.toContain("needs Hunting 5");
+
+    // Stock: sharpening needs a stone. Blunt the axe first so the row's
+    // only blocker is the missing stone rather than a full edge.
+    const axe = state.player.tools.find((t) => t.id === "axe");
+    expect(axe).toBeDefined();
+    axe!.durability = 50;
+    const uiSharpen = { ...newUiState(), filter: "sharpen the axe" };
+    const beforeStone = doHtml(state, world, cal, uiSharpen);
+    expect(beforeStone).toContain("needs a stone");
+    addItem(state.player.pack, "stone", 1);
+    const afterStone = doHtml(state, world, cal, uiSharpen);
+    expect(afterStone).not.toContain("needs a stone");
   });
 });

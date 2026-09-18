@@ -10,7 +10,7 @@ import { regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { advance } from "../src/sim/advance";
 import { availableTasks, beginTask, leftBehind, walkTarget, whereIs } from "../src/sim/tasks";
 import { seepGround } from "../src/sim/seep";
-import { mapHtml } from "../src/ui/map";
+import { board, glyphsWith } from "./board";
 import { placesHtml } from "../src/ui/panels";
 import { tipHtml } from "../src/ui/tip";
 import { defaultChoice, newUiState, rowRequest } from "../src/ui/render";
@@ -431,15 +431,15 @@ describe("the map marks the camp", () => {
     // the same way a fire or shelter you stand on does; step off to see the mark.
     const off = neighbourLandCell(world, generated);
     placeAt(state, world, off);
-    expect(mapHtml(world, state, ui, cal)).toContain("mk-camp");
+    expect(glyphsWith(board(world, state, ui, cal), "mk-camp").length).toBe(1);
     st.fire.lit = true;
     st.fire.fuelKg = 5;
-    expect(mapHtml(world, state, ui, cal)).not.toContain("mk-camp");
+    expect(glyphsWith(board(world, state, ui, cal), "mk-camp")).toHaveLength(0);
     st.fire.lit = false;
     st.fire.fuelKg = 0;
 
     // The mark follows a move, to a cell you are not standing on either.
     st.campCell = neighbourLandCell(world, off);
-    expect(mapHtml(world, state, ui, cal)).toContain("mk-camp");
+    expect(glyphsWith(board(world, state, ui, cal), "mk-camp").length).toBe(1);
   });
 });

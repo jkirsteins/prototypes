@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
+import * as celestial from "../src/sim/celestial";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
@@ -9,9 +10,12 @@ import { cellOf } from "../src/sim/position";
 import type { GameState } from "../src/sim/types";
 import type { World } from "../src/world/gen";
 import { placesHtml, weatherHtml } from "../src/ui/panels";
-import { mapHtml } from "../src/ui/map";
+import { mapBoardHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
-import { bodyPosition, lighting, phaseName, skyHtml, updateSky, WALL } from "../src/ui/sky";
+import {
+  bodyOpacity, bodyPosition, lighting, moonShadowOffset, nightConstellation, phaseName, skyHtml, skyModelFor,
+  updateSky, WALL,
+} from "../src/ui/sky";
 import { siteCamp } from "./siting-helpers";
 import { current } from "../src/sim/record";
 import { levelMinutes } from "../src/sim/skills";
@@ -34,6 +38,36 @@ const at = (hour: number) => calendar((hour - 8) * 60);
 // A test that installs a controlled atmosphere owns it only for its own case.
 afterEach(() => vi.restoreAllMocks());
 
+/**
+ * Drives a real 2D canvas API in tests: happy-dom's `getContext("2d")`
+ * returns null, so a recorder stands in - one canvas at a time, an own
+ * property shadowing the prototype method, so the offscreen buffers the
+ * moon and clouds use elsewhere stay null and skip themselves exactly as
+ * they do in any environment without canvas support.
+ */
+interface RecordedCall { method: string; args: unknown[] }
+function stubCanvas(canvas: HTMLCanvasElement): RecordedCall[] {
+  const calls: RecordedCall[] = [];
+  const record = (method: string) => (...args: unknown[]) => {
+    calls.push({ method, args });
+    if (method === "createLinearGradient" || method === "createRadialGradient") return { addColorStop: () => {} };
+    if (method === "createImageData") return { data: new Uint8ClampedArray(4), width: 1, height: 1 };
+    return undefined;
+  };
+  const ctx = new Proxy({} as CanvasRenderingContext2D, {
+    get(_target, prop: string) {
+      if (prop === "canvas") return canvas;
+      return record(prop);
+    },
+    set(_target, prop: string, value) {
+      calls.push({ method: `set:${prop}`, args: [value] });
+      return true;
+    },
+  });
+  canvas.getContext = ((() => ctx) as unknown) as typeof canvas.getContext;
+  return calls;
+}
+
 describe("forecast knowledge in the weather wall", () => {
   it.each(["snow", "gale"] as const)("reads stored %s only at an earned stage, without leaking it into stage-one markup", (kind) => {
     resetPanels();
@@ -52,7 +86,7 @@ describe("forecast knowledge in the weather wall", () => {
       return document.querySelector("#weather")!;
     };
     const noviceSnow = render().cloneNode(true);
-    const sky = document.querySelector("svg.sky");
+    const sky = document.querySelector("canvas.sky");
     state.weather.storm.kind = "rain";
     expect(render().isEqualNode(noviceSnow)).toBe(true);
     state.weather.storm.kind = kind;
@@ -60,10 +94,10 @@ describe("forecast knowledge in the weather wall", () => {
     render();
     expect(document.querySelector("[data-weather-forecast]")?.textContent).toBe(`heavy ${kind} storm in 1 h`);
     expect(sky?.getAttribute("aria-label")).toBe(`sky: heavy ${kind} storm in 1 h`);
-    expect(document.querySelector("svg.sky")).toBe(sky);
+    expect(document.querySelector("canvas.sky")).toBe(sky);
     state.skills.weatherSense.xp = 0;
     expect(render().isEqualNode(noviceSnow)).toBe(true);
-    expect(document.querySelector("svg.sky")).toBe(sky);
+    expect(document.querySelector("canvas.sky")).toBe(sky);
   });
 
   it("hides distant storms and reveals arrival, kind, severity and duration only as learned", () => {
@@ -137,12 +171,12 @@ describe("forecast knowledge in the weather wall", () => {
     const cal = calendar(0);
     setPanel("weather", weatherHtml(state, world, cal, 15));
     updateSky(state, cal, 15);
-    const sky = document.querySelector("svg.sky");
+    const sky = document.querySelector("canvas.sky");
     expect(sky?.getAttribute("aria-label")).toContain("a storm is coming");
     state.skills.weatherSense.xp = levelMinutes(25);
     setPanel("weather", weatherHtml(state, world, cal, 15));
     updateSky(state, cal, 15);
-    expect(document.querySelector("svg.sky")).toBe(sky);
+    expect(document.querySelector("canvas.sky")).toBe(sky);
     expect(sky?.getAttribute("aria-label")).toContain("lasting 6 h");
     state.skills.weatherSense.xp = 0;
     updateSky(state, cal, 15);
@@ -172,53 +206,54 @@ describe("sky arc", () => {
   });
 
   it("cuts the moon's dark side to the left while waxing, to the right while waning, over it at new and clear of it at full", () => {
-    const { state } = newGame(1);
-    const root = document.createElement("div");
-    root.innerHTML = skyHtml();
-    /**
-     * How far the mask's dark disc sits from the lit one at 00:00 after run
-     * day d (the run starts at 08:00, so +16 h is midnight). The dark side is
-     * cut out of the moon rather than painted over it, so what moves is the
-     * black circle inside the mask.
-     */
-    const shadowX = (d: number) => {
-      updateSky(state, calendar(1440 * (d - 1) + 16 * 60), 0, root);
-      const moon = Number(root.querySelector("#sky-moon-lit")!.getAttribute("cx"));
-      const shadow = Number(root.querySelector("#sky-moon-dark")!.getAttribute("cx"));
-      return shadow - moon;
-    };
+    // The dark side is erased out of the lit disc rather than painted over
+    // it, and what erases it slides by this offset - a whole diameter aside
+    // at full, on top of the disc at new.
+    const offsetOn = (d: number) => moonShadowOffset(calendar(1440 * (d - 1) + 16 * 60));
     // Full on 3 April (run day 3): the shadow is a whole diameter aside.
-    expect(Math.abs(shadowX(3))).toBeGreaterThan(9);
+    expect(Math.abs(offsetOn(3))).toBeGreaterThan(9);
     // New about 18 April: the shadow sits on the moon.
-    expect(Math.abs(shadowX(18))).toBeLessThan(0.6);
+    expect(Math.abs(offsetOn(18))).toBeLessThan(0.6);
     // Waning a week after full: shadow right. Waxing a week before the next full (about 2 May): shadow left.
-    expect(shadowX(9)).toBeGreaterThan(4);
-    expect(shadowX(26)).toBeLessThan(-4);
+    expect(offsetOn(9)).toBeGreaterThan(4);
+    expect(offsetOn(26)).toBeLessThan(-4);
   });
 
-  it("names every gradient, filter and mask after its own sky, so two on a page do not share one", () => {
-    /**
-     * url(#x) and mask=url(#x) are resolved against the whole document, not
-     * against the svg they are written in. Thirteen skies on the gallery
-     * page with identical ids therefore all drew the FIRST card's cloud,
-     * moon phase and sunset - and looked entirely plausible doing it, which
-     * is why this is a test rather than a note.
-     */
-    const refs = (html: string) => [...html.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]);
-    const ids = (html: string) => [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+  it("keeps two skies with different local weather from leaking into each other", () => {
+    // Two canvases used to share ids across the whole document - a gradient,
+    // a filter, a mask defined by the first sky also drew the second one's
+    // cloud and moon phase. A canvas has no such ids to collide over, but
+    // the dataset each sky writes must still describe only itself.
+    document.body.innerHTML = `<div id="one">${skyHtml(WALL, "one")}</div><div id="two">${skyHtml(WALL, "two")}</div>`;
+    const { state } = newGame(21);
+    const cal = at(14);
+    state.weather.clear = false;
+    state.weather.precip = "heavy";
+    updateSky(state, cal, 5, document.querySelector("#one")!);
+    document.querySelector<HTMLCanvasElement>("#two canvas")!.dataset.weatherCloud = "0";
+    document.querySelector<HTMLCanvasElement>("#two canvas")!.dataset.weatherRate = "0";
+    document.querySelector<HTMLCanvasElement>("#two canvas")!.dataset.weatherRain = "0";
+    document.querySelector<HTMLCanvasElement>("#two canvas")!.dataset.weatherSnow = "0";
+    document.querySelector<HTMLCanvasElement>("#two canvas")!.dataset.weatherPrecip = "none";
+    document.querySelector<HTMLCanvasElement>("#two canvas")!.dataset.weatherTemperature = "12";
+    document.querySelector<HTMLCanvasElement>("#two canvas")!.dataset.weatherWindX = "0";
+    document.querySelector<HTMLCanvasElement>("#two canvas")!.dataset.weatherWindY = "0";
+    document.querySelector<HTMLCanvasElement>("#two canvas")!.dataset.weatherWindSpeed = "0";
+    document.querySelector<HTMLCanvasElement>("#two canvas")!.dataset.weatherFog = "0";
+    updateSky(state, cal, 5, document.querySelector("#two")!);
+    const one = document.querySelector<HTMLCanvasElement>("#one canvas")!;
+    const two = document.querySelector<HTMLCanvasElement>("#two canvas")!;
+    expect(one.dataset.skyPrecip).toBe("rain");
+    expect(two.dataset.skyPrecip).toBe("none");
+  });
 
+  it("names every sky's markup after its own uid without needing it to draw", () => {
     const a = skyHtml(undefined, "one");
     const b = skyHtml(undefined, "two");
-    // Everything one sky points at, it defines itself.
-    for (const r of refs(a)) expect(ids(a)).toContain(r);
-    expect(refs(a).length).toBeGreaterThan(4);
-    // And nothing it points at belongs to the sky beside it.
-    for (const r of refs(a)) expect(refs(b)).not.toContain(r);
-
-    // The game draws one sky and asks for no suffix; what it points at is
-    // still its own.
+    expect(a).toContain('data-sky-uid="one"');
+    expect(b).toContain('data-sky-uid="two"');
     const plain = skyHtml();
-    for (const r of refs(plain)) expect(ids(plain)).toContain(r);
+    expect(plain).toContain('data-sky-uid=""');
   });
 });
 
@@ -258,6 +293,12 @@ describe("lighting", () => {
     expect(overcast.brightness).toBeLessThan(1);
     expect(overcast.brightness).toBeGreaterThan(rain.brightness);
   });
+
+  it("never fully hides the sun behind cloud, the way a disc still shows through an overcast deck", () => {
+    expect(bodyOpacity(0)).toBe(1);
+    expect(bodyOpacity(1)).toBeCloseTo(0.08, 5);
+    expect(bodyOpacity(0.5)).toBeGreaterThan(bodyOpacity(1));
+  });
 });
 
 describe("sky in the page", () => {
@@ -279,22 +320,22 @@ describe("sky in the page", () => {
     // one needs a landing whose own sky is clear rather than any landing.
     const { state, world } = clearSkyGame();
     const cal = at(13);
-    // The sky is drawn in the weather widget now, not the clock line.
     setPanel("weather", weatherHtml(state, world, cal, ambientTemperature(cal, state.weather)));
-    setPanel("map", mapHtml(world, state, newUiState(), cal));
+    setPanel("map", mapBoardHtml(world, state, newUiState(), cal));
     updateSky(state, cal, ambientTemperature(cal, state.weather));
-    const sun = document.querySelector("#sky-sun")!;
-    const noonX = Number(sun.getAttribute("cx"));
-    const opacity = (sel: string) => Number(document.querySelector(sel)!.getAttribute("opacity"));
-    expect(opacity("#sky-sun")).toBeGreaterThan(0.9);
+    const noon = bodyPosition(cal, WALL);
+    expect(noon.body).toBe("sun");
     // 22:00: the moon is still on the left half of its arc, so its x differs from the noon sun's.
     const night = at(22);
-    updateSky(state, night, -3);
-    expect(opacity("#sky-sun")).toBe(0);
-    expect(opacity("#sky-moon")).toBeGreaterThan(0.9);
-    expect(Number(document.querySelector("#sky-moon")!.getAttribute("cx"))).not.toBe(noonX);
+    const light = updateSky(state, night, -3);
+    const evening = bodyPosition(night, WALL);
+    expect(evening.body).toBe("moon");
+    expect(evening.x).not.toBe(noon.x);
+    // The light it works out is what the board is drawn under (map.ts,
+    // setBoardLight); the markup carries none of it.
+    expect(light.brightness).toBeLessThan(0.6);
     const viewport = document.querySelector<HTMLElement>("#map .scroll-x")!;
-    expect(Number(viewport.style.getPropertyValue("--bright"))).toBeLessThan(0.6);
+    expect(viewport.style.getPropertyValue("--bright")).toBe("");
     // Precipitation belongs to coordinate-matched glyphs, never a global
     // viewport class laid over unrelated local conditions.
     expect(viewport.classList.contains("snowing")).toBe(false);
@@ -309,55 +350,62 @@ describe("sky in the page", () => {
     state.weather.precip = "none";
     const root = document.createElement("div");
     root.innerHTML = skyHtml(WALL);
-    const visibleConstellation = () => root.querySelector<SVGElement>('[data-constellation][opacity="1"]')?.id;
-    const opacity = (id: string) => root.querySelector(id)?.getAttribute("opacity");
+    const canvas = () => root.querySelector<HTMLCanvasElement>("canvas.sky")!;
 
     const evening = at(22);
     updateSky(state, evening, -3, root);
-    const first = visibleConstellation();
+    const first = canvas().dataset.skyConstellation;
     expect(first).toBeTruthy();
-    expect(root.querySelector(".sky-constellation polyline")).toBeNull();
-    expect(root.querySelector("#sky-milky-way")).not.toBeNull();
-    expect(opacity("#sky-milky-way")).not.toBe("0");
-    expect(opacity("#sky-stars")).not.toBe("0");
+    expect(canvas().dataset.skyMilkyWay).not.toBe("0.00");
+    expect(canvas().dataset.skyStars).not.toBe("0.00");
 
     updateSky(state, at(28), -3, root);
-    expect(visibleConstellation()).toBe(first);
+    expect(canvas().dataset.skyConstellation).toBe(first);
 
     const nights = new Set<string>();
     for (let day = 0; day < 8; day++) {
-      updateSky(state, calendar((22 - 8) * 60 + day * 1440), -3, root);
-      const constellation = visibleConstellation();
+      const cal = calendar((22 - 8) * 60 + day * 1440);
+      updateSky(state, cal, -3, root);
+      const constellation = canvas().dataset.skyConstellation;
+      expect(constellation).toBe(String(nightConstellation(state.seed, cal.dayIndex)));
       if (constellation) nights.add(constellation);
     }
     expect(nights.size).toBeGreaterThan(2);
+    // Every pattern shown is one of the four fixed shapes.
+    expect([...nights].every((n) => Number(n) >= 0 && Number(n) < 4)).toBe(true);
 
     const { state: otherState } = newGame(22);
+    otherState.weather.clear = true;
+    otherState.weather.precip = "none";
     updateSky(otherState, evening, -3, root);
-    expect(visibleConstellation()).not.toBe(first);
+    // A different seed need not pick the same pattern; the point is that the
+    // choice is a function of seed and night, not drawn fresh every call.
+    const otherNightIndex = evening.dayIndex - (evening.hour < evening.sunrise ? 1 : 0);
+    expect(canvas().dataset.skyConstellation).toBe(String(nightConstellation(otherState.seed, otherNightIndex)));
 
     updateSky(state, at(13), 10, root);
-    expect(visibleConstellation()).toBeUndefined();
-    expect(opacity("#sky-stars")).toBe("0");
-    expect(Number(opacity("#sky-milky-way"))).toBe(0);
+    expect(canvas().dataset.skyConstellation).toBe("");
+    expect(canvas().dataset.skyStars).toBe("0.00");
+    expect(canvas().dataset.skyMilkyWay).toBe("0.00");
 
     state.weather.clear = false;
     updateSky(state, evening, -3, root);
-    expect(visibleConstellation()).toBeUndefined();
-    expect(opacity("#sky-stars")).toBe("0");
+    expect(canvas().dataset.skyConstellation).toBe("");
+    expect(canvas().dataset.skyStars).toBe("0.00");
 
     state.weather.clear = true;
     state.weather.precip = "light";
     updateSky(state, evening, -3, root);
-    expect(visibleConstellation()).toBeUndefined();
-    expect(opacity("#sky-stars")).toBe("0");
+    expect(canvas().dataset.skyConstellation).toBe("");
+    expect(canvas().dataset.skyStars).toBe("0.00");
   });
 
   it("projects fixed RA/Dec stars and the real galactic plane at the sidereal rate", () => {
     const { state } = newGame(21);
     const root = document.createElement("div");
     root.innerHTML = skyHtml(WALL);
-    const angle = () => Number(root.querySelector("#sky-celestial")?.getAttribute("data-sidereal-angle"));
+    const canvas = () => root.querySelector<HTMLCanvasElement>("canvas.sky")!;
+    const angle = () => Number(canvas().dataset.skySiderealAngle);
     const forward = (from: number, to: number) => (to - from + 360) % 360;
 
     const night = calendar((22 - 8) * 60, 172);
@@ -376,68 +424,77 @@ describe("sky in the page", () => {
 
     const september = calendar((20.4 - 8) * 60, 243);
     updateSky(state, september, -3, root);
-    const celestial = root.querySelector("#sky-celestial");
-    expect(celestial?.getAttribute("data-coordinate-system")).toBe("horizontal");
-    expect(Number(celestial?.getAttribute("data-galactic-center-alt"))).toBeCloseTo(-1.057, 3);
-    expect(root.querySelector("#sky-milky-plane")?.getAttribute("d")).toMatch(/^M /);
-    expect(root.querySelector("#sky-milky-way")?.getAttribute("clip-path")).toContain("sky-horizon");
+    expect(Number(canvas().dataset.skyGalacticCenterAlt)).toBeCloseTo(-1.057, 3);
+    const plane = celestial.projectGalacticPlane(angle(), WALL.w, WALL.groundY);
+    expect(plane.length).toBeGreaterThan(0);
 
-    const stars = [...root.querySelectorAll<SVGCircleElement>(".sky-field-star")];
-    expect(stars.length).toBeGreaterThan(800);
-    expect(stars.every((star) => star.hasAttribute("data-ra") && star.hasAttribute("data-dec"))).toBe(true);
-    const visibleBefore = new Map(stars
-      .filter((star) => star.getAttribute("opacity") !== "0")
-      .map((star) => [star, star.getAttribute("cx")]));
+    const model = skyModelFor(WALL);
+    expect(model.fieldStars.length).toBeGreaterThan(800);
+    expect(model.fieldStars.every((s) => Number.isFinite(s.raDeg) && Number.isFinite(s.decDeg))).toBe(true);
+    // A star visible in September's 20:24 sky at one sidereal angle projects
+    // to a different point an hour of sidereal time later, the way a fixed
+    // point on a turning sky does.
+    const before = celestial.projectSouth(celestial.equatorialToHorizontal({ raDeg: model.fieldStars[0].raDeg, decDeg: model.fieldStars[0].decDeg }, angle()), WALL.w, WALL.groundY);
     updateSky(state, calendar((21.4 - 8) * 60, 243), -3, root);
-    expect([...visibleBefore].some(([star, x]) => (
-      star.getAttribute("opacity") !== "0" && star.getAttribute("cx") !== x
-    ))).toBe(true);
+    const after = celestial.projectSouth(celestial.equatorialToHorizontal({ raDeg: model.fieldStars[0].raDeg, decDeg: model.fieldStars[0].decDeg }, angle()), WALL.w, WALL.groundY);
+    expect(before.x).not.toBeCloseTo(after.x, 3);
   });
 
-  it("reuses the celestial projection throughout one displayed game minute", () => {
+  it("recomputes the celestial projection only when the displayed minute changes", () => {
     const { state } = newGame(21);
     const root = document.createElement("div");
     root.innerHTML = skyHtml(WALL);
     const minute = calendar((22 - 8) * 60, 172);
     updateSky(state, minute, -3, root);
-    const star = root.querySelector<SVGCircleElement>(".sky-field-star")!;
-    const writes = vi.spyOn(star, "setAttribute");
+    const spy = vi.spyOn(celestial, "equatorialToHorizontal");
 
     updateSky(state, minute, -3, root);
-    expect(writes).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
     updateSky(state, calendar((22 - 8) * 60 + 1, 172), -3, root);
-    expect(writes).toHaveBeenCalled();
+    expect(spy).toHaveBeenCalled();
   });
 
-  it("draws the terrain as one opaque colourless silhouette", () => {
+  it("draws no star when none is above the horizon, and draws many under a clear night", () => {
+    const { state } = newGame(21, 172);
+    state.weather.clear = true;
+    state.weather.precip = "none";
+    const root = document.createElement("div");
+    root.innerHTML = skyHtml(WALL);
+    const canvas = root.querySelector<HTMLCanvasElement>("canvas.sky")!;
+    const calls = stubCanvas(canvas);
+
+    updateSky(state, at(13), 14, root);
+    const daytimeArcs = calls.filter((c) => c.method === "arc").length;
+
+    calls.length = 0;
+    updateSky(state, at(22), -3, root);
+    const nightArcs = calls.filter((c) => c.method === "arc").length;
+
+    // Daytime draws only the horizon guide and the sun's own disc; a clear
+    // night draws those plus every star and dust point above the horizon.
+    expect(daytimeArcs).toBeLessThanOrEqual(2);
+    expect(nightArcs).toBeGreaterThan(500);
+  });
+
+  it("draws the terrain as one opaque colourless silhouette regardless of weather or season", () => {
     const { state } = newGame(21, 172);
     const root = document.createElement("div");
     root.innerHTML = skyHtml(WALL);
-    const fills = () => ["#sky-far", "#sky-mid", "#sky-near"]
-      .map((id) => root.querySelector(id)?.getAttribute("fill"));
-    const summer = calendar((13 - 8) * 60, 172);
+    const canvas = root.querySelector<HTMLCanvasElement>("canvas.sky")!;
+    const ridgeFills = () => {
+      const calls = stubCanvas(canvas);
+      updateSky(state, calendar((13 - 8) * 60, state.startDoy), 14, root);
+      return calls.filter((c) => c.method === "set:fillStyle" && c.args[0] === "#050505").length;
+    };
 
-    updateSky(state, summer, 14, root);
-    const summerFills = fills();
-    expect(new Set(summerFills)).toEqual(new Set(["#050505"]));
-    expect(root.querySelector("#sky-trees")).toBeNull();
-    for (const id of ["#sky-far", "#sky-mid", "#sky-near"]) {
-      const opacity = root.querySelector(id)?.getAttribute("opacity");
-      expect(opacity === null || opacity === "1").toBe(true);
-    }
+    expect(ridgeFills()).toBe(3);
 
     state.weather.clear = false;
-    updateSky(state, summer, 14, root);
-    expect(fills()).toEqual(summerFills);
+    expect(ridgeFills()).toBe(3);
 
     state.weather.clear = true;
-    const winter = calendar((13 - 8) * 60, 350);
-    updateSky(state, winter, -5, root);
-    expect(fills()).toEqual(summerFills);
-
     state.weather.snowCm = 20;
-    updateSky(state, winter, -5, root);
-    expect(fills()).toEqual(summerFills);
+    expect(ridgeFills()).toBe(3);
   });
 
   it("shows Perseid streaks only on clear nights in their late-summer window", () => {
@@ -446,20 +503,18 @@ describe("sky in the page", () => {
     state.weather.precip = "none";
     const root = document.createElement("div");
     root.innerHTML = skyHtml(WALL);
-    const opacity = () => root.querySelector("#sky-perseids")?.getAttribute("opacity");
+    const canvas = () => root.querySelector<HTMLCanvasElement>("canvas.sky")!;
 
     updateSky(state, calendar((22 - 8) * 60, 223), 12, root);
-    expect(root.querySelectorAll("#sky-perseids .sky-meteor").length).toBeGreaterThan(2);
-    expect(root.querySelector("#sky-celestial #sky-perseids")).toBeNull();
-    expect(opacity()).toBe("1");
+    expect(canvas().dataset.skyPerseids).toBe("1");
 
     state.weather.clear = false;
     updateSky(state, calendar((22 - 8) * 60, 223), 12, root);
-    expect(opacity()).toBe("0");
+    expect(canvas().dataset.skyPerseids).toBe("0");
 
     state.weather.clear = true;
     updateSky(state, calendar((22 - 8) * 60, 250), 12, root);
-    expect(opacity()).toBe("0");
+    expect(canvas().dataset.skyPerseids).toBe("0");
   });
 
   it("spot distances are from where you stand, with the walking time on the button", () => {

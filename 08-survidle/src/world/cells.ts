@@ -20,6 +20,27 @@ import type { RegionDef } from "./gen";
 
 export const FINE_CHUNK_LIMIT = 64;
 
+/**
+ * How much built ground a tab nobody is looking at keeps. The chunks are the
+ * heaviest thing the run holds - a terrain byte and a region int for every
+ * one of FINE_CHUNK squared patches, plus the refinement under them - and a
+ * hidden tab needs none of them until it is looked at again. They are built
+ * from the seed, so dropping one loses nothing but the work to make it.
+ */
+export const FINE_CHUNK_HIDDEN_LIMIT = 4;
+
+/** Keeps the `keep` most recently used chunks and drops the rest. */
+export function trimFineChunks(world: World, keep: number): number {
+  let dropped = 0;
+  while (world.fineChunks.size > Math.max(0, keep)) {
+    const oldest = world.fineChunks.keys().next().value;
+    if (oldest === undefined) break;
+    world.fineChunks.delete(oldest);
+    dropped++;
+  }
+  return dropped;
+}
+
 export interface FineChunk {
   cx: number;
   cy: number;

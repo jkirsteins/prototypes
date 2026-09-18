@@ -13,8 +13,8 @@ function newState() {
 
 function discovery() {
   const state = newState();
-  discoverOpportunity(state.opportunities, "drink", 0, false);
-  setCurrentOpportunity(state.opportunities, "drink");
+  discoverOpportunity(state.opportunities, "build:firePit", 0, false);
+  setCurrentOpportunity(state.opportunities, "build:firePit");
   recordOpportunityEvent(state, { kind: "speciesSeen", species: "deer" });
   const notice = state.opportunities.notices[0];
   if (!notice) throw new Error("discovery notice is missing");
@@ -30,7 +30,7 @@ it("combines completion, group completion, discoveries, and messages in one moda
     discovered: ["hunt:deer"], messages: ["A new path opens."],
   };
   const html = opportunityModalHtml(state, notice);
-  const lines = ["Completed: Track roe deer", "Group completed: Track animals", "New opportunity: Hunt roe deer", "A new path opens."];
+  const lines = ["Completed: Read roe deer sign", "Group completed: Track animals", "New opportunity: Hunt roe deer", "A new path opens."];
   for (const line of lines) expect(html).toContain(line);
   for (let i = 1; i < lines.length; i++) expect(html.indexOf(lines[i - 1])).toBeLessThan(html.indexOf(lines[i]));
   expect(html.match(/class="opportunity-modal"/g)).toHaveLength(1);
@@ -40,9 +40,9 @@ it("combines completion, group completion, discoveries, and messages in one moda
 
 it("preserves existing current on discovery and OK", () => {
   const { state, notice } = discovery();
-  expect(state.opportunities.current).toBe("drink");
+  expect(state.opportunities.current).toBe("build:firePit");
   dismissOpportunityPresentation(state, notice.id, null);
-  expect(state.opportunities.current).toBe("drink");
+  expect(state.opportunities.current).toBe("build:firePit");
   expect(state.opportunities.notices).toEqual([]);
 });
 
@@ -55,7 +55,7 @@ it("changes current only to the discovery selected from that notice", () => {
 it.each(["site", "track:elk"] as const)("rejects a choice outside the shown discoveries: %s", (key) => {
   const { state, notice } = discovery();
   expect(dismissOpportunityPresentation(state, notice.id, key)).toBe(false);
-  expect(state.opportunities.current).toBe("drink");
+  expect(state.opportunities.current).toBe("build:firePit");
   expect(state.opportunities.notices).toEqual([notice]);
 });
 
@@ -91,7 +91,7 @@ it("removes exactly the displayed id and repeated dismissal cannot consume the n
   expect(dismissOpportunityPresentation(state, notice.id, null)).toBe(true);
   expect(dismissOpportunityPresentation(state, notice.id, "track:deer")).toBe(false);
   expect(state.opportunities.notices).toEqual([second]);
-  expect(state.opportunities.current).toBe("drink");
+  expect(state.opportunities.current).toBe("build:firePit");
 });
 
 it("does not reveal unknown titles, keys, groups, or checklists from a stale notice", () => {
@@ -146,7 +146,7 @@ it("ignores stale UI actions after another presentation has opened", () => {
   ui.opportunityPresentation = notice;
   expect(opportunityModalAction(state, ui, "opportunity-set-current", "stale", "track:deer")).toBe(false);
   expect(ui.opportunityPresentation).toBe(notice);
-  expect(state.opportunities.current).toBe("drink");
+  expect(state.opportunities.current).toBe("build:firePit");
   expect(opportunityModalAction(state, ui, "opportunity-set-current", notice.id, "track:deer")).toBe(true);
   expect(state.opportunities.current).toBe("track:deer");
   expect(ui.opportunityPresentation).toBeNull();
@@ -194,5 +194,5 @@ it("keeps keyboard focus inside the presentation and Escape uses OK", () => {
   });
   opportunityModalKeyboard(dialog, new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
   expect(state.opportunities.notices).toEqual([]);
-  expect(state.opportunities.current).toBe("drink");
+  expect(state.opportunities.current).toBe("build:firePit");
 });

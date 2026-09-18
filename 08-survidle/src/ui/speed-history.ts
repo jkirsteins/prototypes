@@ -1,3 +1,5 @@
+import { heldQuery } from "./render";
+
 export interface SpeedSample { at: number; rate: number }
 export interface SpeedHistory { samples: SpeedSample[]; lastSample: number }
 
@@ -38,12 +40,12 @@ export function updateSpeedHistory(root: ParentNode, history: SpeedHistory, now:
   sampleSpeed(history, now, rate);
   // Compare before writing: a text node replaced with the same text and an
   // attribute set to the value it holds both invalidate style and layout.
-  const path = root.querySelector<SVGPathElement>("[data-speed-path]");
+  const path = heldQuery<SVGPathElement>(root, "[data-speed-path]");
   if (path) {
     const d = speedAreaPath(history.samples, now);
     if (path.getAttribute("d") !== d) path.setAttribute("d", d);
   }
-  const label = root.querySelector<HTMLElement>("[data-speed-rate]");
+  const label = heldQuery<HTMLElement>(root, "[data-speed-rate]");
   if (label) {
     const text = `1 s = ${Math.round(rate)} game min`;
     if (label.textContent !== text) label.textContent = text;

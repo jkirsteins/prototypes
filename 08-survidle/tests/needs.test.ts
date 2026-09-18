@@ -9,6 +9,7 @@ import { fuelTotal } from "../src/sim/fire";
 import { FIRE_LOW_KG } from "../src/sim/items";
 import { startIntent } from "../src/sim/intent";
 import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
+import { publishFireNeed } from "../src/sim/needs";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { ensureGround, localWeather } from "../src/sim/weather";
@@ -257,7 +258,10 @@ describe("the fire", () => {
     st.fire.fuelKg = FIRE_LOW_KG;
     addItem(pile(state, st.campCell!), "firewood", pileKg);
     // Warm, watered and fed, so nothing above the fire in the order holds.
+    // A row has asked for a full fire: with nobody asking, a fire at the
+    // low mark by day is let down to coals instead (body.ts, campFireLevel).
     state.player.warmth = 100;
+    publishFireNeed(state, "full", "Cook raw meat");
     state.player.water = WATER_FULL;
     state.player.kcal = 3000;
     return f;

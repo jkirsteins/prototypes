@@ -56,23 +56,27 @@
  * again and says nothing more.
  */
 import { Rng } from "../rng";
+import { clearNeeds, needsOf, publishFireNeed } from "./needs";
 import type { World } from "../world/gen";
 import { itemLabel } from "./actions";
-import { currentNeed, KIT_ITEMS, tooExhausted } from "./body";
+import { currentNeed, KIT_ITEMS, tooExhausted, workResumeAt } from "./body";
 import { bodyRowOf, BODY_SENTENCE, CAMP_SENTENCE, careLogLine, isBodyRow, isCampRow, isCareRow, judgeBodyRow, judgeCampRow, serveBodyRow, serveCareRow } from "./bodyorder";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
 import { pileAt, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
-import { BARK_DRY_RATIO, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES } from "./items";
+import { fuelTotal } from "./fire";
+import { BARK_DRY_RATIO, FIRE_LOW_KG, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES, oneOfAKind } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
 import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
-import { campSite, regionState } from "./regionstate";
+import { campSite, regionState, siteFor } from "./regionstate";
 import { check, setAside } from "./tasks";
-import { isWorkIntent, type GameState, type IntentRequest, type ItemId, type Order, type OrderKind, type StructureId, type TaskId, type Verdict, type WorkOrder } from "./types";
+import { isWorkIntent, isWorkOrder, type GameState, type IntentRequest, type ItemId, type Order, type OrderKind, type RegionState, type Site, type StructureId, type TaskId, type Verdict, type WorkOrder } from "./types";
+import { isWalkOrder } from "./walkorders";
 import { campWaterCapacity } from "./water";
+import { FOOTPRINT_M2 } from "./yard";
 
 /** The list of the region under foot. */
 export function ordersHere(state: GameState, world: World): Order[] {
@@ -109,17 +113,60 @@ function placeOf(list: Order[], rank: Landing): number {
  */
 export function addOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: Landing): WorkOrder {
   const st = regionState(state, world, state.player.region);
+  // A structure the site holds one of is asked for once: a second "Build
+  // fire site" on the list is the same pit, and the row is handed back.
+  if (req.task === "build" && req.arg && oneOfAKind(req.arg as StructureId)) {
+    const pending = st.orders.find((o): o is WorkOrder => isWorkOrder(o) && o.req.task === "build" && o.req.arg === req.arg);
+    if (pending) return pending;
+  }
   const n = normalizeOrder(req, kind);
+  // A build the player has asked for is a thing the camp is waiting on, not
+  // a row in a list. Writing the site entry at placement rather than at the
+  // first minute of work is what lets the camp sheet say so, and it is what
+  // a heir inherits: the predecessor's intent, with the ground it wanted.
+  if (req.task === "build" && req.arg && FOOTPRINT_M2[req.arg as StructureId] !== undefined && st.campCell !== null) {
+    const site = siteFor(st, st.campCell);
+    site.build[req.arg as StructureId] ??= 0;
+  }
   // The day it was given is the rise's start for a paced keep that names no season.
   const o: WorkOrder = { id: st.nextOrderId++, kind: n.kind, req: n.req, done: 0, minutes: 0, skipped: "", givenDoy: calendar(state.minute, state.startDoy).dayOfYear };
   st.orders.splice(rank === undefined ? st.orders.length : placeOf(st.orders, rank), 0, o);
   return o;
 }
 
+/**
+ * A build order raises its site entry at placement (addOrder): a zero entry
+ * says "an order wants this." Every path an order can leave a region's list
+ * by - struck off by hand, or every order in the region wiped at once on
+ * death - asks the same question about each build order in `leaving`: with
+ * that order gone, does anything left in `st.orders` still want the same
+ * structure? Read `st.orders` only after the caller has already made
+ * whatever mutation is leaving it in its final state, since that is the
+ * "still wanted" the entry is judged against.
+ *
+ * A zero entry with nothing left wanting it is the same as an order that
+ * was never given, and comes down the same way: leaving no trace. Real
+ * progress (an entry above zero) is sunk work - it outlives whichever order
+ * raised it, and this never touches it, whatever else is or is not still
+ * asking for it.
+ */
+export function releasePlannedBuilds(st: RegionState, leaving: Order[]): void {
+  const site = campSite(st);
+  if (!site) return;
+  for (const o of leaving) {
+    if (!isWorkOrder(o) || o.req.task !== "build" || !o.req.arg) continue;
+    const sid = o.req.arg as StructureId;
+    const stillWanted = st.orders.some((r) => isWorkOrder(r) && r.req.task === "build" && r.req.arg === sid);
+    if ((site.build[sid] ?? 0) === 0 && !stillWanted) delete site.build[sid];
+  }
+}
+
 /** A care row is never struck off: it is filtered out of removal the same way it is filtered out of every "given" path, since nothing ever gives it and nothing ever takes it away. */
 export function removeOrder(state: GameState, world: World, id: number): void {
   const st = regionState(state, world, state.player.region);
+  const gone = st.orders.find((o) => o.id === id && !isCareRow(o));
   st.orders = st.orders.filter((o) => o.id !== id || isCareRow(o));
+  if (gone) releasePlannedBuilds(st, [gone]);
 }
 
 /**
@@ -165,7 +212,7 @@ function decideAgain(state: GameState, world: World, cal: Calendar, rng: Rng): v
   }
   const work = judged.work;
   if (work?.id === (state.intent?.orderId ?? null)) return;
-  if (work && work.req.until.kind === "once") startIntent(state, world, cal, rng, work.req, work.id);
+  if (work && (work.req.until.kind === "once" || work.req.until.kind === "dismissed")) startIntent(state, world, cal, rng, work.req, work.id);
   else setAside(state, world);
 }
 
@@ -340,6 +387,12 @@ export function keepBand(have: number, target: number, restart: number, held: bo
  * camp. A keep with a restart line reads its band instead, off the mark
  * the scheduler last left on the order.
  */
+/** Whether a built-once structure stands: a flag for most, a woodshed by its count since it keeps no flag of its own. */
+function structureStands(site: Site | null, sid: Exclude<StructureId, "snare" | "seep">): boolean {
+  if (sid === "vedbod") return (site?.woodsheds ?? 0) > 0;
+  return site?.structures[sid] === true;
+}
+
 export function orderMet(state: GameState, world: World, cal: Calendar, o: Order, live: boolean): boolean {
   if (isCareRow(o)) return false;
   const st = regionState(state, world, state.player.region);
@@ -356,13 +409,13 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
       const want = o.req.until.kind === "campHas" ? o.req.until.qty : 1;
       return live ? st.snares >= want : st.snares >= want / 2;
     }
-    return campSite(st)?.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
+    return structureStands(campSite(st), o.req.arg as Exclude<StructureId, "snare" | "seep">);
   }
   if (o.kind === "grind") return false;
   // A seep stands on a cell, not at the camp: its dig is a job done once.
   if (o.req.task === "build" && o.req.arg === "seep") return o.done >= 1;
   if (o.req.task === "build" && o.req.arg !== "snare") {
-    return campSite(st)?.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
+    return structureStands(campSite(st), o.req.arg as Exclude<StructureId, "snare" | "seep">);
   }
   // A fire kept is read off the camp's own fire. A fire asked for once or a
   // few times is read off the tally, because a field fire lives on the
@@ -376,7 +429,11 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
     if (u.kind === "times" && o.done >= u.n) return true;
     return st.fire.lit;
   }
+  // A fuelling kept is read off the pit, not off a tally: what it promises is
+  // wood in the fire site, and it comes due again as the fire eats it.
+  if (o.req.task === "fuel" && o.kind === "keep") return fuelTotal(st.fire) > FIRE_LOW_KG;
   if (o.req.task === "walk" && typeof o.req.where === "object") {
+    if (o.req.until.kind === "dismissed") return false;
     return o.done >= 1 || cellOf(state, world) === o.req.where.cell;
   }
   // Nothing counts a trip, so a haul has no tally for a once to read. What
@@ -398,6 +455,7 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
     case "campHas": return qty(pileAt(state, st.campCell), yieldItem(o.req.task, o.req.arg)!) >= u.qty - 1e-9;
     case "forever": return false;
     case "daily": return o.done - (o.dayBase ?? 0) >= u.n;
+    case "dismissed": return false;
   }
 }
 
@@ -413,11 +471,13 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
   // watch the raw item alone while it reads met on the cooked and dried kinds too.
   if (keep) parts.push(`keep camp at ${itemLabel(keep.item, keep.qty)}${KEEP_FORMS[o.req.task] ? " in any form" : ""}`);
   else if (o.kind === "keep" && (o.req.task === "light" || o.req.task === "lightIndoors")) parts.push("keep it lit");
+  else if (o.kind === "keep" && o.req.task === "fuel") parts.push("keep it fuelled");
   else if (structureKeep(o.req, o.kind)) parts.push(o.req.arg === "snare" ? `keep ${u.kind === "campHas" ? u.qty : 1} snares set` : `keep the ${STRUCTURES[o.req.arg as StructureId].name} laid`);
   else if (u.kind === "times") parts.push(`${o.done} of ${u.n} done`);
   else if (u.kind === "campHas") parts.push(`until camp has ${itemLabel(yieldItem(o.req.task, o.req.arg)!, u.qty)}`);
   else if (u.kind === "forever") parts.push("forever");
   else if (u.kind === "daily") parts.push(`${u.n} a day`);
+  else if (u.kind === "dismissed") parts.push("and stay until struck off");
   // The conditions read after the target, in the order they bite: what the target
   // is due by and whether it is held or spent after, the line it restarts at, the
   // window it runs in, the stock it waits on.
@@ -594,7 +654,7 @@ function jumpQueue(state: GameState, world: World, cal: Calendar, rng: Rng): voi
   if (liveIndex <= 0) return;
   for (let i = 0; i < liveIndex; i++) {
     const o = rows[i];
-    if (isCareRow(o) || o.req.until.kind !== "once") continue;
+    if (isCareRow(o) || (o.req.until.kind !== "once" && o.req.until.kind !== "dismissed")) continue;
     if (judgeRow(state, world, cal, rng, o, liveId, true).v !== "ready") continue;
     // startIntent sets the chunk aside with its share kept, exactly as the
     // player dragging the row up here by hand would.
@@ -653,6 +713,8 @@ export type Judgement = {
  * known from this same reading rather than from a second one.
  */
 export function judgeOrders(state: GameState, world: World, cal: Calendar): Judgement {
+  // The needs ledger is this pass's: a row struck off takes its need with it.
+  clearNeeds(state);
   const liveId = state.intent?.orderId ?? null;
   const rows = ordersHere(state, world);
   // A throwaway stream: the body row's own reading needs an Rng the way its
@@ -798,9 +860,27 @@ function judgeRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Or
   // Collapse is a normal refusal by the work row, not a hidden sleep task
   // outside the queue. That lets the next ranked row, usually self-care,
   // win visibly by the same rule as every other blocked order.
-  if (tooExhausted(state)) return { v: "blocked", why: "too exhausted" };
+  if (tooExhausted(state)) {
+    // Naming the gate and the number: "too exhausted" beside a Stamina bar
+    // that is visibly climbing reads as the list being broken rather than as
+    // the collapse rule holding work back until the body is fit for it.
+    const resume = workResumeAt(state);
+    return { v: "blocked", why: resume === null ? "too exhausted" : `resting to ${resume} Stamina after a collapse` };
+  }
+  // A walk that stays is ready at its own cell: the walk check would refuse
+  // "{you} {are} here", and the staying is the row's whole point there.
+  if (o.req.until.kind === "dismissed" && typeof o.req.where === "object" && o.req.where.cell === cellOf(state, world)) return { v: "ready" };
   const opt = intentOption(state, world, cal, o.req.task, o.req.arg, o.req.where);
-  if (!opt.ok) return { v: "blocked", why: opt.why };
+  if (!opt.ok) {
+    // A row that could run with a better fire says so to the ledger, and
+    // carries the camp row's own refusal when the pit could not be raised.
+    if (opt.needs?.fire) {
+      publishFireNeed(state, opt.needs.fire, opt.label);
+      const refusal = needsOf(state).fireRefusal;
+      if (refusal) return { v: "blocked", why: `${opt.why}; ${refusal}` };
+    }
+    return { v: "blocked", why: opt.why };
+  }
   const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
   // The dark refuses a once order nothing. The work itself already knows
   // what the dark costs - stepTask rolls the attempt at the light's odds and
@@ -809,7 +889,7 @@ function judgeRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Or
   // waited out the night beside a survivor who was asleep anyway. A standing
   // order keeps the gate: that one is the runner's own judgement about when
   // to set out, and nobody sets out for the forest at night as a habit.
-  const night = o.req.until.kind === "once" ? null : nightSkip(state, world, cal, o.req.task, cell);
+  const night = o.req.until.kind === "once" || o.req.until.kind === "dismissed" ? null : nightSkip(state, world, cal, o.req.task, cell);
   if (night) return { v: "shut", why: night };
   if (cell !== cellOf(state, world)) {
     walked++;
@@ -931,8 +1011,30 @@ function serveBodyMidChunk(state: GameState, world: World, cal: Calendar, rng: R
  * once when nothing is owed to camp, after the delivery when something is.
  * With no runnable row, the survivor remains where they are with no task.
  */
+/**
+ * A walk that stays, given in one region and arrived at in another, follows
+ * the survivor onto this region's list: the list read here is this
+ * region's, and the staying, the x and the rank all have to be on it. Read
+ * only while this list has no walk row, so it costs nothing the rest of
+ * the time.
+ */
+function adoptStayRow(state: GameState, world: World): void {
+  const st = regionState(state, world, state.player.region);
+  if (st.orders.some(isWalkOrder)) return;
+  const here = cellOf(state, world);
+  for (const [region, other] of Object.entries(state.regions)) {
+    if (Number(region) === state.player.region) continue;
+    const row = other.orders.find((o) => isWalkOrder(o) && o.req.until.kind === "dismissed" && typeof o.req.where === "object" && o.req.where.cell === here);
+    if (!row) continue;
+    other.orders = other.orders.filter((o) => o !== row);
+    st.orders = [row, ...st.orders];
+    return;
+  }
+}
+
 export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   if (state.dead) return;
+  adoptStayRow(state, world);
   const st = regionState(state, world, state.player.region);
   const live = state.intent;
   for (const o of [...st.orders]) {

@@ -2,7 +2,7 @@ import { encodeKnowledge, setKnowledge } from "../src/sim/fineknowledge";
 import { SAVE_VERSION } from "../src/sim/world-version";
 import { afterEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { activateWildlife, claimHuntableAnimal, dailyWildlife, emptyWildlife, evaluateWildlifeDisturbance, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
+import { activateWildlife, CARRY_ACROSS_BORDER_M, MAX_CARRIED_SUBJECTS, claimHuntableAnimal, dailyWildlife, emptyWildlife, evaluateWildlifeDisturbance, noteWildlifeSightings, resetWildlifeKnowledge, stepWildlife, takeWildlifeMember, visibleWildlife, wildlifeMembers } from "../src/sim/wildlife-agents";
 import { calendar, monthStartDoy } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
@@ -11,7 +11,8 @@ import { setSkillLevel } from "../src/sim/horizon";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { advance } from "../src/sim/advance";
 import { cellOf } from "../src/sim/position";
-import { mapHtml } from "../src/ui/map";
+import { WILDLIFE_BG } from "../src/ui/palette";
+import { board, boardText, glyphsWith } from "./board";
 import { newUiState } from "../src/ui/render";
 import { passable } from "../src/world/route";
 import { recognitionHtml } from "../src/ui/wildlife-panel";
@@ -174,7 +175,7 @@ describe("immediate wildlife disturbance", () => {
     expect(visibleWildlife(state, world, cal)).toContain(deer);
     const ui = newUiState();
     ui.zoom = 1;
-    expect(mapHtml(world, state, ui, cal)).toContain(`data-wildlife-id="${deer.id}"`);
+    expect(glyphsWith(board(world, state, ui, cal), "mk-animal").some((g) => g.wildlifeId === deer.id)).toBe(true);
     const events: WildlifeStartleEvent[] = [];
     setWildlifeEventSink((event) => events.push(event));
 
@@ -541,9 +542,11 @@ describe("large animal agents", () => {
     placeAt(state, world, away);
     const ui = newUiState();
     ui.zoom = 0;
-    const html = mapHtml(world, state, ui, calendar(state.minute, state.startDoy));
-    expect(html).toContain("mk-den");
-    expect(html).toMatch(/data-map-info="[^"]*known bear den/);
+    const den = glyphsWith(board(world, state, ui, calendar(state.minute, state.startDoy)), "mk-den");
+    expect(den.length).toBeGreaterThan(0);
+    // The cell's reading is the glyph's info, which is what the tooltip and
+    // the screen reader announce.
+    expect(den[0].info).toContain("known bear den");
   });
 
   it("keeps a known bear den huntable throughout the modeled denning season", () => {
@@ -573,8 +576,54 @@ describe("large animal agents", () => {
     activateWildlife(state, world, new Rng(2));
 
     expect(state.wildlife.activeRegion).toBe(next);
-    expect(state.wildlife.subjects.filter((s) => s.region === old).every((s) => s.active === null)).toBe(true);
-    expect(state.wildlife.subjects.filter((s) => s.active !== null).every((s) => s.region === next)).toBe(true);
+    // The old region's animals near the survivor keep their positions across
+    // the border; the ones farther off collapse to the region's count.
+    const here = cellOf(state, world);
+    const metres = (a: number, b: number) => Math.hypot(a % world.w - b % world.w, Math.floor(a / world.w) - Math.floor(b / world.w)) * PATCH_M;
+    for (const s of state.wildlife.subjects.filter((s) => s.region === old)) {
+      if (s.active) expect(metres(s.active.cell, here)).toBeLessThanOrEqual(CARRY_ACROSS_BORDER_M);
+    }
+    expect(state.wildlife.subjects.filter((s) => s.active !== null && s.region === next).length).toBeGreaterThan(0);
+  });
+
+  it("carries no more than a handful of another region's animals, nearest first", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const old = state.player.region;
+    const mine = state.wildlife.subjects.filter((s) => s.active && s.region === old);
+    expect(mine.length).toBeGreaterThan(MAX_CARRIED_SUBJECTS);
+    // Step over the border without walking away: every one of them is inside
+    // the carry distance, and only the nearest few may keep their places.
+    const next = regionAt(world, old).neighbours[0].id;
+    state.player.region = next;
+    regionState(state, world, next);
+    const cell = mine[0].active!.cell;
+    state.player.xM = (cell % world.w + 0.5) * PATCH_M;
+    state.player.yM = (Math.floor(cell / world.w) + 0.5) * PATCH_M;
+    activateWildlife(state, world, new Rng(2));
+    expect(state.wildlife.subjects.filter((s) => s.active && s.region === old).length).toBeLessThanOrEqual(MAX_CARRIED_SUBJECTS);
+    expect(mine[0].active).not.toBeNull();
+  });
+
+  it("keeps an animal of the region just left where it stood while the survivor is near it", () => {
+    const { state, world } = newGame(79);
+    activateWildlife(state, world, new Rng(1));
+    const old = state.player.region;
+    const subject = state.wildlife.subjects.find((s) => s.active && s.region === old)!;
+    // Stand beside it, then step into the neighbouring region without moving away.
+    const next = regionAt(world, old).neighbours[0].id;
+    state.player.region = next;
+    regionState(state, world, next);
+    const cell = subject.active!.cell;
+    state.player.xM = (cell % world.w + 1.5) * PATCH_M;
+    state.player.yM = (Math.floor(cell / world.w) + 0.5) * PATCH_M;
+    activateWildlife(state, world, new Rng(2));
+    expect(subject.active).not.toBeNull();
+    expect(subject.active!.cell).toBe(cell);
+    // Twelve hundred metres on, it is a count in its region again.
+    state.player.xM += CARRY_ACROSS_BORDER_M + PATCH_M;
+    activateWildlife(state, world, new Rng(3));
+    expect(subject.active).toBeNull();
   });
 
   it("moves on ten-minute detailed ticks and never in aggregate mode", () => {
@@ -987,17 +1036,35 @@ describe("animal recognition", () => {
     state.wildlife.recognized[subject.id] = true;
     const close = newUiState();
     close.zoom = 0;
-    const html = mapHtml(world, state, close, cal);
-    expect(html).toContain("mk-animal");
-    expect(html).toContain("Mora");
-    expect(html).toContain(`wildlife-${subject.colour}`);
-    const marker = html.match(new RegExp(`data-wildlife-id="${subject.id}"[^>]*--animal-x:([0-9.]+)px`));
-    expect(marker).not.toBeNull();
-    if (!marker) throw new Error("expected a visual wildlife slot");
-    expect(Number(marker[1])).toBeGreaterThan(0);
+    const b = board(world, state, close, cal);
+    // At the closest rung the herd is a mark at its own metre position, in its own colour.
+    const marker = b.marks.find((m) => m.id === subject.id);
+    expect(marker).toBeDefined();
+    expect(marker!.x).toBeGreaterThan(0);
+    expect(marker!.bg).toBe(WILDLIFE_BG[subject.colour]);
+    expect(boardText(b)).toContain("Mora");
+
+    // At the 300 m rung the herd is a letter on its block; when that block
+    // is the survivor's own, the `@` keeps the glyph and the herd rides as
+    // a badge on it, in the same colour, so it does not vanish.
+    close.zoom = 2;
+    const mid = board(world, state, close, cal);
+    const you = cellOf(state, world);
+    const shares = Math.floor((subject.active!.cell % world.w) / mid.z) === Math.floor((you % world.w) / mid.z)
+      && Math.floor(Math.floor(subject.active!.cell / world.w) / mid.z) === Math.floor(Math.floor(you / world.w) / mid.z);
+    const player = glyphsWith(mid, "mk-player")[0];
+    if (shares) {
+      expect(player.classes).toContain("with-animal");
+      expect(player.badge?.bg).toBe(WILDLIFE_BG[subject.colour]);
+      expect(player.info).toContain("Mora");
+    } else {
+      expect(glyphsWith(mid, "mk-animal").some((g) => g.wildlifeId === subject.id)).toBe(true);
+    }
 
     close.zoom = 3;
-    expect(mapHtml(world, state, close, cal)).not.toContain("mk-animal");
+    const far = board(world, state, close, cal);
+    expect(far.marks).toHaveLength(0);
+    expect(glyphsWith(far, "mk-animal")).toHaveLength(0);
   });
 
   it("round-trips the current save and fills a save written without wildlife", () => {

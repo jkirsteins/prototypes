@@ -10,16 +10,15 @@ import { baseWalkSpeed } from "../sim/player";
 import { cellOf, watersideCell } from "../sim/position";
 import { campSite, regionState } from "../sim/regionstate";
 import { survivorRoute, survivorRouteMinutes } from "../sim/routing";
-import { SEEP, seepGround, seepStopped } from "../sim/seep";
+import { SEEP, seepGround, seepRate } from "../sim/seep";
 import type { GameState } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, iceHoleOpen } from "../sim/water";
 import { localWeather, walkableIce } from "../sim/weather";
 
 /** "+3 l/h", or "+0 l/h, frozen" and the like when the seep is stopped. */
 function rateText(state: GameState, world: World, cell: number, _cal: Calendar): string {
-  const s = state.seeps[cell];
-  const why = seepStopped(state, world, cell);
-  return why ? `+0 l/h, ${why}` : `+${SEEP[s.class].refillLPerHour} l/h`;
+  const { lPerHour, why } = seepRate(state, world, cell);
+  return why ? `+0 l/h, ${why}` : `+${lPerHour} l/h`;
 }
 
 function seepText(state: GameState, world: World, cell: number, cal: Calendar): string {

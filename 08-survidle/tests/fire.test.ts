@@ -40,6 +40,8 @@ describe("wet wood", () => {
     // Dries at 2 kg an hour by a lit fire, and keeps at it once it rains again:
     // the fire's own heat does the drying, not a dry sky.
     siteFor(st, st.campCell!).structures.firePit = true;
+    // The physics alone: the camp row would bank a fire nobody needs.
+    st.fire.keep = "out";
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     const dryBefore = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell!), "wetFirewood");
@@ -105,6 +107,9 @@ describe("wet wood", () => {
     // Lighting in light rain: a third of tries fail and cost the wood either way.
     w.precip = "light";
     state.player.tools.push({ id: "fireDrill", durability: 100 });
+    // Each attempt starts with a bare pit. The preceding snow case leaves
+    // laid fuel behind, which can be lit without consuming the carried kilo.
+    st.fire.fuelKg = 0;
     let fails = 0;
     for (let seed = 1; seed <= 12; seed++) {
       st.fire.lit = false;
@@ -131,17 +136,21 @@ describe("wet wood", () => {
     expect(qty(pile(state, st.campCell!), "wetFirewood")).toBeCloseTo(9.5, 6);
   });
 
-  it("a lit fire dries the camp pile at 2 kg an hour even in heavy rain", () => {
+  it("a lit fire dries 2 kg an hour while rain rewets 1 kg of exposed wood", () => {
     const { state, world } = newGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell!).structures.firePit = true;
+    // The physics alone: the camp row would bank a fire nobody needs.
+    st.fire.keep = "out";
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     addItem(pile(state, st.campCell!), "wetFirewood", 10);
     testRain(10);
     advance(state, world, 60);
-    expect(qty(pile(state, st.campCell!), "wetFirewood")).toBeCloseTo(8, 6);
+    expect(qty(pile(state, st.campCell!), "wetFirewood")).toBeCloseTo(9, 6);
+    expect(qty(pile(state, st.campCell!), "firewood")).toBeCloseTo(1, 6);
+    expect(st.wettedKg).toBeCloseTo(1, 6);
   });
 });
 
@@ -298,6 +307,8 @@ describe("spread and smoke", () => {
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     siteFor(st, st.campCell!).structures.firePit = true;
+    // The physics alone: the camp row would bank a fire nobody needs.
+    st.fire.keep = "out";
     siteFor(st, st.campCell!).structures.cabin = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;

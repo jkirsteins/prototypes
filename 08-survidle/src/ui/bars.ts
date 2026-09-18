@@ -14,12 +14,40 @@ import { sleepiness } from "../sim/sleep";
 import { fmtDuration, fmtRealSeconds, realSecondsFor } from "../units";
 import type { World } from "../world/gen";
 import { type HurryState, realSecondsLeft } from "./hurry";
+import { domGeneration, heldQueryAll } from "./render";
 import { sleepForecast } from "./sleep";
 
 /** The frame loop's clock: what it adds to the one scale, so a bar can say how long the wait really is. */
 export interface FrameClock {
   hurry: HurryState;
   speed: number;
+  /** The frame's wall clock, for the bracket's countdown; performance.now() when absent. */
+  nowMs?: number;
+}
+
+/**
+ * The bracket on the task bar counts down at wall pace from a due time,
+ * rather than being recomputed every frame. Recomputed, it jiggled: a game
+ * minute lands whole inside one frame while a pulse's remaining boost
+ * falls continuously, so the estimate rose a fraction between minutes and
+ * dropped a second when one landed, and under a pulse that saw-tooth ran
+ * several times a second. The due time is re-anchored only when the truth
+ * has moved by more than a saw-tooth: a click (a pulse takes its minutes
+ * off the front, sixteen seconds and more), a new task, a body whose pace
+ * has changed. Within that the number only counts down.
+ */
+const etaAnchor = new WeakMap<GameState, { key: string; dueAtMs: number }>();
+/** Wider than one whole minute landing at the slowest pace the body works at, narrower than a click's saving. */
+export const ETA_DRIFT_S = 3;
+
+export function anchoredSeconds(state: GameState, key: string, truthS: number, nowMs: number): number {
+  const anchor = etaAnchor.get(state);
+  if (anchor && anchor.key === key) {
+    const shown = (anchor.dueAtMs - nowMs) / 1000;
+    if (Math.abs(shown - truthS) <= ETA_DRIFT_S) return Math.max(0, shown);
+  }
+  etaAnchor.set(state, { key, dueAtMs: nowMs + truthS * 1000 });
+  return truthS;
 }
 
 /**
@@ -30,11 +58,56 @@ export interface FrameClock {
  * queue - and two elements sharing one id left this writing to whichever it
  * happened to find first.
  */
+/**
+ * The elements each bar name writes to, found once per root and held until
+ * a morph moves them.
+ *
+ * Every name here is written on every frame, and each write used to be its
+ * own document-wide attribute query. Thirteen bars is three dozen sweeps of
+ * an 8,700 element page, sixty times a second. One sweep gathers all three
+ * attributes instead, and `domGeneration` says when it is stale.
+ */
+interface BarIndex { gen: number; sentinel: HTMLElement | null; bars: Map<string, HTMLElement[]>; vals: Map<string, HTMLElement[]>; trends: Map<string, HTMLElement[]> }
+const barIndexes = new WeakMap<ParentNode, BarIndex>();
+
+function barIndex(root: ParentNode): BarIndex {
+  const held = barIndexes.get(root);
+  // The generation catches a morph; the sentinel catches markup replaced
+  // wholesale in the same task, which a counter cannot see - a test
+  // assigning innerHTML and calling straight through to here is exactly
+  // that, and found this.
+  // An index that found nothing is never held: with no sentinel there is
+  // nothing to notice its markup arriving, and a root with no bars at all is
+  // a test's empty page rather than anything the game renders.
+  if (held && held.gen === domGeneration() && held.sentinel !== null && held.sentinel.isConnected) return held;
+  const index: BarIndex = { gen: domGeneration(), sentinel: null, bars: new Map(), vals: new Map(), trends: new Map() };
+  const group = (selector: string, attribute: string, into: Map<string, HTMLElement[]>) => {
+    for (const el of root.querySelectorAll<HTMLElement>(selector)) {
+      const name = el.getAttribute(attribute);
+      if (name === null) continue;
+      index.sentinel ??= el;
+      const list = into.get(name);
+      if (list) list.push(el);
+      else into.set(name, [el]);
+    }
+  };
+  group("[data-bar]", "data-bar", index.bars);
+  group("[data-val]", "data-val", index.vals);
+  group("[data-trend]", "data-trend", index.trends);
+  barIndexes.set(root, index);
+  return index;
+}
+
+const NO_ELEMENTS: HTMLElement[] = [];
+
 function setBar(id: string, frac: number, text?: string, root: ParentNode = document): void {
   const width = `${Math.max(0, Math.min(100, frac * 100)).toFixed(1)}%`;
-  for (const fill of root.querySelectorAll<HTMLElement>(`[data-bar="${id}"]`)) fill.style.width = width;
+  const index = barIndex(root);
+  for (const fill of index.bars.get(id) ?? NO_ELEMENTS) {
+    if (fill.style.width !== width) fill.style.width = width;
+  }
   if (text === undefined) return;
-  for (const val of root.querySelectorAll<HTMLElement>(`[data-val="${id}"]`)) {
+  for (const val of index.vals.get(id) ?? NO_ELEMENTS) {
     if (val.textContent !== text) val.textContent = text;
   }
 }
@@ -66,7 +139,7 @@ function setTrend(id: string, minute: number, frac: number, root: ParentNode): v
   const dir = span <= 0 || Math.abs(delta) < TREND_DEADBAND ? "steady" : delta > 0 ? "up" : "down";
   const perHour = span > 0 ? Math.abs(delta) * 100 * (60 / span) : 0;
   const title = dir === "steady" ? "steady" : `${dir === "up" ? "rising" : "falling"} ${perHour < 1 ? perHour.toFixed(1) : Math.round(perHour)}% an hour`;
-  for (const el of root.querySelectorAll<HTMLElement>(`[data-trend="${id}"]`)) {
+  for (const el of barIndex(root).trends.get(id) ?? NO_ELEMENTS) {
     if (el.dataset.dir !== dir) el.dataset.dir = dir;
     if (el.title !== title) el.title = title;
   }
@@ -102,7 +175,10 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   // a well-provisioned one later - so it is written here on every render rather
   // than baked into the markup (tests/churn.test.ts).
   const hungerMark = kcalBar?.querySelector<HTMLElement>('[data-mark="hunger"]');
-  if (hungerMark) hungerMark.style.left = `${((line / KCAL_FULL) * 100).toFixed(1)}%`;
+  if (hungerMark) {
+    const left = `${((line / KCAL_FULL) * 100).toFixed(1)}%`;
+    if (hungerMark.style.left !== left) hungerMark.style.left = left;
+  }
   // A meal is over in one simulated minute, and a bar that refills silently
   // is the whole of what the player could not see. The fill is left to flash
   // for a moment wherever the reserve rose.
@@ -118,8 +194,10 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   // body at 99.9 is still recovering, so the bar must not claim 100 while
   // the queue truthfully refuses work.
   setBar("energy", p.energy / 100, `${Math.floor(p.energy + 1e-9)}`, root);
-  const sleepy = sleepiness(p.sleepDebt, cal.hour);
-  setBar("sleepiness", sleepy / 100, `${Math.max(0, Math.min(100, Math.round(sleepy)))}`, root);
+  // The lower band of the Stamina bar: alertness, the sleepiness counted
+  // the way the rest of the panel counts, so that lower is worse everywhere.
+  const alert = 100 - Math.max(0, Math.min(100, sleepiness(p.sleepDebt, cal.hour)));
+  setBar("alertness", alert / 100, `${Math.round(alert)}`, root);
   const forecast = sleepForecast(state, world, cal);
   for (const line of root.querySelectorAll<HTMLElement>("[data-sleep-forecast]")) {
     if (line.textContent !== forecast) line.textContent = forecast;
@@ -128,7 +206,7 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   setBar("water", p.water / WATER_FULL, `${p.water.toFixed(1)} l`, root);
   const trends: [string, number][] = [
     ["health", p.health / 100], ["kcal", p.kcal / KCAL_FULL], ["fat", p.fat / fatUpper], ["warmth", p.warmth / 100],
-    ["energy", p.energy / 100], ["sleepiness", sleepy / 100], ["wet", p.wetness / 100], ["water", p.water / WATER_FULL],
+    ["energy", p.energy / 100], ["alertness", alert / 100], ["wet", p.wetness / 100], ["water", p.water / WATER_FULL],
   ];
   for (const [id, frac] of trends) setTrend(id, state.minute, frac, root);
 
@@ -160,11 +238,33 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
     // PEAK and work at the body's pace, so it is the loop's own arithmetic
     // and not the one scale; without the clock it falls back to that scale.
     const secs = clock ? realSecondsLeft(state, world, clock.hurry, clock.speed) : null;
-    setBar("task", frac, `${fmtDuration(left)} left (${fmtRealSeconds(secs ?? realSecondsFor(left))})`, root);
+    const shown = secs === null
+      ? realSecondsFor(left)
+      : anchoredSeconds(state, `${t.id}:${t.arg ?? ""}:${t.duration}:${state.intent?.orderId ?? ""}`, secs, clock?.nowMs ?? performance.now());
+    setBar("task", frac, `${fmtDuration(left)} left (${fmtRealSeconds(shown)})`, root);
     const share = `${Math.floor(frac * 100)}%`;
     for (const pct of root.querySelectorAll<HTMLElement>('[data-pct="task"]')) {
       if (pct.textContent !== share) pct.textContent = share;
     }
+    writeCareEta(state, shown, root);
+  } else {
+    writeCareEta(state, null, root);
+  }
+}
+
+/**
+ * On a care row that has the minute, the wall clock until its current step
+ * ends and the rows under it can run: resting, dozing, an ice hole, a
+ * relight, each in turn, read as one thing the list is waiting on. Written
+ * here per frame onto a span the queue leaves empty, like the task bar's
+ * bracket, so the queue's own markup never carries a moving number.
+ */
+function writeCareEta(state: GameState, shown: number | null, root: ParentNode): void {
+  const it = state.intent;
+  const live = it?.mode === "care" && shown !== null ? it.care : null;
+  for (const el of root.querySelectorAll<HTMLElement>("[data-eta]")) {
+    const text = live !== null && el.dataset.eta === live ? `frees the rows below in ${fmtRealSeconds(shown!)}` : "";
+    if (el.textContent !== text) el.textContent = text;
   }
 }
 
@@ -213,9 +313,10 @@ export function fillShare(state: GameState, spec: string): number | null {
  * it holds still. tests/churn.test.ts holds the line.
  */
 export function updateFills(state: GameState, root: ParentNode = document): void {
-  for (const fill of root.querySelectorAll<HTMLElement>("[data-fill]")) {
+  for (const fill of heldQueryAll<HTMLElement>(root, "[data-fill]")) {
     const share = fillShare(state, fill.dataset.fill ?? "");
     if (share === null) continue;
-    fill.style.width = `${Math.max(0, Math.min(100, share * 100)).toFixed(1)}%`;
+    const width = `${Math.max(0, Math.min(100, share * 100)).toFixed(1)}%`;
+    if (fill.style.width !== width) fill.style.width = width;
   }
 }

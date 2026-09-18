@@ -1,14 +1,16 @@
 import { monthStartDoy } from "../sim/calendar";
+import type { RightPage } from "./rightpages";
 import { NOT_ORDERS } from "../sim/ladder";
 import { type HurryState, newHurry } from "./hurry";
 import { newSpeedHistory, type SpeedHistory } from "./speed-history";
 import { DEFAULT_ZOOM } from "./map";
 import { DEFAULT_CLOUD_SHADOWS } from "./map-preferences";
 import { defaultPanes, type Panes } from "./panes";
+import { DEFAULT_RATE_DISPLAY, type RateDisplay } from "./rate";
 import { DEFAULT_TRAVEL_DISPLAY, type TravelDisplay } from "./travel";
 import type { AwaySummary } from "../sim/save";
 import type { WildlifeStartleEvent } from "../sim/wildlife-encounter";
-import type { GameState, IntentRequest, ItemId, OpportunityNotice, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
+import type { GameState, IntentRequest, ItemId, OpportunityNotice, OrderKind, OrderWhen, Rung, SpotId, StockGroupId, TaskId, UntilChoice } from "../sim/types";
 import type { OpportunityCatalogUi } from "./opportunity-catalog";
 
 /** What the screen remembers that the game does not. */
@@ -17,8 +19,12 @@ export interface UiState {
   travelDisplay: TravelDisplay;
   /** Clouds either shade their map cells or appear as cosmetic ASCII glyphs. */
   cloudShadows: boolean;
+  /** Which clock a rate reads on: game hours or real seconds. */
+  rateDisplay: RateDisplay;
   /** Which pane is showing, and where in the Do pane the player was; remembered across a reload. */
   panes: Panes;
+  /** Which page the right column's top slot shows: the weather or the alerts. */
+  rightPage: RightPage;
   /** Region clicked on the map, or null for the one you stand in. */
   selected: number | null;
   /** The map patch under the pointer, or null when the pointer is off the board. Derived from where the pointer is, never from a glyph's own enter and leave. */
@@ -55,6 +61,8 @@ export interface UiState {
   welcome: boolean;
   /** The settings panel (sound, and the play-data beacon) is open. */
   settings: boolean;
+  /** The stock group whose panel is open, from hover, focus or a tap. */
+  stockOpen: StockGroupId | null;
   /** Survivor index whose entry is expanded in the cemetery, or null for none. */
   cemeteryOpen: number | null;
   /** The cemetery's "leave this world" button is showing its confirm step. */
@@ -158,8 +166,8 @@ export function simulationPaused(state: GameState, ui: UiState): boolean {
 
 export function newUiState(): UiState {
   return {
-    panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, cloudShadows: DEFAULT_CLOUD_SHADOWS, selected: null, hover: null, destination: null, away: null, confirmAbandon: false, confirmCamp: false,
-    cemetery: false, manual: false, teach: null, opportunityCatalog: { open: false, category: "survival", page: 0, detail: null }, opportunityPresentation: null, recognition: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
+    panes: defaultPanes(), rightPage: "weather", travelDisplay: DEFAULT_TRAVEL_DISPLAY, cloudShadows: DEFAULT_CLOUD_SHADOWS, rateDisplay: DEFAULT_RATE_DISPLAY, selected: null, hover: null, destination: null, away: null, confirmAbandon: false, confirmCamp: false,
+    cemetery: false, manual: false, teach: null, opportunityCatalog: { open: false, category: "survival", page: 0, detail: null }, opportunityPresentation: null, recognition: null, welcome: false, settings: false, stockOpen: null, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false, regions: false },
     hurry: newHurry(), speedHistory: newSpeedHistory(), wildlifeStartles: [], wildlifeStartleIds: new Set(), mapViewport: null,
   };
@@ -214,11 +222,27 @@ function keyOf(el: Element): string | null {
   if (el.classList.contains("micro-mark") && el.hasAttribute("data-wildlife-id")) {
     return `${el.tagName}[wildlifeId=${el.getAttribute("data-wildlife-id")}]`;
   }
-  const data = Object.entries((el as HTMLElement).dataset ?? {})
-    .map(([k, v]) => `${k}=${v}`)
-    .sort()
-    .join(",");
-  return data ? `${el.tagName}[${data}]` : null;
+  // A map cell is its coordinate, and nothing else. The general key below
+  // is every data attribute the element carries, which for a cell includes
+  // `data-map-info` - the whole of its hover text. That made the key both
+  // enormous and *content*: when the weather changed a cell's reading, its
+  // key changed with it, so the morph could not recognise the cell it
+  // already had and replaced all 2,592 of them instead of writing the
+  // attributes that differed. The board rebuilds about once a game minute,
+  // and this was most of the 150 to 220 ms hitch when it did.
+  const mx = el.getAttribute("data-map-x");
+  if (mx !== null) return `${el.tagName}[${mx}.${el.getAttribute("data-map-y")}]`;
+  // Everything else keeps the general rule, read off the attributes rather
+  // than through `dataset`, whose live proxy is the expensive part.
+  let data = "";
+  const names: string[] = [];
+  for (const attr of el.attributes) {
+    if (attr.name.startsWith("data-")) names.push(attr.name);
+  }
+  if (!names.length) return null;
+  names.sort();
+  for (const name of names) data += `${data ? "," : ""}${name}=${el.getAttribute(name)}`;
+  return `${el.tagName}[${data}]`;
 }
 
 function sameKind(a: Node, b: Node): boolean {
@@ -233,13 +257,34 @@ function sameKind(a: Node, b: Node): boolean {
  * written straight onto the element on each render by bars.ts, and the markup
  * never mentions it. Clearing a style the markup does not carry would wipe
  * those every time a panel changed. A style the markup does state still wins.
+ *
+ * A canvas's width and height are the second exception, for the same
+ * reason: they are its backing buffer, not decoration, sized in device
+ * pixels by whatever draws to it rather than stated in markup. Markup that
+ * never mentions them is not an instruction to remove them - unlike an
+ * ordinary element's width or height, clearing one here reallocates (and
+ * blanks) the buffer, which is a real cost paid on every rebuild of
+ * whatever panel the canvas happens to sit in, not just a lost attribute.
+ * A width or height the markup does state still wins, same as style.
  */
 function morphAttrs(from: Element, to: Element): void {
-  for (const attr of [...to.attributes]) {
+  // Indexed rather than spread. Both collections are live, and copying them
+  // allocated two arrays for every element walked - on a board of 2,592
+  // cells that is five thousand arrays per rebuild, which was half the cost
+  // of the morph. Writing to `from` cannot disturb `to`, so the first pass
+  // reads forward; the second removes from `from` and so reads backward.
+  const wanted = to.attributes;
+  for (let i = 0; i < wanted.length; i++) {
+    const attr = wanted[i];
     if (from.getAttribute(attr.name) !== attr.value) from.setAttribute(attr.name, attr.value);
   }
-  for (const attr of [...from.attributes]) {
-    if (attr.name !== "style" && !to.hasAttribute(attr.name)) from.removeAttribute(attr.name);
+  const isCanvas = from.tagName === "CANVAS";
+  const held = from.attributes;
+  for (let i = held.length - 1; i >= 0; i--) {
+    const name = held[i].name;
+    if (name === "style") continue;
+    if (isCanvas && (name === "width" || name === "height") && !to.hasAttribute(name)) continue;
+    if (!to.hasAttribute(name)) from.removeAttribute(name);
   }
   // A field's value follows the state only while nobody is in it: what is half-typed is the player's.
   const tag = from.tagName;
@@ -312,11 +357,82 @@ export function setPanel(id: string, html: string, root: ParentNode = document):
   const parsed = document.createElement("template");
   parsed.innerHTML = html;
   morphChildren(el, parsed.content);
+  domGen++;
   return true;
+}
+
+/**
+ * How many times a panel's nodes have actually been morphed.
+ *
+ * A morph is the only thing on the game's page that adds or removes an
+ * element - everything else shows, hides or rewrites one in place - so a
+ * reader that holds elements it found by selector can keep them until this
+ * number moves, and re-find them when it does. `updateBars` is that reader:
+ * it wrote thirteen bars by running two document-wide attribute queries
+ * each, every frame, which measured 0.85 s per 20 s on a page of 8,700
+ * elements.
+ */
+export function domGeneration(): number {
+  return domGen;
+}
+let domGen = 0;
+
+/**
+ * An element found by selector and held until a morph could have moved it.
+ *
+ * For the handful of elements the frame loop writes to on every tick. They
+ * are found by attribute or by descendant selector, which means a sweep of
+ * the page each time, and the answer is the same until `setPanel` rebuilds
+ * the panel holding them. A miss is remembered too: an element that is not
+ * there is not there until the markup changes either.
+ */
+const heldQueries = new WeakMap<ParentNode, { gen: number; found: Map<string, Element> }>();
+
+/**
+ * Two things have to be true for a held element to still be the answer: no
+ * morph since it was found, and the element still in the document. The
+ * generation covers this page, where `setPanel` is the only thing that adds
+ * or removes an element. `isConnected` covers everything else that can
+ * replace markup wholesale in the same task - a test assigning `innerHTML`,
+ * most of all - which no counter can see coming.
+ *
+ * A miss is never held. Every selector here names an element that is
+ * normally present, so caching absence would buy nothing and would be the
+ * one case neither check above could invalidate.
+ */
+function stale(entry: { gen: number } | undefined, sentinel: Element | null): boolean {
+  return !entry || entry.gen !== domGen || (sentinel !== null && !sentinel.isConnected);
+}
+
+export function heldQuery<T extends Element>(root: ParentNode, selector: string): T | null {
+  const entry = heldQueries.get(root);
+  const known = entry?.found.get(selector) ?? null;
+  if (!stale(entry, known) && known) return known as T;
+  const fresh = stale(entry, known) ? { gen: domGen, found: new Map<string, Element>() } : entry!;
+  heldQueries.set(root, fresh);
+  const el = root.querySelector<T>(selector);
+  if (el) fresh.found.set(selector, el);
+  return el;
+}
+
+const heldLists = new WeakMap<ParentNode, { gen: number; found: Map<string, Element[]> }>();
+
+/** The same, for a selector that matches several elements. */
+export function heldQueryAll<T extends Element>(root: ParentNode, selector: string): T[] {
+  const entry = heldLists.get(root);
+  const known = entry?.found.get(selector);
+  const gone = stale(entry, known?.[0] ?? null);
+  if (!gone && known) return known as T[];
+  const fresh = gone ? { gen: domGen, found: new Map<string, Element[]>() } : entry!;
+  heldLists.set(root, fresh);
+  const list = [...root.querySelectorAll<T>(selector)];
+  if (list.length) fresh.found.set(selector, list);
+  return list;
 }
 
 export function resetPanels(): void {
   last.clear();
+  domGen++;
 }
 
 /** Clamps and commits the open row's number field to at least 1; shared by the input and change listeners so a keystroke and a blur agree. */

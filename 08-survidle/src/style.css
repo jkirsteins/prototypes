@@ -11,7 +11,7 @@
   --kcal: #d9a441;
   --warmth: #e0743a;
   --energy: #5aa9e6;
-  --sleepiness: #8f75c9;
+  --alertness: #8f75c9;
   --wet: #4a8fd9;
   --water: #3b7dd8;
   --fire: #ff8c3a;
@@ -241,7 +241,12 @@ small, .dim { color: var(--dim); }
 .bar.kcal .fill { background: var(--kcal); }
 .bar.warmth .fill { background: var(--warmth); }
 .bar.energy .fill { background: var(--energy); }
-.bar.sleepiness .fill { background: var(--sleepiness); }
+/* The dual bar: the upper fill is stamina, the lower band alertness, each
+   read against its own marks. The band's marks reach only the band, so a
+   line that means "falls asleep" is not read as a stamina line. */
+.bar.dual .fill.band { inset: 50% auto 0 0; background: var(--alertness); }
+.bar.dual .mark.band { top: 50%; }
+.bar.dual .mark:not(.band) { bottom: 50%; }
 .sleep-forecast { color: var(--dim); font-size: 10px; margin: 1px 0 3px; }
 .bar.wet .fill { background: var(--wet); }
 .bar.water .fill { background: var(--water); }
@@ -335,32 +340,13 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 #clock .clockrow { display: flex; gap: 14px; align-items: center; justify-content: space-between; }
 #clock .line { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
 #clock .big { font-size: 16px; color: #fff; }
+/* The sky and the map's effects layer are both canvases now: one paint each,
+   not thousands of elements with their own transitions and keyframes.
+   Motion (drift, fall, the meteor streak, the water shimmer, cloud shadow
+   and weather glyphs) is drawn from a clock inside sky.ts and map.ts, each
+   gated on prefers-reduced-motion where it is drawn rather than through
+   CSS, so there is nothing left to name in a media query here. */
 .sky { flex: 0 0 auto; border: 1px solid var(--line); display: block; }
-.sky circle, .sky stop { transition: cx 0.3s linear, cy 0.3s linear, opacity 0.5s, stop-color 0.5s; }
-.sky #sky-stars, .sky #sky-milky-way, .sky .sky-constellation, .sky #sky-perseids { transition: opacity 0.8s; }
-.sky #sky-far, .sky #sky-mid, .sky #sky-near { transition: fill 0.8s; }
-.sky-meteor {
-  stroke: rgba(244, 247, 255, 0.92);
-  stroke-width: 0.9;
-  stroke-linecap: round;
-  opacity: 0;
-  animation: sky-meteor 12s linear infinite;
-  animation-delay: var(--meteor-delay);
-}
-@keyframes sky-meteor {
-  0%, 76% { opacity: 0; transform: translate(0, 0); }
-  78% { opacity: 0.95; }
-  86% { opacity: 0; transform: translate(-32px, 32px); }
-  100% { opacity: 0; transform: translate(-32px, 32px); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .sky-meteor, .weather-ripple, .fog-ripple, .cloud-ripple, .water-live .water-ripple, .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
-  .weather-ripple:not(:first-child), .fog-ripple:not(:first-child), .cloud-ripple:not(:first-child) { display: none; }
-  .weather-ripple:first-child, .fog-ripple:first-child, .cloud-ripple:first-child { opacity: var(--wx-glyph-opacity); }
-  .sky-meteor { opacity: 0; }
-  .sky-meteor:first-child { opacity: 0.72; }
-}
-
 
 /* The map's tooltip: translucent so the ground it describes stays visible
    under it, and never a hit target - a box that ate the pointer would move
@@ -383,9 +369,11 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   bottom: 30px;
   max-width: min(480px, calc(100% - 12px));
   padding: 6px 9px;
-  background: rgba(12, 15, 20, 0.94);
+  /* Translucent: the ground it describes stays readable through it, and
+     the pointer passes through it to that ground (pointer-events below), so
+     a glyph under the box can still be clicked. */
+  background: rgba(12, 15, 20, 0.72);
   border: 1px solid var(--line);
-  backdrop-filter: blur(2px);
   font-size: 12px;
   pointer-events: none;
 }
@@ -393,34 +381,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 @media (hover: none), (pointer: coarse) {
   #maptip { pointer-events: auto; }
 }
-/* A place row points out its destination without making ordinary map hover
-   leave a highlight behind. main.ts adds and removes this class directly. */
-.grid .c.target {
-  outline: none;
-  color: #fff;
-  text-shadow: 0 0 4px var(--accent), 0 0 2px var(--accent);
-  z-index: var(--map-signal);
-}
 
-/* The ways out, over the map's top right. They sit on the ground they lead
-   off rather than at the foot of a panel a player had to find first. */
-#maptravel {
-  position: absolute;
-  top: var(--map-overlay-inset);
-  right: var(--map-overlay-inset);
-  /* Bounded by the map it hangs off, and scrolling inside itself: a short
-     map used to let this spill over the panels underneath. */
-  max-height: calc(100% - 12px);
-  overflow-y: auto;
-  z-index: 4;
-  max-width: 240px;
-  padding: 4px 7px;
-  background: rgba(12, 15, 20, 0.82);
-  border: 1px solid var(--line);
-  font-size: 11px;
-}
-#maptravel .waylabel { color: var(--dim); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
-#maptravel .way { padding: 1px 0; }
 #maptip .tiphead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; white-space: nowrap; }
 #maptip .tiphead b { color: var(--accent); }
 #maptip > div { padding: 1px 0; }
@@ -445,6 +406,67 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 #mapinventory b { color: var(--text); }
 #mapinventory:empty { display: none; }
 
+/* The stocks strip: what the camp holds, what it can hold, and which way
+   each is moving, spanning the page above the columns. The same panel
+   background and border as a column, because it is read the same way.
+   Positioned so the opened group's panel can anchor under the strip
+   rather than off the page. */
+#stockswrap { position: relative; }
+#stocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 10px 10px 0;
+  padding: 8px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+#stocks:empty { display: none; }
+.stock {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 5px;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+.stock .lbl { color: var(--dim); }
+.stock[aria-expanded="true"] .lbl { color: var(--accent); }
+
+/* Two rows of two rather than trailing off the edge of the strip; each
+   group's own spans wrap onto a second line before any of them is cut off
+   or the strip scrolls sideways. */
+@media (max-width: 700px) {
+  .stock { flex: 1 1 calc(50% - 10px); }
+}
+
+/* The opened group: what it is made of, the signed causes behind its rate,
+   and, for wood, the stand the store is coming out of. Anchored under the
+   strip the way #maptip hangs off the map, one element shown and hidden
+   rather than rebuilt while a hand is over it. */
+#stockpanel {
+  position: absolute;
+  z-index: 5;
+  left: 10px;
+  right: 10px;
+  top: 100%;
+  margin-top: 4px;
+  padding: 6px 9px;
+  background: rgba(12, 15, 20, 0.94);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(2px);
+  font-size: 12px;
+}
+#stockpanel[hidden] { display: none; }
+#stockpanel .cause { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+#stockpanel .cause small { flex-basis: 100%; }
+#stockpanel .sum { margin-top: 3px; padding-top: 3px; border-top: 1px solid var(--line); }
+
 /* Map */
 /* min-width: 0 lets the grid track shrink below the map's natural width;
    without it the fixed 792px grid would widen #app itself once `.col`
@@ -462,14 +484,10 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
    the grid would push the Do pane off the screen instead of scrolling. */
 #mapdyn {
   position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column;
-  /* One stack names every map surface, including controls that are siblings of
-     the viewport. The viewport isolates its own terrain and atmosphere below. */
-  --map-ground: 0;
-  --map-shade: 1;
-  --map-weather: 2;
-  --map-route: 3;
-  --map-signal: 4;
-  --map-startle: 5;
+  /* The stack: the board and everything drawn over it are one canvas
+     (map.ts, updateEffects, which layers them in order itself); the zoom
+     controls are a sibling that sits over it. */
+  --map-board: 2;
   --map-control: 6;
 }
 /* The world moves under the survivor; the viewport never pans. A fixed-size
@@ -481,33 +499,33 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   min-height: 0;
   display: grid;
   place-items: center;
+  /* The one row track is the panel's own height, never the board's. Left
+     to size itself the track grew to the board's 504 px, the board sat at
+     the top of it and the panel clipped the bottom half: on a 900 px
+     window the survivor - the middle glyph - was drawn on the panel's
+     bottom edge, and every glyph under them was off the screen and could
+     not be clicked. With the track the panel's height the board is centred
+     in it and overflows both ends alike, so the survivor is in the middle
+     of what is visible, which is what "centred and clipped" promised. */
+  grid-template-rows: minmax(0, 1fr);
   background-color: #0a0e17;
   background-image: radial-gradient(#141a26 1px, transparent 1px);
   background-size: var(--px) var(--line);
   background-position: center;
-  --bright: 1; --sat: 1; --tint: rgb(0, 0, 0); --tint-a: 0;
-  /* Ground has no positioned lift. The named layers inherited from #mapdyn
-     keep DOM order from quietly putting weather behind opaque terrain again. */
   position: relative;
   isolation: isolate;
-  filter: saturate(var(--sat));
-  transition: filter 0.5s linear;
 }
+/* The board's box. It holds nothing - the board is drawn on the canvas
+   below - but it keeps the board's size and position, written inline by
+   mapBoardHtml as the rung's columns by glyph width and rows by line, so
+   that hit testing, the board cover and the viewport bounds, all arithmetic
+   over its rect, read exactly what they read when it held the cells. */
 .grid {
   /* A grid narrower than the panel sits in the middle of it rather than in
      the left corner with the slack all on one side. */
   width: max-content;
   margin: 0 auto;
-  /* The glyph grid's shape is the zoom level's, written onto the element by
-     mapHtml; the fallbacks are the level the map opens at. */
-  --cols: 72; --px: 11px; --line: 14px; --font: 12px;
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(var(--cols), var(--px));
-  grid-auto-rows: var(--line);
-  font-size: var(--font);
-  line-height: var(--line);
-  background: #05070c;
   /* A map is dragged across and clicked on, never read as a passage, and a
      drag that selects a row of glyphs paints the ground blue mid-gesture.
      Safari honours only the prefixed property, so the plain one alone left
@@ -515,27 +533,30 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   -webkit-user-select: none;
   user-select: none;
 }
-/* The atmosphere covers the whole viewport, including synthetic unexplored padding. */
-.scroll-x > .shade {
-  position: absolute; inset: 0; z-index: var(--map-shade); pointer-events: none;
-  background: #000;
-  opacity: calc(1 - var(--bright));
-  transition: opacity 0.5s linear;
+
+/* The one canvas: the board's picture under the light of the hour, the
+   water, the weather, the walk, the marks and the cues, drawn in that order
+   every frame (map.ts, updateEffects). A direct child of .scroll-x so it
+   shares the panel's isolated stacking context with the zoom controls that
+   sit over it. Filled to the panel's own box, since a canvas has no layout
+   of its own to size itself by; the grid's offset inside that box is read
+   every frame rather than assumed. Never takes the pointer, which the grid
+   underneath owns. */
+/* A canvas is a replaced element, so inset alone leaves it at its intrinsic
+   300 by 150 rather than stretching it: width and height have to be stated
+   or it draws into a corner of the board and the rest of the water never
+   moves.
+
+   100% is the wrong box, and is only the fallback here. The canvas is
+   absolutely positioned inside a panel that clips a taller board, so 100%
+   is the visible box and not the board's. `boardCover` in map.ts measures
+   the board every tick and publishes it as --board-w and --board-h; see the
+   reasoning there. */
+.scroll-x > .effects {
+  position: absolute; inset: 0; width: var(--board-w, 100%); height: var(--board-h, 100%);
+  z-index: var(--map-board); pointer-events: none;
 }
-/* Space beyond the generated world is just as unknown to the player as fog,
-   so it continues the map instead of drawing a black frame around it. */
-.grid .c.fog, .grid .c.void { color: #141a26; background-color: #0a0e17; }
-.grid .c.fog::before, .grid .c.void::before { content: "\00b7"; }
-/* Ground seen in this life but outside the current viewshed. A fixed colour
-   treatment carries one fact only - remembered, not partly visible. */
-.grid .c.memory > .cell-ground, .grid .c.memory > .cell-signal { filter: brightness(0.58) saturate(0.45); }
-.grid .c.dim > .cell-ground, .grid .c.dim > .cell-signal { opacity: 0.45; }
-/* Country seen from a vantage and never walked into. It is ground, not fog, so
-   it keeps its terrain's own colour - washed toward the sky and left flat,
-   because what a distant look gives is the shape of the country and not a
-   patch of it. Dimmer than remembered ground, brighter than fog. */
-.grid .c.far > .cell-ground { opacity: 0.3; filter: saturate(0.3) brightness(0.85); }
-.grid .c.far { background-color: #0c111b; }
+
 /* Set and forget: the zoom sits in the map's corner as a note rather than a
    panel of its own. It is nice to have and it is not what anybody came to
    the map to read, so it takes no border and no full-sized type. */
@@ -556,292 +577,19 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   background: rgba(5, 7, 12, 0.7);
 }
 .grid:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
-.grid .c:focus-visible {
-  outline: none;
-  color: #fff;
-  text-shadow: 0 0 4px var(--accent), 0 0 2px var(--accent);
-}
+
 .legend .fog-key { color: #4a5160; }
 .legend .memory-key { color: #777d86; }
 .legend .far-key { color: #5b6270; }
-/* Your walk: a line through the glyph centres, solid ahead, dashed behind. Its
-   named layer keeps it over weather and night, under the @ and fire glow. */
-.grid .walk { position: absolute; inset: 0; z-index: var(--map-route); width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
-/* non-scaling-stroke keeps the stroke in screen pixels under the stretched viewBox. */
+.legend .part-key { color: #6a7382; }
+
+/* The legend's sample of the walk line; the walk itself is drawn on the canvas in the same two strokes. */
 polyline.walk-ahead, polyline.walk-behind { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
 polyline.walk-ahead { stroke: rgba(230, 194, 41, 0.9); stroke-width: 2px; }
 polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; stroke-dasharray: 3 3; }
 .legend .walk-key svg { width: 24px; height: 6px; vertical-align: middle; }
-/* Where things lie. */
-.grid .c.pl { text-decoration: underline; text-decoration-color: #e6c229; text-underline-offset: 2px; }
+
 .legend .pl-key { text-decoration: underline; text-decoration-color: #e6c229; }
-/* The light of the hour, laid over the glyphs. */
-.scroll-x::after {
-  content: ""; position: absolute; inset: 0; z-index: var(--map-shade); pointer-events: none;
-  background: var(--tint); opacity: var(--tint-a);
-  mix-blend-mode: hard-light;
-  transition: background 0.5s linear, opacity 0.5s linear;
-}
-.scroll-x::before {
-  content: ""; position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none;
-}
-/* Local atmosphere. Every glyph carries the simulation sample at its own
-   coordinate. CSS only colours it and switches among its ASCII shapes. */
-.grid .c.wx-cloud, .grid .c.wx-fog, .grid .c.wx-rain, .grid .c.wx-snowing { pointer-events: auto; position: relative; }
-.grid .c .cell-weather {
-  position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none;
-}
-.grid .c.wx-glyph:not(.mk) > .cell-ground > .terrain-visual { visibility: hidden; }
-.grid .c.mk > .cell-weather { display: none; }
-.grid .c .cloud-shadow {
-  position: absolute; inset: 0; z-index: var(--map-weather); pointer-events: none;
-  background: rgb(0 0 0 / var(--wx-shadow));
-  transition: background 0.5s linear;
-}
-.grid .c .cell-signal {
-  display: block; position: relative; z-index: var(--map-signal);
-}
-.grid .c .weather-ripple {
-  position: absolute;
-  inset: 0;
-  color: inherit;
-  opacity: 0;
-  animation-timing-function: step-end;
-}
-.grid .c.wx-cloud .cloud-ripple {
-  --wx-glyph-opacity: calc(var(--wx-cloud) * 0.62);
-  color: #8896a5;
-  animation: map-weather-ripple 16s step-end infinite;
-  animation-delay: var(--cloud-phase);
-}
-.grid .c.wx-rain .cell-weather {
-  --wx-glyph-opacity: calc(var(--wx-fall) * 0.82);
-  color: #aac8f0;
-}
-.grid .c.wx-snowing .cell-weather {
-  --wx-glyph-opacity: calc(var(--wx-fall) * 0.9);
-  color: #f4f7fb;
-}
-.grid .c.wx-rain .precip-ripple {
-  animation: map-weather-ripple 6s step-end infinite;
-  animation-delay: var(--weather-phase);
-}
-.grid .c.wx-snowing .precip-ripple {
-  animation: map-weather-ripple 10s step-end infinite;
-  animation-delay: var(--weather-phase);
-}
-.grid .c.wx-fog .cell-weather {
-  --fog-glyph: #c6cfd6;
-  --wx-glyph-opacity: calc(var(--wx-fog) * 0.7);
-  color: var(--fog-glyph);
-}
-.grid .c.wx-fog .fog-ripple {
-  color: inherit;
-  animation: map-weather-ripple 12s step-end infinite;
-  animation-delay: var(--fog-phase);
-}
-@keyframes map-weather-ripple {
-  0%, 24.999% { opacity: var(--wx-glyph-opacity); }
-  25%, 100% { opacity: 0; }
-}
-.grid .c {
-  display: block;
-  /* The zoom level's box, not the default rung's: mapHtml writes --px and
-     --line onto the grid, and a cell that keeps its own constants paints an
-     11 by 14 square inside a 22 by 28 track at the closest rungs - black
-     gutters between the ground, glyphs spilling out of their boxes, and
-     region borders drawn away from the letters they enclose. Ordinary cells
-     have no border at all; real region edges restore only the side they own. */
-  width: var(--px); height: var(--line);
-  text-align: center;
-  border: 0;
-  cursor: pointer;
-  color: var(--dim);
-}
-
-/* At the closest rung a glyph is one 50 m patch, so a herd's own metre
-   position inside that patch is worth drawing. Its mark is laid over the grid
-   rather than inside a glyph, which is what lets it sit between two of them
-   and slide as the herd moves. */
-.grid.fine > .micro-mark {
-  position: absolute;
-  left: calc(var(--animal-x) - var(--px) / 2);
-  top: calc(var(--animal-y) - var(--line) / 2);
-  width: var(--px);
-  height: var(--line);
-  z-index: var(--map-signal);
-  display: flex; align-items: center; justify-content: center;
-  line-height: 1;
-  transition: left 0.18s linear, top 0.18s linear;
-  box-shadow: 0 0 0 1px rgba(5, 7, 12, 0.42);
-  pointer-events: none;
-}
-.grid .c.t-water { color: #3a6fd8; background-color: #0a1633; --water-rest: #0a1633; --water-lit: #24468f; }
-.grid .c.t-river { color: var(--water); }
-.grid .c.t-spruce { color: #1f8f3a; background-color: #0b1f11; }
-.grid .c.t-pine { color: #3fbf5a; background-color: #0e2415; }
-.grid .c.t-birch { color: #9be36a; background-color: #1a2a12; }
-.grid .c.t-meadow { color: #6f9a3c; background-color: #171f0f; }
-.grid .c.t-bog { color: #2f9f8f; background-color: #0b221f; }
-.grid .c.t-rock { color: #7a7f88; background-color: #1a1c20; }
-.grid .c.t-fell { color: #b9bec8; background-color: #22252b; }
-/* Under snow a spruce is a green tree with white in it, not a white tree: the
-   evergreens keep their colour, lifted and cooled by what is caught in the
-   needles, while the bare birch goes the colour of the snow around it. Past
-   DEEP_SNOW_CM - the depth that already halves a walk and doubles the burn -
-   there is more snow than tree to see, and they go white with everything else. */
-.grid .c:not(.mk).ground-snow.t-spruce { color: #6f9e78; }
-.grid .c:not(.mk).ground-snow.t-pine { color: #86b592; }
-.grid .c:not(.mk).ground-snow.t-birch { color: #9fb8c8; }
-.grid .c:not(.mk).ground-snow-deep.t-spruce { color: #c3d6dd; }
-.grid .c:not(.mk).ground-snow-deep.t-pine { color: #d2e2e8; }
-.grid .c:not(.mk).ground-snow-deep.t-birch { color: #e2ecf2; }
-/*
- * Snow covers the ground; it does not erase it. One flat white over every
- * terrain and one flat background under all of them made a winter map that
- * could not be read - which ground was bog and which was fell, and where the
- * land rose, were all the same colour. So the terrains keep telling themselves
- * apart under it, in the cold end of their own colours, and the height keeps
- * its three steps in the snow's own range: a drift on a rise catches the light
- * and a hollow holds the shadow.
- */
-.grid .c:not(.mk).ground-snow.t-meadow { color: #dfe6f0; }
-.grid .c:not(.mk).ground-snow.t-bog { color: #c2d4dc; }
-.grid .c:not(.mk).ground-snow.t-rock { color: #d8dee8; }
-.grid .c:not(.mk).ground-snow.t-fell { color: #f2f6fb; }
-.grid .c:not(.mk).ground-snow:not(.t-water) { background-color: #121a26; }
-.grid .c:not(.mk).ground-snow.t-meadow { background-color: #141d2a; }
-.grid .c:not(.mk).ground-snow.t-bog { background-color: #101a24; }
-.grid .c:not(.mk).ground-snow.t-rock { background-color: #171f2c; }
-.grid .c:not(.mk).ground-snow.t-fell { background-color: #1d2634; }
-.grid .c:not(.mk).ground-snow.t-spruce, .grid .c:not(.mk).ground-snow.t-pine, .grid .c:not(.mk).ground-snow.t-birch { background-color: #0f1823; }
-
-/* The height, in the snow's own range. The hollow is blue-shadowed and the
-   rise is nearly white, which is what relief looks like under snow. */
-.grid .c:not(.mk).ground-snow.tone-0 > .cell-ground > .terrain-visual { filter: brightness(0.82); }
-.grid .c:not(.mk).ground-snow.tone-2 > .cell-ground > .terrain-visual { filter: brightness(1.18); }
-/*
- * The outline through the fog. A region's edge is drawn on ground nobody has
- * walked, for the region stood in and the ones touching it, so the shape of
- * where you are and what adjoins it can be read before it is explored. Which
- * of the three it is sets the colour and nothing else: a fog cell never takes
- * the wash or the ground colour a drawn cell of the same region takes.
- */
-/* Every one of them is drawn on ground nobody has walked, so every one of them
-   is dimmed: the outline says where the boundary runs, and the brightness says
-   whether the ground under it has been seen. Your own region's edge is at full
-   accent where it crosses ground you know and muted where it does not, which
-   is the same reading the ground itself gives. */
-.grid .c.fog.edge-cur { --edge: rgba(230, 194, 41, 0.38); }
-.grid .c.fog.edge-known { --edge: rgba(59, 111, 209, 0.38); }
-.grid .c.fog.edge-unknown { --edge: #39404e; }
-.grid .c.fog.bl { border-left-color: var(--edge); }
-.grid .c.fog.br { border-right-color: var(--edge); }
-.grid .c.fog.bt { border-top-color: var(--edge); }
-.grid .c.fog.bb { border-bottom-color: var(--edge); }
-
-.grid .c.bl { border-left-color: var(--border); }
-.grid .c.br { border-right-color: var(--border); }
-.grid .c.bt { border-top-color: var(--border); }
-.grid .c.bb { border-bottom-color: var(--border); }
-/* Border style is restored only on a real region edge. The colour continues
-   to come from the existing known, current and fog boundary rules. */
-.grid .c.bl { border-left-style: solid; border-left-width: 1px; }
-.grid .c.br { border-right-style: solid; border-right-width: 1px; }
-.grid .c.bt { border-top-style: solid; border-top-width: 1px; }
-.grid .c.bb { border-bottom-style: solid; border-bottom-width: 1px; }
-/* The region you stand in and the region you picked are marked by a wash over
-   their whole area, and never by a frame drawn on each of their cells: a frame
-   per cell says at cell scale what the wash and the accent-coloured region
-   border below already say at region scale, and 69 of them read as graph paper
-   laid over the ground rather than as a place. */
-.grid .c.cur { box-shadow: inset 0 0 0 20px rgba(255, 255, 255, 0.07); }
-.grid .c.cur.bl { border-left-color: var(--accent); }
-.grid .c.cur.br { border-right-color: var(--accent); }
-.grid .c.cur.bt { border-top-color: var(--accent); }
-.grid .c.cur.bb { border-bottom-color: var(--accent); }
-.grid .c.sel { box-shadow: inset 0 0 0 20px rgba(230, 194, 41, 0.18); }
-/*
- * What stays legible once the night sheet is down: where you are, where camp
- * is, and the line of your walk. Those are the three things you would know in
- * the dark without looking, so they carry a z-index and the sheet passes under
- * them. A shelter, a trap and a seep are marks on ground you cannot see from
- * here at midnight, so they take the dark with everything else.
- *
- * The fire is the exception, and not an arbitrary one: it is the light. The
- * close rungs already put its cell above the sheet (.grid.night .c.lit-0
- * below), and burying its marker at the coarse rungs would have one fire lit
- * and the same fire dark depending only on how far the map is zoomed out.
- * Banked coals are the same exception at a lower wattage: still a light
- * (EMBER_LUX), so they carry the same z-index and get their own, fainter
- * glow below rather than fog with the shelter and the trap.
- */
-.grid .c.mk { font-weight: bold; position: relative; }
-.grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire, .grid .c.mk-coals { z-index: var(--map-signal); }
-.grid .c.mk-player { color: #fff; background: #b8860b; }
-.grid .c.mk-fire { color: #fff; background: #b8431a; }
-/* Dimmer than mk-fire's #b8431a: the same fire, banked. */
-.grid .c.mk-coals { color: #fff; background: #7a3d1a; }
-.grid .c.mk-shelter { color: #fff; background: #4a5a78; }
-/* The camp mark's own colour, not shelter and trap's grey; a plain lighter background
-   rather than opacity, so it does not also wash out the underline or the current-cell
-   border stacked on the same glyph. */
-.grid .c.mk-camp { color: #0c0f14; background: #6fcf6f; }
-.grid .c.mk-trap { color: #fff; background: #4a5a78; }
-.grid .c.mk-seep { color: #0c0f14; background: #6fa8dc; }
-.grid .c.mk-animal { color: #111; background: #b7ad87; z-index: 1; }
-.grid .c.mk-animal.wildlife-0 { color: #111; background: #e5a84b; }
-.grid .c.mk-animal.wildlife-1 { color: #111; background: #76c7b7; }
-.grid .c.mk-animal.wildlife-2 { color: #111; background: #cb8fc4; }
-.grid .c.mk-animal.wildlife-3 { color: #111; background: #91bd62; }
-.grid .c.mk-animal.wildlife-4 { color: #111; background: #d77b68; }
-.grid .c.mk-animal.wildlife-5 { color: #111; background: #87a8dc; }
-/* An effect has its own ink and never replaces a glyph or becomes an inspection target. */
-.wildlife-startle {
-  position: absolute; z-index: var(--map-startle); pointer-events: none;
-  color: #ffe28a; font-size: max(18px, var(--font)); font-style: normal; font-weight: 900;
-  line-height: 1; text-shadow: 0 1px 2px #05070c, 0 0 4px #05070c;
-  /* The frame updates one wall-clock variable. A paused animation samples that
-     clock, so moving or recreating a glyph during zoom cannot replay its onset. */
-  animation: wildlife-startle 1.2s ease-out both paused;
-  animation-delay: calc(var(--wildlife-start) - var(--wildlife-now, var(--wildlife-start)));
-}
-.wildlife-startle.heard { color: #e8dab1; }
-.wildlife-recoil {
-  animation: wildlife-recoil .28s ease-out both paused;
-  animation-delay: calc(var(--wildlife-start) - var(--wildlife-now, var(--wildlife-start)));
-}
-@keyframes wildlife-startle {
-  0% { opacity: 0; transform: translate(-50%, 0) scale(.55); }
-  12% { opacity: 1; transform: translate(-50%, -12%) scale(1.25); }
-  24%, 60% { opacity: 1; transform: translate(-50%, -12%) scale(1); }
-  100% { opacity: 0; transform: translate(-50%, -65%) scale(1); }
-}
-@keyframes wildlife-recoil {
-  0%, 100% { transform: translateX(0); }
-  25%, 70% { transform: translateX(-2px); }
-  45% { transform: translateX(2px); }
-}
-@keyframes wildlife-startle-fade {
-  0% { opacity: 0; }
-  12%, 60% { opacity: 1; }
-  100% { opacity: 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .wildlife-startle { animation-name: wildlife-startle-fade; transform: translateX(-50%); }
-  .wildlife-recoil { animation: none; }
-}
-
-/* A close-map mark is an overlay placed at its own metre position on the
-   board rather than a glyph recoloured whole. It repeats the established
-   mark palette exactly. */
-.grid .micro-mark.mk-animal { color: #111; background: #b7ad87; }
-.grid .micro-mark.mk-animal.wildlife-0 { background: #e5a84b; }
-.grid .micro-mark.mk-animal.wildlife-1 { background: #76c7b7; }
-.grid .micro-mark.mk-animal.wildlife-2 { background: #cb8fc4; }
-.grid .micro-mark.mk-animal.wildlife-3 { background: #91bd62; }
-.grid .micro-mark.mk-animal.wildlife-4 { background: #d77b68; }
-.grid .micro-mark.mk-animal.wildlife-5 { background: #87a8dc; }
 
 /* The legend has no cell background to draw a marker against, so its letters take the
    background colour each mark uses on the map instead. */
@@ -862,28 +610,16 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 
 /*
  * The survivor moves. What the person is doing is filed under one of five
- * moods (ui/mood.ts) and written as a class on the @ and on the header
- * portrait, so both say the same thing at once and the sim is asked nothing
- * twice. All of it is quiet on purpose: a motion you notice when it stops
- * rather than one that competes with the firelight or the walk line. Walking
- * and working are the two that move; resting, sleeping and idle are told by
- * stillness, which is the reading they want anyway.
+ * moods (ui/mood.ts) and written as a class on the header portrait, and
+ * drawn on the @ by the board (map.ts, drawPulses), so both say the same
+ * thing at once and the sim is asked nothing twice. All of it is quiet on
+ * purpose: a motion you notice when it stops rather than one that competes
+ * with the firelight or the walk line. Walking and working are the two
+ * that move; resting, sleeping and idle are told by stillness, which is
+ * the reading they want anyway.
  */
 @keyframes mood-step { from { transform: translateY(0); } to { transform: translateY(-1px); } }
-@keyframes mood-toil { from { background-color: var(--m0); } to { background-color: var(--m1); } }
 @keyframes mood-breathe { from { transform: scale(1); } to { transform: scale(1.04); } }
-
-.grid .c.mk-player.mood-walk {
-  --m0: #b8860b; --m1: #d8a327;
-  animation: mood-toil 1.2s ease-in-out infinite alternate;
-}
-.grid .c.mk-player.mood-work {
-  --m0: #b8860b; --m1: #d8a327;
-  animation: mood-toil 2.4s ease-in-out infinite alternate;
-}
-/* Asleep is a dimmer @ and no motion at all; rest and idle are the plain mark. */
-.grid .c.mk-player.mood-sleep { background: #7d5c08; }
-.grid .c.mk-player.mood-rest, .grid .c.mk-player.mood-idle { animation: none; }
 
 /* The living portrait is a stable stack of explicit Toon Head frames. CSS
    reveals transient frames, so a blink never rebuilds the stats panel. */
@@ -948,58 +684,14 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 
 /* Somebody who has asked their system for less motion is asking this screen too. */
 @media (prefers-reduced-motion: reduce) {
-  .grid .c.mk-player.mood-walk, .grid .c.mk-player.mood-work,
   .stat-face.mood-walk, .stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep,
   .portrait.is-focused, .portrait.is-cold, .portrait.is-firelit::before, .portrait.is-firelit::after {
     animation: none;
   }
-  .grid.fine > .micro-mark { transition: none; }
   .portrait.is-firelit::before { opacity: .32; transform: none; }
   .portrait.is-firelit::after { opacity: .18; transform: none; }
 }
 
-/* Firelight. The source cell rises above the shade and the tint; ring cells stay under the shade and only their overlay rises. */
-@keyframes flicker { from { background-color: var(--f0); } to { background-color: var(--f1); } }
-/* At the two close zooms .grid.night .c.lit-0 below overrides this; at coarser zooms only the marker pulses. */
-.grid.night .c.mk-fire {
-  --f0: #b8431a; --f1: #ff9a3a;
-  animation: flicker 1.1s ease-in-out infinite alternate;
-}
-/* A distant camp fire is a point of flame, not two 300 m rings of lit ground. */
-.grid.night .c.mk-fire.fire-far {
-  --f0: #632d18; --f1: #a54d20;
-  color: #ffe0aa;
-  text-shadow: 0 0 3px #d7772f;
-}
-.grid.night .c.lit-0 {
-  position: relative; z-index: var(--map-signal);
-  --f0: #ff7a1a; --f1: #ffb84d;
-  animation: flicker 1.1s ease-in-out infinite alternate;
-  animation-delay: var(--fd, 0s);
-}
-/*
- * Banked coals over both rules above: a slower breath, not a flicker, and
- * darker at both ends of it, so the strongest reaction of the whole playtest
- * (the night fire) stays a fed fire's alone. Two classes beat .mk-fire's and
- * .lit-0's one apiece on specificity, so these win without needing source order.
- */
-.grid.night .c.mk-coals {
-  --f0: #5c2c14; --f1: #8a4520;
-  animation: flicker 2.6s ease-in-out infinite alternate;
-}
-.grid.night .c.lit-0.mk-coals {
-  --f0: #6b3218; --f1: #9c4f24;
-  animation: flicker 2.6s ease-in-out infinite alternate;
-  animation-delay: var(--fd, 0s);
-}
-.grid.night .c.lit-1, .grid.night .c.lit-2 { position: relative; }
-.grid.night .c.lit-1::after, .grid.night .c.lit-2::after {
-  content: ""; position: absolute; inset: 0; z-index: var(--map-signal); pointer-events: none;
-  animation: flicker 1.1s ease-in-out infinite alternate;
-  animation-delay: var(--fd, 0s);
-}
-.grid .c.lit-1::after { --f0: rgba(255, 140, 40, 0.35); --f1: rgba(255, 140, 40, 0.55); }
-.grid .c.lit-2::after { --f0: rgba(255, 120, 30, 0.12); --f1: rgba(255, 120, 30, 0.22); }
 /* The glyph tooltips need hover; a device without it gets this line instead,
    so it is present always but shown only under (hover: none). */
 .legend { margin-top: 6px; flex-wrap: wrap; gap: 4px 12px; color: var(--dim); font-size: 12px; }
@@ -1036,6 +728,7 @@ input[data-do="filter"] {
 }
 #actions .rows { max-height: 50vh; overflow-y: auto; }
 #task .step, #orders .step { color: var(--dim); margin: 4px 0; }
+.care-eta:not(:empty) { display: block; color: var(--dim); font-size: 11px; margin-top: 2px; }
 
 button.act, span.act {
   display: block; width: 100%;
@@ -1100,6 +793,7 @@ button.act small, span.act small { display: block; color: var(--dim); }
 }
 .mini:hover { border-color: var(--accent); }
 .mini.on { color: var(--accent); border-color: var(--accent); }
+.fire-keep { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; }
 .mini.danger { color: var(--bad); }
 .mini:disabled { color: #5d6570; cursor: default; border-color: var(--line); }
 .mini.off { color: #5d6570; cursor: default; }
@@ -1138,6 +832,11 @@ button.act small, span.act small { display: block; color: var(--dim); }
 }
 #orders .order.once .kind { color: var(--accent); border-color: var(--accent); }
 #orders .order .kind.blocked { color: var(--bad); border-color: var(--bad); }
+/* A row the list passed over: the loud one of the three, since it is the
+   one the player asked for and is not getting. The reason under it carries
+   the same colour, so the tag and the sentence read as one statement. */
+#orders .order .kind.skipped { color: var(--bad); border-color: var(--bad); background: rgba(197, 74, 74, 0.14); }
+#orders .order .step.bad { color: var(--bad); }
 
 /* The block policy says its state in words. It is read top to bottom with
    every other part of the row, without a symbol or tooltip to decode. */
@@ -1192,12 +891,24 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .microbar { display: inline-block; width: 46px; height: 4px; margin-left: 6px; border: 1px solid var(--line); vertical-align: middle; }
 .microbar i { display: block; height: 100%; background: var(--accent); }
 
-
 /* The weather, built the way a phone's widget is: the sky behind, the day's
    ends in the corner, the temperature large enough to read without looking
    for it, then the pairs a reader scans rather than reads. What the ground
    is doing is one of those pairs and not a headline. */
 #weather { padding: 0; overflow: hidden; position: relative; flex: none; }
+/* The alert stack: worst on top, standing while true. A block a colour
+   and a word, the way RimWorld's right-edge alerts read across a room. */
+#alerts { flex: none; }
+#rightpages { display: flex; gap: 4px; flex: none; margin-bottom: 4px; }
+#rightpages .tab.on { color: var(--accent); border-color: var(--accent); }
+.badge { display: inline-block; min-width: 1.4em; margin-left: 4px; padding: 0 4px; border-radius: 8px; font-size: 11px; text-align: center; color: #111; }
+.badge.bad { background: var(--bad); }
+.badge.warn { background: var(--accent); }
+.alerts { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.alert { display: flex; flex-direction: column; padding: 4px 8px; border-left: 4px solid var(--accent); background: rgba(230, 194, 41, 0.08); }
+.alert.bad { border-left-color: var(--bad); background: rgba(224, 96, 96, 0.12); }
+.alert b { font-size: 13px; }
+.alert small { color: var(--dim); }
 .wx { position: relative; padding: 10px 12px 0; min-height: 190px; display: flex; flex-direction: column; }
 
 /* The sky is the widget, not a picture in the corner of it: the same
@@ -1236,32 +947,9 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .wx-rate.hurrying { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .speed-history path { transition: none; } }
 
-/* What the air is doing, drawn rather than named. Cloud drifts, and what
-   falls out of it falls: snow wanders down, rain goes straight and fast,
-   and a storm leans both of them over and hurries them along. */
-.sky-cloud rect { opacity: 0.9; }
-.sky-cloud { animation: sky-drift var(--cloud-duration, 120s) linear infinite; }
-@keyframes sky-drift { from { transform: translate(0, 0); } to { transform: translate(var(--cloud-drift-x, -240px), var(--cloud-drift-y, 0)); } }
-
-#sky-fall .sky-drop { transform: translate(var(--x), var(--y)); }
-#sky-fall line { stroke: rgba(255, 255, 255, 0.5); stroke-width: 1.1; opacity: 0; }
-#sky-fall circle { fill: rgba(255, 255, 255, 0.85); opacity: 0; }
-.sky.rain #sky-fall line { opacity: 1; animation: sky-rain var(--fall-duration, 0.9s) linear infinite; animation-delay: calc(var(--n) * -0.9s); }
-.sky.snow #sky-fall circle { opacity: 1; animation: sky-snow var(--snow-duration, 6s) linear infinite; animation-delay: calc(var(--n) * -6s); }
-@keyframes sky-rain { from { transform: translate(0, -20px); } to { transform: translate(var(--fall-drift-x, -52px), 220px); } }
-/* Each flake wanders its own way down: one shared sideways drift made snow
-   march in step, which is the one thing snow never does. */
-@keyframes sky-snow { from { transform: translate(0, -20px); } to { transform: translate(calc(var(--fall-drift-x, 0px) + var(--sx, 10px)), 220px); } }
-
-@media (prefers-reduced-motion: reduce) {
-  .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
-}
-
 /* A place is one button, and what it costs is inside it: a name in a button
    beside a sentence saying "from here" spent two thirds of the row on words
    that never changed. */
-#maptravel .way .go { display: block; width: 100%; text-align: left; }
-#maptravel .way .go small { color: var(--dim); margin-left: 6px; }
 
 .inv .n { white-space: nowrap; }
 .inv .ctl { white-space: nowrap; }
@@ -1449,122 +1137,6 @@ button.act small.gives, span.act small.gives,
   #doitems { padding-left: 0; overflow-y: visible; }
 }
 
-/* Height as tone. Snow flattens all of it - a white field has no relief left
-   to show - so every step here is written to lose to it. The step is
-   on the letter alone - a filter on the cell drags its background with it and
-   the map fills with bright and dark rectangles instead of trees. */
-.grid .c:not(.mk):not(.ground-snow).t-spruce.tone-0 { color: #16642a; }
-.grid .c:not(.mk):not(.ground-snow).t-spruce.tone-2 { color: #35c455; }
-.grid .c:not(.mk):not(.ground-snow).t-pine.tone-0 { color: #2d8640; }
-.grid .c:not(.mk):not(.ground-snow).t-pine.tone-2 { color: #6ee089; }
-.grid .c:not(.mk):not(.ground-snow).t-birch.tone-0 { color: #6da548; }
-.grid .c:not(.mk):not(.ground-snow).t-birch.tone-2 { color: #c2f593; }
-
-/* The open ground takes the same step for the same reason: a screen of one
-   flat colour per terrain reads as a table, and the relief is already in the
-   world. Backgrounds move here as well as letters - a field is mostly its
-   cell, where a tree is mostly its letter - but only by a shade.
-
-   Never on a marked cell. These rules carry a background and a class more than
-   the mark rules do, so without the exclusion an @ standing on toned ground
-   lost its amber and got it back on the next cell: a survivor who flickered as
-   they walked. A mark owns its whole cell. */
-.grid .c:not(.mk):not(.ground-snow).t-meadow.tone-0 { color: #5c8032; background-color: #131a0c; }
-.grid .c:not(.mk):not(.ground-snow).t-meadow.tone-2 { color: #8ab84a; background-color: #1c2612; }
-.grid .c:not(.mk):not(.ground-snow).t-bog.tone-0 { color: #278477; background-color: #091c1a; }
-.grid .c:not(.mk):not(.ground-snow).t-bog.tone-2 { color: #3cc2af; background-color: #0e2b27; }
-.grid .c:not(.mk):not(.ground-snow).t-rock.tone-0 { color: #666b73; background-color: #16181c; }
-.grid .c:not(.mk):not(.ground-snow).t-rock.tone-2 { color: #92979f; background-color: #202329; }
-.grid .c:not(.mk):not(.ground-snow).t-fell.tone-0 { color: #9aa0aa; background-color: #1d2026; }
-.grid .c:not(.mk):not(.ground-snow).t-fell.tone-2 { color: #d6dbe4; background-color: #292d35; }
-
-/* Depth. `coast` crosses zero at the shore and runs on out to sea, so the
-   shallows are the lit end and the open water the dark one - the way water
-   reads standing on a beach. A lake has no offshore and keeps the plain
-   colour. */
-.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-0 { color: #5b9ae8; background-color: #102047; --water-rest: #102047; --water-lit: #3160b0; }
-.grid .c:not(.mk):not(.ground-snow):not(.ice-thin):not(.ice-safe).t-water.deep-2 { color: #2b53a4; background-color: #060d20; --water-rest: #060d20; --water-lit: #1a3474; }
-/* Light on open water: rippling, faked for the eye. Three smooth waves
-   cross the sheet in different directions, with different wavelengths and
-   speeds, and each cell shows their sum. A cell's start in each wave comes
-   from its position, so neighbours move together and the light travels and
-   spreads rather than blinking in place; three directions crossing means
-   no stripe.
-
-   Each wave is an overlay in the cell's lit blue whose opacity swells and
-   fades. Opacity is the one thing here the compositor animates by itself,
-   so a lake of two hundred cells costs the main thread nothing per frame;
-   a colour computed in place repainted every cell every frame and starved
-   the page. The overlay sits below the glyph inside the cell's own
-   stacking context. Wall clock, never the simulation's; remembered water
-   and ice lie still. */
-.grid .c.water-live { position: relative; isolation: isolate; }
-.grid .c.water-live .water-ripple {
-  position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  background: var(--water-lit);
-  opacity: 0;
-  will-change: opacity;
-  animation: water-ripple 5s ease-in-out infinite;
-  /* ?shimmer= on the page sets the speed factor on the root; the delay scales with it so the pattern keeps its shape. */
-  animation-delay: calc(var(--water-delay) / var(--water-shimmer-speed, 1));
-}
-.grid .c.water-live .water-ripple-1 { animation-duration: calc(5s / var(--water-shimmer-speed, 1)); }
-.grid .c.water-live .water-ripple-2 { animation-duration: calc(3.75s / var(--water-shimmer-speed, 1)); }
-.grid .c.water-live .water-ripple-3 { animation-duration: calc(8s / var(--water-shimmer-speed, 1)); }
-/* At the closest rung a glyph is one patch in a large box, and a peak that
-   reads as a glint on an 11 px glyph reads as a flat wash there. Half the gain
-   keeps the ~ and = legible. */
-.grid.fine .c.water-live .water-ripple { --water-gain: 0.5; }
-@keyframes water-ripple {
-  0%, 100% { opacity: 0; }
-  50% { opacity: calc(var(--water-peak, 0.4) * var(--water-gain, 1)); }
-}
-/* Frozen water keeps the cell-owned ASCII surface, but loses the liquid-blue
-   depth palette. Thin ice remains dark and uncertain; safe ice forms the
-   lighter continuous sheet. Marks still own their whole cell. */
-.grid .c:not(.mk).t-water.ice-thin { background-color: #142533; }
-.grid .c:not(.mk).t-water.ice-safe { background-color: #243746; }
-
-/*
- * The year in colour.
- *
- * Only the letters move, and only for what actually changes with the season.
- * Spruce and pine are evergreen and hold their colour through the year; birch
- * is not, and it is the one tree the calendar shows. The ground follows it:
- * green through the growing season, fading through autumn, bare in winter.
- *
- * None of it touches a marked cell - see "a mark owns its whole cell" below.
- *
- * Snow is a separate condition and wins over all of it - it is on the ground
- * or it is not, whatever the month says. That is written into the selectors
- * rather than left to the order of the file, which a later edit would move.
- */
-/* Low ground turns first and deepest, the tops stay yellow longest, so the
-   height step runs red through orange to gold rather than just light to dark. */
-.grid.season-autumn .c:not(.mk):not(.ground-snow).t-birch { color: #f0b93f; }
-.grid.season-autumn .c:not(.mk):not(.ground-snow).t-birch.tone-0 { color: #e07a2a; }
-.grid.season-autumn .c:not(.mk):not(.ground-snow).t-birch.tone-2 { color: #ffdc72; }
-/* The ground turns in patches, not all over: only the cells the world says are
-   dry (ui/ground.ts, turnedGround) go over, and the damp ground beside them
-   stays as green as it was in July. The backgrounds warm with the letters on
-   those cells only, or a gold letter sits on summer ground. */
-.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-meadow { color: #d09a42; background-color: #1f1a0c; }
-.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-meadow.tone-0 { color: #c06a2e; background-color: #1a1409; }
-.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-meadow.tone-2 { color: #e8c15c; background-color: #292110; }
-.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-bog { color: #c4713c; background-color: #1e150e; }
-.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-bog.tone-0 { color: #ad5530; }
-.grid.season-autumn .c:not(.mk):not(.ground-snow).turned.t-bog.tone-2 { color: #dd9455; }
-
-/* Winter without snow on the ground: the birch is bare wood, the field is dead
-   grass. Everything else is what it is in any month. */
-.grid.season-winter .c:not(.mk):not(.ground-snow).t-birch { color: #8a7256; }
-.grid.season-winter .c:not(.mk):not(.ground-snow).t-birch.tone-0 { color: #6d5943; }
-.grid.season-winter .c:not(.mk):not(.ground-snow).t-birch.tone-2 { color: #a89078; }
-.grid.season-winter .c:not(.mk):not(.ground-snow).t-meadow { color: #7c7a63; }
-.grid.season-winter .c:not(.mk):not(.ground-snow).t-meadow.tone-0 { color: #63614e; }
-.grid.season-winter .c:not(.mk):not(.ground-snow).t-meadow.tone-2 { color: #9a9880; }
-.grid.season-winter .c:not(.mk):not(.ground-snow).t-bog { color: #6f7b78; }
-
 /* The sky gallery (sky.html): every condition the weather widget draws, side
    by side, at the size it is drawn at on the board. */
 .skytitle { font-size: 16px; font-weight: normal; color: var(--dim); padding: 12px 16px 0; margin: 0; }
@@ -1583,3 +1155,7 @@ button.act small.gives, span.act small.gives,
 #loading .bar { width: min(60vw, 420px); height: 8px; border: 1px solid var(--line); background: var(--panel); }
 #loading .bar > i { display: block; height: 100%; width: 0; background: var(--accent); }
 #loading p { color: var(--dim); margin: 0; }
+
+/* The filter box and its way back out, on one line. */
+.dofind { display: flex; gap: 6px; align-items: center; }
+.dofind input[type="search"] { flex: 1 1 auto; min-width: 0; }

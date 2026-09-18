@@ -58,6 +58,8 @@ export const WAKE_AT = 25;
  * scaled to, so the working day is this number and the person's own hours.
  */
 export const SPENT_AT = 30;
+/** The collapse line: at or under it the body stops work and rests to RESTED_AT. */
+export const SLEEP_AT = 20;
 /**
  * Fatigue at which an evening by the fire has done its job: about four hours
  * of rest above the spent line, which is the evening the fire actually

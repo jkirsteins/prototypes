@@ -1527,3 +1527,592 @@ testing that the code runs.
 
 What would look wrong: a change that breaks the shortlist cut shipping with
 this test green.
+
+## The render surface: four canvases and a DOM for the rest
+
+**Raised** 2026-09-14, after Safari terminated the page with "This web page
+was reloaded because it was using significant memory" and the profile showed
+the cost is the document, not the simulation.
+
+### What the measurements say
+
+Taken on the live page over CDP, with the game sitting still and nothing
+being asked of it, in headless Chrome with no GPU:
+
+| | per 30 s | share of one core |
+| --- | ---: | ---: |
+| Style recalculation | 3.40 s | 11% |
+| Script, all of it | 0.94 s | 3% |
+| Layout | 0.06 s | 0.2% |
+| Total task time | 11.26 s | 38% |
+
+Style recalculation costs three and a half times everything the simulation
+and the panels do together. The JS heap sits between 18 and 21 MB and
+collects cleanly, so what Safari ran out of is not the heap: it is the
+document. The page held 14,279 elements, of which 4,226 were SVG star
+circles, 567 are water-shimmer overlays at three per water cell, and 192 are
+cloud shadows.
+
+The first reading blamed the star field, and that was wrong. Stage one
+removed all 4,226 of those circles - the element count fell to 9,626 and the
+animated count from 5,203 to 828 - and style recalculation did not move:
+3.40 s to 3.59 s per 30 s, with script rising from 0.94 s to 1.62 s because
+a canvas draw costs JS. Stage one's win is element count and memory, which
+is what the browser ran out of, and not recalculation.
+
+Isolating the real cause rather than guessing a second time:
+
+| what was disabled | recalc per 30 s | total task |
+| --- | ---: | ---: |
+| nothing | 3.59 s | 37% of a core |
+| every animation and transition | 0.01 s | 11% |
+| the water shimmer alone, 567 elements | 0.52 s | 15% |
+
+**The water shimmer carries about 86 percent of all style recalculation in
+this game.** Three stacked overlay elements per water cell, each animating.
+Everything else that moves costs about half a second between them. That
+makes the effects layer, which owns the shimmer, the stage that actually
+pays, and it is the reason to build it next rather than last.
+
+### What the first two stages actually bought
+
+Measured on a settled page, seed 17, once both stages had landed and the
+effects canvas was drawing the whole board rather than a corner of it:
+
+| | before | after |
+| --- | ---: | ---: |
+| style recalculation per 30 s | 3.40 s | 0.15 s |
+| total frame cost | 38% of a core | 21% |
+| script per 30 s | 0.94 s | 3.79 s |
+| animated elements | 5,203 | 41 |
+| DOM elements | 14,279 | 8,833 |
+
+Recalculation is gone, which was the point, and the frame is a little
+under twice as cheap. Script trebled, because a canvas draw is work the
+browser used to do and the main thread now does: about 12 ms a draw for
+2,592 cells. That is the next thing to optimise rather than a defect, and
+it is why the honest figure for the migration is 21 percent and not the
+10 percent an earlier reading gave while the canvas was mis-sized.
+
+Three sizing bugs got through the whole markup suite on the way, and all
+three are worth remembering because none of them is visible in markup. A
+canvas is a replaced element, so `inset: 0` with an auto width leaves it
+at its intrinsic 300 by 150 instead of stretching; its backing buffer is a
+pair of attributes, so a morph that strips attributes the new markup does
+not carry will blank it on every rebuild; and the board is not the panel's
+visible box.
+
+That third one survived the fix for the first two and the check written
+alongside them, because the check compared the canvas against its host's
+**visible** box and that comparison passed. `.scroll-x` clips a board
+taller than itself - 504 px of grid in a 262 px panel at the closest rung,
+which is the stylesheet's stated intent, "a fixed-size grid is centred and
+clipped". The intent also says the viewport never pans, and no game
+control pans it. The browser does. The grid is a focusable `role="grid"`
+whose 36 rows are walked by arrow-key inspection, and focusing a clipped
+cell scrolls it into view whatever `overflow: hidden` says: forty presses
+of the down arrow put the panel at `scrollTop` 243, and every layer
+absolutely positioned inside it went with it. Measured there, all seven
+live water cells the player was looking at fell outside the canvas
+entirely - `painted 0, off-buffer 7`. The night shade and the hour's tint
+had gone the same 243 px, so the scrolled board also lost its darkening.
+
+The fix is one measurement published as two inherited custom properties,
+`--board-w` and `--board-h`, which the canvas, the shade and the tint all
+size from - the tint being a pseudo element with no handle for JS to size
+directly. They are set on the panel rather than on the scroller because
+`setPanel` morphs the panel's children, and an inline style on the
+scroller itself would be dropped for a frame on every map rebuild. The
+cover is measured from the grid and the panel and never from the panel's
+own `scrollHeight`, because an absolutely positioned child counts towards
+that and a layer sized from its own contribution ratchets itself bigger
+every frame.
+
+The lesson for the check, rather than for the code: an assertion that
+compares a layer against the box it already has will pass for the same
+reason the bug exists. The shots harness now asserts the canvas against
+the **board** - the visible box or the grid's full extent, whichever is
+bigger - and then scrolls the panel to its limit and asserts the canvas
+still spans what the player can see. Reverted against the unfixed code it
+fails on the first scenario with `782x262 over a board of 792x504`.
+
+### Where the frame time actually went
+
+**Measured** 2026-09-16, seed 42 day 200, a settled landed run at 300 m per
+glyph in headless Chrome at 1440x900. Three runs per figure, median taken;
+the spread between runs was under half a point.
+
+| per 30 s | before | after |
+| --- | ---: | ---: |
+| total main-thread task time | 10.3 s | 5.6 s |
+| of that, script | 7.2 s | 2.45 s |
+| style recalculation | 0.73 s | 0.71 s |
+| **share of one core** | **34.4%** | **18.8%** |
+
+And what a player feels, from frame-to-frame delays over the same window:
+
+| | before | after |
+| --- | ---: | ---: |
+| median frame | 16.6 ms | 16.7 ms |
+| 95th percentile | 38.9 ms | 21.1 ms |
+| 99th percentile | 75.0 ms | 58.0 ms |
+| **frames over 33 ms** | **272** | **30** |
+| worst frame | 228 ms | 150 ms |
+
+The median frame was always 60 Hz. What was wrong was the spread: about one
+frame in six took longer than two display refreshes. That is now one in
+fifty-seven.
+
+**The plan in this document aimed at the wrong thing.** It named the effects
+draw as the next target, at "roughly 12 ms per draw". A bench that draws the
+settled picture over and over (`window.survidle.effectsBench`, a development
+door beside `placeAtPatch`) measures that draw at **0.27 ms** - about 0.6 s
+of a 30 s window, under 6% of the script time. The 12 ms figure was a
+profiler reading that had swept in the forced layout around the draw, not
+the draw. Optimising it further would have bought almost nothing, which is
+why the first thing done here was to profile rather than to start on the
+list.
+
+What the profile actually found, each fixed in the commit this section
+accompanies:
+
+- **A viewshed computed six times a frame.** `mapKey` and `mapHtml` between
+  them asked `visibleWildlife` for the visible subjects six times while
+  building one picture, and each call ran its own contrast pass over every
+  candidate patch - the most expensive question a frame can ask. The map
+  already held a cached viewshed for the same cell and minute a few lines
+  away. Passing it in: **1.7 s per 30 s**.
+- **A cloud deck retinted every frame.** The sky rebuilt both cloud layers
+  from scratch sixty times a second - clear 960 by 480, fill it, rescale the
+  mask bitmap over it, twice - when the only thing that changes per frame is
+  where the finished layer is *drawn*. The tint changes with the hour. Held
+  between frames: **1.5 s per 30 s**, and all 17 sky reference shots come out
+  byte-identical.
+- **Thirteen bars, thirty-nine document sweeps.** Every bar wrote itself by
+  running `querySelectorAll` for its fill, its value and its trend, on every
+  frame, across a page of 8,705 elements. One sweep now indexes all three by
+  name: **0.8 s per 30 s**.
+- **A morph key made of content.** `keyOf` built a node's identity from every
+  data attribute it carried, which for a map cell included `data-map-info` -
+  the whole of its hover text. So when the weather changed a cell's reading,
+  its key changed with it, the morph could not recognise the cell it already
+  had, and all 2,592 were replaced instead of updated. A cell is now keyed by
+  its coordinate. `data-map-info` itself turned out to be read by nothing but
+  one test, and duplicated `aria-label` exactly, so it is gone.
+
+Three smaller ones came with these: writes to `--bright`, `--sat`, `--tint`
+and `--tint-a` are compared before being made (they are inherited by all
+2,592 cells, so writing an unchanged value asked the engine to re-resolve
+the whole board), `?shimmer=` is read from the cascade once rather than
+through `getComputedStyle` every frame, and the water and weather cells
+carry their seeded phases and peaks on the model instead of rehashing them
+per cell per frame.
+
+**What was tried and taken back out**, because measurement did not support
+it: caching the effects canvas's transform and box (no gain, and a stale
+transform is a real hazard), and repainting the sky at 20 Hz while only the
+cloud deck is moving (0.4%, inside the noise, and it changed when the sky
+draws - a test that called `updateSky` twice in a row and expected two
+pictures caught it). A change at the noise floor is not worth the behaviour
+it alters.
+
+### What is left, and why it needs stage three
+
+The count of long tasks did not move: about 19 per 30 s, the worst still
+around 150 ms. They are all one thing. Once a game minute the map's key
+changes and its 2,592-cell panel is rebuilt and morphed, and the next
+reader of layout pays for the reflow that causes. Spread across
+`morphChildren`, `morphAttrs`, `setPanel` and the forced layout behind
+`ensureCanvasSize`, no single part is more than a fifth of it, so there is
+no remaining cut of that size to make in a document.
+
+That is the case for stage three, and it is now a sharper case than this
+document opened with: the steady per-frame cost is dealt with, and what is
+left is the cost of *being* a document at all - rebuilding and diffing
+thousands of elements for a picture that changes every second. A canvas map
+does not have a morph.
+
+### Stage three, as built
+
+**Decided** 2026-09-16, on the way in, and then **revised the same day**
+once the first cut had been played. The plan above left three open
+questions and one design freedom; this is what was chosen, what the first
+cut got wrong, and what stands.
+
+The board is one canvas drawn from a model. `buildMapModel` (map.ts) works
+out, per glyph, everything the old markup carried - the words the classes
+were (`t-water`, `memory`, `mk-player`), the character, the borders, the
+hover text, the patch and the action it stands for - and `drawBoard`
+(mapcanvas.ts) turns that into a picture in a canvas nobody sees, redrawn
+only when the map's key changes. The picture reaches the screen through
+the effects layer: `updateEffects` copies it onto the one visible canvas
+every frame under the light of the hour and then draws everything that
+moves over it, in the order the old stack of layers had - the night shade
+and the hour's tint over the whole panel, the water, the cloud shadow and
+the weather motion, the walk, the marks that stay legible in the dark
+drawn again over the shade, the pulses, the animals at their own metre
+positions, the startle cues, the pointed glyph. The static layer draws
+nothing that moves, which is the budget the plan asked for, and the
+`.grid` element keeps only its box: hit testing, the board cover and the
+viewport bounds were always arithmetic over its rect and still are.
+
+The first cut kept the stylesheet as the source of colours, through a
+hidden probe cell and `getComputedStyle`, and kept `mapHtml` as a
+serializer of the model into the old markup so that nineteen test files
+could go on reading the map as a document. Both were retired the same
+day, and the reason is the one the author gave: a board drawn from a
+stylesheet through a probe, verified through a markup nobody shows, is a
+board that is not what the player sees, and it is not trustworthy on the
+one browser that was crashing. So:
+
+- **The palette is code.** `palette.ts` is the 140 cell rules carried over
+  one by one, with the cascade's order of precedence written out as the
+  order of the assignments. It was checked against the stylesheet before
+  the stylesheet went: every distinct look on the board, across five
+  seeds, four seasons, every rung and night, through the probe and
+  through the function, and the two agreed on all of them (the two
+  differences found were the probe's own - a remembered mark filtered
+  twice, and a fog dot drawn under the survivor's `@`). Then the cell
+  rules, the keyframes, the overlays, the shade and the tint left the
+  stylesheet: 424 lines, and no rule left that the board reads.
+- **The tests read the model.** `tests/board.ts` is the whole of the
+  helper: `board()` builds the model, `glyphsWith(b, "t-water",
+  "memory")` is what `.c.t-water.memory` used to select, `glyphOfCell`
+  finds the glyph a patch falls in at any rung. What the stylesheet used
+  to be asked - a mark keeps its colours on any ground, snow flattens the
+  relief, ice has no shallows - the palette is asked instead, and it
+  answers the same. What the DOM's z-indices used to be asked is now the
+  draw order of `updateEffects`, and the test reads that order.
+- **The overlays are drawn.** The walk line (two strokes), the herd's
+  exact-position marks at 50 m (with the 180 ms slide the old `transition`
+  gave a move), the startle cues (the 1.2 s pop, hold and rise of the old
+  keyframes, sampled against the wall clock from each cue's own start) and
+  the recoil shake are all `updateEffects` draws from the model. The
+  `--wildlife-now` write every frame and the paused-animation trick that
+  read it are gone with them.
+
+What the real-input harness found, and the DOM never would have. The plan
+had a browser harness that read a fixture world through an off-screen copy
+of the board's markup; the author's view of the game was not that, and
+said so. `scripts/e2e.mjs` plays the real game instead: seed 42 on day
+200, landed through the real controls, clicked on the board with real
+mouse events at real screen coordinates, zoomed with the real buttons,
+walked into night, screenshotted as the player sees it. Its first run
+turned up two bugs that had been in the DOM board all along:
+
+- **The board sat at the top of its panel and clipped the bottom half.**
+  `.scroll-x` is a grid container whose one row track sized itself to the
+  board's 504 px, so `place-items: center` centred nothing: on a 900 px
+  window the map panel is 262 px tall, the survivor - the middle glyph -
+  was drawn on the panel's bottom edge, and every glyph under them was off
+  the screen and could not be clicked. That is the "player glyph is
+  broken" report and half of the "two clicks to walk" one: a click on the
+  visible half walked, a click aimed below it landed on the legend. One
+  declaration fixes it - `grid-template-rows: minmax(0, 1fr)` - and the
+  harness now holds the survivor to the middle third of the visible panel.
+- **The block rungs re-cut the board on every step.** `viewOrigin` put the
+  survivor's patch in the middle glyph exactly, so at 300 m the origin
+  moved one patch per step and every glyph on the board re-aggregated its
+  block one patch over: the whole board recoloured under a survivor
+  standing still in the middle of it. That is the "shimmers and jiggles
+  like crazy when I walk at 300 m" report. The origin is snapped to whole
+  glyphs now; the board holds still while the survivor crosses a block and
+  scrolls one glyph when they leave it. The harness measures it: median
+  glyph churn between origin moves is held under one percent, and a step
+  that re-reads more than five percent of the board is allowed twice in a
+  walk (a region crossing re-washes that region once).
+
+The harness is `npm run e2e` against `npm run dev`, and `docs/e2e/` is
+what it saw. `docs/map-shots/` and the `?weather-shot=` fixture mode are
+gone: the game has one way of being looked at, which is playing it.
+
+**Measured** 2026-09-16, the same seed, day and settled window as the
+figures above, three runs a figure, the DOM board against the one canvas:
+
+                                   DOM board   one canvas
+  main-thread task time per 30 s     5.6-6.0 s   5.9 s
+  of that, script                    2.4-2.5 s   2.26 s
+  of that, style recalculation       0.5-0.7 s   0.2 s
+  share of one core                  18.5-19.9%  19.8%
+
+  median frame                       16.7 ms     16.7 ms
+  95th percentile                    21 ms       21 ms
+  99th percentile                    57-60 ms    40 ms
+  worst frame                        146-203 ms  56-60 ms (149 once)
+  long tasks per 30 s                18-20       0-1
+  worst long task                    145-201 ms  51 ms
+
+  elements in the document           8,705       989
+
+The total did not move and the shape of it did. The nineteen long tasks
+a half-minute - every one the 2,592-cell panel being rebuilt and morphed
+once a game minute, the last thing the previous pass could not cut in a
+document - are gone: the worst thing the main thread does in thirty
+seconds is now one task of fifty milliseconds, and the 99th-percentile
+frame came down from three and a half refreshes to two and a half. What
+the total kept is the per-frame draw, which is larger than it was:
+copying the board under the light of the hour, then the shade, the tint
+and the overlays, every frame, in place of the compositor doing the
+layering for free. That is the trade the plan priced - a steady small
+cost every frame for the absence of the big one every minute - and the
+steady cost is where the next pass would look, starting with drawing the
+board's copy only when something above it moved.
+
+Heap over three minutes of the frame loop with the survivor walking,
+garbage collected before each sample: 108-109 MB throughout, 989
+elements throughout. Nothing grows.
+
+### What the suite was actually spending
+
+**Measured** 2026-09-16. The fast suite took 11 minutes on this container
+against the 17 seconds `docs/testing.md` records for the author's machine,
+and one sight test took 103 seconds on its own. A CPU profile of that test
+put 60 of its 64 busy seconds under `regionAt`, reached from a helper
+that walks regions outward to find one with a spruce cell - and the cost
+was not the flood that builds a region but the copy the in-process cache
+kept of it, which read the region's lazy `spots` to copy them and so
+placed them: up to two dozen route searches per region walked past.
+Keeping spots lazy across the copy took the test from 96 to 38 seconds;
+persisting built regions to disk beside the solved worlds took a warm run
+to 15. `docs/testing.md` has the mechanism.
+
+The block-rung walk took two clicks - the first to disclose which patch
+the glyph resolved to, the second to order the walk - and the disclosure
+was already on show before either, from the pointer and the tooltip. One
+click walks at every rung now; touch keeps its tap to inspect.
+
+### The instrument
+
+The figures above came from CDP's own counters (`Performance.getMetrics`)
+and its sampling profiler, driven by three throwaway harnesses, plus the
+`long-animation-frame` observer for attributing the spikes. None of that is
+in the tree. What is in the tree is `window.survidle.effectsBench(n)`,
+which reports what one effects draw costs in a real browser, because that
+is the one number a redraw budget would need and the one a flame graph
+reads differently every time.
+
+The conclusion the numbers force: the game draws a continuously animated
+scene through a document, and a document is the wrong instrument for that.
+Every moving pixel costs a style resolution on an element that also carries
+classes, data attributes and an accessibility role it does not need.
+
+### The architecture
+
+Four surfaces, split by how often each one changes rather than by what it
+depicts. That split is the whole point: a layer that changes on a walk must
+not be redrawn because a wave moved.
+
+- **Static map canvas.** Terrain, region borders, remembered ground,
+  structures. Redraws only when something it depicts actually changes: a
+  step, a zoom, newly discovered ground, a building raised, the season
+  turning. On a still minute it draws nothing at all.
+- **Effects canvas.** Water shimmer, clouds, fog, precipitation, wildlife,
+  the route line and the player marker. Everything that moves on its own
+  clock. Redraws per animation frame, but as drawing commands rather than as
+  thousands of elements, and it can drop to a lower rate or stop entirely
+  under reduced motion without touching the layer beneath it.
+- **Sky canvas.** Stars, the Milky Way, clouds, precipitation, the sun and
+  the moon. This layer alone removes 4,226 SVG circles and the loop in
+  `projectCoordinateStars` that rewrites two attributes on every one of them
+  ten times a second.
+- **DOM.** Buttons, panels, the tooltip, the stocks bar, labels, settings.
+  Everything a person clicks, reads or types into stays a document, because
+  that is what a document is good at.
+
+### What this buys, and what it costs
+
+Gained: the per-element style cost disappears for everything on a canvas,
+which by the table above is most of the frame. The close-zoom sub-lattice
+stops being a DOM multiplication problem and becomes arithmetic. Reduced
+motion becomes a real switch rather than a CSS block that misses half its
+targets. The compositor stops holding thousands of animated boxes, which is
+the half of the problem Safari actually complained about.
+
+Given up, and the user has accepted this: keyboard navigation of the map and
+screen-reader support for it. That acceptance is what makes this tractable,
+because it removes the requirement that every cell be a focusable element
+with a label.
+
+What must be rebuilt rather than lost:
+
+- **Hit testing** becomes arithmetic. A pointer position maps to a cell by
+  division, which is cheaper and more direct than asking the document which
+  element is under the cursor. The tooltip stays a DOM element positioned
+  over the canvas, so hovering still reads the same.
+- **Theming.** Cell colours come from CSS custom properties today. A canvas
+  cannot read those per draw call; read them once into a palette object when
+  the theme is established, and re-read on a theme change.
+- **Text.** The map is glyphs, so the static layer is thousands of
+  `fillText` calls unless they are prepared. Measure a plain `fillText` pass
+  first; if it is too slow, draw the glyph set once into an offscreen atlas
+  and blit from it, which is the standard answer and turns text into image
+  copies.
+- **Device pixel ratio.** Every canvas must be sized in device pixels and
+  scaled, or the map will be soft on a retina screen, which is exactly the
+  kind of regression that makes people reject a rewrite that was otherwise
+  correct.
+
+### The order to build it in
+
+Each stage should be shippable and separately measurable, and the profile
+should be re-read after each rather than at the end.
+
+1. **The sky canvas first.** It is self-contained, purely decorative, has no
+   hit testing and no state, so it proves the pattern on the easiest
+   surface. It was expected to be the largest single cost and was not; what
+   it removed was four thousand elements and their memory.
+2. **The effects canvas next**, taking the water shimmer, the cloud shadows
+   and the precipitation ripples off the map cells. This removes the
+   per-cell overlay elements while the map itself stays a document, so it
+   can be judged on its own. The measurements above make this the stage
+   that carries the win: the shimmer alone is 86 percent of the
+   recalculation, so this is where the frame is bought back.
+3. **The static map canvas last**, because it carries the hit testing, the
+   glyph drawing and the theming, and it is the stage that can regress the
+   feel of the game. By the time it starts, the two cheaper stages will have
+   established the palette, the pixel-ratio handling and the draw loop.
+
+### How it stays honest
+
+`tests/churn.test.ts` currently measures how often each panel rewrites
+itself, and that test loses its subject as panels become canvases. Replace
+it per layer with the same idea in the new terms: a budget on how many times
+a layer redraws over a fixed number of frames, with the static layer's
+budget being close to zero on a still minute. A static layer that redraws
+every frame is the exact failure this architecture exists to prevent, and it
+would otherwise be invisible.
+
+The existing screenshot harness keeps working, since a canvas screenshots
+like anything else, so the weather and map reference shots remain the check
+that the picture did not change.
+
+### Open questions to settle before stage three
+
+- Whether the map's glyphs survive as text or become an atlas, which only a
+  measurement can answer.
+- What happens to the close-zoom marks and the wildlife glyphs, which today
+  are positioned DOM overlays and are a natural fit for the effects layer.
+- Whether the region borders belong to the static layer or want their own,
+  given they change on discovery rather than on movement.
+
+## A cheap pre-filter for the Do panel's search
+
+**Raised** 2026-09-15, out of the performance work on the render surface.
+
+The Do panel's filter box used to run a real pathfind for every candidate
+row on every tick, measured at 6,634 ms a call against 0.03 ms when the box
+was empty, which is twice the whole frame budget spent for ever while any
+text sat in the box. That is fixed: the route is cached and the cheap
+legality check runs fresh, so a row's reason is never stale. What remains
+is about 25 to 30 ms a tick while text is held, which is a quarter of the
+frame budget and is accepted rather than solved.
+
+The route cache keeps a floored game-minute in its key, and that is
+deliberate and evidenced: over a full game-day with position and knowledge
+fixed, a row's distance never changes but its walking time drifts
+continuously through the light term in `baseWalkSpeed`, by enough that
+dropping the key would show a walk time wrong by a third all night. So the
+misses are honest work, not a missing invalidation.
+
+**Partially addressed** 2026-09-17. Exact concepts are filtered before route
+construction. Free text now checks live searchable descriptions at exact
+direct destinations, or at a valid cached destination, before building routed
+options. The description includes progression text, details, refusals and
+keywords, not only the name. Destination rules are shared with normal intent
+resolution. Cold location-dependent rows remain candidates: excluding them by
+the description at the player's feet would lose legitimate matches elsewhere.
+Region survey labels are also conservatively retained because the panel rewrites
+them. No whole-row or search-text cache can make live legality stale.
+
+The regression starts with 95 routed rows for "torch" and now requires fewer
+than 45, with no unrelated hide-coat route. Exhaustive-result comparisons and
+existing route invalidation/live legality checks protect the search contract.
+Further narrowing of cold location-dependent rows is deferred until measured
+cost justifies a descriptor that can conservatively represent every destination.
+
+## Cross-thread solved-world and fine-cache sharing
+
+**Raised** 2026-09-17, after the Safari memory audit.
+
+Lazy forecast loading and old-seed cache eviction are implemented. They avoid
+allocating a forecast world merely to announce a seed and retaining replaced
+runs. They do not eliminate the second solved world or the independent fine
+caches once forecasts run. Main-thread terrain arrays are still used by rendering
+and simulation; transferring their buffers to the worker would detach data still
+in use and is not sharing.
+
+Investigate immutable base-world sharing separately from mutable run overlays:
+
+1. Measure retained main/worker solved arrays and fine chunks after first forecast,
+   cancellation, reset and a long Safari session. Establish a memory budget.
+2. Enumerate thread ownership and mutations. Keep forecast state and mutable
+   ground overlays isolated; share only data proven immutable.
+3. Verify the candidate shared-memory mechanism against the actual Pages preview
+   deployment and Safari. Do not assume required browser/deployment capabilities.
+   Preserve the current isolated-worker fallback and lazy startup behavior.
+4. Prototype one immutable array boundary, test cancellation/seed replacement,
+   then measure total retained memory and message costs before extending it to
+   solved arrays or fine-cache entries.
+
+Acceptance requires correct reset/cancellation, unchanged world results, verified
+Safari/deployment compatibility and a measured memory reduction. This is not a
+prerequisite for the current preview and is not a speculative transfer patch.
+
+## Slow-suite reconciliation after map, weather and wildlife migrations
+
+**Raised** 2026-09-17. Fast tests and Chromium playthrough passed, but the slow
+integration suite reports failures. A baseline worktree at 98461be3 reproduced
+16 selected UI/wildlife/delivery failures before the performance batch. That
+establishes provenance, not harmlessness. Additional failures are not yet fully
+baseline-classified. Do not disable files or relax assertions to claim green.
+
+Simple cases addressed in this follow-up:
+
+- Task enumeration keeps uniqueness and required-task assertions, without the
+  obsolete fixed count of 49 after two tasks were added.
+- Counted yard clearing gets its missing Building delegation gate. A real order
+  now refuses below the rung and succeeds at it instead of throwing.
+- Save round-trip expectations preserve Maps/typed arrays through an independent
+  structured snapshot; old-world saves assert the explicit refusal result rather
+  than expecting null. These repair obsolete fixtures, not save behavior.
+- Fire fixtures clear leftover laid fuel before testing carried-wood consumption.
+  The drying test checks both 2 kg/h drying and 1 kg/h exposed-stack rewetting,
+  including dry wood and wetted accounting, rather than mistaking the net rate
+  for the drying rate. The whole fire file passes without simulation changes.
+
+Remaining investigation groups, ordered by player risk:
+
+- Delivery preemption and haul completion (`orders`, `ladder`): reproduce whether
+  displaced carrying loses row ownership or marks work complete before delivery.
+  Trace owner, carried load and completion credit across preemption/resumption.
+- Shelter and fire (`body`, `fire`): distinguish stale synthetic-weather fixtures
+  from incorrect cover adequacy, extinguishing or wet-wood drying. Use explicit
+  observer position, local weather and protection transitions, not only regional
+  settings. No balance constants should change just to satisfy an old expectation.
+- Wildlife (`animal-agents`, `hunting`): separate old cell/axis-distance and
+  region-boundary assumptions from actual visibility, alarm and hidden-ice leaks.
+  Use metric positions and independently specified sight/movement contracts.
+  The `animals` summer-refill case narrowly misses its 90% density band; diagnose
+  the migration/calendar fixture before changing the ecological rate or band.
+- Terrain presentation (`ui`, `siting`, `landing`): old per-patch assertions often
+  run at the default 300m aggregate rung. Rewrite narrow tests at an explicit rung
+  and keep separate 300m aggregate/canvas acceptance checks. Fixtures that cannot
+  find their proposed night observer need controlled terrain rather than a new
+  arbitrary seed or weaker assertion.
+  `churn` also reports zero tooltip transitions in its pointer fixture. Reproduce
+  that against controlled known cells, alongside the separate static-layer budget;
+  do not infer from it that continuous redraw is acceptable.
+- Task availability and seep waiting (`tasks`, `needs`): establish whether the
+  fixture reaches usable water, then validate seasonal refusals and continuous
+  trickle drinking at the resolved work destination.
+  `water` also expects an iced-shore message in an old inventory presentation;
+  check the current access/status boundary before altering UI or removing coverage.
+- Routing/visibility budgets (`spatial-performance`): replace incidental generated
+  terrain with controlled traversable neighbors; derive parent-touch budgets from
+  the declared reach plus boundary cells. Do not merely raise failing limits.
+
+Next pass should produce an exhaustive JSON failure inventory, run each affected
+case at the pulled baseline and current head, and record root cause, production
+contract and minimal regression. Commit each verified correction independently,
+then run the complete slow suite on the settled head. The in-flight old-head
+run is diagnostic evidence, not final validation of subsequent commits.

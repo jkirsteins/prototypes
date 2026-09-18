@@ -38,6 +38,107 @@ export function qty(inv: Inventory, item: ItemId): number {
   return inv.items[item] ?? 0;
 }
 
+export type PileCategory = "firewood" | "wetFirewood" | "perishable";
+
+/**
+ * A live index over state.piles: which cells currently hold dry firewood,
+ * wet firewood, or a perishable stack. fire.ts's drying and wetting passes
+ * and camp.ts's spoilage pass walk this instead of every cell state.piles
+ * has ever recorded, most of which by the time a run is old hold nothing
+ * but stone or bark that nobody is walking back for.
+ *
+ * Built once per GameState instance, lazily, the first time pileCells reads
+ * any category for it - a full scan of state.piles that also makes a state
+ * loaded from a save, or handed over freshly cloned for a forecast, correct
+ * from its very first read rather than only from its first write onward.
+ * From there it is kept current incrementally: addItem, removeItem and
+ * ageStacks each re-derive one cell's membership right after they touch a
+ * pile's inventory (a no-op for any inventory the index has not tagged as a
+ * pile, chiefly the player's pack), tidyPiles drops a cell the moment its
+ * pile is swept away empty, and pile() tags a cell's inventory the moment
+ * anything asks for it. Every path that creates or changes a pile - produce,
+ * transfer, hauling, dropping, a carcass dressed onto the ground, the away
+ * catch-up loop - goes through addItem, removeItem or pile() here, so none
+ * of those callers has to remember to maintain this on its own.
+ */
+type PileIndex = Record<PileCategory, Set<number>>;
+
+const pileIndexes = new WeakMap<GameState, PileIndex>();
+const pileOwner = new WeakMap<Inventory, { state: GameState; cell: number }>();
+
+function classify(inv: Inventory): Record<PileCategory, boolean> {
+  return {
+    firewood: qty(inv, "firewood") > TRACE_KG,
+    wetFirewood: qty(inv, "wetFirewood") > TRACE_KG,
+    perishable: PERISHABLES.some((id) => inv.stacks[id]?.length),
+  };
+}
+
+function applyClassification(idx: PileIndex, cell: number, has: Record<PileCategory, boolean>): void {
+  for (const category of Object.keys(has) as PileCategory[]) {
+    if (has[category]) idx[category].add(cell);
+    else idx[category].delete(cell);
+  }
+}
+
+function ensurePileIndex(state: GameState): PileIndex {
+  let idx = pileIndexes.get(state);
+  if (idx) return idx;
+  idx = { firewood: new Set(), wetFirewood: new Set(), perishable: new Set() };
+  for (const key of Object.keys(state.piles)) {
+    const cell = Number(key);
+    const inv = state.piles[cell];
+    if (!inv) continue;
+    pileOwner.set(inv, { state, cell });
+    applyClassification(idx, cell, classify(inv));
+  }
+  pileIndexes.set(state, idx);
+  return idx;
+}
+
+/** Re-derives one pile's membership in the live index after it may have changed. A no-op for any inventory the index has not tagged as a pile. */
+function reindexPile(inv: Inventory): void {
+  const owner = pileOwner.get(inv);
+  if (!owner) return;
+  applyClassification(ensurePileIndex(owner.state), owner.cell, classify(inv));
+}
+
+/** The cells in one live-index category, in the same ascending order Object.keys(state.piles) reads by default, so a caller that switches a scan to this loses nothing of the order its results or log lines come out in. */
+export function pileCells(state: GameState, category: PileCategory): number[] {
+  return [...ensurePileIndex(state)[category]].sort((a, b) => a - b);
+}
+
+/**
+ * Test-only trip-wire: compares whichever live index already exists for
+ * this state - built by an earlier pileCells read or mutation, untouched
+ * here - against a fresh scan of state.piles, and throws naming the first
+ * mismatch. A plain object cannot refuse a raw write straight onto
+ * inv.stacks or inv.items, so a future bypass of addItem, removeItem,
+ * addAgedStack, ageStacks or pile() cannot be made impossible; this is how
+ * it is instead made to fail loudly the moment a test calls it, rather than
+ * silently skipping a pile some loop should have visited. Does nothing if
+ * no index has been built yet for this state - call pileCells, or make any
+ * mutation, first, the same way real play would have.
+ */
+export function assertPileIndexConsistent(state: GameState): void {
+  const idx = pileIndexes.get(state);
+  if (!idx) return;
+  for (const category of Object.keys(idx) as PileCategory[]) {
+    const truth = new Set<number>();
+    for (const key of Object.keys(state.piles)) {
+      const cell = Number(key);
+      const inv = state.piles[cell];
+      if (inv && classify(inv)[category]) truth.add(cell);
+    }
+    const live = idx[category];
+    const missing = [...truth].filter((cell) => !live.has(cell));
+    const extra = [...live].filter((cell) => !truth.has(cell));
+    if (missing.length || extra.length) {
+      throw new Error(`pile index out of sync for "${category}": missing ${missing.join(", ") || "none"}, stale ${extra.join(", ") || "none"}`);
+    }
+  }
+}
+
 export function weight(inv: Inventory): number {
   let kg = 0;
   for (const k of Object.keys(inv.items) as ItemId[]) kg += (inv.items[k] ?? 0) * ITEM_KG[k];
@@ -65,9 +166,27 @@ export function addItem(inv: Inventory, item: ItemId, n: number): void {
     const fresh = stacks.find((s) => s.age === 0);
     if (fresh) fresh.kg += n;
     else stacks.push({ kg: n, age: 0 });
+    reindexPile(inv);
     return;
   }
   inv.items[item] = (inv.items[item] ?? 0) + n;
+  reindexPile(inv);
+}
+
+/**
+ * Adds one perishable stack at a specific age rather than fresh: what a
+ * transfer of already-ageing food (a pack laid down at death, a carcass
+ * moved whole) has to preserve, since addItem always starts a stack at age
+ * zero. This is the one other place, besides addItem, allowed to push
+ * straight onto inv.stacks - every caller moving a pile's perishables
+ * anywhere reaches for this or addItem rather than touching stacks
+ * directly, so the live index never has to be reindexed by hand.
+ */
+export function addAgedStack(inv: Inventory, item: PerishableId, kg: number, age: number): void {
+  if (kg <= 0) return;
+  if (!inv.stacks[item]) inv.stacks[item] = [];
+  inv.stacks[item].push({ kg, age });
+  reindexPile(inv);
 }
 
 /** Removes up to n, oldest first for perishables. Returns what was actually removed. */
@@ -83,12 +202,14 @@ export function removeItem(inv: Inventory, item: ItemId, n: number): number {
       left -= take;
       if (s.kg <= 1e-9) stacks.shift();
     }
+    reindexPile(inv);
     return n - left;
   }
   const have = inv.items[item] ?? 0;
   const take = Math.min(have, n);
   if (take >= have) delete inv.items[item];
   else inv.items[item] = have - take;
+  reindexPile(inv);
   return take;
 }
 
@@ -113,6 +234,7 @@ export function pile(state: GameState, cell: number): Inventory {
     inv = emptyInventory();
     state.piles[cell] = inv;
   }
+  if (!pileOwner.has(inv)) pileOwner.set(inv, { state, cell });
   return inv;
 }
 
@@ -138,9 +260,13 @@ export function reach(state: GameState, world: World): Inventory[] {
 
 /** Drops empty piles so the map does not mark bare ground. */
 export function tidyPiles(state: GameState): void {
+  const idx = pileIndexes.get(state);
   for (const k of Object.keys(state.piles)) {
-    const inv = state.piles[Number(k)];
-    if (inv && isEmpty(inv)) delete state.piles[Number(k)];
+    const cell = Number(k);
+    const inv = state.piles[cell];
+    if (!inv || !isEmpty(inv)) continue;
+    delete state.piles[cell];
+    if (idx) for (const category of Object.keys(idx) as PileCategory[]) idx[category].delete(cell);
   }
 }
 
@@ -257,6 +383,7 @@ export function ageStacks(inv: Inventory, dt: number, ambient: number): Partial<
       inv.stacks[p] = keep;
     }
   }
+  reindexPile(inv);
   return lost;
 }
 

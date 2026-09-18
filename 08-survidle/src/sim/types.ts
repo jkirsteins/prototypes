@@ -96,6 +96,9 @@ export type KgItem =
   | "water" | "ice";
 export type ItemId = CountItem | KgItem;
 
+/** The stocks toolbar's four groups. Every item a group names belongs to exactly one. */
+export type StockGroupId = "wood" | "food" | "water" | "pack";
+
 /** Food that goes off. Each stack remembers how long it has been warm. */
 export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "rawFat" | "eggs" | "cookedRoots" | "seaweed";
 export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "oilyFish", "cookedOilyFish", "roe", "berries", "rawFat", "eggs", "cookedRoots", "seaweed"];
@@ -147,7 +150,7 @@ export interface Carcass {
   yields: CarcassYields;
 }
 
-export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore" | "seep" | "snowShelter";
+export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore" | "seep" | "snowShelter" | "vedbod";
 /** Structures the weather takes down unless they are mended. */
 export type DecayingId = "leanTo" | "dryingRack" | "turfHut";
 
@@ -168,17 +171,17 @@ export const FILL_METHODS: FillMethod[] = ["shore", "hole", "seep"];
 export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split" | "deadwood" | "splitWedges"
   | "hunt" | "findDen" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
-  | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
+  | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fuel" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
-  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome" | "findShelter" | "improveCover" | "emergencyShelter" | "readSky";
+  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep" | "makeCamp" | "widenYard" | "explore" | "searchHome" | "findShelter" | "improveCover" | "emergencyShelter" | "readSky";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges",
   "hunt", "findDen", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
-  "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
+  "light", "lightTorch", "melt", "thaw", "lightIndoors", "fuel", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
-  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "explore", "searchHome", "findShelter", "improveCover", "emergencyShelter", "readSky",
+  "travel", "walk", "haul", "night", "rest", "sleep", "makeCamp", "widenYard", "explore", "searchHome", "findShelter", "improveCover", "emergencyShelter", "readSky",
 ];
 
 export interface Task {
@@ -190,6 +193,13 @@ export interface Task {
   /** Minutes of work the task needs at full speed. */
   duration: number;
   repeat: boolean;
+  /**
+   * Minutes already done before this start and banked on the camp site (a
+   * build set aside). The bar starts there, so a resumed build reads as
+   * resumed and not as a fresh job over the remainder; setting it aside
+   * again banks only what came after.
+   */
+  carried?: number;
   /** Natural shelter level promised when this search began, before its practice. */
   shelterLevel?: number;
   /** Persistent large-animal subject selected when a detailed hunt begins. */
@@ -252,12 +262,28 @@ export interface Route {
   lastLand: number;
 }
 
+/**
+ * A fire's setting, one per fire, the field fire included. `burning`: the
+ * fire is kept alive, and burning while the flame is useful - the night,
+ * a cold or wet body, work at camp that wants it. Fed to max under the low
+ * mark then, since the burn rate does not depend on how full the pit is
+ * and only the hours lit cost wood; let down to coals and banked when
+ * nothing needs the flame, so a warm day at camp does not burn fifty
+ * kilos; rekindled from coals when a need comes back. `out`: the camp row
+ * does nothing for it. Neither starts a fire from cold: the body's own
+ * needs - the night, the cold, a cook, a melt - and the player's Light row
+ * do that. Banking on leaving camp is automatic under both.
+ */
+export type FireKeep = "burning" | "out";
+
 /** When an intent is finished with. */
 export type Until =
   | { kind: "once" }
   | { kind: "times"; n: number }
   | { kind: "campHas"; item: ItemId; qty: number }
-  | { kind: "forever" };
+  | { kind: "forever" }
+  /** Never met: the row stands until the player strikes it off. A map click's walk, which stays where it was sent. */
+  | { kind: "dismissed" };
 
 /** Where an intent's work is done: the nearest suitable ground, a named spot, or one cell. */
 export type Where = "nearest" | SpotId | { cell: number };
@@ -265,7 +291,9 @@ export type Where = "nearest" | SpotId | { cell: number };
 /** The row's chosen kind, before the yield item is filled in. A daily count is cleared at the day roll and never drops off. */
 export type UntilChoice =
   | { kind: "once" } | { kind: "times"; n: number } | { kind: "campHas"; qty: number } | { kind: "forever" }
-  | { kind: "daily"; n: number };
+  | { kind: "daily"; n: number }
+  /** A map click's walk: never met, struck off by the player. The Do panel never offers it. */
+  | { kind: "dismissed" };
 
 /**
  * Conditions on a standing order, read every morning against the calendar
@@ -509,6 +537,10 @@ export interface Site {
   emergencyAge: number;
   /** Drying racks standing here, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
   racks: number;
+  /** Woodsheds standing here. Nothing caps the count: materials, labour, upkeep and the yard do. */
+  woodsheds: number;
+  /** Cleared ground at this camp, in square metres; every structure standing here takes its share. */
+  yardM2: number;
   /** Minutes since the bough bed was laid; boughs go flat and brown after four days. */
   boughBedAge: number;
   /** Days in a row with a mean above freezing; a snow shelter slumps at SNOW_MELT_DAYS. */
@@ -537,6 +569,10 @@ export interface RegionState {
   snares: number;
   fire: {
     lit: boolean; fuelKg: number; wetKg: number; indoors: boolean; unattended: number;
+    /** What the camp row does for this fire: keeps it burning, keeps its coals alive, or nothing. */
+    keep: FireKeep;
+    /** The row fed this fire above the low mark. Only that is taken back when nothing needs the flame; a fire laid or lit by hand burns what it was given. */
+    fedByRow: boolean;
     /** Minutes of ember life left once the flame is gone. Embers are not lit. */
     embers: number;
     /** Minute this fire was last lit from cold; null once the embers die. A run of keeping is measured from it. */
@@ -552,6 +588,8 @@ export interface RegionState {
   smoke: number;
   /** Minutes since it last rained here; wood split while this is low comes out wet. */
   logsWet: number;
+  /** Firewood this region has lost to rain since the log last said so; reported and reset once a day. */
+  wettedKg: number;
   /** This camp's ranked orders, top first. */
   orders: Order[];
   nextOrderId: number;
@@ -592,7 +630,8 @@ export interface Player {
    * is resumed rather than abandoned. Physical exhaustion is represented by
    * the separate `spent` Rest need and never sets this field.
    */
-  sleeping: { collapsed: false } | null;
+  /** Asleep. `doze` when the sleep began in daylight: the word is chosen once, so a night that runs past dawn stays "sleeping". */
+  sleeping: { collapsed: false; doze?: true } | null;
   /** Physical collapse from depleted Stamina. Rest clears it at the recovery line; it never starts or extends sleep. */
   collapsed: boolean;
   /** The body need being served, or null. Sticky: a need's exit line is not its entry line. */
@@ -818,7 +857,7 @@ export type OpportunityKey =
   | StaticOpportunityId
   | `track:${Species}` | `hunt:${Species}` | `dress:${Species}`
   | `recover:${Species}` | `catch:${Species}` | `trap:${Species}`
-  | `forage:${FoodId}` | `build:${StructureId}` | `make:${ToolId}`
+  | `forage:${FoodId}` | `build:${StructureId}` | `make:${ToolId}` | `make:${RecipeId}`
   | `season:${Season}`;
 
 export type OpportunityCategory =
@@ -828,7 +867,7 @@ export type OpportunityCategory =
 export type OpportunityGroupId =
   | "track-animals" | "hunt-animals" | "dress-carcasses" | "recover-kills"
   | "catch-fish" | "trap-fish" | "forage-foods" | "build-shelters"
-  | "make-tools" | "seasons";
+  | "build-camp" | "make-tools" | "make-craft" | "seasons";
 
 export type StormOptionKind = "returnCamp" | "localShelter" | "remoteRefuge";
 
@@ -920,7 +959,8 @@ export interface OpportunityStepDef {
   target: number;
   unit?: string;
   final?: boolean;
-  credit: (event: OpportunityEvent) => number;
+  /** `held` is what the survivor can lay hands on: a step asking for a tool reads it, so having one counts however it was come by. */
+  credit: (event: OpportunityEvent, held?: ReadonlySet<ItemId>) => number;
 }
 
 export interface OpportunityDef {
@@ -932,6 +972,15 @@ export interface OpportunityDef {
   prerequisites?: OpportunityKey[];
   notBeforeDay?: number;
   note?: string;
+  /**
+   * An FYI: discovered like any other and shown in the field notes with
+   * its note, but with nothing to do - complete the moment it is
+   * discovered, never current, never holding a later rung. How the game
+   * says "this is how water works" once and then gets out of the way.
+   * Waiting is not a goal: drinking happens on its own, a season is
+   * lived through rather than achieved.
+   */
+  fyi?: true;
 }
 
 export interface OpportunityGroupDef {

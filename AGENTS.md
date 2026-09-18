@@ -105,6 +105,14 @@ in each prototype and assemble the `dist/` directories the way
   pass before committing. Keep `npm test` fast - if a suite grows past a few
   seconds, split the slow part behind its own script rather than taxing every
   commit with it.
+- The slow suites run only when asked, and they are not gates. In
+  `08-survidle`, `npm run test:slow` is whole-run simulations (minutes) and
+  `npm run test:safari` measures real Safari's memory footprint of the built
+  game (about three minutes, and it takes over a visible Safari window, so it
+  cannot run unattended). Run either when the user asks, or at the very end
+  of a piece of work that touched what they measure; never per commit. If the
+  Safari run ever gets fast enough and hands-free, it belongs in a pre-push
+  hook, not a pre-commit one.
 - `vite.config.ts` must set `base: "/prototypes/NN/"` matching the directory
   number, or the deployed build will not load its assets.
   CI passes `--base` explicitly for a branch preview, so the value in the file

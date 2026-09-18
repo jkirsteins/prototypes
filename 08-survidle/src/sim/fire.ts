@@ -5,8 +5,9 @@
  */
 import { cellAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
+import { coveredWoodKg, woodOnHandKg } from "./camp";
 import type { Calendar } from "./calendar";
-import { addItem, pile, qty, removeItem, TRACE_KG } from "./inventory";
+import { addItem, pile, pileCells, qty, removeItem, TRACE_KG } from "./inventory";
 import { BARK_DRY_RATIO, STRUCTURES } from "./items";
 import { campSite, regionState, siteAt, touchedRegions } from "./regionstate";
 import { cellOf } from "./position";
@@ -81,6 +82,24 @@ export const EMBER_RELIGHT_MINUTES = 5;
 
 export function hasEmbers(fire: RegionState["fire"]): boolean {
   return !fire.lit && fire.embers > 0;
+}
+
+/**
+ * What a fire is, as a level a need can name: out, coals, or a full fire.
+ * Two live levels for now; the roadmap's fire states (embers, a utility
+ * fire, a heating fire, a long fire) slot in here as more levels, each
+ * with its own burn, warmth, drying and light, once those have sources.
+ */
+export type FireLevel = "none" | "coals" | "full";
+const FIRE_RANK: Record<FireLevel, number> = { none: 0, coals: 1, full: 2 };
+export function fireLevelOf(fire: RegionState["fire"]): FireLevel {
+  return fire.lit ? "full" : hasEmbers(fire) ? "coals" : "none";
+}
+export function fireAtLeast(have: FireLevel, want: FireLevel): boolean {
+  return FIRE_RANK[have] >= FIRE_RANK[want];
+}
+export function higherFire(a: FireLevel, b: FireLevel): FireLevel {
+  return FIRE_RANK[a] >= FIRE_RANK[b] ? a : b;
 }
 
 export const BANKED_KG = 6;
@@ -207,15 +226,16 @@ export function splitIsWet(state: GameState, world: World, cell = cellOf(state, 
 }
 
 /**
- * True when `at` is the camp cell of its own region, with a lean-to or
- * cabin built: the roof keeps the rain off the block, so a split there is
- * never wet. Takes the cell being judged rather than reading the player's
- * own position, since checkFresh judges a task at a cell the player has
- * not necessarily walked to yet.
+ * True when `at` is the camp cell of its own region, with a roof over it or
+ * a vedbod standing: either keeps the rain off the block, so a split there
+ * is never wet. Takes the cell being judged rather than reading the
+ * player's own position, since checkFresh judges a task at a cell the
+ * player has not necessarily walked to yet.
  */
 export function splitSheltered(state: GameState, world: World, at: number): boolean {
   const st = regionState(state, world, cellAt(world, at).region);
-  return at === st.campCell && roofed(campSite(st));
+  const site = campSite(st);
+  return at === st.campCell && (roofed(site) || (site?.woodsheds ?? 0) > 0);
 }
 
 /**
@@ -224,8 +244,9 @@ export function splitSheltered(state: GameState, world: World, at: number): bool
  * pair is wet firewood drying one for one; a second call with `freshBark`,
  * `driedBark` and `BARK_DRY_RATIO` runs the same budget over the bark.
  */
-function dryBudget(invs: Inventory[], perHour: number, dt: number, from: ItemId = "wetFirewood", to: ItemId = "firewood", ratio = 1): void {
+function dryBudget(invs: Inventory[], perHour: number, dt: number, from: ItemId = "wetFirewood", to: ItemId = "firewood", ratio = 1): number {
   let budget = (perHour / 60) * dt;
+  let dried = 0;
   for (const inv of invs) {
     if (budget <= 1e-9) break;
     const have = qty(inv, from);
@@ -233,7 +254,9 @@ function dryBudget(invs: Inventory[], perHour: number, dt: number, from: ItemId 
     const moved = removeItem(inv, from, Math.min(have, budget));
     addItem(inv, to, moved / ratio);
     budget -= moved;
+    dried += moved / ratio;
   }
+  return dried;
 }
 
 /**
@@ -246,39 +269,65 @@ function dryBudget(invs: Inventory[], perHour: number, dt: number, from: ItemId 
  * the same rates to dried bark, at BARK_DRY_RATIO, but only in a camp pile
  * or the pack: it is not left drying in a pile out in the field.
  */
-export function dryWood(state: GameState, dt: number, who: Presence | null, world?: World): void {
+export function dryWood(state: GameState, dt: number, who: Presence | null, world?: World): number {
+  let dried = 0;
   const dryAt = (cell?: number) => (world ? localWeather(state, world, cell) : state.weather).precip === "none";
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
     if (st.campCell === null) continue;
     const dry = dryAt(st.campCell);
     const site = campSite(st);
-    const sheltered = st.fire.lit || site?.structures.cabin || site?.structures.turfHut;
+    const sheltered = st.fire.lit || site?.structures.cabin || site?.structures.turfHut || (site?.woodsheds ?? 0) > 0;
     const perHour = sheltered ? 2 : site?.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
     if (perHour <= 0) continue;
     const campPile = state.piles[st.campCell];
     const atThisCamp = who !== null && id === who.region && who.atCamp && !state.player.fieldFire;
     const invs = [campPile, atThisCamp ? state.player.pack : undefined].filter((x): x is Inventory => x !== undefined);
-    dryBudget(invs, perHour, dt);
+    dried += dryBudget(invs, perHour, dt);
     dryBudget(invs, perHour, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }
   // A field fire dries the carried items even in rain, without reaching a camp pile.
   if (who && state.player.fieldFire) {
-    dryBudget([state.player.pack], 2, dt);
+    dried += dryBudget([state.player.pack], 2, dt);
     dryBudget([state.player.pack], 2, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }
-  for (const k of Object.keys(state.piles)) {
-    const cell = Number(k);
+  for (const cell of pileCells(state, "wetFirewood")) {
     const inv = state.piles[cell];
     if (!inv || qty(inv, "wetFirewood") <= TRACE_KG) continue;
     if (!dryAt(cell)) continue;
     const isCampPile = touchedRegions(state).some((id) => state.regions[id].campCell === cell);
-    if (!isCampPile) dryBudget([inv], 0.5, dt);
+    if (!isCampPile) dried += dryBudget([inv], 0.5, dt);
   }
   // Away from every camp, the pack dries in the open like any other stack; nobody carries one with nobody home.
   if (who && !who.atCamp && !state.player.fieldFire && dryAt()) {
-    dryBudget([state.player.pack], 0.5, dt);
+    dried += dryBudget([state.player.pack], 0.5, dt);
     dryBudget([state.player.pack], 0.5, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
+  }
+  return dried;
+}
+
+/**
+ * Rain reaches the outer layer of a stack, and the outer layer is much the
+ * same size whatever the stack, so this does not grow with the pile. What
+ * it is bounded by is the wood standing out in the weather: cover keeps its
+ * own share dry, and a pile out in the field has no cover to have.
+ */
+export const RAIN_WET_KG_PER_HOUR = 1;
+
+export function wetWood(state: GameState, world: World, dt: number): void {
+  for (const cell of pileCells(state, "firewood")) {
+    const inv = state.piles[cell];
+    if (!inv || qty(inv, "firewood") <= TRACE_KG) continue;
+    if (localWeather(state, world, cell).precip === "none") continue;
+    const st = regionState(state, world, cellAt(world, cell).region);
+    const covered = cell === st.campCell ? coveredWoodKg(campSite(st)) : 0;
+    const exposed = Math.max(0, woodOnHandKg(inv) - covered);
+    if (exposed <= TRACE_KG) continue;
+    const wetted = Math.min(qty(inv, "firewood"), exposed, (RAIN_WET_KG_PER_HOUR / 60) * dt);
+    if (wetted <= TRACE_KG) continue;
+    removeItem(inv, "firewood", wetted);
+    addItem(inv, "wetFirewood", wetted);
+    st.wettedKg += wetted;
   }
 }
 

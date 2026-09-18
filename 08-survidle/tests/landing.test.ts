@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { bodyRowOf, campRowOf, isBodyRow, isCampRow, isCareRow } from "../src/sim/bodyorder";
 import { calendar, COAST_OPEN_FROM, COAST_OPEN_TO, coastOpen } from "../src/sim/calendar";
-import { addItem, herePile, pile, qty } from "../src/sim/inventory";
+import { addItem, assertPileIndexConsistent, herePile, pile, pileCells, qty } from "../src/sim/inventory";
+import { spoilPiles } from "../src/sim/camp";
 import { setSkillLevel } from "../src/sim/horizon";
 import { giveOrder } from "../src/sim/ladder";
-import { beginAgain, demoteFog, land, landingCell, landingDate } from "../src/sim/landing";
+import { beginAgain, demoteFog, land, landingCell, landingDate, layDownPack } from "../src/sim/landing";
 import { markKnown } from "../src/sim/mapped";
 import { fmtName } from "../src/sim/names";
 import { newGame } from "../src/sim/newgame";
@@ -16,12 +17,13 @@ import { current } from "../src/sim/record";
 import { campSite, DIM, discovery, enterRegion, regionState, siteFor } from "../src/sim/regionstate";
 import { SKILL_IDS } from "../src/sim/skills";
 import { seasonalMean } from "../src/sim/weather";
-import { mapHtml } from "../src/ui/map";
-import { tombstoneHtml } from "../src/ui/panels";
-import { newUiState, resetPanels, setPanel } from "../src/ui/render";
+import { board, glyphsWith } from "./board";
+import { campHtml, tombstoneHtml } from "../src/ui/panels";
+import { newUiState, resetPanels } from "../src/ui/render";
 import { PATCH_KM } from "../src/world/spatial";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { testAtmosphere } from "./weather-helpers";
 
 describe("the gap", () => {
   it("opens the coast a month after the mean crosses zero in spring and closes when it crosses in autumn", () => {
@@ -91,6 +93,48 @@ describe("the landing", () => {
     expect(state.landing!.name.first.length).toBeGreaterThan(0);
   });
 
+  it("lays down a pack of nothing but perishables where the body fell, and that food still spoils on schedule", () => {
+    // The bypass this guards against only shows with no plain items and no
+    // tools in the pack: either one calls addItem on its own and happens to
+    // reindex the whole pile as a side effect, which is exactly the
+    // incidental behaviour that must not be the thing standing between this
+    // food and ever spoiling.
+    testAtmosphere({ temperatureC: 10 });
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    // A real session has built and read the live index countless times
+    // before any particular death - a bypass has to stay caught against an
+    // index that already exists, not be hidden by the one-time lazy build
+    // a state that had never touched a pile before would get for free.
+    addItem(pile(state, cellOf(state, world) + 1), "stone", 1);
+    pileCells(state, "perishable");
+    state.player.tools = [];
+    state.player.pack.items = {};
+    addItem(state.player.pack, "rawMeat", 3);
+    const deathCell = cellOf(state, world);
+    die(state, "starved");
+    layDownPack(state, world);
+
+    expect(Object.keys(state.player.pack.items)).toHaveLength(0);
+    expect(state.player.tools).toHaveLength(0);
+    const dropped = pile(state, deathCell);
+    expect(qty(dropped, "rawMeat")).toBeCloseTo(3, 6);
+    // The exact finding: with no addItem call anywhere in layDownPack's run,
+    // nothing would have reindexed this cell, and it would be invisible to
+    // every loop that walks the perishable category.
+    expect(pileCells(state, "perishable")).toContain(deathCell);
+    assertPileIndexConsistent(state);
+
+    // 36 hours (rawMeat's SPOIL_HOURS) of warm spoilage passes must clear it
+    // out, the same as it would for any other perishable pile - proving the
+    // spoilage loop actually walks this cell rather than the index merely
+    // claiming it does.
+    spoilPiles(state, world, 36 * 60 + 1, null);
+    expect(qty(pile(state, deathCell), "rawMeat")).toBe(0);
+    expect(pileCells(state, "perishable")).not.toContain(deathCell);
+    assertPileIndexConsistent(state);
+  });
+
   it("reads the old camp from where the survivor built, not from wherever they died", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
@@ -137,20 +181,18 @@ describe("the dim map", () => {
     const ui = newUiState();
     addItem(herePile(state, world), "stone", 2);
 
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(1);
+    expect(glyphsWith(board(world, state, ui, cal), "pl").length).toBe(1);
 
     demoteFog(state);
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(0);
-    expect(document.querySelector("#map .c[title*='something lies here']")).toBeNull();
+    const dim = board(world, state, ui, cal);
+    expect(glyphsWith(dim, "pl").length).toBe(0);
+    expect(dim.glyphs.some((g) => g.info.includes("something lies here"))).toBe(false);
 
     enterRegion(state, world, state.player.region);
     // A real re-entry always comes with a look around (placeAt's seeFrom); enterRegion
     // alone only marks the region, so the ground underfoot is re-seen here by hand.
     markKnown(state, cellOf(state, world));
-    setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(1);
+    expect(glyphsWith(board(world, state, ui, cal), "pl").length).toBe(1);
   });
 });
 
@@ -239,6 +281,35 @@ describe("what the heir is told", () => {
     // And they are where a fresh list puts them: the care rows above the work.
     expect(bodyRowOf(state, world)).not.toBe(null);
     expect(campRowOf(state, world)).not.toBe(null);
+  });
+
+  // A wipe is a wipe: a build order still sitting at its planned zero has
+  // nothing left to want it once every order in the region is gone, so it
+  // leaves no more trace than the order itself does. A structure already
+  // under way is not a plan, it is ground already broken - the same
+  // "structures, the piles, the snares" the heir inherits everywhere else.
+  it("clears a still-planned build's site entry on death, and keeps a part-built one", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    const camp = st.campCell!;
+    giveOrder(state, world, { task: "build", arg: "vedbod", until: { kind: "once" }, deliver: "camp", where: { cell: camp } }, "job");
+    giveOrder(state, world, { task: "build", arg: "leanTo", until: { kind: "once" }, deliver: "camp", where: { cell: camp } }, "job");
+    // Stands in for real minutes already banked on the lean-to before the survivor died.
+    // No advance here: the camp starts with enough of a lean-to's materials in reach that
+    // running the clock would let the scheduler actually finish it, which is not this test.
+    siteFor(st, camp).build.leanTo = 42;
+    die(state, "starved");
+    beginAgain(state, world);
+    land(state, world, { first: "Aino", last: "Berzins" });
+    const site = campSite(regionState(state, world, region))!;
+    expect(site.build.vedbod).toBeUndefined();
+    expect(site.build.leanTo).toBe(42);
+    // campHtml reads the standing survivor's own region; read the old camp's
+    // sheet by standing the heir there for the assertion.
+    state.player.region = region;
+    expect(campHtml(state, world, calendar(state.minute, state.startDoy))).not.toContain("vedbod");
   });
 
   it("says nothing about the journal when nothing was built, and the first tombstone has no comparison", () => {

@@ -34,9 +34,8 @@ import { SPECIES_DEFS } from "../sim/species";
 import { esc } from "./render";
 import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
 import { compactEquipmentHtml } from "./equipment";
-import { visibleCells } from "../sim/sight";
 import { cellKnowledge, cellPresentation } from "./cellpresentation";
-import { glyphScale, glyphSummary, type MapTarget, terrainComposition } from "./map";
+import { glyphScale, glyphSummary, type MapTarget, terrainComposition, viewshedNow } from "./map";
 
 /**
  * Everything the tooltip's text depends on, as one string.
@@ -65,9 +64,10 @@ export function tipKey(state: GameState, world: World, calOrCell: Calendar | num
   const protection = site ? `P${protectionOf(site)}:${profileOf(site)}` : "";
   const fieldFire = state.player.fieldFire;
   const field = Boolean(fieldFire && fieldFire.cell === cell && fieldFire.fuelKg > 0);
-  const current = visibleCells(state, world, cal, cellOf(state, world)).has(cell);
+  const shed = viewshedNow(state, world, cal, cellOf(state, world));
+  const current = shed.has(cell);
   const ground = cellPresentation(state, world, cell, cellKnowledge(state, cell, current)).heading;
-  const wildlife = visibleWildlife(state, world, cal)
+  const wildlife = visibleWildlife(state, world, cal, shed)
     .filter((subject) => subject.active?.cell === cell)
     .map((subject) => `${subject.id}:${wildlifeMembers(subject)}:${subject.active?.intent}:${state.wildlife.recognized[subject.id] ? subject.name ?? "" : ""}`)
     .join(",");
@@ -75,7 +75,7 @@ export function tipKey(state: GameState, world: World, calOrCell: Calendar | num
 }
 
 function animalsAt(state: GameState, world: World, cal: Calendar, cell: number): string[] {
-  return visibleWildlife(state, world, cal)
+  return visibleWildlife(state, world, cal, viewshedNow(state, world, cal, cellOf(state, world)))
     .filter((subject) => subject.active?.cell === cell)
     .map((subject) => {
       const identity = state.wildlife.recognized[subject.id] && subject.name
@@ -190,7 +190,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   const region = cellAt(world, cell).region;
   const regionName = esc(head(regionAt(world, region).name));
   const heading = (name: string, where = "") => `<div class="tiphead"><b>${esc(head(name))}</b><span class="dim">${regionName}${where ? `, ${esc(where)}` : ""}</span></div>`;
-  const current = visibleCells(state, world, cal, cellOf(state, world)).has(cell);
+  const current = viewshedNow(state, world, cal, cellOf(state, world)).has(cell);
   const presentation = cellPresentation(state, world, cell, cellKnowledge(state, cell, current));
 
   // Another region first. The hover surface reports facts only; movement is

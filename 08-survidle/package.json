@@ -21,7 +21,8 @@
     "terrain": "vite-node scripts/terrain.ts",
     "startle-seeds": "vite-node scripts/startle-seeds.ts",
     "startle-shots": "node scripts/startle-shots.mjs",
-    "shots": "node scripts/map-shots.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "test:safari": "npm run build && zsh scripts/safari-footprint.sh",
     "sky": "node scripts/sky-shots.mjs",
     "opportunity-ux": "node scripts/opportunity-ux.mjs"
   },

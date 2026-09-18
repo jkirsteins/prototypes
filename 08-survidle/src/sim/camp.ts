@@ -3,12 +3,12 @@ import { cellAt, regionAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
-import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty } from "./inventory";
-import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepFieldFire, stepSmoke } from "./fire";
+import { addItem, ageStacks, pile, pileAt, pileCells, qty, removeItem, tidyPiles, totalQty, TRACE_KG } from "./inventory";
+import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepFieldFire, stepSmoke, wetWood } from "./fire";
 import { recordOpportunityEvent, KEPT_DAYS } from "./opportunities";
 import {
-  BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
-  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
+  BOUGH_BED_DAYS, COVER_M3, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_MAX_KG, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
+  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STACKED_KG_PER_M3, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { noteLarder } from "./ledger";
 import { log } from "./log";
@@ -17,7 +17,8 @@ import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { fishItem, SPECIES_DEFS } from "./species";
 import { growRoots, growWood, nestsFor, rootStockFor } from "./stocks";
-import { type DecayingId, type GameState, type Site, PERISHABLES } from "./types";
+import { type DecayingId, type GameState, type Inventory, type Site, type StructureId, PERISHABLES } from "./types";
+import { fmtKg } from "../units";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { localWeather } from "./weather";
 import { noteHuntFoodLost, noteHuntFoodTransformed } from "./hunt-audit";
@@ -147,17 +148,26 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     }
 
   }
-  dryWood(state, dt, who, world);
-  for (const k of Object.keys(state.piles)) {
-    const cell = Number(k);
+  // Wood that dries is wood gathered, as far as the firewood goal is
+  // concerned: it counts dry kilos only, and an armful carried home in the
+  // rain would otherwise never reach the bar however long it sat by the fire.
+  const dried = dryWood(state, dt, who, world);
+  if (dried > 1e-9) recordOpportunityEvent(state, { kind: "gathered", item: "firewood", kg: dried });
+  wetWood(state, world, dt);
+  spoilPiles(state, world, dt, who);
+  // Nobody is carrying a pack with nobody home.
+  if (who) reportSpoil(state, ageStacks(state.player.pack, dt, ambient), " in {your} pack");
+  tidyPiles(state);
+}
+
+/** Ages every pile's perishables by dt: the live perishable index rather than every cell state.piles has ever held, most of which by the time a run is old hold nothing that can spoil. */
+export function spoilPiles(state: GameState, world: World, dt: number, who: Presence | null): void {
+  for (const cell of pileCells(state, "perishable")) {
     const inv = state.piles[cell];
     if (!inv || !PERISHABLES.some((id) => inv.stacks[id]?.length)) continue;
     const region = cellAt(world, cell).region;
     reportSpoil(state, ageStacks(inv, dt, localWeather(state, world, cell).temperatureC), region === who?.region ? "" : ` at ${regionAt(world, region).name}`);
   }
-  // Nobody is carrying a pack with nobody home.
-  if (who) reportSpoil(state, ageStacks(state.player.pack, dt, ambient), " in {your} pack");
-  tidyPiles(state);
 }
 
 function reportSpoil(state: GameState, lost: ReturnType<typeof ageStacks>, where: string) {
@@ -205,6 +215,26 @@ export function firewoodAt(state: GameState, world: World, region: number): numb
 /** Raw meat the camp's racks hold together. */
 export function rackCapacity(site: Site | null): number {
   return RACK_MAX_KG * Math.max(1, site?.racks ?? 0);
+}
+
+/** Firewood this camp can keep out of the rain: every roof that stands, and every vedbod, added up. */
+export function coveredWoodKg(site: Site | null): number {
+  if (!site) return 0;
+  let m3 = 0;
+  for (const id of Object.keys(COVER_M3) as StructureId[]) {
+    if (id === "vedbod") m3 += COVER_M3.vedbod! * site.woodsheds;
+    else if (site.structures[id as keyof Site["structures"]]) m3 += COVER_M3[id]!;
+  }
+  return m3 * STACKED_KG_PER_M3;
+}
+
+/**
+ * Wood a stack holds, in kilos. Sticks count at their weight because they
+ * stack and burn; logs do not, because a shed holds split wood and round
+ * timber lies in the yard.
+ */
+export function woodOnHandKg(inv: Inventory): number {
+  return qty(inv, "firewood") + qty(inv, "wetFirewood") + qty(inv, "stick") * ITEM_KG.stick;
 }
 
 /** Draws a basket trap gets at dawn: four at the start, one more every five levels of fishing past five, capped at eight. */
@@ -368,12 +398,26 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     growRoots(st, world, cal.dayOfYear);
     // What grows back grows on the patch that was cut, at its own ground's rate.
     growWood(st, world);
+    // A cap that costs something has to say so, and the away report reads the
+    // log: once a day with the day's total, never once a minute.
+    if (st.wettedKg >= 1) log(state, `${fmtKg(st.wettedKg)} of firewood stood out in the rain at ${r.name} and is wet through.`, "bad");
+    st.wettedKg = 0;
+    // The rack holds only so much; raw meat that cannot fit sits in the pile
+    // untouched instead of drying, until there is room again. Read at the
+    // daily roll rather than the fire and thaw checks above, which run every
+    // minute and would turn one full rack into a line every tick it stays full.
+    const rackSite = campSite(st);
+    const rackRoomGone = rackSite?.structures.dryingRack && st.rack.kg >= rackCapacity(rackSite) - TRACE_KG;
+    const strandedMeat = st.campCell === null ? 0 : qty(pileAt(state, st.campCell), "rawMeat");
+    if (rackRoomGone && strandedMeat > TRACE_KG) {
+      log(state, `The rack at ${r.name} is full, and ${fmtKg(strandedMeat)} of raw meat waits its turn.`, "bad");
+    }
   }
 }
 
 /** Past two thirds of its life a lean-to needs re-roofing, a rack relashing, a hut a new roof; the camp panel says so. */
 export function needsMending(site: Site | null, id: DecayingId): boolean {
-  return site !== null && site.structures[id] && (site.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
+  return Boolean(site?.structures[id]) && (site?.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
 }
 
 /**

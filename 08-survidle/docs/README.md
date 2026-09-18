@@ -213,7 +213,7 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   your felt temperature can hold: ambient, plus clothing, fire and shelter
   at camp, plus activity, minus wetness. Below 20 warmth you lose health
   fast. Stamina drains through physical work. At 20 Stamina the survivor
-  collapses and must Rest to 55 before working again. Sleepiness is separate:
+  collapses and must Rest to 55 before working again. Sleepiness is separate, read as the alertness band under the Stamina fill:
   its pressure and the time of day determine when the survivor falls asleep
   and wakes. Sleep is automatic; Rest remains an explicit action.
 - **The elements.** Water is a reserve like food: drink at a shore, carry it
@@ -235,7 +235,11 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   holds -3 C whatever the night does but takes no fire, and slumps after
   three warm days running); drying rack (40 kg of raw meat at 1,100 kcal
   a kilo, 3 kg raw to 1 kg dried at 3,300, the same kcal in less weight,
-  two dry days or four wet; a camp can stand two); a trap line of up to
+  two dry days or four wet; a camp can stand two); a vedbod, a roof on
+  posts over an open stack (6 logs, 12 sticks, 20 bark, 3 cordage, 300
+  minutes), covering 1,050 kg of firewood against the rain and drying wet
+  firewood at 2 kg an hour whatever the weather, the same as a cabin or a
+  lit fire; a trap line of up to
   forty snares on the heath, checked at dawn. "Hang meat to dry" is a
   task, and a keep on dried meat runs it as the rack has room. Cracking a
   bone gives marrow, and a kill's fat must be rendered at a fire within
@@ -249,6 +253,26 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   rows on the activity queue eat, drink and feed the fire while the tab is
   closed, as long as the food and firewood are there and the player has
   not ranked work over them; nothing eats behind those rows' backs.
+  Ground is what limits a camp before the 300 m cell ever does: a landing
+  camp has about 30 m2 of yard, enough for a fire site, a lean-to, a rack
+  and a trough with a little spare, and widening it is a task whose
+  minutes the ground under the camp sets - 12 m2 an hour on a dry meadow,
+  8 under spruce where the duff has to be scraped back, 4 on peat, the
+  same rate the fire site's own minutes already charge for clearing.
+- **The stocks strip.** A bar above the three columns reads what camp
+  holds in four groups - wood, food, water, pack - each against its cap
+  where the sim has one and each with which way it is moving. Hovering a
+  group, or tapping it on a phone, opens what it is made of, the cap's
+  reason where it is sitting at one, the signed causes behind the rate
+  and, for wood, the stand the store is coming out of, so a rising
+  woodpile reads beside the patch it is thinning. A click pins a group's
+  panel open until the same group is clicked again, so a mouse can move
+  onto what it opened without losing it to the next thing it passes over.
+  Rates read in game time by default - a kilogram an hour is the pace the
+  sim itself keeps - or in real time from the rates setting in the
+  settings panel; the two are exactly convertible, since a game hour is a
+  real minute, so the setting only changes the words and the decimal
+  point, never the number underneath.
 - **Spares.** A tool recipe yields a spare that is taken up when the one in
   hand breaks; "keep camp at 1 axe" is how the axe is never the end of the
   run.
@@ -435,9 +459,14 @@ different directions, with wavelengths of 4, 2.5 and 6 cells and periods of
 each wave comes from its position, with up to a radian of seeded jitter, and
 each wave peaks at its own seeded brightness, so neighbours move together
 without the sheet sliding as one texture. Each wave is an overlay in the
-cell's lit blue whose opacity the compositor animates, so a lake costs the
-main thread no paint; at the two close zoom rungs the peak is halved so a
-big cell does not wash out its detail glyphs. Ice, marked cells and
+cell's lit blue whose opacity is animated; at the two close zoom rungs the
+peak is halved so a big cell does not wash out its detail glyphs. Three
+overlays per water cell is not free, whatever the compositor does with the
+opacity itself: measured on a live page, disabling the shimmer alone drops
+style recalculation from 3.59 to 0.52 seconds per thirty, and the whole
+frame from 37 to 15 percent of a core. It is the single most expensive
+thing the game draws, and moving it to the effects canvas is what the
+render-surface migration is for. Ice, marked cells and
 remembered water lie still, and reduced motion turns it off. `?shimmer=2`
 is a test aid that runs all three waves twice as fast; it is not a game
 feature.
@@ -555,43 +584,20 @@ worth a run when the reference player, the lineage or the landing moves.
 Every browser pass runs at 1440 by 900 and at 390 wide against
 `docs/ux.md`.
 
-Weather reference screenshots need the development server in one shell, then
-`npm run shots` in another. Headless Chrome writes the following seed 17
-simulation states to `docs/map-shots/`; the minute is elapsed game time and x/y
-are 50 m patch coordinates:
-
-| shot | minute | x | y | simulated feature |
-| --- | ---: | ---: | ---: | --- |
-| clear | 1,440 | 10,179 | 5,283 | clear comparison above rock |
-| sunny-clouds | 170,160 | 4,203 | 5,703 | dry midsummer sun under a broken cloud field |
-| approaching-rain | 86,760 | 6,243 | 903 | rain-band edge |
-| local-rain | 108,720 | 7,968 | 792 | 10.34 mm/h rain core |
-| persisted-snow | 480,480 | 5,235 | 5,187 | falling snow over retained ground snow |
-| frozen-water | 481,200 | 1,053 | 303 | safe winter ice over coastal water |
-| valley-fog | 19,560 | 8,595 | 6,219 | dry fog in a local bog depression |
-| windward-lee | 3,960 | 4,203 | 5,703 | terrain-modified extinction gradient |
-| obscured | 480,480 | 10,179 | 5,283 | dense snow and fog at the clear comparison rock |
-
-The URL only selects a catalog entry. Normal `GameState`, `WeatherWorld`,
-`visibleCells` and `mapHtml` generate every class, variable, glyph and known
-cell. The harness asserts unknown ground remains unrevealed, fog remains owned
-by its simulation cells without gray washes or weather borders, every
-non-boundary cell has zero computed border width, cloud shadows remain at or
-below 14 percent black, live weather never appears on unknown or remembered-only
-ground, and the obscured footprint is smaller than clear at the same location.
-It captures the approaching rain fixture with the real
-settings checkbox in both default cloud-shadow mode and optional ASCII-cloud
-mode, and verifies that the toggle changes neither simulation time nor the
-visibility footprint. Fog and cloud opacity come from sampled density;
-deterministic coordinate hashes only choose the phase and order of same-colour
-ASCII ripple glyphs. Reduced-motion mode freezes those glyphs.
-The sunny-cloud pair advances the normal simulation by 60 game minutes and
-captures the resulting cloud-shadow field before and after; it does not assign
-or modify rendering classes.
-The valley cell stands at 108 m; its west, east, north and south samples 6 km
-away are at 509, 457, 388 and 506 m. `fog-frame-a.png`
-and `fog-frame-b.png` hold the same frozen simulation minute and visibility
-footprint 3.2 real seconds apart; only presentation animation continues.
+The browser check plays the real game. Run the development server in one
+shell and `npm run e2e` in another: headless Chrome opens seed 42 on day
+200, lands through the real candidate and landing controls, clicks the
+board with real mouse events at real screen coordinates, presses the real
+zoom buttons and lets night fall, and writes what it saw to `docs/e2e/`.
+Every image is a screenshot of the page as the player sees it, and every
+reading is taken from the model the canvas drew and from the canvas itself
+- never from a fixture world, an off-screen copy of the board or a
+synthetic click on a glyph. It holds the game to: one click on known
+ground orders a walk at the block rung and at 50 m; while walking at a
+block rung the view origin moves only by whole glyphs and the glyphs
+between moves change only where sight reaches something new; the survivor
+is drawn in the middle of the visible panel throughout; the board is
+painted at every rung and at night; and the page throws nothing.
 
 `scripts/mapstats.ts` prints a downsampled view of the whole world and its
 terrain shares, plus the full-resolution water kinds, stream count, rock
@@ -690,6 +696,16 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/sim/clothing.ts`: per-garment wetness, drying and frostbite chance.
 - `src/sim/fire.ts`: wet wood, burn rate and lighting odds in weather, indoor smoke.
 - `src/sim/hazards.ts`: the hourly rolls: frostbite, fire spread, ice underfoot, freezing vessels.
+- `src/sim/yard.ts`: what each structure occupies in the camp's yard and
+  the clearing rate an hour of widening buys, read off the fire site's
+  own minutes rather than invented again.
+- `src/sim/rates.ts`: the signed causes behind a stock group's rate - the
+  task in hand, the fire, rain on an uncovered stack, the body's burn and
+  draw - and what a projection may not count, so the panel never shows a
+  guess dressed as a reading.
+- `src/ui/stocks.ts`: the group table naming what belongs to wood, food,
+  water and pack, what each holds and is capped by, and the reason
+  printed when a group sits at its cap.
 - `src/audio/manifest.ts`: every sound slot, its files and gain; `src/sim/soundscape.ts`: which beds and calls are open where.
 - `src/sim/manual.ts`: the one-page manual's four sections, the handbook
   links, and when a world opens it unasked.

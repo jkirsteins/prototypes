@@ -30,6 +30,42 @@ const INDOORS_HZ = 600;
 const OUTDOORS_HZ = 20000;
 /** A loop at target 0 for this long is stopped and dropped. */
 const LOOP_LINGER_MS = 5000;
+/**
+ * Every sound decodes on first play except two named exceptions, kept as
+ * two tiers so the reasoning for each stays visible here rather than
+ * scattered across call sites:
+ *
+ * IMMEDIATE_SLOTS decode on unlock, before anything has played: the fire
+ * bed and every footstep surface play on nearly every frame once a run is
+ * under way, so waiting for a first play would make the very first fire
+ * crackle or footfall late or silent.
+ *
+ * WARM_SLOTS decode shortly after unlock, at low priority, via
+ * warmDramaticSet(): the startle departures, ice cracking, a falling tree,
+ * a breaking tool, wolves. These are rare, one-off dramatic beats rather
+ * than a constant hum, so they must not delay the first gesture the way
+ * IMMEDIATE_SLOTS may - but a silent first occurrence can be the only
+ * occurrence a session ever has, so leaving them fully on demand risks
+ * losing the moment they exist for.
+ *
+ * Everything outside both tiers - calls, the other ambience beds, minor
+ * moments - decodes on first play: a bird call landing a beat late costs
+ * nothing worth spending memory up front to avoid.
+ */
+const IMMEDIATE_SLOTS: Slot[] = [
+  "fire", "step_leaves", "step_grass", "step_bog", "step_rock", "step_snow", "step_ice",
+];
+const WARM_SLOTS: Slot[] = [
+  "startle_contact",
+  "startle_hoof_light_forest", "startle_hoof_heavy_forest",
+  "startle_hoof_light_open", "startle_hoof_heavy_open",
+  "startle_hoof_bog", "startle_hoof_snow", "startle_brush_predator",
+  "toolBreaks", "fallThrough", "iceCracks", "treeFalls", "wolves",
+];
+/** How long a background warm step may wait for an idle moment before running anyway. */
+const WARM_IDLE_TIMEOUT_MS = 2000;
+/** Delay between background warm steps where the browser has no requestIdleCallback (Safari). */
+const WARM_FALLBACK_DELAY_MS = 250;
 
 const BUS_OF = (def: SlotDef, slot: Slot): "ambience" | "flavour" | "action" =>
   def.kind === "loop" ? "ambience" : CALLS.has(slot) ? "flavour" : "action";
@@ -46,7 +82,8 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
   let footstepsDuck: GainNode | null = null;
   let lowpass: BiquadFilterNode | null = null;
   const buffers = new Map<string, AudioBuffer>();
-  const loading = new Set<string>();
+  /** In-flight decode per file, so two concurrent first-plays of the same sound share one fetch and one decode. */
+  const decoding = new Map<string, Promise<AudioBuffer | null>>();
   const warned = new Set<string>();
   const shots = new Set<AudioBufferSourceNode>();
   const roundRobin = new Map<Slot, number>();
@@ -68,12 +105,84 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     shots.clear();
   };
 
+  const stopLoops = (): void => {
+    for (const [, l] of loops) {
+      l.src.stop();
+      l.src.disconnect();
+      l.gain.disconnect();
+    }
+    loops.clear();
+  };
+
   const applySettings = (): void => {
     if (!ctx || !master) return;
     master.gain.value = cfg.muted ? 0 : cfg.volume;
     const amb = cfg.ambience ? 1 : 0;
     if (buses.ambience) buses.ambience.gain.value = amb;
     if (buses.flavour) buses.flavour.gain.value = amb;
+    // Ambience off is not just silence: the beds keep running underneath it
+    // unless stopped, spending CPU on audio nobody hears. Stopping them here
+    // costs nothing extra - setLoops already starts a fresh, faded-in node
+    // the next time a bed is wanted.
+    if (!cfg.ambience) stopLoops();
+  };
+
+  /**
+   * Fetches and decodes one file into the buffer cache, sharing an in-flight
+   * decode across concurrent callers rather than starting a second one. A
+   * file that already failed once stays failed rather than being retried on
+   * every subsequent play.
+   */
+  const decodeFile = (file: string): Promise<AudioBuffer | null> => {
+    const cached = buffers.get(file);
+    if (cached) return Promise.resolve(cached);
+    if (warned.has(file)) return Promise.resolve(null);
+    const pending = decoding.get(file);
+    if (pending) return pending;
+    if (!ctx) return Promise.resolve(null);
+    const c = ctx;
+    const promise = fetch(`${import.meta.env.BASE_URL}audio/${file}`)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((bytes) => c.decodeAudioData(bytes))
+      .then((buf) => {
+        buffers.set(file, buf);
+        return buf;
+      })
+      .catch((err: Error) => {
+        warnOnce(file, err);
+        return null;
+      })
+      .finally(() => decoding.delete(file));
+    decoding.set(file, promise);
+    return promise;
+  };
+
+  /**
+   * Runs fn at the next moment the browser considers idle, or after a fixed
+   * short delay on a browser with no requestIdleCallback (Safari has none).
+   */
+  const scheduleIdle = (fn: () => void): void => {
+    const w = window as typeof window & { requestIdleCallback?: (cb: () => void, opts: { timeout: number }) => number };
+    if (typeof w.requestIdleCallback === "function") w.requestIdleCallback(fn, { timeout: WARM_IDLE_TIMEOUT_MS });
+    else setTimeout(fn, WARM_FALLBACK_DELAY_MS);
+  };
+
+  /**
+   * Decodes every WARM_SLOTS file one at a time, each step scheduled for an
+   * idle moment rather than fired all at once. One at a time keeps this from
+   * contending with the browser's decoder against a real play request or
+   * against the immediate tier still loading; decodeFile's own cache means a
+   * real play that reaches a file before the warmer does costs the warmer
+   * nothing when it gets there.
+   */
+  const warmDramaticSet = (): void => {
+    const files = WARM_SLOTS.flatMap((slot) => slots[slot]?.files ?? []);
+    let i = 0;
+    const step = (): void => {
+      if (i >= files.length) return;
+      void decodeFile(files[i++]).finally(() => scheduleIdle(step));
+    };
+    scheduleIdle(step);
   };
 
   const unlock = (): void => {
@@ -99,20 +208,13 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     footstepsDuck = ctx.createGain();
     footstepsDuck.connect(buses.action);
     applySettings();
-    const c = ctx;
-    for (const def of Object.values(slots)) {
-      for (const file of def.files) {
-        if (buffers.has(file) || loading.has(file)) continue;
-        loading.add(file);
-        fetch(`${import.meta.env.BASE_URL}audio/${file}`)
-          .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`))))
-          .then((bytes) => c.decodeAudioData(bytes))
-          .then((buf) => buffers.set(file, buf))
-          .catch((err: Error) => warnOnce(file, err))
-          .finally(() => loading.delete(file));
-      }
+    for (const slot of IMMEDIATE_SLOTS) {
+      const def = slots[slot];
+      if (!def) continue;
+      for (const file of def.files) void decodeFile(file);
     }
-    if (c.state === "suspended") void c.resume();
+    warmDramaticSet();
+    if (ctx.state === "suspended") void ctx.resume();
   };
 
   const pickFile = (slot: Slot): AudioBuffer | null => {
@@ -124,8 +226,9 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     const i = (roundRobin.get(slot) ?? -1) + 1;
     roundRobin.set(slot, i);
     const file = def.files[i % def.files.length];
-    if (!buffers.has(file) && !loading.has(file)) warnOnce(file, "not decoded");
-    return buffers.get(file) ?? null;
+    const cached = buffers.get(file);
+    if (!cached) void decodeFile(file);
+    return cached ?? null;
   };
 
   const play = (slot: Slot, opts: { gain?: number; pan?: number; rate?: number; delay?: number } = {}): void => {
@@ -179,7 +282,11 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     const now = ctx.currentTime;
     lowpass.frequency.setTargetAtTime(indoors ? INDOORS_HZ : OUTDOORS_HZ, now, FADE_S);
     const wall = performance.now();
-    for (const [slot, target] of Object.entries(targets)) {
+    // Ambience off means no bed is wanted, not just no bed heard: otherwise
+    // this runs every frame regardless of the toggle and would immediately
+    // recreate whatever applySettings just stopped.
+    const active = cfg.ambience ? targets : {};
+    for (const [slot, target] of Object.entries(active)) {
       if (target <= 0) continue;
       let l = loops.get(slot);
       if (!l) {
@@ -201,7 +308,7 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
       l.gain.gain.setTargetAtTime(slots[slot].gain * Math.min(1, target), now, FADE_S);
     }
     for (const [slot, l] of loops) {
-      if ((targets[slot] ?? 0) > 0) continue;
+      if ((active[slot] ?? 0) > 0) continue;
       if (!l.quietSince) {
         l.quietSince = wall;
         l.gain.gain.setTargetAtTime(0, now, FADE_S);

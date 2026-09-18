@@ -1,7 +1,27 @@
 /**
- * The sky strip and the light on the map. Both are functions of the same
- * clock: where the sun (or moon) sits on its arc, and how that colours the
- * world. Updated every frame; the markup is static and only attributes move.
+ * The sky: stars, the Milky Way, cloud, precipitation, the sun, the moon,
+ * meteors and constellations, all drawn on one canvas.
+ *
+ * This used to be an SVG carrying 4,226 star circles that CSS transitioned
+ * and `projectCoordinateStars` rewrote ten times a second, in daylight as
+ * well as at night - the single largest style-recalculation cost on the
+ * page. A canvas has no per-element style to recalculate: the whole picture
+ * is one paint, however many stars are in it.
+ *
+ * The pattern here is the one the map and effects canvases copy next:
+ * - One canvas per sky, sized in device pixels and scaled by
+ *   `devicePixelRatio` (`ensureCanvasSize`), so it stays sharp on retina.
+ * - A palette of plain constants, resolved once at module load rather than
+ *   read from CSS per draw call (there is no theme dependency here today;
+ *   the constants below ARE that resolved-once palette).
+ * - The sky's own data - star positions, magnitudes, colours, the ridge
+ *   silhouettes, the cloud noise masks - is generated once per shape and
+ *   cached (`skyModelFor`), not rebuilt every frame or every instance.
+ * - Decorative motion (cloud drift, falling rain and snow, meteors) runs
+ *   from a real clock and keeps the existing ten-times-a-second cadence;
+ *   under reduced motion the frame is drawn once and left alone
+ *   (`shouldRedraw`), rather than continuing to redraw a picture nothing is
+ *   asking to change.
  */
 import type { Calendar } from "../sim/calendar";
 import {
@@ -11,11 +31,13 @@ import {
   localSiderealDegrees,
   projectGalacticPlane,
   projectSouth,
+  type HorizontalCoordinate,
   type ProjectedGalacticPoint,
 } from "../sim/celestial";
 import type { AtmosphereSample, GameState, Weather } from "../sim/types";
 import { forecastText, localStorm, stormNow } from "../sim/weather";
 import { clamp } from "../units";
+import { heldQueryAll } from "./render";
 
 export const SKY_W = 220;
 export const SKY_H = 64;
@@ -38,10 +60,6 @@ export function skyGeom(w: number, h: number): SkyGeom {
 
 export const STRIP: SkyGeom = skyGeom(SKY_W, SKY_H);
 export const WALL: SkyGeom = skyGeom(240, 220);
-
-const GROUND_Y = STRIP.groundY;
-const ARC_R = STRIP.arcR;
-const CX = STRIP.cx;
 
 export interface BodyPos { body: "sun" | "moon"; x: number; y: number; /** 0 at rising, 1 at setting */ t: number }
 
@@ -200,20 +218,114 @@ export function lighting(cal: Calendar, w: Weather | AtmosphereSample, ambient: 
   };
 }
 
+// ---------------------------------------------------------------------------
+// The sky's own data: star fields, constellations, meteors, falling marks and
+// ridge silhouettes. All of it is a pure function of the sky's shape (never
+// of weather, time or which instance is asking), so it is built once per
+// shape and cached rather than regenerated on every dress pass.
+// ---------------------------------------------------------------------------
+
+/** A hash, not an rng: sampled by index, so the same index always draws the same point. */
+function hash(n: number, seed: number): number {
+  return ((Math.sin(seed * 12.9898) * 43758.5453) % 1 + 1) % 1 * n;
+}
+
+interface StarSpec { raDeg: number; decDeg: number; r: number; alpha: number; colour: string }
+interface Point { x: number; y: number }
+/** A cubic-bezier ridge: the Catmull-Rom curve rewritten as the segments a canvas draws. */
+interface RidgeShape { start: Point; curves: { c1: Point; c2: Point; p: Point }[] }
+interface DropSpec { x: number; y: number; r: number; sx: number; n: number }
+interface MeteorSpec { x1: number; y1: number; x2: number; y2: number; delayFrac: number }
+
+const FIELD_STAR_COUNT = 2400;
+const DUST_STAR_COUNT = 1800;
+/** l=55..155 is Cygnus and Cassiopeia: the part of the Milky Way this latitude actually sees. */
+const DUST_NORTHERN_SHARE = 1260;
+const DUST_NORTHERN_BASE_L = 55;
+const DUST_NORTHERN_SPAN_L = 100;
+
+function buildFieldStars(): StarSpec[] {
+  return Array.from({ length: FIELD_STAR_COUNT }, (_, i) => {
+    const ra = hash(360, i + 1);
+    const dec = Math.asin(hash(2, i + 31) - 1) * 180 / Math.PI;
+    const bright = i % 47 === 0;
+    const middle = !bright && i % 9 === 0;
+    const r = bright ? 0.42 + hash(0.32, i + 61) : middle ? 0.19 + hash(0.21, i + 61) : 0.08 + hash(0.15, i + 61);
+    const alpha = bright ? 0.68 + hash(0.30, i + 81) : middle ? 0.42 + hash(0.38, i + 81) : 0.24 + hash(0.38, i + 81);
+    const colour = i % 29 === 0 ? "#d9e5ff" : i % 37 === 0 ? "#fff0dc" : "#fff";
+    return { raDeg: ra, decDeg: dec, r, alpha, colour };
+  });
+}
+
+/** Sky position and visibility are astronomical; brightness and texture are intentionally exaggerated for readability. */
+function buildDustStars(g: SkyGeom): StarSpec[] {
+  return Array.from({ length: DUST_STAR_COUNT }, (_, i) => {
+    const longitude = i < DUST_NORTHERN_SHARE
+      ? DUST_NORTHERN_BASE_L + hash(DUST_NORTHERN_SPAN_L, i + 401)
+      : hash(360, i + 401);
+    const latitude = (hash(1, i + 431) + hash(1, i + 461) - 1) * 9;
+    const equatorial = galacticToEquatorial(longitude, latitude);
+    const bright = i % 23 === 0;
+    const middle = !bright && i % 5 === 0;
+    const r = bright ? 0.40 + hash(g === WALL ? 0.36 : 0.26, i + 491) : middle ? 0.23 + hash(0.25, i + 491) : 0.15 + hash(0.18, i + 491);
+    const colour = i % 7 === 0 ? "#dfc7ed" : i % 5 === 0 ? "#aec5f2" : "#f4f2ff";
+    const alpha = bright ? 0.70 + hash(0.28, i + 521) : middle ? 0.50 + hash(0.38, i + 521) : 0.30 + hash(0.40, i + 521);
+    return { raDeg: equatorial.raDeg, decDeg: equatorial.decDeg, r, alpha, colour };
+  });
+}
+
+const CONSTELLATION_SHAPES: ReadonlyArray<readonly [number, number, ReadonlyArray<readonly [number, number]>]> = [
+  [305, 40, [[-7, 0], [-4, -3], [0, 1], [3, -4], [7, 0], [10, -5], [14, -7]]],
+  [15, 60, [[-8, -2], [-4, 3], [0, 0], [4, 4], [8, -1]]],
+  [165, 15, [[-5, -5], [-7, 2], [-2, 7], [4, 3], [5, 11], [1, 13], [-3, 16]]],
+  [80, 5, [[-8, -6], [-4, 0], [0, 5], [6, 10], [3, -7], [0, 5], [-6, 11]]],
+];
+
+function buildConstellations(g: SkyGeom): StarSpec[][] {
+  return CONSTELLATION_SHAPES.map(([baseRa, baseDec, points]) => points.map(([ra, dec]) => ({
+    raDeg: ((baseRa + ra + 360) % 360),
+    decDeg: baseDec + dec,
+    r: g === WALL ? 1.0 : 0.65,
+    alpha: 1,
+    colour: "#edf2ff",
+  })));
+}
+
+const METEOR_BASE: ReadonlyArray<readonly [number, number, number, number, number]> = [
+  [0.95, 0.35, 0.81, 0.49, 0.08], [0.80, 0.20, 0.69, 0.32, 0.34],
+  [0.91, 0.12, 0.77, 0.26, 0.61], [0.72, 0.08, 0.62, 0.19, 0.84],
+];
+
+function buildMeteors(g: SkyGeom): MeteorSpec[] {
+  return METEOR_BASE.map(([x1, y1, x2, y2, delayFrac]) => ({
+    x1: g.w * x1, y1: g.groundY * y1, x2: g.w * x2, y2: g.groundY * y2, delayFrac,
+  }));
+}
+
+const FALL_DROP_COUNT = 120;
+
+/** Every flake gets its own size and its own sideways wander so snow drifts instead of marching. */
+function buildFall(g: SkyGeom): DropSpec[] {
+  return Array.from({ length: FALL_DROP_COUNT }, (_, i) => ({
+    x: hash(g.w * 1.3, i + 101),
+    y: hash(g.groundY, i + 131),
+    r: 1 + hash(0.9, i + 151),
+    sx: hash(26, i + 171) - 13,
+    n: ((i * 37) % 100) / 100,
+  }));
+}
+
 /**
- * A ridge line, the way a horizon actually sits: several waves of
- * different lengths added together, then drawn as a smooth curve.
- *
- * The old horizon was a hand-written zigzag of eight points, and it read
- * as one - straight sides meeting at corners no hill has. This sums four
- * octaves of a cheap value noise and joins the samples with a Catmull-Rom
- * spline, so the long shape is a range and the short shape is its
- * roughness. It is a pure function of its seed, so the same sky draws the
- * same hills every time rather than reshuffling the land each frame.
+ * A ridge line, the way a horizon actually sits: several waves of different
+ * lengths added together, then drawn as a smooth curve rather than the
+ * straight-sided zigzag no hill has. Four octaves of a cheap value noise,
+ * joined by a Catmull-Rom spline turned into the cubic segments a canvas
+ * draws directly.
  */
-function ridgePath(g: SkyGeom, seed: number, height: number, samples = 34): string {
+function buildRidge(g: SkyGeom, seed: number, height: number, samples: number): RidgeShape {
   // A hash rather than an rng: sampled by position, so neighbouring points
-  // are drawn from the same curve however many samples are taken.
+  // are drawn from the same curve however many samples are taken. Its own
+  // constants, not the star field's - a different hash is a different hill.
   const at = (x: number) => {
     const s = Math.sin(x * 127.1 + seed * 311.7) * 43758.5453;
     return s - Math.floor(s);
@@ -222,227 +334,526 @@ function ridgePath(g: SkyGeom, seed: number, height: number, samples = 34): stri
     const p = x * freq;
     const i = Math.floor(p);
     const f = p - i;
-    // Smoothstep between the two nearest hash values: the curve is
-    // continuous, which is what stops the corners.
     const u = f * f * (3 - 2 * f);
     return at(i) * (1 - u) + at(i + 1) * u;
   };
-  const pts: { x: number; y: number }[] = [];
+  const pts: Point[] = [];
   for (let i = 0; i <= samples; i++) {
     const x = (i / samples) * g.w;
     const n = wave(i / samples, 1.4) * 0.55 + wave(i / samples, 3.1) * 0.28 + wave(i / samples, 6.7) * 0.12 + wave(i / samples, 13.3) * 0.05;
     pts.push({ x, y: g.groundY - n * height });
   }
-  // Catmull-Rom through the samples, written as cubics.
-  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  const curves: RidgeShape["curves"] = [];
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = pts[Math.max(0, i - 1)];
     const p1 = pts[i];
     const p2 = pts[i + 1];
     const p3 = pts[Math.min(pts.length - 1, i + 2)];
-    const c1x = p1.x + (p2.x - p0.x) / 6;
-    const c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6;
-    const c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+    curves.push({
+      c1: { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 },
+      c2: { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 },
+      p: p2,
+    });
   }
-  return `${d} L ${g.w} ${g.h} L 0 ${g.h} Z`;
+  return { start: pts[0], curves };
 }
+
+/** Deterministic value noise: the same shape every time for a given seed, unlike an rng would give. */
+function hash2(x: number, y: number, seed: number): number {
+  const s = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+function noise2(x: number, y: number, seed: number): number {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const xf = x - xi;
+  const yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf);
+  const v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi, seed);
+  const b = hash2(xi + 1, yi, seed);
+  const c = hash2(xi, yi + 1, seed);
+  const d = hash2(xi + 1, yi + 1, seed);
+  return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+}
+/** Fractal sum of the value noise above: several octaves, the way feTurbulence's fractalNoise is several too. */
+function fbm(x: number, y: number, seed: number, octaves: number, freqX: number, freqY: number): number {
+  let sum = 0;
+  let amp = 0.5;
+  let freq = 1;
+  for (let o = 0; o < octaves; o++) {
+    sum += amp * noise2(x * freqX * freq, y * freqY * freq, seed + o * 17);
+    amp *= 0.5;
+    freq *= 2;
+  }
+  return sum;
+}
+
+const CLOUD_TEX_SCALE = 0.5;
+const CLOUD_LOW_FREQ_X = 0.011 * 2;
+const CLOUD_LOW_FREQ_Y = 0.026 * 2;
+const CLOUD_LOW_OCTAVES = 5;
+const CLOUD_LOW_SLOPE = 2.4;
+const CLOUD_LOW_INTERCEPT = -0.62;
+const CLOUD_LOW_SEED = 11;
+const CLOUD_HIGH_FREQ_X = 0.03 * 2;
+const CLOUD_HIGH_FREQ_Y = 0.05 * 2;
+const CLOUD_HIGH_OCTAVES = 3;
+const CLOUD_HIGH_SLOPE = 2;
+const CLOUD_HIGH_INTERCEPT = -0.75;
+const CLOUD_HIGH_SEED = 29;
 
 /**
- * Static markup; updateSky moves the pieces.
- *
- * Drawn at whatever shape it is asked for. Everything that moves carries an
- * id and nothing carries a position the markup would have to be rewritten
- * to change, so a frame writes attributes and the panel around it holds
- * still.
+ * A cloud alpha mask: a fractal noise field remapped to 0..1 the way
+ * feComponentTransfer's linear slope/intercept did, baked into a bitmap
+ * once rather than recomputed per pixel per frame. The colour is not baked
+ * in - it changes with the hour - so this carries only the shape, in the
+ * alpha channel of an otherwise white bitmap.
  */
-/**
- * One sky.
- *
- * `uid` names this instance's gradients, filters and mask. Everything a
- * shape points at with url(#...) or mask=url(#...) is looked up across the
- * WHOLE document, not within its own svg, so two skies on one page with
- * the same ids both draw the first one's cloud, the first one's moon phase
- * and the first one's sunset - which is exactly what the sky gallery did,
- * silently, while its thirteen cards looked plausible. The game draws one
- * sky and needs no suffix; the gallery passes the case name.
- */
-export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true, atmosphere?: AtmosphereSample): string {
-  const u = uid ? `-${uid}` : "";
-  const arc = `M ${g.cx - g.arcR} ${g.groundY} A ${g.arcR} ${g.arcR} 0 0 1 ${g.cx + g.arcR} ${g.groundY}`;
-  const rand = (n: number, seed: number) => ((Math.sin(seed * 12.9898) * 43758.5453) % 1 + 1) % 1 * n;
-  const stars = Array.from({ length: 2400 }, (_, i) => {
-    const ra = rand(360, i + 1);
-    const dec = Math.asin(rand(2, i + 31) - 1) * 180 / Math.PI;
-    const bright = i % 47 === 0;
-    const middle = !bright && i % 9 === 0;
-    const r = bright ? 0.42 + rand(0.32, i + 61) : middle ? 0.19 + rand(0.21, i + 61) : 0.08 + rand(0.15, i + 61);
-    const opacity = bright ? 0.68 + rand(0.30, i + 81) : middle ? 0.42 + rand(0.38, i + 81) : 0.24 + rand(0.38, i + 81);
-    const colour = i % 29 === 0 ? "#d9e5ff" : i % 37 === 0 ? "#fff0dc" : "#fff";
-    return `<circle class="sky-field-star sky-coordinate-star" data-ra="${ra.toFixed(4)}" data-dec="${dec.toFixed(4)}" data-alpha="${opacity.toFixed(2)}" cx="-10" cy="-10" r="${r.toFixed(2)}" fill="${colour}" opacity="0"/>`;
-  }).join("");
-  // Sky position and visibility are astronomical; Milky Way brightness and
-  // texture are intentionally exaggerated for readability.
-  const milkyDust = Array.from({ length: 1800 }, (_, i) => {
-    // Cygnus and Cassiopeia occupy roughly l=55..155. More of the artistic
-    // dust lives there because that is the northern Milky Way this latitude
-    // can actually see; no extra density is placed around Sagittarius.
-    const longitude = i < 1260 ? 55 + rand(100, i + 401) : rand(360, i + 401);
-    const latitude = (rand(1, i + 431) + rand(1, i + 461) - 1) * 9;
-    const equatorial = galacticToEquatorial(longitude, latitude);
-    const bright = i % 23 === 0;
-    const middle = !bright && i % 5 === 0;
-    const r = bright ? 0.40 + rand(g === WALL ? 0.36 : 0.26, i + 491) : middle ? 0.23 + rand(0.25, i + 491) : 0.15 + rand(0.18, i + 491);
-    const colour = i % 7 === 0 ? "#dfc7ed" : i % 5 === 0 ? "#aec5f2" : "#f4f2ff";
-    const opacity = bright ? 0.70 + rand(0.28, i + 521) : middle ? 0.50 + rand(0.38, i + 521) : 0.30 + rand(0.40, i + 521);
-    return `<circle class="sky-galaxy-star sky-coordinate-star" data-ra="${equatorial.raDeg.toFixed(4)}" data-dec="${equatorial.decDeg.toFixed(4)}" data-alpha="${opacity.toFixed(2)}" cx="-10" cy="-10" r="${r.toFixed(2)}" fill="${colour}" opacity="0"/>`;
-  }).join("");
-  const constellations: ReadonlyArray<readonly [number, number, ReadonlyArray<readonly [number, number]>]> = [
-    [305, 40, [[-7, 0], [-4, -3], [0, 1], [3, -4], [7, 0], [10, -5], [14, -7]]],
-    [15, 60, [[-8, -2], [-4, 3], [0, 0], [4, 4], [8, -1]]],
-    [165, 15, [[-5, -5], [-7, 2], [-2, 7], [4, 3], [5, 11], [1, 13], [-3, 16]]],
-    [80, 5, [[-8, -6], [-4, 0], [0, 5], [6, 10], [3, -7], [0, 5], [-6, 11]]],
-  ];
-  const constellationHtml = constellations.map(([baseRa, baseDec, points], index) => {
-    const dots = points.map(([ra, dec]) => `<circle class="sky-coordinate-star" data-ra="${((baseRa + ra + 360) % 360).toFixed(2)}" data-dec="${(baseDec + dec).toFixed(2)}" data-alpha="1" cx="-10" cy="-10" r="${g === WALL ? 1.0 : 0.65}" opacity="0"/>`).join("");
-    return `<g id="sky-constellation-${index}" class="sky-constellation" data-constellation="${index}" fill="#edf2ff" opacity="0">${dots}</g>`;
-  }).join("");
-  const meteors = [
-    [0.95, 0.35, 0.81, 0.49, 0.08], [0.80, 0.20, 0.69, 0.32, 0.34],
-    [0.91, 0.12, 0.77, 0.26, 0.61], [0.72, 0.08, 0.62, 0.19, 0.84],
-  ].map(([x1, y1, x2, y2, delay]) => `<line class="sky-meteor" x1="${g.w * x1}" y1="${g.groundY * y1}" x2="${g.w * x2}" y2="${g.groundY * y2}" style="--meteor-delay:${(-delay * 12).toFixed(1)}s"/>`).join("");
-  // Cloud is a noise field, not a row of ellipses. feTurbulence gives a
-  // fractal the browser generates itself: the shape has detail at every
-  // scale the way weather does, and lobes drawn by hand never will. The
-  // seed is written down, so the same sky grows the same cloud.
-  const cloudField = `<filter id="sky-cloudnoise${u}" x="-20%" y="-20%" width="140%" height="140%">
-  <feTurbulence type="fractalNoise" baseFrequency="0.011 0.026" numOctaves="5" seed="11" result="noise"/>
-  <feComponentTransfer in="noise" result="mask"><feFuncA id="sky-cloudcut" type="linear" slope="2.4" intercept="-0.62"/></feComponentTransfer>
-  <feFlood id="sky-cloudflood" flood-color="#aeb9c6" result="flood"/>
-  <feComposite in="flood" in2="mask" operator="in"/>
-</filter>
-<filter id="sky-cloudnoise-hi${u}" x="-20%" y="-20%" width="140%" height="140%">
-  <feTurbulence type="fractalNoise" baseFrequency="0.03 0.05" numOctaves="3" seed="29" result="noise"/>
-  <feComponentTransfer in="noise" result="mask"><feFuncA type="linear" slope="2" intercept="-0.75"/></feComponentTransfer>
-  <feFlood id="sky-cloudflood-hi" flood-color="#c6d0da" result="flood"/>
-  <feComposite in="flood" in2="mask" operator="in"/>
-</filter>`;
-
-  // The fall: a field of marks slid down forever by css. Both are dense -
-  // a thin scatter of ticks read as dust on the screen rather than weather
-  // - rain leans the way rain does, and every flake gets its own size and
-  // its own sideways wander so snow drifts instead of marching.
-  const fall = Array.from({ length: 120 }, (_, i) => {
-    const x = rand(g.w * 1.3, i + 101).toFixed(1);
-    const y = rand(g.groundY, i + 131).toFixed(1);
-    const r = (1 + rand(0.9, i + 151)).toFixed(2);
-    const sx = (rand(26, i + 171) - 13).toFixed(1);
-    return `<g class="sky-drop" style="--x:${x}px;--y:${y}px;--sx:${sx}px;--n:${((i * 37) % 100) / 100}"><line x1="0" y1="0" x2="-3.4" y2="9"/><circle cx="0" cy="0" r="${r}"/></g>`;
-  }).join("");
-  const pxPerDegree = g.groundY / 90;
-  const weatherData = atmosphere ? ` data-weather-temperature="${atmosphere.temperatureC}" data-weather-cloud="${atmosphere.cloud}" data-weather-rate="${atmosphere.precipMmPerHour}" data-weather-rain="${atmosphere.rainMmPerHour}" data-weather-snow="${atmosphere.snowCmPerHour}" data-weather-precip="${atmosphere.precip}" data-weather-fog="${atmosphere.fog}" data-weather-wind-x="${atmosphere.windXKmh}" data-weather-wind-y="${atmosphere.windYKmh}" data-weather-wind-speed="${atmosphere.windKmh}"` : "";
-  return `<svg class="sky" id="sky" viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}" preserveAspectRatio="xMidYMax slice" aria-label="sky"
- data-sky-w="${g.w}" data-sky-h="${g.h}" data-sky-ground="${g.groundY}" data-sky-arc="${g.arcR}" data-sky-cx="${g.cx}"${weatherData}>
-<defs>${cloudField}<clipPath id="sky-horizon${u}"><rect x="0" y="0" width="${g.w}" height="${g.groundY}"/></clipPath><filter id="sky-milkysoft${u}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2"/></filter><filter id="sky-milkytexture${u}" x="-30%" y="-30%" width="160%" height="160%"><feTurbulence type="fractalNoise" baseFrequency="0.018 0.09" numOctaves="5" seed="43" result="grain"/><feDisplacementMap in="SourceGraphic" in2="grain" scale="3.2" xChannelSelector="R" yChannelSelector="B"/></filter><linearGradient id="sky-milkygrad${u}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#849bd7" stop-opacity="0.10"/><stop offset="0.42" stop-color="#c8c7ed" stop-opacity="0.50"/><stop offset="0.58" stop-color="#aebde9" stop-opacity="0.38"/><stop offset="1" stop-color="#8299d4" stop-opacity="0.08"/></linearGradient><radialGradient id="sky-glowgrad${u}" class="glowgrad" gradientUnits="userSpaceOnUse" cx="${g.cx}" cy="${g.groundY}" r="${g.arcR * 1.15}">
-<stop id="sky-glow-in" offset="0" stop-color="#ff8a5c" stop-opacity="0.95"/>
-<stop id="sky-glow-mid" offset="0.4" stop-color="#ff8a5c" stop-opacity="0.4"/>
-<stop id="sky-glow-out" offset="1" stop-color="#ff8a5c" stop-opacity="0"/>
-</radialGradient><linearGradient id="skygrad${u}" x1="0" y1="0" x2="0" y2="1"><stop id="sky-top" offset="0" stop-color="#4682d2"/><stop id="sky-bottom" offset="1" stop-color="#96c3f0"/></linearGradient></defs>
-<rect width="${g.w}" height="${g.h}" fill="url(#skygrad${u})"/>
-<g id="sky-celestial" data-sidereal-angle="0" data-coordinate-system="horizontal" data-galactic-center-alt="0">
-<g id="sky-milky-way" opacity="0" clip-path="url(#sky-horizon${u})">
-<path id="sky-milky-haze" d="" fill="none" stroke="url(#sky-milkygrad${u})" stroke-width="${(20 * pxPerDegree).toFixed(1)}" stroke-linecap="butt" opacity="0.24" filter="url(#sky-milkysoft${u})"/>
-<path id="sky-milky-plane" d="" fill="none" stroke="#b8c3ec" stroke-width="${(11 * pxPerDegree).toFixed(1)}" stroke-linecap="butt" opacity="0.11" filter="url(#sky-milkytexture${u})"/>
-<path id="sky-milky-north" d="" fill="none" stroke="#d5d5f2" stroke-width="${(8 * pxPerDegree).toFixed(1)}" stroke-linecap="butt" opacity="0.17" filter="url(#sky-milkytexture${u})"/>
-<path id="sky-milky-dark-lane" d="" fill="none" stroke="#060b20" stroke-width="${(2.8 * pxPerDegree).toFixed(1)}" stroke-linecap="round" stroke-dasharray="18 3 29 5" opacity="0.36"/>
-<path id="sky-milky-filament" d="" fill="none" stroke="#e6e1f6" stroke-width="${(0.7 * pxPerDegree).toFixed(1)}" stroke-linecap="round" opacity="0.10"/>
-${milkyDust}</g>
-<g id="sky-stars" opacity="0">${stars}</g>
-${constellationHtml}
-</g>
-<g id="sky-perseids" opacity="0">${meteors}</g>
-<rect id="sky-glow" width="${g.w}" height="${g.h}" fill="url(#sky-glowgrad${u})" opacity="0"/>
-<path d="${arc}" fill="none" stroke="rgba(255,255,255,0.18)" stroke-dasharray="2 3"/>
-<circle id="sky-sun" cx="${g.cx - g.arcR}" cy="${g.groundY}" r="6" fill="#ffd66b" stroke="#fff3c0" stroke-width="1"/>
-<mask id="sky-moon-mask${u}" maskUnits="userSpaceOnUse" x="0" y="0" width="${g.w}" height="${g.h}">
-<circle id="sky-moon-lit" cx="${g.cx - g.arcR}" cy="${g.groundY}" r="5" fill="#fff"/>
-<circle id="sky-moon-dark" cx="${g.cx - g.arcR}" cy="${g.groundY}" r="5.2" fill="#000"/>
-</mask>
-<circle id="sky-moon" cx="${g.cx - g.arcR}" cy="${g.groundY}" r="5" fill="#e8ecf5" opacity="0" mask="url(#sky-moon-mask${u})"/>
-<g id="sky-clouds" opacity="0">
-<rect id="sky-haze" width="${g.w}" height="${g.groundY}" fill="#8390a0" opacity="0.55"/>
-<g class="sky-cloud" style="--drift:150s"><rect x="0" y="0" width="${g.w * 2}" height="${g.groundY}" filter="url(#sky-cloudnoise${u})"/></g>
-<g class="sky-cloud" style="--drift:88s"><rect x="0" y="0" width="${g.w * 2}" height="${g.groundY * 0.72}" filter="url(#sky-cloudnoise-hi${u})"/></g>
-</g>
-<g id="sky-fall" opacity="0">${fall}</g>
-<path id="sky-far" d="${ridgePath(g, 7, g.groundY * 0.30, 30)}" fill="#354d45"/>
-<path id="sky-mid" d="${ridgePath(g, 23, g.groundY * 0.20, 34)}" fill="#0f161c"/>
-<path id="sky-near" d="${ridgePath(g, 51, g.groundY * 0.12, 40)}" fill="#0b1210"/>
-${showPhase ? `<text id="sky-label" x="${g.w - 4}" y="${g.h - 3}" text-anchor="end" font-size="8" fill="rgba(255,255,255,0.6)"></text>` : ""}
-</svg>`;
-}
-
-/**
- * The pieces of one sky, by id. Dressing a sky writes some forty attributes
- * across a dozen elements, and asking the tree for each one by id walks it
- * again every time - past every star, since the ridges and the label are at
- * the end. One walk gathers them all instead. The map is built fresh for each
- * dressing rather than kept, because the panel morph between two frames may
- * have replaced any of these nodes, and a stale one takes writes nobody sees.
- *
- * By id within one sky, not within the page: the strip and the widget's wall
- * are two skies carrying the same ids.
- */
-type SkyParts = Map<string, SVGElement>;
-
-function skyParts(svg: SVGElement): SkyParts {
-  const parts: SkyParts = new Map();
-  for (const el of svg.querySelectorAll<SVGElement>("[id]")) if (!parts.has(el.id)) parts.set(el.id, el);
-  return parts;
-}
-
-function setAttr(parts: SkyParts, id: string, name: string, value: string) {
-  const el = parts.get(id);
-  if (el && el.getAttribute(name) !== value) el.setAttribute(name, value);
-}
-
-function galacticPath(
-  segments: ProjectedGalacticPoint[][],
-  include: (point: ProjectedGalacticPoint) => boolean = () => true,
-): string {
-  const commands: string[] = [];
-  for (const segment of segments) {
-    let drawing = false;
-    for (const point of segment) {
-      if (!include(point)) {
-        drawing = false;
-        continue;
-      }
-      const { x, y } = point.projection;
-      commands.push(`${drawing ? "L" : "M"} ${x.toFixed(1)} ${y.toFixed(1)}`);
-      drawing = true;
+function buildCloudMask(texW: number, texH: number, seed: number, octaves: number, freqX: number, freqY: number, slope: number, intercept: number): HTMLCanvasElement | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(texW * CLOUD_TEX_SCALE));
+  canvas.height = Math.max(1, Math.round(texH * CLOUD_TEX_SCALE));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const image = ctx.createImageData(canvas.width, canvas.height);
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const n = fbm(x / CLOUD_TEX_SCALE, y / CLOUD_TEX_SCALE, seed, octaves, freqX, freqY);
+      const a = clamp(n * slope + intercept, 0, 1);
+      const p = (y * canvas.width + x) * 4;
+      image.data[p] = 255;
+      image.data[p + 1] = 255;
+      image.data[p + 2] = 255;
+      image.data[p + 3] = Math.round(a * 255);
     }
   }
-  return commands.join(" ");
+  ctx.putImageData(image, 0, 0);
+  return canvas;
 }
 
-function projectCoordinateStars(root: ParentNode, siderealDeg: number, g: SkyGeom): void {
-  for (const star of root.querySelectorAll<SVGCircleElement>(".sky-coordinate-star")) {
-    const horizontal = equatorialToHorizontal({
-      raDeg: Number(star.dataset.ra),
-      decDeg: Number(star.dataset.dec),
-    }, siderealDeg);
-    const point = projectSouth(horizontal, g.w, g.groundY);
-    star.setAttribute("opacity", point.visible ? (star.dataset.alpha ?? "1") : "0");
-    if (!point.visible) continue;
-    star.setAttribute("cx", point.x.toFixed(1));
-    star.setAttribute("cy", point.y.toFixed(1));
+interface SkyModel {
+  fieldStars: StarSpec[];
+  dustStars: StarSpec[];
+  constellations: StarSpec[][];
+  meteors: MeteorSpec[];
+  fall: DropSpec[];
+  ridgeFar: RidgeShape;
+  ridgeMid: RidgeShape;
+  ridgeNear: RidgeShape;
+  cloudLow: HTMLCanvasElement | null;
+  cloudHigh: HTMLCanvasElement | null;
+}
+
+const skyModelCache = new Map<string, SkyModel>();
+
+/** The sky's own data, built once per shape and shared by every instance drawn at that shape. */
+export function skyModelFor(g: SkyGeom): SkyModel {
+  const key = `${g.w}x${g.h}`;
+  const cached = skyModelCache.get(key);
+  if (cached) return cached;
+  const model: SkyModel = {
+    fieldStars: buildFieldStars(),
+    dustStars: buildDustStars(g),
+    constellations: buildConstellations(g),
+    meteors: buildMeteors(g),
+    fall: buildFall(g),
+    ridgeFar: buildRidge(g, 7, g.groundY * 0.30, 30),
+    ridgeMid: buildRidge(g, 23, g.groundY * 0.20, 34),
+    ridgeNear: buildRidge(g, 51, g.groundY * 0.12, 40),
+    cloudLow: buildCloudMask(g.w * 2, g.groundY, CLOUD_LOW_SEED, CLOUD_LOW_OCTAVES, CLOUD_LOW_FREQ_X, CLOUD_LOW_FREQ_Y, CLOUD_LOW_SLOPE, CLOUD_LOW_INTERCEPT),
+    cloudHigh: buildCloudMask(g.w * 2, g.groundY * 0.72, CLOUD_HIGH_SEED, CLOUD_HIGH_OCTAVES, CLOUD_HIGH_FREQ_X, CLOUD_HIGH_FREQ_Y, CLOUD_HIGH_SLOPE, CLOUD_HIGH_INTERCEPT),
+  };
+  skyModelCache.set(key, model);
+  return model;
+}
+
+// ---------------------------------------------------------------------------
+// Markup: one canvas per sky, sized to its shape. Everything that moves is
+// drawn, not written as an attribute, so there is no per-element markup to
+// build here beyond the element itself.
+// ---------------------------------------------------------------------------
+
+/**
+ * One sky's markup: a single canvas, plus the dataset the game's weather
+ * widget writes its local atmosphere into. `uid` distinguishes instances
+ * for anyone reading the DOM (the sky gallery's card names, say); drawing
+ * itself needs no such suffix, since a canvas has no ids for two skies on
+ * one page to collide over the way two SVGs' gradients once did.
+ */
+export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true, atmosphere?: AtmosphereSample): string {
+  const weatherData = atmosphere
+    ? ` data-weather-temperature="${atmosphere.temperatureC}" data-weather-cloud="${atmosphere.cloud}" data-weather-rate="${atmosphere.precipMmPerHour}" data-weather-rain="${atmosphere.rainMmPerHour}" data-weather-snow="${atmosphere.snowCmPerHour}" data-weather-precip="${atmosphere.precip}" data-weather-fog="${atmosphere.fog}" data-weather-wind-x="${atmosphere.windXKmh}" data-weather-wind-y="${atmosphere.windYKmh}" data-weather-wind-speed="${atmosphere.windKmh}"` : "";
+  return `<canvas class="sky" id="sky" width="${g.w}" height="${g.h}" aria-label="sky"
+ data-sky-w="${g.w}" data-sky-h="${g.h}" data-sky-ground="${g.groundY}" data-sky-arc="${g.arcR}" data-sky-cx="${g.cx}" data-sky-uid="${uid}" data-sky-show-phase="${showPhase ? 1 : 0}"${weatherData}></canvas>`;
+}
+
+// ---------------------------------------------------------------------------
+// Drawing. One canvas, redrawn whole every pass rather than patched piece by
+// piece - there is nothing left to patch once the picture is pixels, not
+// elements.
+// ---------------------------------------------------------------------------
+
+const MOON_RADIUS = 5;
+const MOON_BUFFER_PAD = 2;
+/** Big enough for the largest moon this file ever draws, at any device pixel ratio worth supporting. */
+const MOON_BUFFER_PX = Math.ceil((MOON_RADIUS + MOON_BUFFER_PAD) * 2) * 4;
+const moonBuffer = document.createElement("canvas");
+moonBuffer.width = MOON_BUFFER_PX;
+moonBuffer.height = MOON_BUFFER_PX;
+
+const CLOUD_SCRATCH_W = 960;
+const CLOUD_SCRATCH_H = 480;
+const cloudScratch = document.createElement("canvas");
+cloudScratch.width = CLOUD_SCRATCH_W;
+cloudScratch.height = CLOUD_SCRATCH_H;
+/**
+ * One layer is composited here in isolation before being laid onto
+ * `cloudScratch`, or the haze fill drawn first would be eaten by the next
+ * layer's own destination-in mask.
+ *
+ * One per layer, and kept between frames. What the compositing produces - a
+ * tint cut to the mask's shape - changes only when the hour changes the
+ * tint or a resize changes the box. What changes every frame is where the
+ * result is *drawn*, which is a source offset on the copy below. Rebuilding
+ * it per frame meant clearing 960 by 480, filling it, and rescaling the
+ * mask bitmap over it, twice, sixty times a second: measured at 1.47 s per
+ * 20 s, the single most expensive thing on the main thread.
+ */
+interface CloudLayer { canvas: HTMLCanvasElement; mask: HTMLCanvasElement | null; key: string }
+const cloudLayers: [CloudLayer, CloudLayer] = [newCloudLayer(), newCloudLayer()];
+
+function newCloudLayer(): CloudLayer {
+  const canvas = document.createElement("canvas");
+  canvas.width = CLOUD_SCRATCH_W;
+  canvas.height = CLOUD_SCRATCH_H;
+  return { canvas, mask: null, key: "" };
+}
+
+/** The tinted, mask-cut layer for one cloud deck, rebuilt only when it would differ. */
+function cloudLayerBitmap(slot: 0 | 1, mask: HTMLCanvasElement, tint: string, w: number, h: number): HTMLCanvasElement | null {
+  const layer = cloudLayers[slot];
+  const key = `${tint}|${Math.round(w)}|${Math.round(h)}`;
+  if (layer.key === key && layer.mask === mask) return layer.canvas;
+  const ctx = layer.canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, CLOUD_SCRATCH_W, CLOUD_SCRATCH_H);
+  ctx.fillStyle = tint;
+  ctx.globalAlpha = 0.9;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = "destination-in";
+  ctx.globalAlpha = 1;
+  ctx.drawImage(mask, 0, 0, w, h);
+  ctx.globalCompositeOperation = "source-over";
+  layer.mask = mask;
+  layer.key = key;
+  return layer.canvas;
+}
+
+const METEOR_LOOP_S = 12;
+const METEOR_FLASH_START = 0.76;
+const METEOR_FLASH_PEAK = 0.78;
+const METEOR_FLASH_END = 0.86;
+const METEOR_TRANSLATE: Point = { x: -32, y: 32 };
+const METEOR_PEAK_OPACITY = 0.95;
+const REDUCED_MOTION_METEOR_OPACITY = 0.72;
+
+/** Where one meteor is in its twelve-second loop: invisible, flashing across, or gone again until the next lap. */
+function meteorFrame(phase: number): { opacity: number; dx: number; dy: number } {
+  if (phase < METEOR_FLASH_START || phase > METEOR_FLASH_END) return { opacity: 0, dx: 0, dy: 0 };
+  const flashT = clamp((phase - METEOR_FLASH_START) / (METEOR_FLASH_END - METEOR_FLASH_START), 0, 1);
+  const opacity = phase <= METEOR_FLASH_PEAK
+    ? METEOR_PEAK_OPACITY * (phase - METEOR_FLASH_START) / (METEOR_FLASH_PEAK - METEOR_FLASH_START)
+    : METEOR_PEAK_OPACITY * (1 - (phase - METEOR_FLASH_PEAK) / (METEOR_FLASH_END - METEOR_FLASH_PEAK));
+  return { opacity, dx: METEOR_TRANSLATE.x * flashT, dy: METEOR_TRANSLATE.y * flashT };
+}
+
+const RAIN_DURATION_S = 0.9;
+const SNOW_DURATION_MULTIPLE = 5;
+const FALL_TRAVEL_Y = 220;
+const FALL_MIN_DURATION_S = 0.45;
+const FALL_WIND_DIVISOR = 60;
+const FALL_DRIFT_X_PER_WIND = 2;
+const CLOUD_DRIFT_X_PER_WIND = 4;
+const CLOUD_DRIFT_Y_PER_WIND = 1.5;
+const CLOUD_DEFAULT_DRIFT_X = -240;
+const CLOUD_DURATION_MIN_S = 16;
+const CLOUD_DURATION_BASE_S = 180;
+const CLOUD_DURATION_PER_WIND = 3;
+const SUN_CLOUD_ATTENUATION = 0.92;
+
+/** The sun's own opacity behind cloud: never fully hidden, the way a disc behind an overcast deck still shows through. */
+export function bodyOpacity(cover: number): number {
+  return 1 - SUN_CLOUD_ATTENUATION * cover;
+}
+
+/**
+ * How far the mask's dark disc sits from the lit one, and which side. The
+ * dark of the moon is cut out of it rather than painted over it, because no
+ * flat colour ever matched the sky behind a gibbous moon closely enough:
+ * left while waxing, right while waning, on top at new, clear at full.
+ */
+export function moonShadowOffset(cal: Calendar, radius: number = MOON_RADIUS): number {
+  return 2 * radius * cal.moonLight * (cal.moon < 0.5 ? -1 : 1);
+}
+
+/** Which of the four fixed patterns a clear night shows: stable until dawn, then drawn from the run seed and the next night's date. */
+export function nightConstellation(seed: number, nightIndex: number): number {
+  return ((Math.imul(seed, 1103515245) + Math.imul(nightIndex, 12345)) >>> 0) % CONSTELLATION_SHAPES.length;
+}
+
+function reducedMotion(): boolean {
+  return typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+interface ProjectedStar { x: number; y: number; visible: boolean }
+
+interface SkyRuntime {
+  /** The displayed minute this projection was computed for; the trig behind it is the expensive part, not the drawing. */
+  projectionMinute: string;
+  fieldStars: ProjectedStar[];
+  dustStars: ProjectedStar[];
+  constellations: ProjectedStar[][];
+  milkyPlane: ProjectedGalacticPoint[][];
+  milkyNorthPlane: ProjectedGalacticPoint[][];
+  galacticCenterAlt: number;
+  /** Everything that is not decorative motion; unchanged means reduced motion has nothing new to draw. */
+  stateKey: string;
+}
+
+const runtimes = new WeakMap<HTMLCanvasElement, SkyRuntime>();
+
+function project(star: StarSpec, siderealDeg: number, g: SkyGeom): ProjectedStar {
+  const horizontal: HorizontalCoordinate = equatorialToHorizontal({ raDeg: star.raDeg, decDeg: star.decDeg }, siderealDeg);
+  const point = projectSouth(horizontal, g.w, g.groundY);
+  return { x: point.x, y: point.y, visible: point.visible };
+}
+
+/**
+ * Sizes the backing buffer in device pixels and maps logical `g` coordinates
+ * onto it the way `preserveAspectRatio="xMidYMax slice"` did: scaled to
+ * cover the box the layout actually gave this canvas, centred horizontally,
+ * pinned to the bottom. A canvas with no real layout (a bare intrinsic
+ * canvas, or a test) reports a zero box, which falls back to drawing at the
+ * logical size itself rather than dividing by zero.
+ */
+function ensureCanvasSize(canvas: HTMLCanvasElement, g: SkyGeom): CanvasRenderingContext2D | null {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const dpr = (typeof window !== "undefined" ? window.devicePixelRatio : 1) || 1;
+  const boxW = canvas.clientWidth || g.w;
+  const boxH = canvas.clientHeight || g.h;
+  const scale = Math.max(boxW / g.w, boxH / g.h);
+  const offsetX = (boxW - g.w * scale) / 2;
+  const offsetY = boxH - g.h * scale;
+  const pixelW = Math.max(1, Math.round(boxW * dpr));
+  const pixelH = Math.max(1, Math.round(boxH * dpr));
+  if (canvas.width !== pixelW) canvas.width = pixelW;
+  if (canvas.height !== pixelH) canvas.height = pixelH;
+  ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offsetX, dpr * offsetY);
+  return ctx;
+}
+
+/** Terrain is a deliberately colourless, fully opaque silhouette; weather stays visible in the sky and the precipitation instead of tinting the land. */
+const RIDGE_SILHOUETTE = "#050505";
+
+function fillRidge(ctx: CanvasRenderingContext2D, g: SkyGeom, ridge: RidgeShape): void {
+  ctx.beginPath();
+  ctx.moveTo(ridge.start.x, ridge.start.y);
+  for (const seg of ridge.curves) ctx.bezierCurveTo(seg.c1.x, seg.c1.y, seg.c2.x, seg.c2.y, seg.p.x, seg.p.y);
+  ctx.lineTo(g.w, g.h);
+  ctx.lineTo(0, g.h);
+  ctx.closePath();
+  ctx.fillStyle = RIDGE_SILHOUETTE;
+  ctx.fill();
+}
+
+const MILKY_HAZE_BLUR_PX = 3;
+
+function galacticStroke(ctx: CanvasRenderingContext2D, segments: ProjectedGalacticPoint[][], style: string, width: number, alpha: number, dash?: number[], blur?: number): void {
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = style;
+  ctx.lineWidth = width;
+  ctx.lineCap = dash ? "round" : "butt";
+  if (dash) ctx.setLineDash(dash);
+  if (blur) ctx.filter = `blur(${blur}px)`;
+  for (const segment of segments) {
+    if (segment.length < 2) continue;
+    ctx.beginPath();
+    ctx.moveTo(segment[0].projection.x, segment[0].projection.y);
+    for (let i = 1; i < segment.length; i++) ctx.lineTo(segment[i].projection.x, segment[i].projection.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawStars(ctx: CanvasRenderingContext2D, stars: StarSpec[], projected: ProjectedStar[], groupAlpha: number): void {
+  if (groupAlpha <= 0) return;
+  for (let i = 0; i < stars.length; i++) {
+    const p = projected[i];
+    if (!p.visible) continue;
+    ctx.globalAlpha = stars[i].alpha * groupAlpha;
+    ctx.fillStyle = stars[i].colour;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, stars[i].r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawMoon(ctx: CanvasRenderingContext2D, pos: BodyPos, cal: Calendar, opacity: number): void {
+  if (opacity <= 0) return;
+  const bufCtx = moonBuffer.getContext("2d");
+  if (!bufCtx) return;
+  const cx = MOON_BUFFER_PX / 2;
+  const cy = MOON_BUFFER_PX / 2;
+  bufCtx.setTransform(1, 0, 0, 1, 0, 0);
+  bufCtx.clearRect(0, 0, MOON_BUFFER_PX, MOON_BUFFER_PX);
+  bufCtx.fillStyle = "#e8ecf5";
+  bufCtx.beginPath();
+  bufCtx.arc(cx, cy, MOON_RADIUS, 0, Math.PI * 2);
+  bufCtx.fill();
+  // The dark side is erased out of the lit disc rather than painted over it,
+  // scoped to this small offscreen buffer so the erase cannot touch the sky
+  // drawn behind the moon on the main canvas.
+  const offset = moonShadowOffset(cal);
+  bufCtx.globalCompositeOperation = "destination-out";
+  bufCtx.beginPath();
+  bufCtx.arc(cx + offset, cy, MOON_RADIUS * 1.04, 0, Math.PI * 2);
+  bufCtx.fill();
+  bufCtx.globalCompositeOperation = "source-over";
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  ctx.drawImage(moonBuffer, pos.x - cx, pos.y - cy);
+  ctx.restore();
+}
+
+/**
+ * Cloud is a noise field tinted by the hour, not a shape drawn once and
+ * coloured forever. Each layer is filled with its own flood colour, then
+ * cut down to the noise mask's shape by erasing everything the mask is
+ * transparent over (`destination-in`, the same trick the moon's dark side
+ * uses) - done on its own scratch canvas first, or that erase would just as
+ * happily eat the haze and the layer drawn under it, since a canvas has no
+ * separate groups the way the SVG filters each lived inside their own.
+ */
+function drawClouds(ctx: CanvasRenderingContext2D, g: SkyGeom, model: SkyModel, cover: number, low: string, high: string, windX: number, windY: number, windSpeed: number, elapsedS: number, frozen: boolean): void {
+  if (cover <= 0) return;
+  const scratchCtx = cloudScratch.getContext("2d");
+  if (!scratchCtx) return;
+  scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+  scratchCtx.clearRect(0, 0, CLOUD_SCRATCH_W, CLOUD_SCRATCH_H);
+  scratchCtx.fillStyle = low;
+  scratchCtx.globalAlpha = 0.55;
+  scratchCtx.fillRect(0, 0, g.w, g.groundY);
+  scratchCtx.globalAlpha = 1;
+  const duration = Math.max(CLOUD_DURATION_MIN_S, CLOUD_DURATION_BASE_S - windSpeed * CLOUD_DURATION_PER_WIND);
+  const t = frozen ? 0 : (elapsedS % duration) / duration;
+  const driftX = windX * CLOUD_DRIFT_X_PER_WIND || CLOUD_DEFAULT_DRIFT_X;
+  const driftY = windY * CLOUD_DRIFT_Y_PER_WIND;
+  const ox = t * driftX;
+  const oy = t * driftY;
+  const drawLayer = (slot: 0 | 1, mask: HTMLCanvasElement | null, tint: string, w: number, h: number) => {
+    if (!mask) return;
+    // Built at its own full width, untranslated - a rect wider than the sky
+    // is visible, panned behind a fixed window, exactly as the CSS
+    // transform used to pan the SVG rect behind its unmoving viewBox. The
+    // panning is this copy's source offset; the layer itself is the same
+    // bitmap until the hour retints it.
+    const layer = cloudLayerBitmap(slot, mask, tint, w, h);
+    if (layer) scratchCtx.drawImage(layer, -ox, -oy, g.w, h, 0, 0, g.w, h);
+  };
+  drawLayer(0, model.cloudLow, low, g.w * 2, g.groundY);
+  drawLayer(1, model.cloudHigh, high, g.w * 2, g.groundY * 0.72);
+  ctx.save();
+  ctx.globalAlpha = cover;
+  ctx.drawImage(cloudScratch, 0, 0, g.w, g.groundY, 0, 0, g.w, g.groundY);
+  ctx.restore();
+}
+
+function drawFall(ctx: CanvasRenderingContext2D, model: SkyModel, precip: Lighting["precip"], opacity: number, windX: number, windSpeed: number, elapsedS: number, frozen: boolean): void {
+  if (precip === "none" || opacity <= 0) return;
+  const fallDuration = Math.max(FALL_MIN_DURATION_S, RAIN_DURATION_S - windSpeed / FALL_WIND_DIVISOR);
+  const duration = precip === "snow" ? fallDuration * SNOW_DURATION_MULTIPLE : fallDuration;
+  const driftX = windX * FALL_DRIFT_X_PER_WIND;
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  for (const drop of model.fall) {
+    const local = frozen ? 0 : (((elapsedS - drop.n * duration) % duration) + duration) % duration;
+    const t = local / duration;
+    const dx = driftX * t + (precip === "snow" ? drop.sx * t : 0);
+    const dy = -20 + (FALL_TRAVEL_Y + 20) * t;
+    const x = drop.x + dx;
+    const y = drop.y + dy;
+    if (precip === "rain") {
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - 3.4, y + 9);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.beginPath();
+      ctx.arc(x, y, drop.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawMeteors(ctx: CanvasRenderingContext2D, model: SkyModel, visible: boolean, elapsedS: number, frozen: boolean): void {
+  if (!visible) return;
+  if (frozen) {
+    // The still-picture case draws once and stops: one streak shown at its
+    // base position, the way the reduced-motion stylesheet used to leave it.
+    const m = model.meteors[0];
+    ctx.save();
+    ctx.globalAlpha = REDUCED_MOTION_METEOR_OPACITY;
+    ctx.strokeStyle = "rgba(244, 247, 255, 0.92)";
+    ctx.lineWidth = 0.9;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(m.x1, m.y1);
+    ctx.lineTo(m.x2, m.y2);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+  for (const m of model.meteors) {
+    const phase = (((elapsedS / METEOR_LOOP_S) + m.delayFrac) % 1 + 1) % 1;
+    const frame = meteorFrame(phase);
+    if (frame.opacity <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = frame.opacity;
+    ctx.strokeStyle = "rgba(244, 247, 255, 0.92)";
+    ctx.lineWidth = 0.9;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(m.x1 + frame.dx, m.y1 + frame.dy);
+    ctx.lineTo(m.x2 + frame.dx, m.y2 + frame.dy);
+    ctx.stroke();
+    ctx.restore();
   }
 }
 
-function skyAtmosphere(svg: SVGElement): AtmosphereSample | null {
-  const d = (svg as unknown as HTMLElement).dataset;
+/** Positions sun or moon, colours the sky, and lights the map. */
+export function updateSky(state: GameState, cal: Calendar, ambient: number, root: ParentNode = document): Lighting {
+  // Every sky on the page, at whatever shape each was drawn: the game
+  // widget and the gallery's cards are the same picture and must agree.
+  const skies = heldQueryAll<HTMLCanvasElement>(root, "canvas.sky");
+  for (const canvas of skies) dressSky(canvas, state, cal, ambient);
+  const localAir = skies.length ? skyAtmosphere(skies[0]) : null;
+  // The board takes this light on its canvas (map.ts, setBoardLight); nothing
+  // on the page reads it as a style any more.
+  return lighting(cal, localAir ?? state.weather, localAir?.temperatureC ?? ambient);
+}
+
+function skyAtmosphere(canvas: HTMLCanvasElement): AtmosphereSample | null {
+  const d = canvas.dataset;
   if (d.weatherCloud === undefined) return null;
   const cloud = Number(d.weatherCloud);
   const rainMmPerHour = Number(d.weatherRain);
@@ -459,169 +870,179 @@ function skyAtmosphere(svg: SVGElement): AtmosphereSample | null {
   };
 }
 
-/** Positions sun or moon, colours the strip, and lights the map. */
-export function updateSky(state: GameState, cal: Calendar, ambient: number, root: ParentNode = document): Lighting {
-  // Every sky on the page, at whatever shape each was drawn: the strip and
-  // the widget's wall are the same picture and must agree.
-  const skies = [...root.querySelectorAll<SVGElement>("svg.sky")];
-  for (const svg of skies) dressSky(svg, state, cal, ambient);
-  const localAir = skies.length ? skyAtmosphere(skies[0]) : null;
-  const light = lighting(cal, localAir ?? state.weather, localAir?.temperatureC ?? ambient);
-  const grid = root.querySelector<HTMLElement>("#map .scroll-x");
-  if (grid) {
-    grid.style.setProperty("--bright", light.brightness.toFixed(3));
-    grid.style.setProperty("--sat", light.saturation.toFixed(3));
-    grid.style.setProperty("--tint", light.tint);
-    grid.style.setProperty("--tint-a", light.alpha.toFixed(3));
-  }
-  return light;
-}
-
 /** One sky, at the shape it was drawn: where the body sits, what colour the air is, and what is falling through it. */
-function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: number): void {
+function dressSky(canvas: HTMLCanvasElement, state: GameState, cal: Calendar, ambient: number): void {
   const forecast = forecastText(state);
-  // Compare before writing, here and below: this runs on every render, and
-  // an attribute set to the value it already holds still invalidates style.
   const ariaLabel = forecast ? `sky: ${forecast}` : "sky";
-  if (svg.getAttribute("aria-label") !== ariaLabel) svg.setAttribute("aria-label", ariaLabel);
-  const d = (svg as unknown as HTMLElement).dataset;
+  if (canvas.getAttribute("aria-label") !== ariaLabel) canvas.setAttribute("aria-label", ariaLabel);
+
+  const d = canvas.dataset;
   const g: SkyGeom = {
-    w: Number(d.skyW ?? SKY_W), h: Number(d.skyH ?? SKY_H),
-    groundY: Number(d.skyGround ?? GROUND_Y), arcR: Number(d.skyArc ?? ARC_R), cx: Number(d.skyCx ?? CX),
+    w: Number(d.skyW ?? STRIP.w), h: Number(d.skyH ?? STRIP.h),
+    groundY: Number(d.skyGround ?? STRIP.groundY), arcR: Number(d.skyArc ?? STRIP.arcR), cx: Number(d.skyCx ?? STRIP.cx),
   };
-  const parts = skyParts(svg);
+  const model = skyModelFor(g);
   const pos = bodyPosition(cal, g);
-  const localAir = skyAtmosphere(svg);
+  const localAir = skyAtmosphere(canvas);
   const visualWeather = localAir ?? state.weather;
   const light = lighting(cal, visualWeather, localAir?.temperatureC ?? ambient);
-  const f = (v: number) => v.toFixed(1);
-  // dayOfYear wraps from 364 to 0. Recover the run's starting day and add
-  // dayIndex so the sky keeps moving by one sidereal minute at that seam.
+
   const startDoy = ((cal.dayOfYear - cal.dayIndex) % 365 + 365) % 365;
   const absoluteDay = startDoy + cal.dayIndex;
   const displayedMinute = Math.floor(cal.hour * 60 + 1e-6);
   const projectionKey = `${absoluteDay}:${displayedMinute}`;
   const siderealAngle = localSiderealDegrees(absoluteDay, displayedMinute / 60);
-  setAttr(parts, "sky-celestial", "data-sidereal-angle", siderealAngle.toFixed(3));
-  if (d.skyProjectionKey !== projectionKey) {
-    d.skyProjectionKey = projectionKey;
-    const galacticCenter = equatorialToHorizontal(GALACTIC_CENTER, siderealAngle);
+
+  let runtime = runtimes.get(canvas);
+  if (!runtime || runtime.projectionMinute !== projectionKey) {
     const plane = projectGalacticPlane(siderealAngle, g.w, g.groundY);
-    const path = galacticPath(plane);
-    setAttr(parts, "sky-celestial", "data-galactic-center-alt", galacticCenter.altitudeDeg.toFixed(3));
-    setAttr(parts, "sky-milky-haze", "d", path);
-    setAttr(parts, "sky-milky-plane", "d", path);
-    setAttr(parts, "sky-milky-dark-lane", "d", path);
-    setAttr(parts, "sky-milky-filament", "d", path);
-    setAttr(parts, "sky-milky-north", "d", galacticPath(plane, ({ galacticLongitudeDeg }) => (
-      galacticLongitudeDeg >= 55 && galacticLongitudeDeg <= 155
-    )));
-    projectCoordinateStars(svg, siderealAngle, g);
+    const north = plane.map((segment) => segment.filter((p) => p.galacticLongitudeDeg >= DUST_NORTHERN_BASE_L && p.galacticLongitudeDeg <= DUST_NORTHERN_BASE_L + DUST_NORTHERN_SPAN_L)).filter((s) => s.length > 1);
+    runtime = {
+      projectionMinute: projectionKey,
+      fieldStars: model.fieldStars.map((s) => project(s, siderealAngle, g)),
+      dustStars: model.dustStars.map((s) => project(s, siderealAngle, g)),
+      constellations: model.constellations.map((dots) => dots.map((s) => project(s, siderealAngle, g))),
+      milkyPlane: plane,
+      milkyNorthPlane: north,
+      galacticCenterAlt: equatorialToHorizontal(GALACTIC_CENTER, siderealAngle).altitudeDeg,
+      stateKey: "",
+    };
+    runtimes.set(canvas, runtime);
   }
-  setAttr(parts, "sky-sun", "cx", f(pos.body === "sun" ? pos.x : g.cx - g.arcR));
-  setAttr(parts, "sky-sun", "cy", f(pos.body === "sun" ? pos.y : g.groundY + 8));
-  // A yellow disc sitting on the horizon at dusk was the one thing in the
-  // picture disagreeing with the pink sky behind it, so the sun takes its
-  // colour from how high it is.
-  const high = Math.max(0, Math.min(1, (g.groundY - pos.y) / g.arcR));
-  setAttr(parts, "sky-sun", "fill", css(mix(SUN_LOW, SUN_HIGH, high)));
-  setAttr(parts, "sky-sun", "stroke", css(mix(mix(SUN_LOW, SUN_HIGH, high), WHITE, 0.45)));
-  setAttr(parts, "sky-moon", "cx", f(pos.body === "moon" ? pos.x : g.cx - g.arcR));
-  setAttr(parts, "sky-moon", "cy", f(pos.body === "moon" ? pos.y : g.groundY + 8));
-  // The dark of the moon is cut out of it rather than painted over it. The
-  // mask's black disc slides across by how much is lit - left while waxing,
-  // right while waning - and what it covers is simply not drawn. Painting
-  // instead needed a colour matching the sky at that exact height, which it
-  // never did, so a gibbous moon showed a second black moon beside it.
-  const r = 5;
-  const offset = 2 * r * cal.moonLight * (cal.moon < 0.5 ? -1 : 1);
-  setAttr(parts, "sky-moon-lit", "cx", f(pos.x));
-  setAttr(parts, "sky-moon-lit", "cy", f(pos.y));
-  setAttr(parts, "sky-moon-dark", "cx", f(pos.x + offset));
-  setAttr(parts, "sky-moon-dark", "cy", f(pos.y));
+
   const clearNight = pos.body === "moon" && (localAir ? localAir.precipMmPerHour < 0.05 && localAir.cloud < 0.35 : state.weather.precip === "none" && state.weather.clear);
-  setAttr(parts, "sky-stars", "opacity", clearNight ? "0.9" : "0");
-  const deepSky = (localAir ? localAir.precipMmPerHour < 0.05 && localAir.cloud < 0.35 : state.weather.precip === "none" && state.weather.clear)
-    ? clamp((0.80 - phaseFor(cal.hour, cal.sunrise, cal.sunset).brightness) / 0.25, 0, 1)
-    : 0;
-  setAttr(parts, "sky-milky-way", "opacity", (deepSky * 0.82).toFixed(2));
-  // The evening after midnight still belongs to the night that began at
-  // sunset. This keeps the figure stable until dawn, then chooses another
-  // from both the run seed and the next night's date.
+  const deepSky = clearNight ? clamp((0.80 - phaseFor(cal.hour, cal.sunrise, cal.sunset).brightness) / 0.25, 0, 1) : 0;
   const nightIndex = cal.dayIndex - (cal.hour < cal.sunrise ? 1 : 0);
-  const constellation = ((Math.imul(state.seed, 1103515245) + Math.imul(nightIndex, 12345)) >>> 0) % 4;
-  for (let i = 0; i < 4; i++) setAttr(parts, `sky-constellation-${i}`, "opacity", clearNight && i === constellation ? "1" : "0");
+  const constellationIndex = nightConstellation(state.seed, nightIndex);
   const perseids = clearNight && cal.dayOfYear >= 197 && cal.dayOfYear <= 235;
-  setAttr(parts, "sky-perseids", "opacity", perseids ? "1" : "0");
-  setAttr(parts, "sky-top", "stop-color", light.skyTop);
-  setAttr(parts, "sky-bottom", "stop-color", light.skyBottom);
-  // The sun goes down behind the hills, so for the whole of the pink hour
-  // there is no sun in the sky to be pink. What a dusk actually shows is
-  // the glow it left where it went: a wash on the horizon, at the end of
-  // the arc it set at, which the ridges stand black against.
-  const dawnNear = Math.abs(cal.hour - cal.sunrise);
-  const duskNear = Math.abs(cal.hour - cal.sunset);
-  const dusking = duskNear <= dawnNear;
-  const near = Math.min(dawnNear, duskNear);
-  const glow = Math.max(0, 1 - near / 1.6);
-  // By class rather than by id: the gradient's id carries this sky's own
-  // suffix, and the class is what stays the same across all of them.
-  const glowCx = f(g.cx + (dusking ? g.arcR : -g.arcR) * 0.85);
-  const glowgrad = svg.querySelector(".glowgrad");
-  if (glowgrad && glowgrad.getAttribute("cx") !== glowCx) glowgrad.setAttribute("cx", glowCx);
-  setAttr(parts, "sky-glow", "opacity", glow.toFixed(2));
-  for (const id of ["sky-glow-in", "sky-glow-mid", "sky-glow-out"]) {
-    setAttr(parts, id, "stop-color", css(dusking ? GLOW_DUSK : GLOW_DAWN));
-  }
-
-  const label = parts.get("sky-label");
-  const text = phaseName(cal);
-  if (label && label.textContent !== text) label.textContent = text;
-
-  // What the air is doing. Cloud thickens as the sky stops being clear and
-  // thickens again while something is falling out of it; the fall itself is
-  // snow or rain, and a storm leans it over and hurries it along.
   const falling = light.precip !== "none";
-  // An overcast sky is covered. At half opacity the blue read straight
-  // through the cloud and the widget looked like a fair day with a smudge
-  // over it, which is not what the word says.
   const cover = localAir ? clamp(Math.max(localAir.cloud, localAir.fog, falling ? 0.72 : 0), 0, 1) : falling ? 1 : state.weather.clear ? 0 : 0.95;
-  setAttr(parts, "sky-clouds", "opacity", cover.toFixed(2));
   const fallOpacity = localAir ? clamp(Math.sqrt(localAir.precipMmPerHour / 7.5), 0, 1) : falling ? 1 : 0;
-  setAttr(parts, "sky-fall", "opacity", fallOpacity.toFixed(2));
-  // Behind a cloud deck there is no disc to see. A flat grey sun pasted on
-  // an overcast card was the one thing in the picture that never happens.
-  const through = (1 - 0.92 * cover).toFixed(2);
-  setAttr(parts, "sky-sun", "opacity", pos.body === "sun" ? through : "0");
-  setAttr(parts, "sky-moon", "opacity", pos.body === "moon" ? through : "0");
-  svg.classList.toggle("snow", light.precip === "snow");
-  svg.classList.toggle("rain", light.precip === "rain");
-  svg.classList.toggle("storm", localAir ? localStorm(localAir) : Boolean(state.weather.storm && stormNow(state.weather, state.minute)));
   const windX = localAir?.windXKmh ?? 0;
   const windY = localAir?.windYKmh ?? 0;
   const windSpeed = localAir?.windKmh ?? 0;
-  svg.style.setProperty("--wind-x", windX.toFixed(2));
-  svg.style.setProperty("--wind-y", windY.toFixed(2));
-  svg.style.setProperty("--wind-speed", windSpeed.toFixed(2));
-  svg.style.setProperty("--cloud-drift-x", `${(windX * 4).toFixed(1)}px`);
-  svg.style.setProperty("--cloud-drift-y", `${(windY * 1.5).toFixed(1)}px`);
-  svg.style.setProperty("--cloud-duration", `${Math.max(16, 180 - windSpeed * 3).toFixed(1)}s`);
-  svg.style.setProperty("--fall-drift-x", `${(windX * 2).toFixed(1)}px`);
-  const fallDuration = Math.max(0.45, 1.3 - windSpeed / 60);
-  svg.style.setProperty("--fall-duration", `${fallDuration.toFixed(2)}s`);
-  svg.style.setProperty("--snow-duration", `${(fallDuration * 5).toFixed(2)}s`);
-  // The cloud is coloured by the hour, so it darkens through the evening
-  // rather than sitting white over a night sky.
-  setAttr(parts, "sky-cloudflood", "flood-color", light.cloudLow);
-  setAttr(parts, "sky-cloudflood-hi", "flood-color", light.cloudHigh);
-  setAttr(parts, "sky-haze", "fill", light.cloudLow);
+  const storm = localAir ? localStorm(localAir) : Boolean(state.weather.storm && stormNow(state.weather, state.minute));
+  const through = bodyOpacity(cover);
+  const high = clamp((g.groundY - pos.y) / g.arcR, 0, 1);
+  const dawnNear = Math.abs(cal.hour - cal.sunrise);
+  const duskNear = Math.abs(cal.hour - cal.sunset);
+  const dusking = duskNear <= dawnNear;
+  const glow = Math.max(0, 1 - Math.min(dawnNear, duskNear) / 1.6);
+  const phaseText = Number(d.skyShowPhase) ? phaseName(cal) : "";
 
-  // Terrain is a deliberately colourless, fully opaque silhouette. Weather
-  // remains visible in the sky and precipitation instead of tinting the land.
-  for (const ridge of RIDGES) setAttr(parts, ridge, "fill", "#050505");
+  // Everything above is the picture. This key stands for all of it except
+  // decorative motion, so reduced motion can compare it call to call and
+  // draw only when something in it actually changed.
+  const stateKey = [
+    projectionKey, pos.body, pos.x.toFixed(1), pos.y.toFixed(1), light.skyTop, light.skyBottom,
+    clearNight, deepSky.toFixed(2), constellationIndex, perseids, cover.toFixed(2), fallOpacity.toFixed(2),
+    light.precip, storm, windX.toFixed(1), windY.toFixed(1), through.toFixed(2), glow.toFixed(2), phaseText,
+  ].join("|");
+
+  // A handful of dataset attributes describe what the picture currently
+  // shows, the way the classes and CSS custom properties used to - cheap to
+  // write and useful to read without decoding pixels, but never thousands
+  // of them and never the thing the browser recalculates style over.
+  const setData = (key: string, value: string) => { if (d[key] !== value) d[key] = value; };
+  setData("skyPrecip", light.precip);
+  setData("skyStorm", storm ? "1" : "0");
+  setData("skyWindX", windX.toFixed(2));
+  setData("skyWindY", windY.toFixed(2));
+  setData("skyWindSpeed", windSpeed.toFixed(2));
+  setData("skyFallOpacity", fallOpacity.toFixed(2));
+  setData("skyCloudOpacity", cover.toFixed(2));
+  setData("skyStars", clearNight ? "0.90" : "0.00");
+  setData("skyMilkyWay", (deepSky * 0.82).toFixed(2));
+  setData("skyConstellation", clearNight ? String(constellationIndex) : "");
+  setData("skyPerseids", perseids ? "1" : "0");
+  setData("skySiderealAngle", siderealAngle.toFixed(3));
+  setData("skyGalacticCenterAlt", runtime.galacticCenterAlt.toFixed(3));
+
+  const frozen = reducedMotion();
+  if (frozen && runtime.stateKey === stateKey) return;
+  runtime.stateKey = stateKey;
+
+  const ctx = ensureCanvasSize(canvas, g);
+  if (!ctx) return;
+  const elapsedS = frozen ? 0 : performance.now() / 1000;
+
+  ctx.clearRect(0, 0, g.w, g.h);
+
+  const skyGradient = ctx.createLinearGradient(0, 0, 0, g.h);
+  skyGradient.addColorStop(0, light.skyTop);
+  skyGradient.addColorStop(1, light.skyBottom);
+  ctx.fillStyle = skyGradient;
+  ctx.fillRect(0, 0, g.w, g.h);
+
+  const pxPerDegree = g.groundY / 90;
+  const milkyAlpha = deepSky * 0.82;
+  if (milkyAlpha > 0) {
+    galacticStroke(ctx, runtime.milkyPlane, "#b8c3ec", 20 * pxPerDegree, milkyAlpha * 0.24, undefined, MILKY_HAZE_BLUR_PX);
+    galacticStroke(ctx, runtime.milkyPlane, "#b8c3ec", 11 * pxPerDegree, milkyAlpha * 0.11);
+    galacticStroke(ctx, runtime.milkyNorthPlane, "#d5d5f2", 8 * pxPerDegree, milkyAlpha * 0.17);
+    galacticStroke(ctx, runtime.milkyPlane, "#060b20", 2.8 * pxPerDegree, milkyAlpha * 0.36, [18, 3, 29, 5]);
+    galacticStroke(ctx, runtime.milkyPlane, "#e6e1f6", 0.7 * pxPerDegree, milkyAlpha * 0.10);
+    drawStars(ctx, model.dustStars, runtime.dustStars, milkyAlpha);
+  }
+  const starAlpha = clearNight ? 0.9 : 0;
+  drawStars(ctx, model.fieldStars, runtime.fieldStars, starAlpha);
+  if (clearNight) drawStars(ctx, model.constellations[constellationIndex], runtime.constellations[constellationIndex], 1);
+
+  drawMeteors(ctx, model, perseids, elapsedS, frozen);
+
+  if (glow > 0) {
+    const glowCx = g.cx + (dusking ? g.arcR : -g.arcR) * 0.85;
+    const glowColour = dusking ? GLOW_DUSK : GLOW_DAWN;
+    const radial = ctx.createRadialGradient(glowCx, g.groundY, 0, glowCx, g.groundY, g.arcR * 1.15);
+    radial.addColorStop(0, `rgba(${glowColour.join(",")}, 0.95)`);
+    radial.addColorStop(0.4, `rgba(${glowColour.join(",")}, 0.4)`);
+    radial.addColorStop(1, `rgba(${glowColour.join(",")}, 0)`);
+    ctx.save();
+    ctx.globalAlpha = glow;
+    ctx.fillStyle = radial;
+    ctx.fillRect(0, 0, g.w, g.h);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.setLineDash([2, 3]);
+  ctx.beginPath();
+  ctx.arc(g.cx, g.groundY, g.arcR, Math.PI, 0);
+  ctx.stroke();
+  ctx.restore();
+
+  if (pos.body === "sun" && through > 0) {
+    ctx.save();
+    ctx.globalAlpha = through;
+    ctx.fillStyle = css(mix(SUN_LOW, SUN_HIGH, high));
+    ctx.strokeStyle = css(mix(mix(SUN_LOW, SUN_HIGH, high), WHITE, 0.45));
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  } else if (pos.body === "moon" && through > 0) {
+    drawMoon(ctx, pos, cal, through);
+  }
+
+  drawClouds(ctx, g, model, cover, light.cloudLow, light.cloudHigh, windX, windY, windSpeed, elapsedS, frozen);
+  drawFall(ctx, model, light.precip, fallOpacity, windX, windSpeed, elapsedS, frozen);
+
+  fillRidge(ctx, g, model.ridgeFar);
+  fillRidge(ctx, g, model.ridgeMid);
+  fillRidge(ctx, g, model.ridgeNear);
+
+  if (phaseText) {
+    ctx.save();
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.font = "8px sans-serif";
+    ctx.textAlign = "end";
+    ctx.fillText(phaseText, g.w - 4, g.h - 3);
+    ctx.restore();
+  }
 }
-
-const RIDGES = ["sky-far", "sky-mid", "sky-near"] as const;
 
 export function phaseName(cal: Calendar): string {
   const h = cal.hour;

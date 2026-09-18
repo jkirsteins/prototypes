@@ -7,8 +7,9 @@ import { newGame } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
 import { activateWildlife } from "../src/sim/wildlife-agents";
 import type { WildlifeStartleEvent } from "../src/sim/wildlife-encounter";
-import { levelAt, mapHtml } from "../src/ui/map";
-import { enqueueWildlifeStartle, newUiState, resetPanels, setPanel } from "../src/ui/render";
+import { levelAt } from "../src/ui/map";
+import { board, glyphsWith, type MapModel } from "./board";
+import { enqueueWildlifeStartle, newUiState, resetPanels } from "../src/ui/render";
 import { cellAt, neighbours, type World } from "../src/world/gen";
 import type { GameState } from "../src/sim/types";
 import { visibleCells } from "../src/sim/sight";
@@ -32,22 +33,18 @@ function scene(zoom: number) {
     perception: { kind: "seen", identification: "ungulate" },
     terrain: "pine", body: "light", group: "group", logText: "Hooves crash away.",
   };
-  const draw = (now = 1100) => setPanel("mapdyn", mapHtml(world, state, ui, calendar(state.minute, state.startDoy), now));
+  const draw = (now = 1100) => board(world, state, ui, calendar(state.minute, state.startDoy), now);
   return { state, world, animal, ui, event, draw };
 }
 
-/** Read the glyph's layout rather than guessing its slot from simulation state. */
-function glyphBox(glyph: HTMLElement, zoom: number) {
+/** Where the animal is drawn - its mark at the closest rung, its glyph at the block rungs - and whether it is recoiling. */
+function drawnAnimal(b: MapModel, id: number, zoom: number) {
   const level = levelAt(zoom);
-  if (glyph.classList.contains("wildlife-map-mark")) return {
-    x: Number.parseFloat(glyph.style.getPropertyValue("--animal-x")),
-    top: Number.parseFloat(glyph.style.getPropertyValue("--animal-y")) - level.line / 2,
-  };
-  const cell = glyph.closest<HTMLElement>(".c")!;
-  return {
-    x: (Number(cell.dataset.mapX) + 0.5) * level.px,
-    top: Number(cell.dataset.mapY) * level.line,
-  };
+  const mark = b.marks.find((m) => m.id === id);
+  if (mark) return { x: mark.x, top: mark.y - level.line / 2, recoil: mark.recoilAt };
+  const glyph = b.glyphs.find((g) => g.wildlifeId === id);
+  if (!glyph) return null;
+  return { x: (glyph.gx + 0.5) * level.px, top: glyph.gy * level.line, recoil: glyph.wildlifeStart };
 }
 
 beforeEach(() => {
@@ -93,14 +90,12 @@ describe("wildlife cue anchors", () => {
     animal.active!.cell = patchOfOwnGlyph(state, world, zoom);
     animal.active!.position = metricPointForStoredCell(state.seed, animal.id, animal.active!.cell)!;
     enqueueWildlifeStartle(ui, event, 1000);
-    draw();
-    const glyph = document.querySelector<HTMLElement>(`[data-wildlife-id="${animal.id}"]`)!;
-    const cue = document.querySelector<HTMLElement>(".wildlife-startle.seen")!;
-    const box = glyphBox(glyph, zoom);
-    expect(Number.parseFloat(cue.style.left)).toBeCloseTo(box.x);
-    expect(Number.parseFloat(cue.style.top) + 18).toBeLessThanOrEqual(box.top + 1e-6);
-    expect(cue.parentElement?.classList.contains("grid")).toBe(true);
-    expect(glyph.classList.contains("wildlife-recoil")).toBe(true);
+    const b = draw();
+    const box = drawnAnimal(b, animal.id, zoom)!;
+    const cue = b.startles.find((c) => c.kind === "seen")!;
+    expect(cue.x).toBeCloseTo(box.x);
+    expect(cue.y + 18).toBeLessThanOrEqual(box.top + 1e-6);
+    expect(box.recoil).toBe(1000);
   });
 
   // Only the closest rung draws a herd's own metre position; at the block
@@ -112,11 +107,11 @@ describe("wildlife cue anchors", () => {
     animal.active!.intent = "rest";
     animal.active!.position = { xM: state.player.xM, yM: state.player.yM };
     enqueueWildlifeStartle(ui, event, 1000);
-    draw();
-    const glyph = document.querySelector<HTMLElement>(`[data-wildlife-id="${animal.id}"]`)!;
-    const cue = document.querySelector<HTMLElement>(".wildlife-startle.seen")!;
-    expect(Number.parseFloat(cue.style.left)).toBeCloseTo(glyphBox(glyph, zoom).x);
-    expect(Number.parseFloat(cue.style.top) + 18).toBeLessThanOrEqual(glyphBox(glyph, zoom).top + 1e-6);
+    const b = draw();
+    const box = drawnAnimal(b, animal.id, zoom)!;
+    const cue = b.startles.find((c) => c.kind === "seen")!;
+    expect(cue.x).toBeCloseTo(box.x);
+    expect(cue.y + 18).toBeLessThanOrEqual(box.top + 1e-6);
   });
 
   it.each(["heard", "seen"] as const)("projects an unrendered %s source inside its own patch without disclosing identity", (kind) => {
@@ -127,19 +122,17 @@ describe("wildlife cue anchors", () => {
     event.source = { xM: (Math.floor(state.player.xM / PATCH_M) + 0.2) * PATCH_M, yM: (Math.floor(state.player.yM / PATCH_M) + 0.75) * PATCH_M };
     event.perception = kind === "seen" ? { kind, identification: "unknown" } : { kind, identification: "unknown", uncertaintyM: 0 };
     enqueueWildlifeStartle(ui, event, 1000);
-    draw();
-    const cue = document.querySelector<HTMLElement>(".wildlife-startle")!;
-    expect(Number.parseFloat(cue.style.left)).toBeCloseTo(398.2);
-    expect(Number.parseFloat(cue.style.top)).toBeCloseTo(237.5);
-    expect(document.querySelector(".mk-animal")).toBeNull();
-    expect(document.body.innerHTML).not.toContain("987654321");
-    const key = cue.dataset.startle;
+    const b = draw();
+    const cue = b.startles[0];
+    expect(cue.x).toBeCloseTo(398.2);
+    expect(cue.y).toBeCloseTo(237.5);
+    expect(glyphsWith(b, "mk-animal")).toHaveLength(0);
+    expect(b.marks).toHaveLength(0);
+    expect(JSON.stringify(b)).not.toContain("987654321");
     ui.zoom = 1;
-    draw(1400);
-    const zoomed = document.querySelector<HTMLElement>(".wildlife-startle")!;
-    expect(zoomed).toBe(cue);
-    expect(zoomed.dataset.startle).toBe(key);
-    expect(zoomed.style.getPropertyValue("--wildlife-start")).toBe("1000ms");
+    const zoomed = draw(1400).startles[0];
+    expect(zoomed.key).toBe(cue.key);
+    expect(zoomed.startedAtMs).toBe(1000);
   });
 
   it("keeps a heard cue at its perceived source even if the subject also has a visible glyph", () => {
@@ -148,27 +141,26 @@ describe("wildlife cue anchors", () => {
     event.source = { xM: (Math.floor(state.player.xM / PATCH_M) + 0.2) * PATCH_M, yM: (Math.floor(state.player.yM / PATCH_M) + 0.75) * PATCH_M };
     event.perception = { kind: "heard", identification: "unknown", uncertaintyM: 0 };
     enqueueWildlifeStartle(ui, event, 1000);
-    draw();
-    expect(document.querySelector(`[data-wildlife-id="${animal.id}"]`)).not.toBeNull();
-    expect(document.querySelector(".wildlife-recoil")).toBeNull();
-    const cue = document.querySelector<HTMLElement>(".wildlife-startle")!;
-    expect(Number.parseFloat(cue.style.left)).toBeCloseTo(398.2);
-    expect(Number.parseFloat(cue.style.top)).toBeCloseTo(237.5);
-    expect(cue.hasAttribute("data-wildlife-id")).toBe(false);
+    const b = draw();
+    const shown = drawnAnimal(b, animal.id, 0);
+    expect(shown).not.toBeNull();
+    expect(shown?.recoil).toBeUndefined();
+    const cue = b.startles[0];
+    expect(cue.x).toBeCloseTo(398.2);
+    expect(cue.y).toBeCloseTo(237.5);
   });
 
-  it("preserves an animal node when its exact position crosses a cell boundary", () => {
+  it("keeps an animal's mark, under the same id, when its exact position crosses a cell boundary", () => {
     const { state, world, animal, draw } = scene(0);
-    draw();
-    const glyph = document.querySelector<HTMLElement>(`[data-wildlife-id="${animal.id}"]`)!;
-    const x = glyph.style.getPropertyValue("--animal-x");
+    const mark = draw().marks.find((m) => m.id === animal.id)!;
+    expect(mark).toBeDefined();
     const next = neighbours(world, animal.active!.cell).find((cell) =>
       passable(cellAt(world, cell).terrain) && cellAt(world, cell).region === state.player.region)!;
     animal.active!.cell = next;
     animal.active!.position = metricPointForStoredCell(state.seed, animal.id, next)!;
-    draw();
-    const moved = document.querySelector<HTMLElement>(`[data-wildlife-id="${animal.id}"]`)!;
-    expect(moved.style.getPropertyValue("--animal-x")).not.toBe(x);
-    expect(moved).toBe(glyph);
+    // The same mark, moved: the effects layer slides it by id (map.ts, drawMarks).
+    const moved = draw().marks.find((m) => m.id === animal.id)!;
+    expect(moved).toBeDefined();
+    expect(moved.x).not.toBe(mark.x);
   });
 });

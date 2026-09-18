@@ -3,7 +3,8 @@ import { worldCacheStats } from "../src/world/aggregate";
 import { cellAt, cellIdx, FINE_CHUNK, neighbours, regionOf, regionPeek, solvedTerrainAt, terrainOf, terrainOfPatch, terrainPeek, patchAt } from "../src/world/cells";
 import { refineChunk } from "../src/world/refine";
 import { regionAtPatch } from "../src/world/fine-terrain";
-import { latticeOf, regionAt } from "../src/world/gen";
+import { latticeOf, regionAt, setRegionCache } from "../src/world/gen";
+import { installNodeWorldCache } from "../src/world/solvecache.node";
 import { PATCH_KM, patchId } from "../src/world/spatial";
 import { LATTICE, TERRAINS } from "../src/world/terrain";
 import { passable } from "../src/world/route";
@@ -68,7 +69,15 @@ describe("fine world and regions", () => {
         if (regionAtPatch(21, patch) === id) expected.push(patch);
       }
     }
-    const region = regionAt(world, id);
+    // This is about the work of constructing a region, so build it here
+    // rather than read it back from the region disk cache.
+    setRegionCache(null);
+    let region: ReturnType<typeof regionAt>;
+    try {
+      region = regionAt(world, id);
+    } finally {
+      installNodeWorldCache();
+    }
     expect([...region.cells].sort((a, b) => a - b)).toEqual(expected);
     expect(region.area).toBeCloseTo(expected.length * 0.0025, 8);
     const counts: Record<string, number> = {};

@@ -12,6 +12,7 @@
  */
 import type { Terrain } from "../sim/types";
 import { fordAt, groundChangeAt, heightAt, moistureAt, waterKindOf, type World } from "../world/cells";
+import { fineHeightPeek } from "../world/gen";
 import type { GroundChangeKind } from "../world/groundchange";
 import { patchId } from "../world/spatial";
 
@@ -124,5 +125,8 @@ export function elevationAt(world: World, x: number, y: number): number {
  */
 export function offshoreAt(world: World, x: number, y: number): number | null {
   if (waterKindOf(world, y * world.w + x) !== "sea") return null;
-  return -heightAt(world, x, y);
+  // The refined floor where the ground is in hand: the parent's height is
+  // one figure for thirty-six patches, and shading the sea by it drew the
+  // closest rung as 300 m blocks of one blue.
+  return -fineHeightPeek(world, x, y);
 }

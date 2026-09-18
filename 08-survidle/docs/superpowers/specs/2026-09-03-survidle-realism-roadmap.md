@@ -4369,6 +4369,16 @@ intent, which answers the 09-07 record's design question 4, a day-5 death
 leaving a camp not worth inheriting. This is the answer to that record's
 design question 6, what the map is for.
 
+**Part 2's blocker list, built.** The cheap half of this part is built: `addOrder`
+in `src/sim/orders.ts` raises `Site.build[sid] ??= 0` the moment a build is
+ordered rather than the moment work on it starts, so a planned build shows
+its blockers before a survivor has ever walked to it, and `campHtml` in
+`src/ui/panels.ts` reads that entry to print "vedbod, planned: needs 6 logs
+(have 2)". Choosing the cell by placing a ghost on the map, drawing it there,
+and the ground model teaching itself through where it is placed are what
+remains open; spec `2026-09-13-survidle-idle-layer-design.md` section 7
+names the split.
+
 **3. The camp sheet: producers and stores.** One sheet listing each
 producer with its rate (`PRODUCERS` in `src/sim/capabilities.ts`: snares,
 drying rack, basket trap, water trough, seep; snares are resource
@@ -4385,6 +4395,19 @@ person-days of food banked, and the forecast's odds at a horizon, which
 B computes as "7 of 10". The away report reads against this sheet: the
 snares took four hares and lost two, the rack is full and two days off
 drying.
+
+**Built.** Spec `2026-09-13-survidle-idle-layer-design.md`. The camp sheet
+prints each producer's rate through the shared `rate()` component and each
+store's held, cap and cap reason through `src/ui/stocks.ts`'s group table,
+with the yard's free square metres beside them; a toolbar above the three
+columns carries the same reading at a glance and opens the detail on hover
+or tap. Person-days of food banked is the headline the group table gives
+for free, since it is what a food group counted in its own unit already
+means. The wood store's cap is the one rung this MVP ships: a vedbod, and
+the one rule that makes any of these caps bite is dry firewood over cover
+re-wetting in the rain rather than keeping for ever. The forecast's odds at
+a horizon and a raised cache or cellar stay open, and so does an expansion
+rung on the rack, the vessels and the snares.
 
 **4. The stake, and nature reclaiming it.** A painted area on the map
 measuring how much ground the survivor holds against the north. One rule
@@ -4449,6 +4472,25 @@ third edge, the heat border, already on the map. Extends 4.
   a footprint in the sim that nobody can see. Revealing it is cheap. It
   is bounded by the ruling that one survivor cannot empty a shore or
   heath, so it is a texture of part 4's paint and not a part of its own.
+- **Log rot.** Nothing gives a felled log a clock, though food, structures
+  and the bough bed all have one. Decay needs wood over about 20 percent
+  moisture and temperature over about 5 C, so at 62 N the clock runs June
+  to September and stops. Ground contact is most of it and bark is the
+  rest: a birch log left with its bark on spoils in a summer, while the
+  same log debarked and stacked on skids keeps for years. The shape when
+  it comes: logs on the ground degrade, debarking yields `bark` the game
+  already wants and preserves the timber, a roof stops the clock, and a
+  rotted log splits to a reduced yield rather than vanishing. Kept off
+  this MVP so that one gate reading answers for one rule; design spec
+  `2026-09-13-survidle-idle-layer-design.md` section 9.
+- **Per-shed upkeep.** A vedbod stands for ever today, because the decay
+  loop that ages a structure collapses it by writing `site.structures[sid]
+  = false`, and a vedbod is not a boolean in `site.structures`, it is the
+  count `site.woodsheds`. Giving it the same bark-roof upkeep clock the
+  turf hut has needs a per-shed age, and `Site` carries none: one count
+  cannot say whether the first shed or the third is due for its re-roof.
+  What caps the count today is the yard alone; upkeep would be a second
+  cap on top of it, not a replacement.
 
 ### Q. The landing note
 
@@ -4493,6 +4535,66 @@ region card:
 - "Camp is in Harelia, the valley to the south-west. Look for the lake."
 - "Camp is in Stensund, two valleys east along this shore."
 - "Camp is over the fell to the north, in Kaltio. Spruce country."
+
+### R. Fire states and the needs ledger (leftovers from the 2026-09-17 playtest round)
+
+Raised 2026-09-18 from the playtest round and an expert's reading of the
+fire. What stands on the branch: a fire is none, coals or full; a needs
+ledger the blocked rows write and the camp row reads; self-care raises
+the body's own fire and the camp row the pit's; the day hearth is let
+down to coals and banked when nothing wants a full fire. What is left,
+in the order it is worth doing:
+
+**1. Four fire states.** Out, embers, a small utility fire, a heating
+fire, and later a long fire for a cold-weather open shelter. Each needs
+its own burn rate, warmth at the fire and near it, drying rate and light
+level, with sources (the Swedish handbook and Kochanski for fuel per
+night; the burn band is already a disagreement on the record). The
+ledger's level type and `raiseFire` are the seam: a cook asks for a
+utility fire, a soaked body for a heating fire, the floor is embers. The
+expected effect is on the wood runway: a hundred kilos becomes a month of
+cooking fires or two freezing days of continuous heating, and the year
+gate should move on that, so it is re-run before and after.
+
+**2. The thermal model's demand for fire.** The expert's test: a dry
+survivor in wool chopping wood at minus five should need no fire, a
+soaked one at plus five should need one urgently. Measure the cold need's
+first minute on the reference survivor across a day at 0 to 5 C, dry and
+clothed, before touching the fire states: if the body asks for a fire
+there, the clothing and activity terms are too weak, not the fire.
+
+**3. A chain ETA on the care rows.** The care row that holds the minute
+says when its current step ends. A forecast of the chain (a rest, then a
+drink, then the night) needs the body's next want predicted, which is the
+same model the Ahead panel runs; if it is wanted, run the needs one step
+ahead rather than hand-writing rules.
+
+**4. The generic ledger, one need at a time.** Water at camp for a
+vessel, light for night work, a tool's edge, shelter protection. Each is
+added the day a row is blocked on it and nothing else says why, never
+before; the expert's warning against a dependency graph stands.
+
+**5. Once orders through the night.** By ruling a once job at the top of
+the list runs after dark and ends in the collapse; the body then sleeps
+in the morning, which read as absurd at 10:45 on day 3. Not a bug; a
+choice to revisit with the author: a once row could stop at the sleep
+onset like a standing one, or the queue could say "runs through the
+night" on the row.
+
+**6. The OK button on a long folded notice** (playtest 2026-09-17, 12)
+is not a scroll problem and is unreproduced. Reproduce with six fish read
+from one water and a small viewport.
+
+**7. The camp view** (P part 1) is where the per-fire settings, the
+"light it now" button and the other camps' fires move to; they sit on the
+Camp tab until then.
+
+**8. Verification debt from the round.** The eight slow-by-config suites
+carry fourteen pre-existing failures (hunting row copy, storm plans, a
+seep wait, a fire-site minutes test, a tooltip churn test); the year and
+lineage gates have not been re-run against the one-task rest, the fire
+setting or the ledger; no browser pass was made on the alert stack, the
+two-page right slot, the Camp tab's fire line or the stay row.
 
 ## Beyond the gate: the edge of the world
 

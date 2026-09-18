@@ -22,7 +22,7 @@ import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { advance } from "../src/sim/advance";
 import { doHtml } from "../src/ui/dopanel";
-import { mapHtml } from "../src/ui/map";
+import { mapBoardHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 
 describe("a redraw takes nothing away", () => {
@@ -131,39 +131,33 @@ describe("no two children of one parent answer to the same name", () => {
     // shifts. Hundreds of cells sharing "select, region 5" is therefore not
     // a tidy repetition, it is a glyph hauled across the board on every
     // redraw - which is what the @ and the camp's x were seen to do.
+    //
+    // The board is one canvas now and the grid holds no glyph nodes at all,
+    // so there is nothing for the morph to key by region and haul about; the
+    // one node it must keep is the canvas, whose id names it.
     resetPanels();
     document.body.innerHTML = `<div id="probe"></div>`;
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
-    setPanel("probe", mapHtml(world, state, newUiState(), cal));
+    setPanel("probe", mapBoardHtml(world, state, newUiState(), cal));
     const grid = document.querySelector(".grid") as HTMLElement;
     expect(grid).not.toBeNull();
-    const seen = new Map<string, number>();
-    for (const el of [...grid.children]) {
-      const data = Object.entries((el as HTMLElement).dataset).map(([k, v]) => `${k}=${v}`).sort().join(",");
-      const key = el.id ? `#${el.id}` : data ? `${el.tagName}[${data}]` : "";
-      if (!key) continue;
-      seen.set(key, (seen.get(key) ?? 0) + 1);
-    }
-    const shared = [...seen].filter(([, n]) => n > 1).map(([k, n]) => `${k} x${n}`);
-    expect(shared).toEqual([]);
+    expect(grid.children.length).toBe(0);
+    expect(document.querySelectorAll("#probe canvas").length).toBe(1);
   });
 
-  it("a glyph keeps its place across a redraw as the survivor moves", () => {
+  it("the canvas keeps its node across a redraw as the survivor moves", () => {
     resetPanels();
     document.body.innerHTML = `<div id="probe"></div>`;
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
     const ui = newUiState();
-    setPanel("probe", mapHtml(world, state, ui, cal));
-    const cells = [...(document.querySelector(".grid") as HTMLElement).children];
-    const middle = cells[Math.floor(cells.length / 2)];
-    // Take a step and draw again: the board is the same size, so every cell
-    // should still be the node it was, in the place it was.
+    setPanel("probe", mapBoardHtml(world, state, ui, cal));
+    const canvas = document.querySelector("#probe canvas#effects");
+    // Take a step and draw again: the canvas is the same node with the same
+    // backing buffer, which is what keeps the picture from blanking.
     advance(state, world, 30);
-    setPanel("probe", mapHtml(world, state, ui, cal));
-    const after = [...(document.querySelector(".grid") as HTMLElement).children];
-    expect(after.length).toBe(cells.length);
-    expect(after[Math.floor(after.length / 2)]).toBe(middle);
+    setPanel("probe", mapBoardHtml(world, state, ui, cal));
+    expect(document.querySelector("#probe canvas#effects")).toBe(canvas);
   });
 });

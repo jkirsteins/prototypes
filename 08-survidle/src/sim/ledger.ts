@@ -59,13 +59,27 @@ function newDay(day: number): DayLedger {
   return { day, yield: emptyYield(), eaten: 0, leanKcal: 0, nonLeanKcal: 0, leanAtCamp: false, burn: emptyBurn(), sleepMin: 0, workMin: 0 };
 }
 
-/** Today's record, pushed fresh the first time the day is read. */
+/**
+ * How far back a day still gets read: weekBefore's own window. Everything
+ * the live game reads from the ledger - the self-care row, the runway, the
+ * away report - asks weekBefore for today, never an older day, so a row
+ * older than this is dead weight kept only by never having been dropped. The
+ * year and reference harnesses read further back, but they build their own
+ * ledger from day one each run rather than reading a played save's.
+ */
+const RETAINED_DAYS = 7;
+
+/** Today's record, pushed fresh the first time the day is read; days older than weekBefore's own window are dropped as it is. */
 export function today(state: GameState): DayLedger {
   const day = dayNumber(state.minute);
   const last = state.ledger[state.ledger.length - 1];
   if (last && last.day === day) return last;
   const d = newDay(day);
   state.ledger.push(d);
+  const cutoff = day - RETAINED_DAYS;
+  let drop = 0;
+  while (drop < state.ledger.length && state.ledger[drop].day < cutoff) drop++;
+  if (drop > 0) state.ledger.splice(0, drop);
   return d;
 }
 
@@ -105,7 +119,7 @@ export function creditTime(state: GameState, kind: "sleep" | "work" | "idle", mi
 
 /** The seven records before `day` (days day-7 to day-1), averaged per day; zeros when there are none. */
 export function weekBefore(ledger: DayLedger[], day: number): WeekAverage {
-  const rows = ledger.filter((d) => d.day >= day - 7 && d.day < day);
+  const rows = ledger.filter((d) => d.day >= day - RETAINED_DAYS && d.day < day);
   const n = rows.length;
   const sum: WeekAverage = { days: n, yield: emptyYield(), eaten: 0, burn: emptyBurn(), sleepMin: 0, workMin: 0, leanWallDays: 0 };
   if (n === 0) return sum;

@@ -14,9 +14,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
+import { newKnowledge } from "../src/sim/fineknowledge";
 import { newGame } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
-import { DEFAULT_ZOOM, glyphSummary, LEVELS, levelAt, mapHtml, mapTargetAtPoint, terrainComposition, viewOrigin, ZOOMS, zoomLabel } from "../src/ui/map";
+import { DEFAULT_ZOOM, glyphSummary, LEVELS, levelAt, mapBoardHtml, mapTargetAtPoint, terrainComposition, viewOrigin, ZOOMS, zoomLabel } from "../src/ui/map";
+import { board, glyphsWith, type MapModel } from "./board";
 import { newUiState, type UiState } from "../src/ui/render";
 import { tipHtml } from "../src/ui/tip";
 import { worldCacheStats } from "../src/world/aggregate";
@@ -41,8 +43,11 @@ function pointOf(world: World, state: GameState, ui: UiState, patch: number) {
   return { x: (gx + 0.5) * l.px, y: (gy + 0.5) * l.line };
 }
 
-function draw(world: World, state: GameState, ui: UiState): void {
-  document.body.innerHTML = `<div id="map">${mapHtml(world, state, ui, CAL)}</div>`;
+let drawn: MapModel;
+function draw(world: World, state: GameState, ui: UiState): MapModel {
+  document.body.innerHTML = `<div id="map">${mapBoardHtml(world, state, ui, CAL)}</div>`;
+  drawn = board(world, state, ui, CAL);
+  return drawn;
 }
 
 /**
@@ -62,6 +67,25 @@ function blockNear(world: World, state: GameState, ui: UiState) {
 }
 
 describe("the zoom ladder", () => {
+  it("draws every known patch position in a 300m block, without generating unknown ground", () => {
+    const { state, world } = newGame(21);
+    const ui = open(2);
+    const first = board(world, state, ui, CAL);
+    const target = first.glyphs.find((g) => g.classes.includes("fog") && g.mapCell !== null && !g.classes.includes("void"))!;
+    const x0 = first.x0 + target.gx * 6;
+    const y0 = first.y0 + target.gy * 6;
+    for (let y = 0; y < 6; y++) {
+      for (let x = 0; x < 6; x++) {
+        state.knowledge = newKnowledge();
+        markKnown(state, (y0 + y) * world.w + x0 + x);
+        const before = world.fineChunkBuilds;
+        const g = board(world, state, ui, CAL).glyphs[target.gy * first.cols + target.gx];
+        expect(g.classes, `known patch ${x},${y}`).toContain("part");
+        expect(g.classes).not.toContain("fog");
+        expect(world.fineChunkBuilds).toBe(before);
+      }
+    }
+  });
   it("counts real patches per glyph and nothing else", () => {
     expect(ZOOMS.slice(0, 5)).toEqual([1, 2, 6, 18, 54]);
     expect(LEVELS.slice(0, 5).every((l) => l.w === 72 && l.h === 36)).toBe(true);
@@ -81,9 +105,9 @@ describe("the closest rung", () => {
   it("draws 2592 ordinary real cells at 50 m", () => {
     const { state, world } = newGame(21);
     const ui = open(0);
-    draw(world, state, ui);
-    expect(document.querySelectorAll("#map .c")).toHaveLength(72 * 36);
-    expect(document.querySelectorAll("#map .micro-ground")).toHaveLength(0);
+    const b = draw(world, state, ui);
+    expect(b.glyphs).toHaveLength(72 * 36);
+    expect(b.z).toBe(1);
     expect(document.querySelector("#map .maptools")?.textContent).toContain("50 m per glyph");
   });
 
@@ -95,11 +119,9 @@ describe("the closest rung", () => {
     // mark sits on it whole.
     state.player.xM = Math.floor(state.player.xM / PATCH_M) * PATCH_M + PATCH_M - 5;
     state.player.yM = Math.floor(state.player.yM / PATCH_M) * PATCH_M + 5;
-    draw(world, state, ui);
-    const player = document.querySelector<HTMLElement>("#map .mk-player")!;
-    expect(player.classList.contains("c")).toBe(true);
-    expect(player.dataset.mapCell).toBe(String(cellOf(state, world)));
-    expect(player.querySelector("[data-visual-slot]")).toBeNull();
+    const player = glyphsWith(draw(world, state, ui), "mk-player")[0];
+    expect(player.classes[0]).toBe("c");
+    expect(player.mapCell).toBe(cellOf(state, world));
   });
 
   it("resolves a click on a glyph to that exact patch", () => {
@@ -208,9 +230,7 @@ describe("the resolved destination", () => {
     const target = blockNear(world, state, ui);
     expect(target.patch).not.toBeNull();
     ui.destination = target.patch;
-    draw(world, state, ui);
-    const marked = document.querySelectorAll("#map .c.target");
-    expect(marked).toHaveLength(1);
+    expect(glyphsWith(draw(world, state, ui), "target")).toHaveLength(1);
   });
 });
 
@@ -220,9 +240,9 @@ describe("unknown ground", () => {
     // The wide rung spans several thousand patches a glyph. Drawing it must
     // not be what builds them: fog is the answer, and fog has no ground.
     const before = worldCacheStats(world);
-    draw(world, state, open(4));
+    const b = draw(world, state, open(4));
     const after = worldCacheStats(world);
-    expect(document.querySelectorAll("#map .c.fog").length).toBeGreaterThan(2000);
+    expect(glyphsWith(b, "fog").length).toBeGreaterThan(2000);
     expect(after.fineChunkBuilds - before.fineChunkBuilds).toBeLessThanOrEqual(1);
   });
 });
@@ -247,20 +267,25 @@ describe("firelight at night", () => {
   it("lights the ground round a lit camp fire at the closest rung", () => {
     const { state, world, night } = litCamp();
     const ui = open(0);
-    document.body.innerHTML = `<div id="map">${mapHtml(world, state, ui, night)}</div>`;
-    expect(document.querySelectorAll("#map .c.lit-0").length).toBeGreaterThan(0);
-    expect(document.querySelectorAll("#map .c.lit-1").length).toBeGreaterThan(0);
-    expect(document.querySelectorAll("#map .c.lit-2").length).toBeGreaterThan(0);
+    const b = board(world, state, ui, night);
+    expect(glyphsWith(b, "lit-0").length).toBeGreaterThan(0);
+    expect(glyphsWith(b, "lit-1").length).toBeGreaterThan(0);
+    expect(glyphsWith(b, "lit-2").length).toBeGreaterThan(0);
   });
 
-  it("keeps the source lit at the default rung, where the glow fits inside one glyph", () => {
-    // A ring of glyphs at 300 m each would claim 600 m of firelight, so the
-    // rings shrink as the glyph grows and only the source is left.
+  it("lights the source and spills onto its neighbours at the default rung", () => {
+    // The glow footprint, not the fire's visibility: the source pulses and
+    // the eight glyphs round it take a weak spill (map.ts, litRings), a
+    // soft edge on the pulse rather than lit terrain; a large fire reaches
+    // one ring further and no fire reaches past that.
     const { state, world, night } = litCamp();
     const ui = open(DEFAULT_ZOOM);
-    document.body.innerHTML = `<div id="map">${mapHtml(world, state, ui, night)}</div>`;
-    expect(document.querySelectorAll("#map .c.lit-0").length).toBe(1);
-    expect(document.querySelectorAll("#map .c.lit-1, #map .c.lit-2").length).toBe(0);
+    const b = board(world, state, ui, night);
+    expect(glyphsWith(b, "lit-0").length).toBe(1);
+    // Eight neighbours less whatever the board's edge or the void cuts off.
+    expect(glyphsWith(b, "lit-1").length).toBeGreaterThanOrEqual(3);
+    expect(glyphsWith(b, "lit-1").length).toBeLessThanOrEqual(8);
+    expect(glyphsWith(b, "lit-2").length).toBeLessThanOrEqual(16);
   });
 });
 
@@ -270,25 +295,31 @@ describe("clicking fog", () => {
     const ui = open(1);
     const here = cellOf(state, world);
     const p = pointOf(world, state, ui, here);
-    // The first block around the survivor holding no ground they know. How far
-    // out that is belongs to the seed: what a fresh survivor knows is what the
-    // eye reached from the landing, which is a different shape on every shore.
+    // The nearest block on the board holding no ground they know. How far
+    // out that is, and in which direction, belongs to the seed: what a fresh
+    // survivor knows is what the eye reached from the landing, which is a
+    // different shape on every shore.
     let target = null;
-    const ways = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
-    for (let step = 1; step < 60 && !target; step++) {
-      for (const way of ways) {
-        const candidate = mapTargetAtPoint(world, state, ui,
-          p.x + levelAt(1).px * step * way.dx, p.y + levelAt(1).px * step * way.dy);
-        // A frontier is unknown ground a survivor could stand on with known
-        // ground they can reach beside it. A block of open water is fog too,
-        // and a shore leaves fog on the far side of water that no walk
-        // reaches; neither is the step into the dark this case is about.
-        if (candidate?.patch == null || isKnown(state, candidate.patch)) continue;
-        if (!passable(cellAt(world, candidate.patch).terrain)) continue;
-        if (!neighbours(world, candidate.patch).some((cell) => isKnown(state, cell) && survivorRoute(state, world, here, cell) !== null)) continue;
-        target = candidate;
-        break;
+    const l = levelAt(1);
+    const glyphs: Array<{ x: number; y: number; d: number }> = [];
+    for (let gy = 0; gy < l.h; gy++) {
+      for (let gx = 0; gx < l.w; gx++) {
+        const x = (gx + 0.5) * l.px;
+        const y = (gy + 0.5) * l.line;
+        glyphs.push({ x, y, d: Math.hypot((x - p.x) / l.px, (y - p.y) / l.line) });
       }
+    }
+    for (const glyph of glyphs.sort((a, b) => a.d - b.d)) {
+      const candidate = mapTargetAtPoint(world, state, ui, glyph.x, glyph.y);
+      // A frontier is unknown ground a survivor could stand on with known
+      // ground they can reach beside it. A block of open water is fog too,
+      // and a shore leaves fog on the far side of water that no walk
+      // reaches; neither is the step into the dark this case is about.
+      if (candidate?.patch == null || isKnown(state, candidate.patch)) continue;
+      if (!passable(cellAt(world, candidate.patch).terrain)) continue;
+      if (!neighbours(world, candidate.patch).some((cell) => isKnown(state, cell) && survivorRoute(state, world, here, cell) !== null)) continue;
+      target = candidate;
+      break;
     }
     expect(target).not.toBeNull();
     expect(target!.patch).not.toBeNull();
@@ -347,22 +378,27 @@ describe("drawing known aggregates", () => {
     // never a whole parent: one patch in six of every parent stays fog.
     // Fifteen kilometres east of where the survivor stands, so the ground
     // is well outside anything their own sight already generated and the
-    // only thing that could build it is the map drawing it.
+    // only thing that could build it is the map drawing it. The fog patches
+    // lie on a slant that no sample of a block's knowledge lands on: a block
+    // is read at every sixth patch from its third (glyphGround), and the
+    // block lattice sits on multiples of eighteen, so a pattern on x + y
+    // would put every sample on a fog patch and the whole board in fog.
     for (let y = 1000 - 108; y < 1000 + 108; y++) {
       for (let x = 3300; x < 3516; x++) {
-        if ((x + y) % 6 === 0) continue;
+        if ((x + 2 * y) % 6 === 0) continue;
         markKnown(state, x + y * world.w);
       }
     }
     const before = worldCacheStats(world);
-    draw(world, state, open(3));
-    expect(document.querySelectorAll("#map .c:not(.fog):not(.void)").length).toBeGreaterThan(0);
-    draw(world, state, open(4));
+    expect(glyphsWith(draw(world, state, open(3)), "!fog", "!void").length).toBeGreaterThan(0);
+    const wide = draw(world, state, open(4));
     const after = worldCacheStats(world);
-    // Sixteen glyphs of known ground drawn, and not one patch of the world
-    // behind them built to draw it. Before the parents were gated on
-    // knowledge this cost nine chunks and 82,944 generated patches.
-    expect(document.querySelectorAll("#map .c:not(.fog):not(.void)").length).toBe(16);
+    // Sixteen glyphs of known ground drawn, the partly known blocks round
+    // their edge drawn pale, and not one patch of the world behind them
+    // built to draw it. Before the parents were gated on knowledge this
+    // cost nine chunks and 82,944 generated patches.
+    expect(glyphsWith(wide, "!fog", "!void", "!part").length).toBe(16);
+    expect(glyphsWith(wide, "part").length).toBeGreaterThan(0);
     expect(after.fineChunkBuilds).toBe(before.fineChunkBuilds);
     expect(after.generatedPatches).toBe(before.generatedPatches);
   });

@@ -13,19 +13,20 @@ import { ensureCareRows } from "./bodyorder";
 import { calendar, coastOpen, fmtDate, START_DOY } from "./calendar";
 import { fmtWorldDate } from "./epitaph";
 import { rebaseOpportunityContextClock } from "./opportunity-context";
-import { addItem, pile } from "./inventory";
+import { addAgedStack, addItem, pile } from "./inventory";
 import { STRUCTURES } from "./items";
 import { log } from "./log";
 import { dimAll, mapRegion } from "./mapped";
 import { fmtName } from "./names";
 import { rollCandidates } from "./person";
 import { newPerson } from "./newgame";
+import { releasePlannedBuilds } from "./orders";
 import { cellOf } from "./position";
 import { current, newRecord, worldDate } from "./record";
 import { campSite, DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
 import { CARRY_SHARE, carrySkills, level, SKILL_IDS, SKILL_NAMES } from "./skills";
 import { resetTeaching } from "./teach";
-import type { GameState, ItemId, LifeEvent, LifeRecord, Person, RegionState, WorldDate } from "./types";
+import type { GameState, ItemId, LifeEvent, LifeRecord, PerishableId, Person, RegionState, WorldDate } from "./types";
 import { rebaseWeather } from "./weather";
 
 export const GAP_MIN_DAYS = 90;
@@ -89,10 +90,7 @@ export function layDownPack(state: GameState, world: World): void {
     delete p.pack.items[k];
   }
   for (const [k, stacks] of Object.entries(p.pack.stacks)) {
-    for (const s of stacks ?? []) {
-      to.stacks[k as keyof typeof to.stacks] ??= [];
-      to.stacks[k as keyof typeof to.stacks]!.push({ ...s });
-    }
+    for (const s of stacks ?? []) addAgedStack(to, k as PerishableId, s.kg, s.age);
     delete p.pack.stacks[k as keyof typeof p.pack.stacks];
   }
   for (const t of p.tools) addItem(to, t.id, 1);
@@ -183,9 +181,19 @@ export function beginAgain(state: GameState, world: World): void {
   // regionState, so emptying a list the dead did touch and leaving it bare would give the
   // heir a home country in which nothing answers its thirst - the one country it is
   // certain to walk. The rows go back on every list the wipe reaches.
+  //
+  // A build order still at its planned zero when the wipe reaches it dies
+  // with the rest of the list: nothing survives to have wanted it, so the
+  // entry would otherwise sit on the camp sheet forever, saying "planned"
+  // for an order nobody can now cancel. Part-built work is not a plan, it
+  // is ground already broken, so it stands - the same "structures, the
+  // piles, the snares" the heir inherits, read off the site rather than the
+  // list that is going away.
   for (const st of Object.values(state.regions)) {
     st.iceHole = null;
+    const leaving = st.orders;
     st.orders = [];
+    releasePlannedBuilds(st, leaving);
     ensureCareRows(st);
   }
   // The dead survivor's log against the new clock would confuse the landing phase; the heir starts with a clean page.

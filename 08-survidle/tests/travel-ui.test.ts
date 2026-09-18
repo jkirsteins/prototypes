@@ -6,10 +6,12 @@
  * that regions were clickable never saw that there was anywhere else to
  * go. The ways out are listed where the ground is drawn, always.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
+import * as position from "../src/sim/position";
+import { placeAtSpot } from "../src/sim/position";
 import { placesHtml, travelHtml } from "../src/ui/panels";
 import { regionAt } from "../src/world/gen";
 
@@ -98,5 +100,69 @@ describe("the ways out", () => {
     const rows = html.match(/<div class="way"[^>]*>/g) ?? [];
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) expect(r).toMatch(/data-way=/);
+  });
+
+  describe("the places corner's route cache", () => {
+    // Every named place and every mapped way out pathfinds its own distance,
+    // and the render tick asks for this corner unconditionally every 100 ms.
+    it("does not repeat the pathfind when nothing that could move a route has changed", () => {
+      const { state, world } = newGame(21);
+      const cal = calendar(state.minute, state.startDoy);
+      const spy = vi.spyOn(position, "kmBetween");
+      try {
+        placesHtml(state, world, cal);
+        const first = spy.mock.calls.length;
+        expect(first).toBeGreaterThan(0);
+        placesHtml(state, world, cal);
+        expect(spy.mock.calls.length).toBe(first);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("recomputes once the survivor moves and once new ground is known", () => {
+      const { state, world } = newGame(21);
+      const cal = calendar(state.minute, state.startDoy);
+      const spy = vi.spyOn(position, "kmBetween");
+      try {
+        placesHtml(state, world, cal);
+        const afterFirst = spy.mock.calls.length;
+
+        placeAtSpot(state, world, state.player.region, "shore");
+        placesHtml(state, world, cal);
+        expect(spy.mock.calls.length).toBeGreaterThan(afterFirst);
+        const afterMove = spy.mock.calls.length;
+
+        mapRegion(state, world, regionAt(world, state.player.region).neighbours[0].id);
+        placesHtml(state, world, cal);
+        expect(spy.mock.calls.length).toBeGreaterThan(afterMove);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    // routeConditions() reads state.weather for ice and walking speed, so a
+    // route can change with nothing about the survivor's position or
+    // knowledge moving at all - the floored game-minute in the cache key is
+    // what catches that, at the same grain currentViewshed in map.ts already
+    // samples the world at.
+    it("recomputes once the in-game minute turns over, with the survivor's cell, region and knowledge unchanged", () => {
+      const { state, world } = newGame(21);
+      const cal = calendar(state.minute, state.startDoy);
+      const spy = vi.spyOn(position, "kmBetween");
+      try {
+        placesHtml(state, world, cal);
+        const afterFirst = spy.mock.calls.length;
+
+        placesHtml(state, world, cal);
+        expect(spy.mock.calls.length).toBe(afterFirst);
+
+        state.minute += 3;
+        placesHtml(state, world, cal);
+        expect(spy.mock.calls.length).toBeGreaterThan(afterFirst);
+      } finally {
+        spy.mockRestore();
+      }
+    });
   });
 });

@@ -17,7 +17,7 @@ import { calendar, fmtClock } from "./sim/calendar";
 import { newGame } from "./sim/newgame";
 import type { GameState, Weather } from "./sim/types";
 import { weatherHtml } from "./ui/panels";
-import { bodyPosition, updateSky } from "./ui/sky";
+import { updateSky } from "./ui/sky";
 import { ambientTemperature } from "./sim/weather";
 
 /**
@@ -126,12 +126,6 @@ function draw(): void {
     if (!box) continue;
     const { state, world } = at(c);
     const cal = calendar(state.minute, state.startDoy);
-    // Day and overcast cards never reveal celestial points. Removing their
-    // hidden circles keeps this all-conditions gallery from carrying tens of
-    // thousands of inert SVG nodes; the real night widgets stay full-detail.
-    if (bodyPosition(cal).body !== "moon" || !state.weather.clear || state.weather.precip !== "none") {
-      for (const star of box.querySelectorAll(".sky-coordinate-star")) star.remove();
-    }
     updateSky(state, cal, ambientTemperature(cal, state.weather), box);
     if (c.motionMinutesPerSecond && shouldAnimateMotion(
       window.location.search,
