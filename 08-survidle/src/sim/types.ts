@@ -626,7 +626,8 @@ export interface Player {
    * is resumed rather than abandoned. Physical exhaustion is represented by
    * the separate `spent` Rest need and never sets this field.
    */
-  sleeping: { collapsed: false } | null;
+  /** Asleep. `doze` when the sleep began in daylight: the word is chosen once, so a night that runs past dawn stays "sleeping". */
+  sleeping: { collapsed: false; doze?: true } | null;
   /** Physical collapse from depleted Stamina. Rest clears it at the recovery line; it never starts or extends sleep. */
   collapsed: boolean;
   /** The body need being served, or null. Sticky: a need's exit line is not its entry line. */

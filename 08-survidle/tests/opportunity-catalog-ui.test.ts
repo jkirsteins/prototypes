@@ -74,7 +74,7 @@ it("never leaks unknown definitions through any category or direct detail", () =
 it("renders detail notes, Current and Done with valid selection controls only", () => {
   const { state } = newGame(3);
   discoverOpportunity(state.opportunities, "drink", 0, false);
-  expect(opportunityDetailHtml(state, "drink")).toContain("Below 1 litre, Self-care drinks from water at hand, or walks to some, on the minutes the activity queue gives it.");
+  expect(opportunityDetailHtml(state, "drink")).toContain("Thirst kills faster than hunger");
   // drink is an FYI: told and done, never current. The controls are checked on a real goal.
   discoverOpportunity(state.opportunities, "build:firePit", 0, false);
   expect(opportunityDetailHtml(state, "build:firePit")).toContain('data-act="opportunity-current"');

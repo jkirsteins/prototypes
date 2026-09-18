@@ -99,7 +99,7 @@ export function snaresWaiting(state: GameState, world: World, cal: Calendar): nu
  */
 interface NeedMemory {
   need: BodyNeed | null;
-  sleeping: { collapsed: false } | null;
+  sleeping: { collapsed: false; doze?: true } | null;
   collapsed: boolean;
   coldSpent: boolean;
   night: boolean;
@@ -135,8 +135,12 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   if (mem.sleeping) {
     if (sleepy <= WAKE_AT) mem.sleeping = null;
   } else if (sleepy >= SLEEP_ONSET && !drinkFirst) {
-    mem.sleeping = { collapsed: false };
+    mem.sleeping = cal.isNight ? { collapsed: false } : { collapsed: false, doze: true };
   }
+  // A thirst the body can answer wakes it: a sleeper wakes thirsty and
+  // drinks, and a thirst slept through with water in reach was a death
+  // (playtest 2026-09-17, 36). The sleep goes on after.
+  if (mem.sleeping && thirsty && !storming) return "thirsty";
   if (mem.sleeping || mem.night) return "sleep";
   if (storming) return "storm";
   // The collapse holds the body to rest, not to dying of thirst beside a
@@ -558,7 +562,7 @@ function thirstyStep(state: GameState, world: World, cal: Calendar, dry: boolean
   if (camp !== null && campMeltReady(state, world, cal)) {
     if (!atCamp) return walkStep(state, world, camp, " for water");
     // The cold step's fire, for the same reason: no fire, no melt.
-    const fs = fireStep(state, world, cal, camp);
+    const fs = fireStep(state, world, cal, camp, " to melt snow");
     if (fs) return fs;
     return can({ id: "melt", step: "melting snow" });
   }
@@ -876,7 +880,7 @@ function homeStep(state: GameState, world: World, cal: Calendar): Step | null {
  * a body already at camp and one still deciding whether the walk is worth
  * it never disagree about what camp offers.
  */
-export function fireStep(state: GameState, world: World, cal: Calendar, at: number): Step | null {
+export function fireStep(state: GameState, world: World, cal: Calendar, at: number, why = ""): Step | null {
   const p = state.player;
   const st = regionState(state, world, p.region);
   if (fireAt(state, world, at)) return null;
@@ -886,15 +890,15 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
   if (!toolNear(p, "fireDrill", [p.pack, pile(state, at)])) return null;
   const site = campSite(st);
   if (at === st.campCell && !site?.structures.firePit) {
-    return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: "clearing the fire site" } : null;
+    return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: `clearing the fire site${why}` } : null;
   }
   // The body's own choice of method, allowed to a reflex: the fire indoors where a hut or a hearth stands, the pit otherwise.
   const indoors = at === st.campCell && (site?.structures.turfHut || (site?.structures.cabin && site.structures.hearth));
-  if (indoors && check(state, world, cal, "lightIndoors", undefined, at).ok) return { id: "lightIndoors", step: "lighting the fire indoors" };
-  if (check(state, world, cal, "light", undefined, at).ok) return { id: "light", step: "lighting the fire" };
+  if (indoors && check(state, world, cal, "lightIndoors", undefined, at).ok) return { id: "lightIndoors", step: `lighting the fire indoors${why}` };
+  if (check(state, world, cal, "light", undefined, at).ok) return { id: "light", step: `lighting the fire${why}` };
   const firewood = qty(state.player.pack, "firewood") + qty(pile(state, at), "firewood");
   if (firewood < 1 && check(state, world, cal, "split", undefined, at).ok) {
-    return { id: "split", step: "splitting a log for the fire" };
+    return { id: "split", step: `splitting a log for the fire${why}` };
   }
   return null;
 }
@@ -944,6 +948,18 @@ function fireNeedStep(state: GameState, world: World, cal: Calendar, dry: boolea
   if (dry) return DRY_READY;
   feedFire(state, world, state.player.region, FIRE_MAX_KG - fuelTotal(st.fire));
   return null;
+}
+
+/**
+ * Dry wood in reach enough to light a fire and keep it past the low mark:
+ * the kilo the drill takes and the low mark on top. Under that a fire is a
+ * few minutes of flame and coals again.
+ */
+export function dryWoodForAFire(state: GameState, world: World, at: number): boolean {
+  return qty(state.player.pack, "firewood") + qty(pile(state, at), "firewood") + st_fuel(state, world) >= 1 + FIRE_LOW_KG;
+}
+function st_fuel(state: GameState, world: World): number {
+  return regionState(state, world, state.player.region).fire.fuelKg;
 }
 
 /**
@@ -1023,14 +1039,23 @@ function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" |
     }
     return s;
   }
-  const fs = fireStep(state, world, cal, camp!);
+  // The fire before the night, or for warmth, says which - "lighting the
+  // fire" under "Self-care: sleepy" read as nonsense. And a cold body with
+  // no dry wood to keep a fire past the low mark does not light its last
+  // kilo: that was a light-sleep-light loop, thirteen minutes a turn,
+  // until the dry wood was gone. It rests by the coals and the alert says
+  // why (ui/alerts.ts).
+  if (need === "cold" && !dryWoodForAFire(state, world, camp!)) {
+    return { id: "rest", step: hasEmbers(st.fire) ? "resting by the coals; no dry wood to keep a fire" : "resting; no dry wood to keep a fire" };
+  }
+  const fs = fireStep(state, world, cal, camp!, need === "sleep" ? " before bed" : need === "cold" ? " to warm up" : "");
   if (fs) return fs;
   if (need === "sleep") {
     // A sleep that starts in daylight at camp is a doze by the fire and says
     // so, so an away report that reads forty minutes of it at two in the
     // afternoon is telling the truth. The wording is set when the task
     // starts, so a doze that runs into the night keeps its word for it.
-    const s: Step = { id: "sleep", step: cal.isNight ? "sleeping" : "dozing by the fire" };
+    const s: Step = { id: "sleep", step: p.sleeping?.doze ? "dozing by the fire" : "sleeping" };
     // A live intent's campCell is the home the minute set out for, fixed
     // when that intent began; st.campCell is wherever the survivor has
     // actually settled just now. The two agree unless a night

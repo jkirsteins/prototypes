@@ -100,7 +100,7 @@ const COLLECTION_OPPORTUNITIES: OpportunityDef[] = [
     { key: `trap:${species}`, title: `Trap ${SPECIES_DEFS[species].name}`, category: "food", group: "trap-fish", steps: one("trap", `Collect ${SPECIES_DEFS[species].name} from a trap`, (event) => event.kind === "fishCaught" && event.method === "trap" && event.species === species ? 1 : 0) },
   ]),
   ...SUPPORTED_FORAGE_FOODS.map((food): OpportunityDef => ({ key: `forage:${food}`, title: FORAGE_TITLES[food], category: "food", group: "forage-foods", steps: one("gather", FORAGE_TITLES[food], (event) => event.kind === "foraged" && event.item === food ? 1 : 0) })),
-  ...SUPPORTED_SHELTER_STRUCTURES.map((structure): OpportunityDef => ({ key: `build:${structure}`, title: `Build ${STRUCTURES[structure].name}`, category: "camp", group: "build-shelters", steps: one("build", `Build ${STRUCTURES[structure].name}`, built(structure)) })),
+  ...SUPPORTED_SHELTER_STRUCTURES.map((structure): OpportunityDef => ({ key: `build:${structure}`, title: `Build ${STRUCTURES[structure].name}`, category: "camp", note: STRUCTURES[structure].desc, group: "build-shelters", steps: one("build", `Build ${STRUCTURES[structure].name}`, built(structure)) })),
   ...SUPPORTED_TOOL_RECIPES.map((recipe): OpportunityDef => {
     const tool = TOOL_RECIPE[recipe];
     return { key: `make:${tool}`, title: `Make ${TOOLS[tool].name}`, category: "mastery", group: "make-tools", steps: one("make", `Make ${TOOLS[tool].name}`, (event) => event.kind === "toolMade" && event.tool === tool ? 1 : 0) };
@@ -113,6 +113,8 @@ const COLLECTION_OPPORTUNITIES: OpportunityDef[] = [
   }),
   ...SUPPORTED_CAMP_STRUCTURES.map((structure): OpportunityDef => ({
     key: `build:${structure}`, title: `Build ${STRUCTURES[structure].name}`, category: "camp",
+    // The structure's own words for what it does, so the notice says why.
+    note: STRUCTURES[structure].desc,
     group: "build-camp", steps: one("build", `Build ${STRUCTURES[structure].name}`, built(structure)),
     // The fire site is the second rung of the opening: it follows the camp
     // the way drink used to, and firewood and the fire follow it. The vedbod

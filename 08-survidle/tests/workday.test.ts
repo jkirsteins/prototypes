@@ -108,9 +108,9 @@ describe("the working day", () => {
     state.player.sleepDebt = debtFor(SLEEP_ONSET + 1, cal.hour);
     state.player.water = WATER_FULL;
     expect(currentNeed(state, world, cal)).toBe("sleep");
-    expect(state.player.sleeping).toEqual({ collapsed: false });
+    expect(state.player.sleeping).toMatchObject({ collapsed: false });
     const back = readSave(serialize(state))!.state;
-    expect(back.player.sleeping).toEqual({ collapsed: false });
+    expect(back.player.sleeping).toMatchObject({ collapsed: false });
   });
 
   it("a runner on a felling grind works itself to the spent line and takes its evening by the fire", () => {
@@ -251,7 +251,7 @@ describe("the working day", () => {
     // under it - the night is the player's and only the model ends it.
     setAside(state, world);
     expect(state.task).toBeNull();
-    expect(state.player.sleeping).toEqual({ collapsed: false });
+    expect(state.player.sleeping).toMatchObject({ collapsed: false });
     expect(currentNeed(state, world, calendar(state.minute))).toBe("sleep");
     // Past the wake line, and only then, it is up.
     state.player.sleepDebt = debtFor(WAKE_AT - 1, cal.hour);
@@ -274,7 +274,7 @@ describe("the working day", () => {
     advance(state, world, 1);
     expect(state.player.bodyNeed).toBe("sleep");
     expect(["light", "lightIndoors"]).toContain(state.task?.id);
-    expect(state.player.sleeping).toEqual({ collapsed: false });
+    expect(state.player.sleeping).toMatchObject({ collapsed: false });
     // The order the runner was serving is dropped mid-night; the night stands.
     state.intent = null;
     addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");

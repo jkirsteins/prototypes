@@ -8,7 +8,7 @@
  * line, the low mark on the pit - so the stack and the bars never disagree.
  */
 import { hungerLine } from "../sim/actions";
-import { COLD_UNDER, SOAKED_WETNESS } from "../sim/body";
+import { COLD_UNDER, dryWoodForAFire, SOAKED_WETNESS } from "../sim/body";
 import type { Calendar } from "../sim/calendar";
 import { FIRE_LOW_KG } from "../sim/items";
 import { fuelTotal } from "../sim/fire";
@@ -38,7 +38,11 @@ export function alerts(state: GameState, world: World, cal: Calendar): Alert[] {
   if (starvation(state) >= FAT_RIBS) out.push({ level: "bad", title: "Starving", detail: "the fat is gone; the body eats itself" });
   if (p.water < THIRSTY_L) out.push({ level: "bad", title: "Thirsty", detail: `${p.water.toFixed(1)} l in the body; drinks when water is in reach` });
   if (p.kcal < hungerLine(state)) out.push({ level: "bad", title: "Hungry", detail: "eats when food is in reach" });
-  if (p.warmth < COLD_UNDER) out.push({ level: "bad", title: "Cold", detail: `warmth ${Math.round(p.warmth)}; a fire or shelter, now` });
+  if (p.warmth < COLD_UNDER) {
+    const camp = st.campCell;
+    const noWood = camp !== null && cellOf(state, world) === camp && !dryWoodForAFire(state, world, camp);
+    out.push({ level: "bad", title: "Cold", detail: noWood ? `warmth ${Math.round(p.warmth)}; no dry wood to keep a fire - split a log or dry the pile` : `warmth ${Math.round(p.warmth)}; a fire or shelter, now` });
+  }
   if (p.wetness > SOAKED_WETNESS) out.push({ level: "warn", title: "Soaked", detail: "wet clothing takes the warmth; dry by a fire" });
   if (sleepiness(p.sleepDebt, cal.hour) >= SLEEPY_AT) out.push({ level: "warn", title: "Sleepy", detail: "the body lies down at the onset line" });
   if (st.fire.lit && fuelTotal(st.fire) <= FIRE_LOW_KG) out.push({ level: "warn", title: "Fire burning low", detail: `${fuelTotal(st.fire).toFixed(1)} kg in the pit` });
