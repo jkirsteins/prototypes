@@ -878,7 +878,10 @@ function activityStep(state: GameState, world: World, cal: Calendar): string {
  */
 const CARE_NEED_WORD = {
   sleep: "sleepy", storm: "storm coming", cold: "cold", hungry: "hungry",
-  thirsty: "thirsty", spent: "recovering stamina", home: "going home", fire: "the fire", snares: "the snares",
+  // A state, never a second gerund: "Self-care: spent, resting" is the
+  // action and what it is doing; "recovering stamina, resting" said three
+  // things where the strip has room to read two.
+  thirsty: "thirsty", spent: "spent", home: "before dark", fire: "the fire", snares: "the snares",
 } as const;
 
 export function activity(state: GameState, world: World, cal: Calendar): Activity | null {
