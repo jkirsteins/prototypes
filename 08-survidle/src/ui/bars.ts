@@ -21,6 +21,33 @@ import { sleepForecast } from "./sleep";
 export interface FrameClock {
   hurry: HurryState;
   speed: number;
+  /** The frame's wall clock, for the bracket's countdown; performance.now() when absent. */
+  nowMs?: number;
+}
+
+/**
+ * The bracket on the task bar counts down at wall pace from a due time,
+ * rather than being recomputed every frame. Recomputed, it jiggled: a game
+ * minute lands whole inside one frame while a pulse's remaining boost
+ * falls continuously, so the estimate rose a fraction between minutes and
+ * dropped a second when one landed, and under a pulse that saw-tooth ran
+ * several times a second. The due time is re-anchored only when the truth
+ * has moved by more than a saw-tooth: a click (a pulse takes its minutes
+ * off the front, sixteen seconds and more), a new task, a body whose pace
+ * has changed. Within that the number only counts down.
+ */
+const etaAnchor = new WeakMap<GameState, { key: string; dueAtMs: number }>();
+/** Wider than one whole minute landing at the slowest pace the body works at, narrower than a click's saving. */
+export const ETA_DRIFT_S = 3;
+
+export function anchoredSeconds(state: GameState, key: string, truthS: number, nowMs: number): number {
+  const anchor = etaAnchor.get(state);
+  if (anchor && anchor.key === key) {
+    const shown = (anchor.dueAtMs - nowMs) / 1000;
+    if (Math.abs(shown - truthS) <= ETA_DRIFT_S) return Math.max(0, shown);
+  }
+  etaAnchor.set(state, { key, dueAtMs: nowMs + truthS * 1000 });
+  return truthS;
 }
 
 /**
@@ -211,7 +238,10 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
     // PEAK and work at the body's pace, so it is the loop's own arithmetic
     // and not the one scale; without the clock it falls back to that scale.
     const secs = clock ? realSecondsLeft(state, world, clock.hurry, clock.speed) : null;
-    setBar("task", frac, `${fmtDuration(left)} left (${fmtRealSeconds(secs ?? realSecondsFor(left))})`, root);
+    const shown = secs === null
+      ? realSecondsFor(left)
+      : anchoredSeconds(state, `${t.id}:${t.arg ?? ""}:${t.duration}:${state.intent?.orderId ?? ""}`, secs, clock?.nowMs ?? performance.now());
+    setBar("task", frac, `${fmtDuration(left)} left (${fmtRealSeconds(shown)})`, root);
     const share = `${Math.floor(frac * 100)}%`;
     for (const pct of root.querySelectorAll<HTMLElement>('[data-pct="task"]')) {
       if (pct.textContent !== share) pct.textContent = share;
