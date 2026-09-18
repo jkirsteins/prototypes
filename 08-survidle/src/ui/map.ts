@@ -1318,15 +1318,18 @@ function shimmerScale(): number {
 const PULSE = {
   walk: { a: [0xb8, 0x86, 0x0b], b: [0xd8, 0xa3, 0x27], periodS: 1.2 },
   work: { a: [0xb8, 0x86, 0x0b], b: [0xd8, 0xa3, 0x27], periodS: 2.4 },
-  fire: { a: [0xb8, 0x43, 0x1a], b: [0xff, 0x9a, 0x3a], periodS: 1.1 },
+  // Warm, not brick: the low end sits at a lit orange and the high end at
+  // amber gold, so the pulse reads as flame over the night shade rather
+  // than as a brown box. The far fire keeps its dimmer pair.
+  fire: { a: [0xe0, 0x6a, 0x22], b: [0xff, 0xc0, 0x50], periodS: 1.1 },
   fireFar: { a: [0x63, 0x2d, 0x18], b: [0xa5, 0x4d, 0x20], periodS: 1.1 },
   coals: { a: [0x5c, 0x2c, 0x14], b: [0x8a, 0x45, 0x20], periodS: 2.6 },
-  lit0: { a: [0xff, 0x7a, 0x1a], b: [0xff, 0xb8, 0x4d], periodS: 1.1 },
+  lit0: { a: [0xff, 0x8c, 0x2a], b: [0xff, 0xd0, 0x66], periodS: 1.1 },
   lit0Coals: { a: [0x6b, 0x32, 0x18], b: [0x9c, 0x4f, 0x24], periodS: 2.6 },
 } as const;
 const LIT_RING: Record<1 | 2, { rgb: [number, number, number]; a: number; b: number }> = {
-  1: { rgb: [255, 140, 40], a: 0.35, b: 0.55 },
-  2: { rgb: [255, 120, 30], a: 0.12, b: 0.22 },
+  1: { rgb: [255, 176, 64], a: 0.45, b: 0.7 },
+  2: { rgb: [255, 150, 50], a: 0.18, b: 0.32 },
 };
 
 /** Where an `alternate` `ease-in-out` animation of this period stands at `t` seconds past its (negative) delay: 0 at one end, 1 at the other. */
@@ -1388,8 +1391,9 @@ function drawPulses(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: n
       if (cls.includes("mk-animal")) continue;
       const k = breath(t - (g.fd ?? 0), 1.1);
       // Past 100 m a cell is more ground than any fire lights: the spill is
-      // half as strong, a soft edge on the pulse rather than lit terrain.
-      const spill = board.z > 2 ? 0.5 : 1;
+      // eased, a soft edge on the pulse rather than lit terrain. Halved it
+      // went muddy over the night shade.
+      const spill = board.z > 2 ? 0.8 : 1;
       ctx.globalAlpha = (ring.a + (ring.b - ring.a) * k) * spill;
       ctx.fillStyle = `rgb(${ring.rgb.join(", ")})`;
       ctx.fillRect(x, y, model.px, model.line);

@@ -355,7 +355,7 @@ describe("the map's compositing layers", () => {
     expect(litRings([{ cell: centre, reach: 2 }], toGlyph, 12, view).size).toBe(0);
     const source = readFileSync("src/ui/map.ts", "utf8");
     const pulses = source.slice(source.indexOf("function drawPulses("), source.indexOf("function drawGlyphOver("));
-    expect(pulses).toContain("board.z > 2 ? 0.5 : 1");
+    expect(pulses).toContain("board.z > 2 ? 0.8 : 1");
   });
 
   it("keeps night firelight and active survivor marks animated above the weather", () => {
