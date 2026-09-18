@@ -23,7 +23,7 @@ import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { ambientTemperature, conditionsAt, ensureGround } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars } from "../src/ui/bars";
-import { DEFAULT_ZOOM, LEVELS, mapBoardHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
+import { DEFAULT_ZOOM, LEVELS, mapBoardHtml, mapKey, nearestPatchInBlock, viewOrigin, ZOOMS } from "../src/ui/map";
 import { board, glyphOfCell, glyphsWith, has } from "./board";
 import { lighting } from "../src/ui/sky";
 import { doHtml } from "../src/ui/dopanel";
@@ -414,6 +414,49 @@ describe("panels", () => {
     expect(ringed(scenario!.exposed)).toBe(true);
     expect(ringed(scenario!.hidden)).toBe(false);
     expect(glyphOfCell(b, scenario!.hidden)?.classes).toContain("memory");
+  });
+
+  it("lights a shore fire's water at 300 m by the block's nearest patch, not its first", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    mapRegion(state, world, region);
+    const shores = regionAt(world, region).cells.filter((cell) => cellAt(world, cell).terrain !== "water"
+      && neighbours(world, cell).filter((n) => cellAt(world, n).terrain === "water").length >= 3);
+    let found: { lit: number; hidden: number | null } | null = null;
+    for (const camp of shores) {
+      const observer = neighbours(world, camp).find((n) => cellAt(world, n).terrain !== "water");
+      if (observer === undefined) continue;
+      st.campCell = camp;
+      siteFor(st, camp).structures.firePit = true;
+      st.fire.lit = true;
+      st.fire.fuelKg = 20;
+      placeAt(state, world, observer);
+      state.minute = 15 * 60;
+      state.weather.clear = false;
+      const b = board(world, state, { ...newUiState(), zoom: 2 }, { ...calendar(state.minute, state.startDoy), moonLight: 0 });
+      const fire = glyphOfCell(b, camp)!;
+      let lit: number | null = null;
+      let hidden: number | null = null;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const g = b.glyphs[(fire.gy + dy) * b.cols + fire.gx + dx];
+          if (!g || g === fire || g.mapCell === null) continue;
+          const nearest = nearestPatchInBlock(world, observer, b.x0 + g.gx * b.z, b.y0 + g.gy * b.z, b.z);
+          const nearestSeen = hasLineOfSight(world, observer, nearest, 0.5);
+          if (has(g, "t-water") && nearestSeen && !hasLineOfSight(world, observer, g.mapCell, 0.5)) lit = g.gy * b.cols + g.gx;
+          if (!nearestSeen) hidden = g.gy * b.cols + g.gx;
+        }
+      }
+      if (lit !== null) {
+        found = { lit, hidden };
+        expect(b.glyphs[lit].classes.some((c) => /^lit-[12]$/.test(c))).toBe(true);
+        if (hidden !== null) expect(b.glyphs[hidden].classes.some((c) => /^lit-\d$/.test(c))).toBe(false);
+        break;
+      }
+    }
+    expect(found).not.toBeNull();
   });
 
   it("draws the walk as a line, solid ahead and dashed behind, and marks cells with something lying on them", () => {

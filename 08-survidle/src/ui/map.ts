@@ -1727,8 +1727,8 @@ export function lightSources(state: GameState, world: World): LightSource[] {
  * Ring per lit glyph: 0 is the source, 1 and 2 the squares around it with
  * ring 2's corners cut so the glow is round. A glyph reached twice takes
  * the nearer ring. The glow is about a hundred metres across, so the rings
- * shrink as a glyph grows: two at 50 m, one at 100 m, the source alone out
- * to 300 m, and nothing past a glyph the whole glow would sit inside.
+ * shrink as a glyph grows: two at 50 m, one at 100 m, two again as a soft
+ * spill out to 300 m, and nothing past a glyph the whole glow would sit inside.
  */
 export function litRings(sources: LightSource[], toGlyph: (cell: number) => number, z: number, view: { w: number; h: number }): Map<number, number> {
   const rings = new Map<number, number>();
@@ -1761,6 +1761,13 @@ export function litRings(sources: LightSource[], toGlyph: (cell: number) => numb
     }
   }
   return rings;
+}
+
+/** The patch of the z-by-z block at (bx, by) nearest `from`; the block itself when z is 1. */
+export function nearestPatchInBlock(world: World, from: number, bx: number, by: number, z: number): number {
+  const x = Math.min(Math.max(from % world.w, bx), Math.min(bx + z - 1, world.w - 1));
+  const y = Math.min(Math.max(Math.floor(from / world.w), by), Math.min(by + z - 1, world.h - 1));
+  return cellIdx(world, x, y);
 }
 
 /** A negative delay under 1.1 s, in seconds, fixed per glyph index, so neighbouring flames are out of step. */
@@ -2317,7 +2324,9 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
       // while the ground round the fire is plainly lit. Only a glyph that
       // already carries a ring asks - at most the two glyphs round a source
       // inside a kilometre - so this is a few dozen rays, not one per glyph.
-      const firelit = lightRing !== undefined && hasLineOfSight(world, playerCell, mechanicalCell, 0.5);
+      // The ray goes to the block's patch nearest the survivor; aimed at the
+      // block's first patch it lit one side of a shore fire and not the other.
+      const firelit = lightRing !== undefined && hasLineOfSight(world, playerCell, nearestPatchInBlock(world, playerCell, x0 + gx * z, y0 + gy * z, z), 0.5);
       const surfaceCurrent = weatherVisibleGlyphs.has(i);
       current = surfaceCurrent || visibleFireDistance.has(mechanicalCell) || firelit;
       if (seen === 1 && !current) cls.push("dim");
