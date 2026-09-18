@@ -23,7 +23,7 @@ import { newPerson } from "./newgame";
 import { releasePlannedBuilds } from "./orders";
 import { cellOf } from "./position";
 import { current, newRecord, worldDate } from "./record";
-import { campSite, DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
+import { campSite, DIM, discovery, enterRegion, regionState, touchedRegions, VISITED } from "./regionstate";
 import { CARRY_SHARE, carrySkills, level, SKILL_IDS, SKILL_NAMES } from "./skills";
 import { resetTeaching } from "./teach";
 import type { GameState, ItemId, LifeEvent, LifeRecord, PerishableId, Person, RegionState, WorldDate } from "./types";
@@ -143,6 +143,50 @@ export function bearing(world: World, from: number, to: number): string {
   // Screen y grows downward, so south is +y.
   const ang = Math.atan2(b.y - a.y, b.x - a.x);
   return WINDS[((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8];
+}
+
+/** The way to the life before, read for the welcome and the activity strip. */
+export interface OldCampHint {
+  cell: number;
+  region: number;
+  /** The old camp's region, by name. */
+  name: string;
+  /** Whole kilometres from `from`, the same rounding as the landing line. */
+  km: number;
+  /** One of the eight winds from `from`. */
+  bearing: string;
+  /** The ancestor, formatted, or empty when the record is gone. */
+  ancestor: string;
+  /** What the ancestor's journal lists as built there; empty when nothing. */
+  built: string;
+}
+
+/**
+ * Where the old camp lies from `from`, for an heir who has not yet walked
+ * into that country. The landing line says this once and the log moves on;
+ * this is the same fact read again whenever the page wants it. Null for a
+ * first survivor, for an heir whose ancestor never made camp, and from the
+ * moment the heir enters the old camp's region - the map holds the camp
+ * from then on, and a line still pointing at it would be saying what the
+ * player can see.
+ */
+export function oldCampHint(state: GameState, world: World, from = cellOf(state, world)): OldCampHint | null {
+  const rec = current(state);
+  const cell = rec.oldCamp ?? null;
+  if (cell === null) return null;
+  const region = cellAt(world, cell).region;
+  if (discovery(state, region) === VISITED) return null;
+  const c = cellAt(world, cell);
+  const f = cellAt(world, from);
+  const prev = state.survivors[state.survivors.length - 2];
+  return {
+    cell, region,
+    name: regionAt(world, region).name,
+    km: Math.round(Math.hypot(c.x - f.x, c.y - f.y) * PATCH_KM),
+    bearing: bearing(world, from, cell),
+    ancestor: prev ? fmtName(prev.name) : "",
+    built: prev ? builtList(prev) : "",
+  };
 }
 
 /** Runs the gap and sets the landing phase. The state must be dead. */
@@ -267,7 +311,7 @@ export function daysInWords(n: number): string {
 }
 
 /** What the last survivor's record says was built at the old camp, as a list: "a fire site, snares and a drying rack". Empty when nothing was. */
-function builtList(rec: LifeRecord): string {
+export function builtList(rec: LifeRecord): string {
   const names = rec.events
     .filter((e): e is LifeEvent & { kind: "built" } => e.kind === "built")
     .sort((a, b) => a.day - b.day)
@@ -313,7 +357,7 @@ export function land(state: GameState, world: World, name = state.landing?.name,
   }
   const last = current(state);
   const oldCamp = l.oldCamp;
-  state.survivors.push(newRecord(state.survivors.length + 1, name, l.date, l.gapDays, p));
+  state.survivors.push({ ...newRecord(state.survivors.length + 1, name, l.date, l.gapDays, p), oldCamp });
   newPerson(state, world, l.cell, l.region);
   state.landing = null;
   enterRegion(state, world, l.region);

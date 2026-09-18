@@ -14,6 +14,7 @@ import { CLEAR_MOR_KM, MAX_OPTICAL_DEPTH, sampleAtmosphere } from "./climate";
 import { lightFactor, skyLux, SPOT_LUX, WALK_LUX } from "./light";
 import { markCoarseKnown, markKnown } from "./mapped";
 import { discoverAvailableOpportunities } from "./opportunity-catalog";
+import { glimpseRegions } from "./regionstate";
 import { body } from "./person";
 import { RUNG_LEVEL, skillLevel } from "./skills";
 import type { GameState, LocalGroundWeather, Terrain } from "./types";
@@ -846,7 +847,13 @@ export function vantageRevealCells(state: GameState, world: World, cal: Calendar
  * patches, the far country the vantage opens is written coarsely.
  */
 export function seeFrom(state: GameState, world: World, cal: Calendar, cell: number, announce = true): void {
-  for (const visible of visibleCells(state, world, cal, cell)) markKnown(state, visible);
+  const visible = visibleCells(state, world, cal, cell);
+  for (const c of visible) markKnown(state, c);
+  // Ground the eye reaches is country the survivor can name: a region seen
+  // into from a fell top or across a border is glimpsed, the same as a
+  // neighbour seen on entry, so "Explore X" can be aimed at it. Only what is
+  // really in sight counts; the coarse horizon written below does not.
+  glimpseRegions(state, world, visible, announce);
   markCoarseSeen(state, world, cal, cell);
   discoverAvailableOpportunities(state, world, cal, announce);
 }

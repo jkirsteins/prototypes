@@ -227,6 +227,13 @@ export interface Task {
   surveyProgress?: number;
   /** Minutes of the current hour walked on the roughest three grounds, which is what the sweep's injury chance is scaled by. */
   roughMinutes?: number;
+  /**
+   * This leg walks to the region's edge to look into a country never yet
+   * glimpsed, rather than to a vantage over the region's own unmapped ground.
+   * Set by a survey of ground known whole and by a search that nothing named
+   * leads on from; arriving glimpses what lies across.
+   */
+  edge?: true;
 }
 
 /**
@@ -799,6 +806,14 @@ export interface LifeRecord {
   died: Died | null;
   /** Practice minutes per skill at death, what a heir carries a share of. */
   skills?: Partial<Record<SkillId, number>>;
+  /**
+   * The camp of the life before, as the heir was told it at landing: the cell
+   * the landing line pointed at. Null for a first survivor and for an heir
+   * whose ancestor never made camp. Kept so the way there can be said again
+   * after the log has moved on. Optional only for a record saved before it
+   * existed; `migrate` fills those in.
+   */
+  oldCamp?: number | null;
 }
 
 /**

@@ -4,6 +4,7 @@
  * Untouched regions sit at their starting populations, so nothing is lost
  * by not simulating them.
  */
+import { regionOf } from "../world/cells";
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { ensureCareRows } from "./bodyorder";
 import { log } from "./log";
@@ -131,6 +132,21 @@ export const DIM = 3;
 
 export function discovery(state: GameState, id: number): 0 | 1 | 2 | 3 {
   return state.discovered[id] ?? 0;
+}
+
+/**
+ * Ground seen into a region never entered nor shown from a distance names it:
+ * discovery goes to SEEN, and the log says so once. `announce` false is a
+ * world being set up, and a landing at minute 0 keeps its silence the same
+ * way enterRegion's does.
+ */
+export function glimpseRegions(state: GameState, world: World, cells: Iterable<number>, announce = true): void {
+  for (const c of cells) {
+    const id = regionOf(world, c % world.w, Math.floor(c / world.w));
+    if (id < 0 || state.discovered[id]) continue;
+    state.discovered[id] = SEEN;
+    if (announce && state.minute > 0) log(state, `{You} {see} into ${regionAt(world, id).name}.`, "good");
+  }
 }
 
 /** Entering a region discovers it and shows its neighbours from a distance. */

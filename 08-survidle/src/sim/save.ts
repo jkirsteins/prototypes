@@ -11,7 +11,8 @@ import { ordersHere, orderSentence } from "./orders";
 import { firstRecord } from "./newgame";
 import { sexOfName } from "./names";
 import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
-import { newSite, regionState } from "./regionstate";
+import { discovery, DIM, newSite, regionState } from "./regionstate";
+import { oldCampRegion } from "./landing";
 import { YARD_START_M2, yardUsed } from "./yard";
 import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
@@ -136,6 +137,16 @@ export function migrate(state: GameState): void {
   state.survivors ??= [firstRecord(state.seed, state.startDoy)];
   // A record from before the person: the median survivor, with the sex its name says and a face of its own.
   for (const s of state.survivors) s.person ??= { ...medianPerson(sexOfName(s.name.first) ?? (s.index % 2 ? "m" : "f")), face: s.index };
+  // A record from before the old camp was kept on it: a living heir reads it
+  // back off the world, the same way the landing did, as long as that country
+  // is still only the journal's. Everyone else's is simply unknown.
+  const living = state.survivors[state.survivors.length - 1];
+  if (living.oldCamp === undefined && state.survivors.length > 1 && !state.landing) {
+    const region = oldCampRegion(state);
+    const camp = state.regions[region]?.campCell ?? null;
+    living.oldCamp = camp !== null && discovery(state, region) === DIM ? camp : null;
+  }
+  for (const s of state.survivors) s.oldCamp ??= null;
   // A landing from before the boat: three people rolled for it, the old name kept in the field.
   if (state.landing) {
     const l = state.landing;

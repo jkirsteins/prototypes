@@ -42,7 +42,7 @@ import { recordOpportunityEvent } from "./opportunities";
 import { builtProtection, coverCeiling, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knowledgeGen, knownShare, markWalked } from "./mapped";
-import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
+import { campSite, discovery, glimpseRegions, regionState, siteAt, siteFor } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { seeFrom, vantageRevealCells } from "./sight";
 import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg, takeWood, woodPatchLeft } from "./stocks";
@@ -972,7 +972,13 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       // and routing to every unread shore from here took seconds a tick
       // and froze the page for the length of a survey.
       const water = localWeather(state, world, at).iceCm < ICE_SHORE_CM && unreadSurveyWater(state, world, region);
-      if (knownShare(state, world, region) >= 1 && !water) return { ...o, ok: false, why: "{you} {know} that country" };
+      if (knownShare(state, world, region) >= 1 && !water) {
+        // Known whole, and still worth a walk when a country beyond it has
+        // never been glimpsed: the survey goes to the edge to look across.
+        if (!hasBeyond(state, world, region)) return { ...o, ok: false, why: "{you} {know} that country" };
+        if (!beyondReachable(state, world, region, here)) return { ...o, ok: false, why: "no reachable edge" };
+        return { ...o, duration: 0, detail: "walks the edge to look into the country beyond" };
+      }
       if (!water && !frontierReachable(state, world, region, here)) return { ...o, ok: false, why: "no reachable frontier" };
       // No duration is promised: how long it takes is how long the ground takes.
       return { ...o, duration: 0, detail: "maps the region and reads its waters" };
@@ -989,6 +995,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (home === null) return { ...o, ok: false, why: NO_CAMP };
       const route = survivorRoute(state, world, here, home, walkableIce(localWeather(state, world, at)));
       if (route) return { ...o, ok: false, why: "{you} {know} the way home" };
+      // Nothing to sweep - no named country still unmapped, and no edge of this
+      // one looking into a country never glimpsed - and the start would fail.
+      if (!homeRegionsByBearing(state, world, here, home).length && !hasBeyond(state, world, state.player.region)) return { ...o, ok: false, why: "nothing known leads on from here" };
       // Nobody can say how far the unmapped ground between here and camp actually runs, so no duration is offered.
       return { ...o, duration: 0, detail: "no telling how long; it ends the moment the way opens" };
     }
@@ -1367,13 +1376,18 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     const from = cellOf(state, world);
     if (home === null) return false;
     const leg = nextHomeLeg(state, world, cal, from, home);
-    if (!leg) return false;
+    if (!leg) {
+      // The row's check already refuses this; a click that still lands here is told why, never swallowed.
+      log(state, "{You} {find} nothing known that leads on from here.", "bad");
+      return false;
+    }
     const ice = walkIceMode(state, world, false);
     state.route = { target: leg.vantage.cell, path: leg.vantage.path, walked: [from], label: "the way home", ice, lastLand: from };
     state.task = {
       id, arg: `region:${leg.region}`, progress: 0,
       duration: 0,
       repeat: false, visited: [from, leg.vantage.cell], home,
+      ...(leg.edge ? { edge: true as const } : {}),
     };
     return refreshRouteDuration(state, world, cal);
   }
@@ -1894,6 +1908,22 @@ function frontierReachable(state: GameState, world: World, region: number, here:
   return answer;
 }
 
+/** Whether an edge cell looking into a never-glimpsed country can be walked to from `here`; remembered on the frontier's own memo, since the row is asked every tick. */
+function beyondReachable(state: GameState, world: World, region: number, here: number): boolean {
+  const key = `beyond:${region}:${here}:${knowledgeGen()}:${walkIceMode(state, world, false)}`;
+  let memo = frontierMemo.get(state);
+  if (!memo) {
+    memo = new Map();
+    frontierMemo.set(state, memo);
+  }
+  const held = memo.get(key);
+  if (held !== undefined) return held;
+  const answer = pickEdge(state, world, calendar(state.minute, state.startDoy), region, null) !== null;
+  if (memo.size >= 16) memo.delete(memo.keys().next().value!);
+  memo.set(key, answer);
+  return answer;
+}
+
 /** Legality asks only whether a frontier exists, not which one wins a survey. */
 function hasReachableFrontier(state: GameState, world: World, region: number, visited: readonly number[]): boolean {
   const from = cellOf(state, world);
@@ -2084,12 +2114,17 @@ function planSurvey(state: GameState, world: World, cal: Calendar, t: NonNullabl
       return refreshRouteDuration(state, world, cal);
     }
   }
-  const next = pickVantage(state, world, cal, region, t.visited ?? []);
+  const vantage = pickVantage(state, world, cal, region, t.visited ?? []);
+  // The region's own ground all seen: the survey goes on to its edge, to
+  // look into whatever country beyond it has never been glimpsed.
+  const next = vantage ?? pickEdge(state, world, cal, region, null);
   if (!next) return false;
   const from = cellOf(state, world);
   const ice = walkIceMode(state, world, false);
   state.route = { target: next.cell, path: next.path, walked: [from], label, ice, lastLand: from };
   t.visited = [...(t.visited ?? []), next.cell];
+  if (vantage) delete t.edge;
+  else t.edge = true;
   t.surveyPhase = "walk";
   delete t.surveyWater;
   delete t.surveyShore;
@@ -2173,6 +2208,10 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
     t.duration = t.progress + 60;
     return;
   }
+  if (t.edge) {
+    delete t.edge;
+    glimpseBeyond(state, world, cellOf(state, world));
+  }
   if (!planSurvey(state, world, cal, t, region, target.label)) {
     recordOpportunityEvent(state, { kind: "explored", anotherRegion: t.originRegion !== undefined && region !== t.originRegion });
     state.task = null;
@@ -2219,12 +2258,79 @@ function homeRegionsByBearing(state: GameState, world: World, from: number, home
  * betting everything on the single best bearing. Null once nothing named
  * is left that a route can reach.
  */
-function nextHomeLeg(state: GameState, world: World, cal: Calendar, from: number, home: number): { region: number; vantage: { cell: number; path: number[] } } | null {
+function nextHomeLeg(state: GameState, world: World, cal: Calendar, from: number, home: number): { region: number; vantage: { cell: number; path: number[] }; edge?: true } | null {
   for (const region of homeRegionsByBearing(state, world, from, home)) {
     const vantage = pickVantage(state, world, cal, region, [from]);
     if (vantage) return { region, vantage };
   }
-  return null;
+  // Nothing named leads on: the search goes to the edge of the ground it
+  // stands on, on the side nearest home, to look into a country never
+  // glimpsed. That is what a search on a shore mapped whole at landing, with
+  // no neighbour seen from it, has left to do.
+  const region = state.player.region;
+  const edge = pickEdge(state, world, cal, region, home);
+  return edge ? { region, vantage: edge, edge: true } : null;
+}
+
+/** The regions never glimpsed that `cell` borders: the country an edge cell looks into. */
+function unglimpsedBeyond(state: GameState, world: World, cell: number): number[] {
+  const out: number[] = [];
+  for (const nb of neighbours(world, cell)) {
+    const id = cellAt(world, nb).region;
+    if (id >= 0 && !state.discovered[id] && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/** Whether any passable cell of `region` borders a country never glimpsed. */
+export function hasBeyond(state: GameState, world: World, region: number): boolean {
+  return regionAt(world, region).cells.some((c) => passable(cellAt(world, c).terrain) && unglimpsedBeyond(state, world, c).length > 0);
+}
+
+/**
+ * The edge leg: a reachable passable cell of `region` that borders a country
+ * never glimpsed. The nearest by walking minutes for a survey; for a search,
+ * `toward` weights the choice by bearing, so the search's edge is the one on
+ * home's side rather than the closest one behind.
+ */
+function pickEdge(state: GameState, world: World, cal: Calendar, region: number, toward: number | null): { cell: number; path: number[] } | null {
+  const from = cellOf(state, world);
+  const ice = walkIceMode(state, world, false);
+  const speed = baseWalkSpeed(state, cal, localWeather(state, world));
+  const edges = regionAt(world, region).cells.filter((c) => c !== from && passable(cellAt(world, c).terrain) && unglimpsedBeyond(state, world, c).length > 0);
+  const here = latticeCentre(from);
+  const there = toward === null ? null : latticeCentre(toward);
+  const toHome = there ? Math.atan2(there.y - here.y, there.x - here.x) : 0;
+  let best: { cell: number; path: number[] } | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const c of exploreRouteCandidates(state, world, from, edges, region, ice)) {
+    const path = exploreRoute(state, world, from, c, region, ice);
+    if (!path) continue;
+    const minutes = survivorRouteMinutes(state, world, path, speed, ice);
+    let score = minutes;
+    if (there) {
+      const p = latticeCentre(c);
+      let diff = Math.abs(Math.atan2(p.y - here.y, p.x - here.x) - toHome) % (Math.PI * 2);
+      if (diff > Math.PI) diff = Math.PI * 2 - diff;
+      // Straight toward home at full cost, straight away from it at three times; minutes still decide between near bearings.
+      score = minutes * (1 + 2 * diff / Math.PI);
+    }
+    if (score < bestScore || (score === bestScore && best !== null && c < best.cell)) {
+      bestScore = score;
+      best = { cell: c, path };
+    }
+  }
+  return best;
+}
+
+/**
+ * Standing at an edge cell, whatever lies across is glimpsed whether or not
+ * the eye reached it through the trees: the next country is one step away.
+ * Sight has usually done this already on the walk; this is the guarantee
+ * that an edge leg always opens what it went to look at.
+ */
+function glimpseBeyond(state: GameState, world: World, cell: number): void {
+  glimpseRegions(state, world, neighbours(world, cell));
 }
 
 /**
@@ -2257,6 +2363,11 @@ function stepSearchHome(state: GameState, world: World, cal: Calendar, rng: Rng,
   collectTrap(state, world);
   const home = t.home!;
   const from = cellOf(state, world);
+  const wasEdge = t.edge === true;
+  if (wasEdge) {
+    delete t.edge;
+    glimpseBeyond(state, world, from);
+  }
   if (survivorRoute(state, world, from, home) !== null) {
     state.route = null;
     state.task = null;
@@ -2264,7 +2375,9 @@ function stepSearchHome(state: GameState, world: World, cal: Calendar, rng: Rng,
     return;
   }
   const region = Number((t.arg ?? "").split(":")[1]);
-  const next = pickVantage(state, world, cal, region, t.visited ?? []);
+  // An edge leg swept nothing of its own region; what it opened is a named
+  // country now, and the bearing order below is where it is picked up.
+  const next = wasEdge ? null : pickVantage(state, world, cal, region, t.visited ?? []);
   if (next) {
     state.route = { target: next.cell, path: next.path, walked: [from], label: route.label, ice: route.ice, lastLand: from };
     t.visited = [...(t.visited ?? []), next.cell];
@@ -2273,14 +2386,18 @@ function stepSearchHome(state: GameState, world: World, cal: Calendar, rng: Rng,
   }
   const leg = nextHomeLeg(state, world, cal, from, home);
   if (!leg) {
-    // Every named region this side of whatever cuts the survivor off is mapped whole, and still no way home.
+    // Every named region this side of whatever cuts the survivor off is mapped
+    // whole, no edge looks into anything new, and still no way home.
     state.route = null;
     state.task = null;
+    log(state, "{You} {find} no way on from here.", "bad");
     return;
   }
   state.route = { target: leg.vantage.cell, path: leg.vantage.path, walked: [from], label: route.label, ice: route.ice, lastLand: from };
   t.arg = `region:${leg.region}`;
   t.visited = [from, leg.vantage.cell];
+  if (leg.edge) t.edge = true;
+  else delete t.edge;
   refreshRouteDuration(state, world, cal);
 }
 

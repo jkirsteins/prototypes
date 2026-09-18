@@ -9,6 +9,7 @@ import { createCarcass, noteHuntSign } from "../src/sim/hunting";
 import { resolveCell, startIntent } from "../src/sim/intent";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { isKnown, knownShare, mapRegion, markKnown } from "../src/sim/mapped";
+import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { SPECIES_DEFS, type Species } from "../src/sim/species";
 import { addOrder, moveOrder } from "../src/sim/orders";
@@ -17,7 +18,7 @@ import { fatLandmarks } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { PATCH_M, patchXY } from "../src/world/spatial";
 import { current } from "../src/sim/record";
-import { discovery, regionState, SEEN, siteFor } from "../src/sim/regionstate";
+import { discovery, enterRegion, regionState, SEEN, siteFor } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { ambientTemperature, conditionsAt, ensureGround } from "../src/sim/weather";
@@ -1292,5 +1293,53 @@ describe("the body's bars", () => {
     const normal = markAt();
     state.player.fat = l.floor + (l.lower - l.floor) * 0.2;
     expect(markAt()).toBeGreaterThan(normal);
+  });
+});
+
+describe("the old camp in the middle strip", () => {
+  it("points an heir at the old camp with the one click toward it, and lets go once they walk into that country", () => {
+    document.body.innerHTML = `<div id="task"></div>`;
+    resetPanels();
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const home = state.player.region;
+    // A camp with nothing raised at it is no old camp; the fire site makes it one.
+    const st = regionState(state, world, home);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    const neighbour = regionAt(world, home).neighbours[0].id;
+    placeAtSpot(state, world, neighbour, "camp");
+    die(state, "froze", regionAt(world, neighbour).name);
+    beginAgain(state, world);
+    land(state, world);
+    const cal = calendar(state.minute, state.startDoy);
+    setPanel("task", taskHtml(state, world, cal));
+    const line = document.querySelector("#task .oldcamp");
+    expect(line?.textContent).toContain(regionAt(world, home).name);
+    expect(line?.textContent).toMatch(/lies \d+ km [a-z-]+\./);
+    // The walk when a way there is known, the search when none is; either way the old camp's region is what it is handed.
+    const button = line?.querySelector<HTMLButtonElement>('button[data-act="task"]');
+    expect(["travel", "searchHome"]).toContain(button?.dataset.id);
+    expect(button?.dataset.arg).toBe(`region:${home}`);
+    // Pressed, the search runs as the strip's activity, named for what it is
+    // for and where it is now - never the raw task id - and the row keeps
+    // its bearing while dropping the button.
+    expect(startTask(state, world, cal, "searchHome", `region:${home}`)).toBe(true);
+    setPanel("task", taskHtml(state, world, cal));
+    const now = document.querySelector("#task .now")?.textContent ?? "";
+    expect(now).toContain(`Searching for the way to ${regionAt(world, home).name}`);
+    expect(now).toContain("to the edge of");
+    expect(now).not.toContain("SearchHome");
+    expect(document.querySelector("#task .oldcamp")).not.toBeNull();
+    expect(document.querySelector("#task .oldcamp button")).toBeNull();
+    state.task = null;
+    state.route = null;
+    // Nothing of the kind on a first survivor's strip.
+    const first = newGame(17);
+    setPanel("task", taskHtml(first.state, first.world, cal));
+    expect(document.querySelector("#task .oldcamp")).toBeNull();
+    // Walked into the old country: the map holds the camp now, and the strip lets it go.
+    enterRegion(state, world, home);
+    setPanel("task", taskHtml(state, world, cal));
+    expect(document.querySelector("#task .oldcamp")).toBeNull();
   });
 });

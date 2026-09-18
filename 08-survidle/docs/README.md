@@ -133,6 +133,13 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   nothing. New country is opened from Do > Explore by going to look: "Explore Stensund"
   walks a sweep of that region until you have all of it. That is hours,
   and it is always your own click - nothing explores while you are away.
+  Country the eye reaches into is country you can name, from a fell top or
+  across a border, so a region seen into can be explored by name. A region
+  you know whole can still be surveyed when it borders a country never
+  glimpsed: the survey walks to its edge and looks across. "Search for a
+  way home" does the same when nothing named leads on - the edge on home's
+  side first - which is how a poor-eyed heir on a shore mapped whole, with
+  no neighbour seen from it, gets out at all.
   Wayfinding is the skill behind it, and what practice buys is a wider
   view and a whole ankle, not a faster sweep.
   Zoom with the two buttons in the map's bottom left corner or the plus and
@@ -340,7 +347,12 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
 - **The journal** reads the life record: what season it is, what came before,
   and every ancestor's life under their epitaph. A heir carries a quarter
   of what the last survivor knew in every skill, named at landing and
-  marked "carried from {name}" in the skills panel.
+  marked "carried from {name}" in the skills panel. Where the old camp lies
+  - its region, whole kilometres and one of the eight winds - is on the
+  heir's welcome and then under the map in the activity strip, with the one
+  click toward it: the walk when a way there is known, the search for one
+  when none is. The line leaves once the heir walks into that country, and
+  the map holds the camp from then on.
 - **How to survive.** A one-page manual - the first days in order, what
   kills you and how fast, food and the seasons, orders and being away -
   opens once, unasked, on a world's first landing, and after that from

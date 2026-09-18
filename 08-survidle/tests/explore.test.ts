@@ -3,7 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { NOT_ORDERS } from "../src/sim/ladder";
-import { isKnown, knownShare } from "../src/sim/mapped";
+import { isKnown, knownShare, mapRegion } from "../src/sim/mapped";
+import { discovery, SEEN } from "../src/sim/regionstate";
+import { seeFrom, visibleCells } from "../src/sim/sight";
+import { cellAt } from "../src/world/gen";
+import { passable } from "../src/world/route";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed } from "../src/sim/player";
 import { cellOf } from "../src/sim/position";
@@ -139,5 +143,44 @@ describe("explore", () => {
     expect(o.ok).toBe(false);
     expect(o.why).toBe("{you} {know} nothing of that country");
     expect(beginTask(state, world, cal, "explore", `region:${far.id}`)).toBe(false);
+  });
+});
+
+describe("looking into the country beyond", () => {
+  it("surveys a region known whole to its edge when a neighbour has never been glimpsed, and names what it sees", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const home = state.player.region;
+    mapRegion(state, world, home);
+    // As a poor-eyed landing leaves it: the region whole, nothing beyond it named.
+    for (const id of Object.keys(state.discovered)) if (Number(id) !== home) delete state.discovered[Number(id)];
+    // A minute in: a glimpse at minute 0 stays out of the log, as a landing does.
+    state.minute = 1;
+    const cal = calendar(state.minute);
+    const opt = check(state, world, cal, "explore", `region:${home}`);
+    expect(opt.ok).toBe(true);
+    expect(startTask(state, world, cal, "explore", `region:${home}`)).toBe(true);
+    const rng = new Rng(1);
+    for (let m = 0; m < 30000 && state.task; m++) stepTask(state, world, calendar(state.minute), rng, 1);
+    expect(state.task).toBeNull();
+    const nbs = regionAt(world, home).neighbours.map((n) => n.id);
+    expect(nbs.some((id) => discovery(state, id) >= SEEN)).toBe(true);
+    expect(state.log.some((e) => e.text.startsWith("{You} {see} into "))).toBe(true);
+    // Its waters read and every country it borders looked into: known, and the row says so.
+    expect(check(state, world, calendar(state.minute), "explore", `region:${home}`).why).toBe("{you} {know} that country");
+  });
+
+  it("names a region the eye reaches into from wherever the survivor stands", () => {
+    const { state, world } = newGame(17);
+    const home = state.player.region;
+    for (const id of Object.keys(state.discovered)) if (Number(id) !== home) delete state.discovered[Number(id)];
+    const cal = calendar(6 * 60);
+    const acrossFrom = (c: number) => [...visibleCells(state, world, cal, c)].map((v) => cellAt(world, v).region).find((r) => r >= 0 && r !== home);
+    const border = regionAt(world, home).cells.find((c) => passable(cellAt(world, c).terrain) && acrossFrom(c) !== undefined);
+    expect(border).toBeDefined();
+    const across = acrossFrom(border!)!;
+    expect(discovery(state, across)).toBe(0);
+    seeFrom(state, world, cal, border!);
+    expect(discovery(state, across)).toBe(SEEN);
   });
 });

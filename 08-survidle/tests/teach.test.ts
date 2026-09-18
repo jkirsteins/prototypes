@@ -6,6 +6,8 @@ import { beginAgain, land } from "../src/sim/landing";
 import { MANUAL_SECTIONS } from "../src/sim/manual";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
+import { placeAtSpot } from "../src/sim/position";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { current } from "../src/sim/record";
 import { levelMinutes, markTaught, RUNG_LEVEL, RUNG_ORDER, SKILL_IDS, SKILL_NAMES, teachOnce, train } from "../src/sim/skills";
 import { catchUp, loadGame, saveGame } from "../src/sim/save";
@@ -14,6 +16,7 @@ import { giveOrder } from "../src/sim/ladder";
 import { conceptHtml, exampleFor, momentToOpen, welcomeHtml } from "../src/ui/teachpanel";
 import { newUiState, type UiState } from "../src/ui/render";
 import { regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 /** A storage the save tests can hand to saveGame and loadGame without a DOM. */
 function memoryStorage(): Storage {
@@ -274,11 +277,12 @@ describe("the welcome", () => {
   });
 
   it("draws the survivor's name, all six skills and its begin button", () => {
-    const { state } = newGame(17);
+    const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
-    const html = welcomeHtml(state, cal);
+    const html = welcomeHtml(state, world, cal);
     expect(html).toContain(current(state).name.first);
     expect(html).toContain("Starting skills");
+    expect(html).not.toContain("The old camp");
     expect(html).toContain("Tip");
     for (const s of SKILL_IDS) expect(html).toContain(SKILL_NAMES[s]);
     expect(html).toContain('data-act="welcome-close"');
@@ -286,5 +290,24 @@ describe("the welcome", () => {
     expect(html).not.toContain("Practise a skill");
     expect(html).not.toContain('class="example"');
     expect(html).not.toContain(MANUAL_SECTIONS[0].lines[0]);
+  });
+
+  it("tells an heir where the old camp lies, before the skills", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const home = state.player.region;
+    // A camp with nothing raised at it is no old camp; the fire site makes it one.
+    const st = regionState(state, world, home);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    const neighbour = regionAt(world, home).neighbours[0].id;
+    placeAtSpot(state, world, neighbour, "camp");
+    die(state, "froze", regionAt(world, neighbour).name);
+    beginAgain(state, world);
+    land(state, world);
+    const html = welcomeHtml(state, world, calendar(state.minute, state.startDoy));
+    expect(html).toContain("The old camp");
+    expect(html).toContain(regionAt(world, home).name);
+    expect(html).toMatch(/lies \d+ km [a-z-]+\./);
+    expect(html.indexOf("The old camp")).toBeLessThan(html.indexOf("Starting skills"));
   });
 });

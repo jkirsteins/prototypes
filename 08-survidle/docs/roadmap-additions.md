@@ -330,6 +330,67 @@ reason: what lasts, how long in terms that mean something, and whether it
 survives a life. Worth deciding both at once, since an heir finding one
 ancestor's hearth is a good moment and finding ninety years of them is not.
 
+## The old camp's bearing lived in one log line
+
+**Raised** 2026-09-18 by the author, landing as an heir and finding nothing
+that said where the old camp was. The landing line said it - region,
+distance and wind - but the log is cleared at every boat, reads newest
+first, and an heir's landing writes a rung line per carried rung straight
+after it, so the one sentence that pointed the way was the first thing the
+log scrolled past.
+
+Done the same day. The old camp is kept on the heir's record
+(`LifeRecord.oldCamp`, read back off the world for older saves), the welcome
+says where it lies, and the activity strip under the map keeps the bearing
+with the one click toward it - the walk when a way is known, the search for
+one when none is - until the heir walks into that country and the map holds
+the camp. The strip's search button matters on its own: the Do pane's
+"Search for a way home" reads the current region's camp, which an heir has
+none of, so the pane hid it, and only the reference runner could point a
+search at the old camp's region. Not done, and still open above: the camp's
+own mark on a dim region's map, which the dim-map rule (ground and name
+only, until visited) currently forbids.
+
+What would look wrong: the row still there after the heir has stood in the
+old camp's region; a "walk there" that stops at the edge of known ground
+without saying so (that is `Go to` reaching a frontier, as it always has).
+
+**Amended** 2026-09-18, the same day. Measured on seed 17, the strip's
+"search for a way there" passed its check and then did nothing: the search
+picks its legs among named regions still unmapped, the landing maps the
+heir's shore whole, and all three people on that boat have poor eyes, so no
+neighbour was seen from the shore and nothing named led on. Such an heir
+could not explore, travel or search anywhere from the Do pane either; the
+only way out was to walk to the region's edge by hand, look across, and
+click a cell beyond. Three things changed, the honest way rather than by
+telling a poor-eyed survivor what the boat's crew saw:
+
+- **Ground the eye reaches into is country you can name.** `seeFrom` marks
+  a region whose ground is in sight as glimpsed (`glimpseRegions`,
+  discovery SEEN, "You see into X." once), so "Explore X" can be aimed at a
+  region seen from a fell top or across a border. The coarse horizon does
+  not count; only what is really in sight.
+- **A region known whole can be surveyed to its edge.** When its own ground
+  gives nothing more and it borders a country never glimpsed, the survey
+  walks to the nearest reachable edge cell and looks across (`pickEdge`,
+  the task's `edge` flag; arriving glimpses what lies over the border
+  whether or not the trees let the eye through). The row's detail says
+  "walks the edge to look into the country beyond"; "you know that country"
+  is now true when it says it.
+- **The search falls back to the same edge walk**, on home's side by
+  bearing, so the strip's button works for the seed 17 heir: edge leg,
+  glimpse, then the sweep goes on into the neighbour. Its check refuses
+  "nothing known leads on from here" when even that is not there, and a
+  start that still fails logs why instead of swallowing the click. The
+  strip names the search ("Searching for the way to Elglia") and its leg
+  ("sweeping Stormvik" or "to the edge of Langtjern to look beyond") in
+  place of the raw task id it showed before; the bar is the leg's, and the
+  whole has no ETA, which the step says by naming the leg.
+
+What would look wrong: a survey of a fully known region that walks to an
+edge and opens nothing; a search that ends in silence (it says "no way on
+from here" now); a "You see into X." that repeats.
+
 ## Small things the camp siting work left
 
 **Raised** 2026-09-08. None of these are load-bearing; they are recorded so
