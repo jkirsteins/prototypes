@@ -2172,6 +2172,28 @@ Remaining investigation groups, ordered by player risk:
   terrain with controlled traversable neighbors; derive parent-touch budgets from
   the declared reach plus boundary cells. Do not merely raise failing limits.
 
+`tests/ui.test.ts` on 2026-09-18: thirteen failures, seven repaired as fixture
+work (five ran at the 300 m rung and now pin 50 m; the "cell zoom" knowledge
+test picked a remembered patch off the board; "names black ground" compared
+patch coordinates against the view's width in glyphs; the eat button's absence
+from Inventory is intended, eating being self-care). Five remain, each with
+its cause as far as it was read:
+
+- "every road out": neighbour region 18847 gets neither a road button nor an
+  ice crossing in `travelHtml`. Routing or world change; not yet traced.
+- "does not reveal a live camp fire through terrain occlusion": at any block
+  rung `visibleNow` is null (`src/ui/map.ts`, `z === 1 ? currentVisible :
+  null`), so every mark in the region is live and an occluded fire draws at
+  300 m. Decide whether occlusion applies at block rungs; if not, run the test
+  at 50 m with a camp on the board.
+- "shows a distant night fire": seed 21's home region has no land patch 2 to
+  5 km from camp with a clear line to it. Needs controlled terrain.
+- "keeps care activity copy short": the label reads the route's length and
+  says 0.1 km for the one-patch route; the fixture expects 0.3 km. Confirm
+  which is the contract before changing either.
+- "a build already finished renders as a greyed row": the finished lean-to no
+  longer renders as an `opt off` row in the build pane. Possible regression.
+
 Next pass should produce an exhaustive JSON failure inventory, run each affected
 case at the pulled baseline and current head, and record root cause, production
 contract and minimal regression. Commit each verified correction independently,

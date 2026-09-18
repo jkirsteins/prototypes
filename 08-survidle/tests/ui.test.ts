@@ -24,7 +24,7 @@ import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { ambientTemperature, conditionsAt, ensureGround } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars } from "../src/ui/bars";
-import { DEFAULT_ZOOM, LEVELS, mapBoardHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
+import { DEFAULT_ZOOM, LEVELS, mapBoardHtml, mapKey, nearestPatchInBlock, viewOrigin, ZOOMS } from "../src/ui/map";
 import { board, glyphOfCell, glyphsWith, has } from "./board";
 import { lighting } from "../src/ui/sky";
 import { doHtml } from "../src/ui/dopanel";
@@ -283,10 +283,18 @@ describe("panels", () => {
   it("distinguishes visible, remembered, inherited, and unknown ground at cell zoom", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
-    const ui = newUiState();
+    const ui = { ...newUiState(), zoom: 0 };
     mapRegion(state, world, state.player.region);
     const visible = visibleCells(state, world, cal, cellOf(state, world));
-    const remembered = regionAt(world, state.player.region).cells.find((cell) => !visible.has(cell));
+    // A remembered patch inside the board, and not on its edge, so its neighbour is on the board too.
+    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+    const l = LEVELS[ui.zoom];
+    const onBoard = (cell: number) => {
+      const x = cell % world.w - x0;
+      const y = Math.floor(cell / world.w) - y0;
+      return x > 0 && y > 0 && x < l.w - 1 && y < l.h - 1;
+    };
+    const remembered = regionAt(world, state.player.region).cells.find((cell) => !visible.has(cell) && onBoard(cell));
     expect(remembered).toBeDefined();
     const inherited = neighbours(world, remembered!).find((cell) => !visible.has(cell));
     expect(inherited).toBeDefined();
@@ -333,7 +341,7 @@ describe("panels", () => {
     state.minute = 15 * 60;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
-    const fire = glyphOfCell(board(world, state, newUiState(), calendar(state.minute, state.startDoy)), camp);
+    const fire = glyphOfCell(board(world, state, { ...newUiState(), zoom: 0 }, calendar(state.minute, state.startDoy)), camp);
     expect(fire?.classes).toContain("mk-fire");
     expect(fire?.classes).toContain("lit-0");
     expect(fire?.classes).not.toContain("memory");
@@ -410,18 +418,61 @@ describe("panels", () => {
     state.minute = 15 * 60;
     state.weather.clear = false;
     const cal = { ...calendar(state.minute, state.startDoy), moonLight: 0 };
-    const b = board(world, state, newUiState(), cal);
+    const b = board(world, state, { ...newUiState(), zoom: 0 }, cal);
     const ringed = (index: number) => { const g = glyphOfCell(b, index)!; return has(g, "lit-1") || has(g, "lit-2"); };
     expect(ringed(scenario!.exposed)).toBe(true);
     expect(ringed(scenario!.hidden)).toBe(false);
     expect(glyphOfCell(b, scenario!.hidden)?.classes).toContain("memory");
   });
 
+  it("lights a shore fire's water at 300 m by the block's nearest patch, not its first", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    mapRegion(state, world, region);
+    const shores = regionAt(world, region).cells.filter((cell) => cellAt(world, cell).terrain !== "water"
+      && neighbours(world, cell).filter((n) => cellAt(world, n).terrain === "water").length >= 3);
+    let found: { lit: number; hidden: number | null } | null = null;
+    for (const camp of shores) {
+      const observer = neighbours(world, camp).find((n) => cellAt(world, n).terrain !== "water");
+      if (observer === undefined) continue;
+      st.campCell = camp;
+      siteFor(st, camp).structures.firePit = true;
+      st.fire.lit = true;
+      st.fire.fuelKg = 20;
+      placeAt(state, world, observer);
+      state.minute = 15 * 60;
+      state.weather.clear = false;
+      const b = board(world, state, { ...newUiState(), zoom: 2 }, { ...calendar(state.minute, state.startDoy), moonLight: 0 });
+      const fire = glyphOfCell(b, camp)!;
+      let lit: number | null = null;
+      let hidden: number | null = null;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const g = b.glyphs[(fire.gy + dy) * b.cols + fire.gx + dx];
+          if (!g || g === fire || g.mapCell === null) continue;
+          const nearest = nearestPatchInBlock(world, observer, b.x0 + g.gx * b.z, b.y0 + g.gy * b.z, b.z);
+          const nearestSeen = hasLineOfSight(world, observer, nearest, 0.5);
+          if (has(g, "t-water") && nearestSeen && !hasLineOfSight(world, observer, g.mapCell, 0.5)) lit = g.gy * b.cols + g.gx;
+          if (!nearestSeen) hidden = g.gy * b.cols + g.gx;
+        }
+      }
+      if (lit !== null) {
+        found = { lit, hidden };
+        expect(b.glyphs[lit].classes.some((c) => /^lit-[12]$/.test(c))).toBe(true);
+        if (hidden !== null) expect(b.glyphs[hidden].classes.some((c) => /^lit-\d$/.test(c))).toBe(false);
+        break;
+      }
+    }
+    expect(found).not.toBeNull();
+  });
+
   it("draws the walk as a line, solid ahead and dashed behind, and marks cells with something lying on them", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const cal = calendar(0);
-    const ui = newUiState();
+    const ui = { ...newUiState(), zoom: 0 };
     const z = ZOOMS[ui.zoom];
     const glyphs = (cells: number[]) => {
       const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -464,7 +515,7 @@ describe("panels", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const cal = calendar(0);
-    const ui = newUiState();
+    const ui = { ...newUiState(), zoom: 0 };
     const st = regionState(state, world, state.player.region);
     expect(glyphsWith(board(world, state, ui, cal), "mk-camp").length).toBe(0);
     const nb = neighbours(world, st.campCell!).find((c) => cellAt(world, c).terrain !== "water")!;
@@ -620,7 +671,7 @@ describe("panels", () => {
   it("draws a corridor as a thread, not an open polygon", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
-    const ui = newUiState();
+    const ui = { ...newUiState(), zoom: 0 };
     const cal = calendar(state.minute, state.startDoy);
     const home = regionAt(world, state.player.region);
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -672,15 +723,14 @@ describe("panels", () => {
     const b = board(world, state, ui, cal);
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const l = LEVELS[ui.zoom];
+    const z = ZOOMS[ui.zoom];
     const cellInView = nb.cells.find((c) => {
       const x = c % world.w;
       const y = Math.floor(c / world.w);
-      return x >= x0 && y >= y0 && x < x0 + l.w && y < y0 + l.h;
+      return x >= x0 && y >= y0 && x < x0 + l.w * z && y < y0 + l.h * z;
     });
     expect(cellInView).toBeDefined();
-    const x = cellInView! % world.w;
-    const y = Math.floor(cellInView! / world.w);
-    const glyph = b.glyphs[(y - y0) * l.w + (x - x0)];
+    const glyph = glyphOfCell(b, cellInView!)!;
     expect(has(glyph, "fog")).toBe(true);
     const tip = tipHtml(state, world, cal, cellInView!);
     expect(tip).toContain("Unknown ground");
@@ -856,12 +906,11 @@ describe("the Do panel", () => {
     const roster = regionAt(world, state.player.region);
     for (const species of huntedLand()) if (roster.capacity[species]) noteHuntSign(state, cellOf(state, world), species);
     const html = allPanesHtml(state, world, cal);
-    // Eating and drinking stand over the stores they draw on, in Inventory,
-    // rather than in the Do pane beside the work or under the map, where
-    // they read as a queue with something already in it.
+    // Eating is self-care the survivor does for themselves: no pane offers
+    // an eat button, Inventory included.
     expect(html).not.toContain('data-act="eat"');
     expect(taskHtml(state, world, cal)).not.toContain('data-act="eat"');
-    expect(inventoryHtml(state, world, cal)).toContain('data-act="eat"');
+    expect(inventoryHtml(state, world, cal)).not.toContain('data-act="eat"');
     // Felling is legal from camp because the intent walks to the forest itself.
     expect(html).toContain('data-act="intent" data-id="chop" data-arg=""');
     expect(html).not.toContain('class="opt off" data-opt="intent:chop:"');
