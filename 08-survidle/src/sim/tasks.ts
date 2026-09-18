@@ -24,7 +24,7 @@ import {
 import { creditEaten, creditYield } from "./ledger";
 import { attemptOdds, illuminance, lightFactor, lightWord, NIGHT_WORK, SPOT_LUX } from "./light";
 import { log } from "./log";
-import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
+import { baseWalkSpeed, die, restMinutes, walkSpeed, workSpeed } from "./player";
 import { disabled } from "./probe";
 import { hasEvent, record } from "./record";
 import {
@@ -1039,8 +1039,10 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "night":
       return haveCamp(opt({ group: "camp", label: "Camp for the night", detail: `go to camp, make a fire if you can, sleep; ${bedText(state, world)}`, duration: 0 }));
-    case "rest":
-      return opt({ group: "camp", label: "Rest", detail: "an hour off your feet", duration: 60, repeatable: true });
+    case "rest": {
+      const minutes = restMinutes(p.energy);
+      return opt({ group: "camp", label: "Rest", detail: minutes === 60 ? "an hour off your feet" : `to the work line, about ${fmtDuration(minutes)}`, duration: minutes, repeatable: true });
+    }
     case "sleep": {
       // However long the model says this body will lie there: the minutes
       // from now to the wake line, with no dawn under it and no cap over it.

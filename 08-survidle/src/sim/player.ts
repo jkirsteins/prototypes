@@ -16,7 +16,7 @@ import { fillDied, record } from "./record";
 import { regionState, siteAt } from "./regionstate";
 import { galeProtection, protectionOf } from "./shelter";
 import { speedFactor } from "./skills";
-import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
+import { debtFallHalved, debtStep, RESTED_AT, SLEEP_AT, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
 import type { DeathCause, GameState, IceMode, Site, Task, TaskId, Terrain, Weather } from "./types";
 import { ICE_SHORE_CM, THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
@@ -329,6 +329,21 @@ export const ENERGY_RATE = { sleep: 12.5, camp: -4, rest: 6, restSpent: 4 };
  */
 export function taskDrain(workHours: number): number {
   return (100 - SPENT_AT) / workHours;
+}
+
+/**
+ * How long one rest lasts: to the work line, where the collapse clears and
+ * the spent need ends, at the rates a rest restores - the collapsed rate
+ * under SLEEP_AT, the ordinary one above. A body already over the line
+ * rests an hour. One task with a bar to where work resumes, in place of
+ * hour-long rests handed out until the line was reached, each with a bar
+ * of its own that said nothing about the whole.
+ */
+export function restMinutes(energy: number): number {
+  if (energy >= RESTED_AT) return 60;
+  const spent = Math.max(0, Math.min(SLEEP_AT, RESTED_AT) - energy) / ENERGY_RATE.restSpent;
+  const rest = (RESTED_AT - Math.max(energy, SLEEP_AT)) / ENERGY_RATE.rest;
+  return Math.max(1, Math.ceil((spent + rest) * 60));
 }
 
 /**

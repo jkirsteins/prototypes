@@ -260,7 +260,9 @@ export type Until =
   | { kind: "once" }
   | { kind: "times"; n: number }
   | { kind: "campHas"; item: ItemId; qty: number }
-  | { kind: "forever" };
+  | { kind: "forever" }
+  /** Never met: the row stands until the player strikes it off. A map click's walk, which stays where it was sent. */
+  | { kind: "dismissed" };
 
 /** Where an intent's work is done: the nearest suitable ground, a named spot, or one cell. */
 export type Where = "nearest" | SpotId | { cell: number };
@@ -268,7 +270,9 @@ export type Where = "nearest" | SpotId | { cell: number };
 /** The row's chosen kind, before the yield item is filled in. A daily count is cleared at the day roll and never drops off. */
 export type UntilChoice =
   | { kind: "once" } | { kind: "times"; n: number } | { kind: "campHas"; qty: number } | { kind: "forever" }
-  | { kind: "daily"; n: number };
+  | { kind: "daily"; n: number }
+  /** A map click's walk: never met, struck off by the player. The Do panel never offers it. */
+  | { kind: "dismissed" };
 
 /**
  * Conditions on a standing order, read every morning against the calendar

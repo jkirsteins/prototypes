@@ -21,7 +21,7 @@ import type { StormPlanInputs, StormPlanOption, StormPlanSnapshot } from "./oppo
 import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { log } from "./log";
-import { baseWalkSpeed, workSpeed } from "./player";
+import { baseWalkSpeed, taskDrain, workSpeed } from "./player";
 import { isKnown } from "./mapped";
 import { cellOf, straightKm, watersideCell } from "./position";
 import { campSite, newSite, regionState, siteAt } from "./regionstate";
@@ -29,7 +29,7 @@ import { survivorRoute, survivorRouteMinutes } from "./routing";
 import { seepStopped } from "./seep";
 import { coverCeiling, EMERGENCY_MINUTES, findCover, galeProtection, improveCoverMinutes, protectionOf } from "./shelter";
 import { skillLevel } from "./skills";
-import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
+import { RESTED_AT, SLEEP_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { type Step, canStart, isRunning, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
 import { isWorkIntent, type BodyNeed, type CampNeed, type CareNeed, type GameState, type ItemId, type Protection, type Task, type TaskId, type ToolId, type WorkIntent } from "./types";
@@ -37,7 +37,7 @@ import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, 
 import { ambientTemperature, forecastKnowledge, stormComing, stormNow, walkableIce } from "./weather";
 
 /** Stamina at which work gives way to forced Rest. This does not start sleep. */
-export const SLEEP_AT = 20;
+export { SLEEP_AT } from "./sleep";
 export const COLD_UNDER = 30;
 export const WARM_AT = 45;
 export const PROVISION_KG = 2;
@@ -139,7 +139,10 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   }
   if (mem.sleeping || mem.night) return "sleep";
   if (storming) return "storm";
-  if (mem.collapsed) return "spent";
+  // The collapse holds the body to rest, not to dying of thirst beside a
+  // stream: what it can still afford is read off the same store the
+  // collapse reads (spentCanDrink).
+  if (mem.collapsed) return thirsty && spentCanDrink(state, world, cal) ? "thirsty" : "spent";
   // Warm again: whatever a spent rest gave up on is worth trying afresh next time it turns cold.
   if (p.warmth >= WARM_AT) mem.coldSpent = false;
   const wetCold = p.wetness > SOAKED_WETNESS && ambientTemperature(cal, localWeather(state, world)) < WET_COLD_C;
@@ -482,6 +485,28 @@ function canDrinkOnTheSpot(state: GameState, world: World): boolean {
   if (vesselLitres(state.player) > 0 || waterSource(state, world)) return true;
   const camp = regionState(state, world, state.player.region).campCell;
   return cellOf(state, world) === camp && qty(pileAt(state, camp), "water") > 1e-9;
+}
+
+/**
+ * Whether a collapsed body can still go and drink. Water at hand costs the
+ * minute nothing and is always taken. A walk is a task, and a task drains
+ * the energy store at taskDrain an hour, so the walk to water is afforded
+ * when it costs less than the store holds: a spent body still crawls a
+ * hundred metres to a stream and does not set out on a two-hour march. The
+ * ruling (2026-09-18): if realistically the survivor could address thirst
+ * they should, and if they would collapse despite it, they collapse; the
+ * model's own numbers decide which, not a distance. Hunger stays under the
+ * rest, since it kills slower and the same rule would send a spent body
+ * hunting.
+ */
+function spentCanDrink(state: GameState, world: World, cal: Calendar): boolean {
+  if (canDrinkOnTheSpot(state, world)) return true;
+  const p = state.player;
+  const need = Math.max(0.1, THIRSTY_L - p.water);
+  const option = waterOptions(state, world, cal).find((o) => o.litres >= need);
+  if (!option) return false;
+  const walk = check(state, world, cal, "walk", `cell:${option.cell}`);
+  return walk.ok && (walk.duration / 60) * taskDrain(body(state).workHours) < p.energy;
 }
 
 /**

@@ -45,7 +45,7 @@ import { isWorkIntent } from "./types";
  */
 export function intentMode(task: TaskId, until: Until | UntilChoice): WorkIntent["mode"] {
   if (task === "night") return "runner";
-  return until.kind === "once" ? "hand" : "runner";
+  return until.kind === "once" || until.kind === "dismissed" ? "hand" : "runner";
 }
 
 export type { IntentRequest, UntilChoice, Where } from "./types";
@@ -354,7 +354,11 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   // check below, which reads the pack only; food and vessels stay in the camp pile
   // until the intent actually starts.
   const pocketed = provisionKit(state, world);
-  if (!UNCHECKED.has(req.task)) {
+  // A walk that stays, already at its cell, has nothing left to check: the
+  // walk check would refuse "{you} {are} here", and the intent's whole job
+  // from here is the staying (workStep, the rest under the row's name).
+  const staying = req.until.kind === "dismissed" && cell === cellOf(state, world);
+  if (!UNCHECKED.has(req.task) && !staying) {
     const o = check(state, world, cal, req.task, req.arg, cell);
     if (!o.ok && !fetchAllowance(state, world, req.task, req.arg, o.why).ok) {
       if (pocketed > 0) {
@@ -417,6 +421,7 @@ function untilMet(state: GameState, it: WorkIntent): boolean {
       return have >= u.qty - 1e-9;
     }
     case "forever": return false;
+    case "dismissed": return false;
   }
 }
 
@@ -732,8 +737,15 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   const label = labelOf(state, world, cal, it);
   if (it.task === "walk") {
     if (here === it.cell) {
-      it.done++;
       const order = owningOrder(state, world, it);
+      // Sent here by a click, the survivor stays: a rest where they stand,
+      // taken again as each one ends, until the row is struck off. The body
+      // is still served through it the way it is through any task.
+      if (order?.req.until.kind === "dismissed") {
+        if (!takeStep(state, world, cal, { id: "rest", step: "staying here until the row is struck off" }, rng)) state.intent = null;
+        return undefined;
+      }
+      it.done++;
       if (order) order.done++;
       state.intent = null;
       return "again";

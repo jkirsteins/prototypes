@@ -718,8 +718,8 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     // treats them differently enough that which is which has to be visible:
     // a once order works through the night and cuts into work in hand, a
     // standing one waits for the light and for the chunk to end.
-    const once = !care && o.req.until.kind === "once";
-    const kind = care ? "" : `<span class="kind">${once ? "once" : "standing"}</span>`;
+    const once = !care && (o.req.until.kind === "once" || o.req.until.kind === "dismissed");
+    const kind = care ? "" : `<span class="kind">${o.req.until.kind === "dismissed" ? "until struck off" : once ? "once" : "standing"}</span>`;
     const blockedTag = blocked ? `<span class="kind blocked">blocked</span>` : "";
     // A row the list walked past. The work was asked for and is not
     // happening, and without a word for it the row reads as broken rather

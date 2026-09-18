@@ -104,8 +104,12 @@ describe("the body's row against the work", () => {
     expect(cellOf(state, world)).toBe(camp);
     expect(state.intent?.step).toBe("resting after the day's work");
     expect(until(g, () => state.task?.id !== "rest", 700)).toBe(true);
-    expect(state.player.bodyNeed).toBeNull();
     expect(state.player.energy).toBeGreaterThanOrEqual(RESTED_AT - 0.2);
+    // The rest is one task to the work line, so it ends on the minute the
+    // collapse clears; a hunger that grew under it surfaces on that minute
+    // and is eaten from the pack on the next. Read the need after that.
+    advance(state, world, 2);
+    expect(state.player.bodyNeed).toBeNull();
     // Back to the tree it left, and on with the same intent.
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     expect(state.task!.progress).toBeGreaterThan(15);
