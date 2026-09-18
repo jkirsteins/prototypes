@@ -917,6 +917,11 @@ button.act small, span.act small { display: block; color: var(--dim); }
 /* The alert stack: worst on top, standing while true. A block a colour
    and a word, the way RimWorld's right-edge alerts read across a room. */
 #alerts { flex: none; }
+#rightpages { display: flex; gap: 4px; flex: none; margin-bottom: 4px; }
+#rightpages .tab.on { color: var(--accent); border-color: var(--accent); }
+.badge { display: inline-block; min-width: 1.4em; margin-left: 4px; padding: 0 4px; border-radius: 8px; font-size: 11px; text-align: center; color: #111; }
+.badge.bad { background: var(--bad); }
+.badge.warn { background: var(--accent); }
 .alerts { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
 .alert { display: flex; flex-direction: column; padding: 4px 8px; border-left: 4px solid var(--accent); background: rgba(230, 194, 41, 0.08); }
 .alert.bad { border-left-color: var(--bad); background: rgba(224, 96, 96, 0.12); }

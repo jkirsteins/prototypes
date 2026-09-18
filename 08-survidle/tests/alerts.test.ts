@@ -21,7 +21,7 @@ describe("the alert stack", () => {
   it("is empty for a body wanting nothing", () => {
     const { state, world, cal } = fresh();
     expect(alerts(state, world, cal)).toEqual([]);
-    expect(alertsHtml(state, world, cal)).toBe("");
+    expect(alertsHtml(state, world, cal)).toContain("Nothing to report");
   });
 
   it("warns of tiredness between the spent line and the collapse, and says collapsed under it", () => {

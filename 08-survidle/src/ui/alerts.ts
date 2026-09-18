@@ -48,6 +48,6 @@ export function alerts(state: GameState, world: World, cal: Calendar): Alert[] {
 export function alertsHtml(state: GameState, world: World, cal: Calendar): string {
   if (state.dead) return "";
   const rows = alerts(state, world, cal);
-  if (!rows.length) return "";
+  if (!rows.length) return `<div class="alerts"><p class="dim">Nothing to report: the body wants nothing and the camp is in order.</p></div>`;
   return `<div class="alerts" role="status" aria-live="polite">${rows.map((a) => `<div class="alert ${a.level}"><b>${esc(a.title)}</b><small>${esc(a.detail)}</small></div>`).join("")}</div>`;
 }

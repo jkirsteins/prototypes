@@ -100,7 +100,8 @@ import { advanceHurry, hurryClick, hurryKind, newHurry } from "./ui/hurry";
 import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
 import { newSpeedHistory, updateSpeedHistory } from "./ui/speed-history";
-import { alertsHtml } from "./ui/alerts";
+import { alerts, alertsHtml } from "./ui/alerts";
+import { loadRightPage, type RightPage, rightPagesHtml, saveRightPage } from "./ui/rightpages";
 import { shoppingHtml, shoppingQuery } from "./ui/shopping";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
 import { hideLoading, showLoading } from "./ui/loading";
@@ -258,6 +259,7 @@ async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: numbe
 
 async function boot() {
   ui.panes = loadPanes(localStorage);
+  ui.rightPage = loadRightPage(localStorage);
   const savedText = forcedSeed || startDoy !== undefined ? null : localStorage.getItem(SAVE_KEY);
   if (savedText && inspectSave(savedText) === "old-world") {
     oldWorldSave = true;
@@ -385,6 +387,12 @@ function render(nowMs = performance.now()) {
   renderStockPanel(cal);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("alerts", alertsHtml(state, world, cal));
+  const standing = alerts(state, world, cal);
+  setPanel("rightpages", rightPagesHtml(ui.rightPage, { bad: standing.filter((a) => a.level === "bad").length, warn: standing.filter((a) => a.level === "warn").length }));
+  const alertsEl = document.getElementById("alerts");
+  const weatherEl = document.getElementById("weather");
+  if (alertsEl) alertsEl.hidden = ui.rightPage !== "alerts";
+  if (weatherEl) weatherEl.hidden = ui.rightPage !== "weather";
   setPanel("camp", campHtml(state, world, cal, ui.rateDisplay));
   setPanel("maptravel", placesHtml(state, world, cal, ui.travelDisplay));
   setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
@@ -648,6 +656,10 @@ function onClick(ev: Event) {
     case "pane":
       ui.panes = { ...ui.panes, pane: target.dataset.pane as PaneId };
       savePanes(localStorage, ui.panes);
+      break;
+    case "right-page":
+      ui.rightPage = target.dataset.page as RightPage;
+      saveRightPage(localStorage, ui.rightPage);
       break;
     case "subtab": {
       const subtab = target.dataset.subtab as SubtabId;

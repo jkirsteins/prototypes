@@ -1,4 +1,5 @@
 import { monthStartDoy } from "../sim/calendar";
+import type { RightPage } from "./rightpages";
 import { NOT_ORDERS } from "../sim/ladder";
 import { type HurryState, newHurry } from "./hurry";
 import { newSpeedHistory, type SpeedHistory } from "./speed-history";
@@ -22,6 +23,8 @@ export interface UiState {
   rateDisplay: RateDisplay;
   /** Which pane is showing, and where in the Do pane the player was; remembered across a reload. */
   panes: Panes;
+  /** Which page the right column's top slot shows: the weather or the alerts. */
+  rightPage: RightPage;
   /** Region clicked on the map, or null for the one you stand in. */
   selected: number | null;
   /** The map patch under the pointer, or null when the pointer is off the board. Derived from where the pointer is, never from a glyph's own enter and leave. */
@@ -163,7 +166,7 @@ export function simulationPaused(state: GameState, ui: UiState): boolean {
 
 export function newUiState(): UiState {
   return {
-    panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, cloudShadows: DEFAULT_CLOUD_SHADOWS, rateDisplay: DEFAULT_RATE_DISPLAY, selected: null, hover: null, destination: null, away: null, confirmAbandon: false, confirmCamp: false,
+    panes: defaultPanes(), rightPage: "weather", travelDisplay: DEFAULT_TRAVEL_DISPLAY, cloudShadows: DEFAULT_CLOUD_SHADOWS, rateDisplay: DEFAULT_RATE_DISPLAY, selected: null, hover: null, destination: null, away: null, confirmAbandon: false, confirmCamp: false,
     cemetery: false, manual: false, teach: null, opportunityCatalog: { open: false, category: "survival", page: 0, detail: null }, opportunityPresentation: null, recognition: null, welcome: false, settings: false, stockOpen: null, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false, regions: false },
     hurry: newHurry(), speedHistory: newSpeedHistory(), wildlifeStartles: [], wildlifeStartleIds: new Set(), mapViewport: null,
