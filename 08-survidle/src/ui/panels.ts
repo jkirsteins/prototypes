@@ -715,9 +715,13 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
 
   // One line per thing that stands or is planned, never a comma-run: a
   // camp of six structures and two plans was one sentence nobody could scan.
+  // With no camp there is nothing for "nothing built" to be the state of:
+  // snares and a trap are the region's and still list, an empty list draws
+  // no Standing group at all.
+  const noCamp = st.campCell === null;
   const stands = built.length || planned.length
     ? `<ul class="camp-list">${[...built, ...planned].map((s) => `<li>${s}</li>`).join("")}</ul>`
-    : `<div class="camp-row dim">nothing built</div>`;
+    : noCamp ? "" : `<div class="camp-row dim">nothing built</div>`;
   // What lives here is a region's reading, not a cell's, so the map's hover
   // has no place for it and the camp box does: the survivor knows what is
   // about without walking anywhere to look.
@@ -727,7 +731,24 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
   // lives about. Every container carries a data-camp key so a redraw
   // morphs the group in place rather than by position.
   const group = (key: string, title: string, body: string) => (body ? `<section class="camp-sec" data-camp="${key}"><h3>${title}</h3>${body}</section>` : "");
-  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${group("fire", "Fire", fire + fieldFire + elsewhere)}${group("stands", "Standing", stands + yard)}${group("stores", "Stores", rack + wood + water + heap + limits)}${group("about", "About", about)}`;
+  // No camp is a state the tab says outright, not an empty camp. A first
+  // survivor makes camp before anything else; an heir lands in a region
+  // with no camp of its own, the old camp a region away. Either way a page
+  // headed "Camp" with nothing under it read as a camp with nothing in it,
+  // and the survivor kept giving it camp-addressed work. The old camps are
+  // named because their fires are the rows below, and the way to a camp of
+  // this region is named because it is one row in one subtab.
+  const oldCamps = Object.entries(state.regions)
+    .filter(([rid, other]) => Number(rid) !== id && other.campCell !== null)
+    .map(([rid]) => esc(regionAt(world, Number(rid)).name));
+  const none = noCamp
+    ? `<section class="camp-sec" data-camp="none"><div class="camp-row"><b>No camp in ${esc(r.name)}.</b> No fire is kept here, nothing is stored here, and there is no roof to sleep under.</div>`
+      + `<div class="camp-row">Make camp here, under Do &gt; Build &gt; Site, to start one.</div>`
+      + (oldCamps.length ? `<div class="camp-row dim">The camp from before stands at ${oldCamps.join(" and ")}${elsewhere ? "; its fire is below" : ""}.</div>` : "")
+      + `</section>`
+    : "";
+  const heading = noCamp ? `<h2>No camp <span class="r">${esc(r.name)}</span></h2>` : `<h2>Camp <span class="r">${esc(r.name)}</span></h2>`;
+  return `${heading}${none}${group("fire", "Fire", fire + fieldFire + elsewhere)}${group("stands", "Standing", stands + yard)}${group("stores", "Stores", rack + wood + water + heap + limits)}${group("about", "About", about)}`;
 }
 
 

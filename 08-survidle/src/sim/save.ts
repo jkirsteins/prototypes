@@ -15,7 +15,7 @@ import { newSite, regionState } from "./regionstate";
 import { YARD_START_M2, yardUsed } from "./yard";
 import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
-import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type Species, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
+import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type Species, type StructureId, type TaskId, type Until } from "./types";
 import { emptyWildlife } from "./wildlife-agents";
 import { decodeKnowledge, encodeKnowledge, type KnowledgeChunks, newKnowledge, setKnowledge } from "./fineknowledge";
 import { migrateWeather } from "./weather";
@@ -406,12 +406,15 @@ export function migrate(state: GameState): void {
     st.wettedKg ??= 0;
     st.orders ??= [];
     st.nextOrderId ??= 1;
-    // Only a direct map click owns a Walk row, and that row always owns the
-    // top of the list. Older builds inserted route legs beside their parent.
+    // Only a direct map click owns a Walk row - the one that stays until it
+    // is struck off - and it is kept wherever it sits. Older builds inserted
+    // once-only route legs beside their parent row; those are dropped, since
+    // the parent walks itself there again as a step of its own.
+    const clickWalk = (o: (typeof st.orders)[number]) => !isCareRow(o) && o.req.task === "walk" && o.req.until.kind === "dismissed";
     const removedWalkIds = new Set(st.orders
-      .filter((o, i) => i > 0 && !isCareRow(o) && o.req.task === "walk")
+      .filter((o, i) => i > 0 && !isCareRow(o) && o.req.task === "walk" && !clickWalk(o))
       .map((o) => o.id));
-    st.orders = st.orders.filter((o, i) => i === 0 || isCareRow(o) || o.req.task !== "walk");
+    st.orders = st.orders.filter((o, i) => i === 0 || isCareRow(o) || o.req.task !== "walk" || clickWalk(o));
     if (st === state.regions[state.player.region] && removedWalkIds.size) {
       if (state.intent?.orderId !== null && state.intent?.orderId !== undefined && removedWalkIds.has(state.intent.orderId)) {
         state.intent = null;
@@ -434,32 +437,13 @@ export function migrate(state: GameState): void {
     ensureCareRows(st);
   }
   migrateSites(state);
-  // A raw map walk used to have no order. Preserve that explicit destination
-  // as the one visible Walk at the top. A route owned by work or care remains
-  // a step of that owner and needs no migration.
-  if (state.task?.id === "walk" && state.route) {
-    const st = state.regions[state.player.region];
-    if (st) {
-      const old = state.intent;
-      if (old && (!isWorkIntent(old) || old.task !== "walk")) return;
-      const alreadyVisible = isWorkIntent(old) && old.task === "walk" && old.orderId !== null
-        && st.orders.some((o) => o.id === old.orderId && !isCareRow(o) && o.req.task === "walk");
-      if (alreadyVisible) return;
-      const target = state.route.target;
-      const walk: WorkOrder = {
-        id: st.nextOrderId++, kind: "job",
-        req: { task: "walk", arg: `cell:${target}`, until: { kind: "once" }, deliver: "leave", where: { cell: target } },
-        done: 0, minutes: 0, skipped: "",
-        givenDoy: calendar(state.minute, state.startDoy).dayOfYear,
-      };
-      st.orders.unshift(walk);
-      state.intent = {
-        mode: "hand", task: "walk", arg: `cell:${target}`, cell: target, campCell: st.campCell,
-        until: { kind: "once" }, deliver: "leave", done: 0,
-        step: `walking to ${state.route.label}`, orderId: walk.id, windDown: false,
-      };
-    }
-  }
+  // A walk under way with no order behind it gets no row on load. This used
+  // to make one, for a map click from before clicks had a row - but every
+  // save this build reads was written after that, so the only walk it ever
+  // met here was one another activity started: a care row's walk whose claim
+  // ended mid-way, a stopped order's leg. Each of those is a step of what
+  // started it, finishes on its own, and is not the player's to strike off;
+  // a row for it read as an order nobody gave.
 }
 
 /**
