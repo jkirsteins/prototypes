@@ -25,6 +25,12 @@ A browser pass confirms nothing interactive has appeared in the left
 column but that slider, and nothing but Orders in the right.
 `tests/layout.test.ts` holds the same rule against `index.html`.
 
+On a phone there are no columns. The right slot's strip is the page's
+tabs - Map, Queue, Alerts, Weather, in that order, the map the default -
+with the manual and settings buttons at its far end, and the If-you-leave
+panel is not shown at all: the away dial is a desktop's control. The
+check-in above the strip is the task line and the survivor's bars.
+
 ## Nothing off the screen at 1440 by 900
 
 The check-in - the bars, Doing with its bar, the ways out, and the Do
@@ -104,8 +110,8 @@ checking it:
 - `#doitems` is the Do pane's only scroll container and is never replaced.
 - All four panes exist at once; switching sets `hidden`. A pane rendered
   on demand is a pane whose scroll position starts again every time.
-- `innerHTML` is assigned in exactly one place, `setPanel`, plus the map
-  legend written once at startup. `tests/innerhtml.test.ts` enforces it.
+- `innerHTML` is assigned in exactly one place, `setPanel`.
+  `tests/innerhtml.test.ts` enforces it.
 - No per-frame value is in any panel's markup. Bar widths and the
   tooltip's position are written onto elements by `src/ui/bars.ts`.
 
@@ -127,21 +133,22 @@ The survivor is the middle glyph and the board is wider than a phone, so
 auto margin: an auto margin beats the container's alignment and, once the
 board overflows, resolves to zero and pins the board to its left edge. On
 2026-09-18 that showed a phone the empty west of the world. Under 700px
-the board also has a height of its own rather than what the legend leaves
-of 50vh. A browser pass at 390 confirms the `@` is in the middle of the
-visible board; `tests/layout.test.ts` holds the declarations.
+the board is a page of the right slot - Map, Alerts, Weather, in that
+order, the map the default - and takes 70vh of its own, so a phone turns
+to the board rather than scrolling past it. There is no legend at any
+width: a tap on a cell names its ground. A browser pass at 390 opens the
+Map page and confirms the `@` is in the middle of the visible board;
+`tests/layout.test.ts` holds the declarations.
 `docs/phone-audit-2026-09-18.md` is the audit that found it.
 
 ## Buttons reachable by thumb at 390 wide
 
 Under the phone breakpoint, buttons and inputs are at least 40 pixels
-tall, per the `@media (hover: none)` rule. The map's legend sits behind
-the same rule, standing in for the glyph tooltips a touch device has no
-hover to trigger - folded behind a `legend` button under the board, so
-the board keeps the screen and the key costs nothing until it is asked
-for; a tap on a cell names its ground either way. Since the rule only
-trips on a real touch device, a browser pass checks this with touch
-emulation, not a resized desktop window.
+tall, per the `@media (hover: none)` rule. A touch device has no hover to
+open a glyph's tooltip, so a tap on a cell opens it instead; there is no
+legend to fall back on. Since the rule only trips on a real touch device,
+a browser pass checks this with touch emulation, not a resized desktop
+window.
 
 ## The activity queue is strictly top to bottom
 

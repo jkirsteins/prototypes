@@ -90,7 +90,7 @@ function currentOpportunityPane(state: GameState): { subtab: SubtabId; purpose: 
   return key ? paneForOpportunity(key) : null;
 }
 import type { SubtabId } from "./ui/purpose";
-import { effectsSnapshot, LEVELS, legendHtml, mapAggregateAtPoint, mapBoardHtml, mapKey, mapModelSnapshot, type MapTarget, mapTargetAtClient, mapViewportBounds, setBoardLight, setPointedGlyph, type TargetResolution, updateEffects } from "./ui/map";
+import { effectsSnapshot, LEVELS, mapAggregateAtPoint, mapBoardHtml, mapKey, mapModelSnapshot, type MapTarget, mapTargetAtClient, mapViewportBounds, setBoardLight, setPointedGlyph, type TargetResolution, updateEffects } from "./ui/map";
 import { drawBoard, releaseBoard } from "./ui/mapcanvas";
 import { loadCloudShadows, saveCloudShadows } from "./ui/map-preferences";
 import { loadRateDisplay, saveRateDisplay, type RateDisplay } from "./ui/rate";
@@ -110,7 +110,7 @@ import { alerts, alertsHtml } from "./ui/alerts";
 import { needsHtml } from "./ui/needs";
 /** ?debug shows the needs ledger on the Log tab; nothing in the main page reads it. */
 const DEBUG = typeof location !== "undefined" && new URLSearchParams(location.search).has("debug");
-import { loadRightPage, type RightPage, rightPagesHtml, saveRightPage } from "./ui/rightpages";
+import { loadRightPage, PHONE_PAGES, type RightPage, rightPagesHtml, saveRightPage } from "./ui/rightpages";
 import { shoppingHtml, shoppingQuery } from "./ui/shopping";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
 import { hideLoading, showLoading } from "./ui/loading";
@@ -335,7 +335,7 @@ async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: numbe
 
 async function boot() {
   ui.panes = loadPanes(localStorage);
-  ui.rightPage = loadRightPage(localStorage);
+  ui.rightPage = loadRightPage(localStorage, phoneLayout() ? "map" : "weather");
   const savedText = forcedSeed || startDoy !== undefined ? null : localStorage.getItem(SAVE_KEY);
   if (savedText && inspectSave(savedText) === "old-world") {
     oldWorldSave = true;
@@ -639,7 +639,9 @@ function syncStockOpen() {
   renderStockPanel();
 }
 // Match the existing layout breakpoint; content height never changes page size.
-function opportunityPageSize(): number { return window.matchMedia("(max-width: 700px)").matches ? 6 : 8; }
+/** The one-column layout, where the map is a page of the right slot rather than the centre column. */
+function phoneLayout(): boolean { return window.matchMedia("(max-width: 700px)").matches; }
+function opportunityPageSize(): number { return phoneLayout() ? 6 : 8; }
 let opportunityOpener: HTMLElement | null = null;
 
 function render(nowMs = performance.now()) {
@@ -652,11 +654,20 @@ function render(nowMs = performance.now()) {
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("alerts", alertsHtml(state, world, cal));
   const standing = alerts(state, world, cal);
-  setPanel("rightpages", rightPagesHtml(ui.rightPage, { bad: standing.filter((a) => a.level === "bad").length, warn: standing.filter((a) => a.level === "warn").length }));
+  // On a phone the map and the queue are pages of the slot; on a desktop they
+  // are columns, and a stored phone page (from a window that was narrow)
+  // reads as weather.
+  const phone = phoneLayout();
+  const page: RightPage = phone || !PHONE_PAGES.includes(ui.rightPage) ? ui.rightPage : "weather";
+  setPanel("rightpages", rightPagesHtml(page, { bad: standing.filter((a) => a.level === "bad").length, warn: standing.filter((a) => a.level === "warn").length }, phone));
   const alertsEl = document.getElementById("alerts");
   const weatherEl = document.getElementById("weather");
-  if (alertsEl) alertsEl.hidden = ui.rightPage !== "alerts";
-  if (weatherEl) weatherEl.hidden = ui.rightPage !== "weather";
+  const mapEl = document.getElementById("map");
+  const ordersEl = document.getElementById("orders");
+  if (alertsEl) alertsEl.hidden = page !== "alerts";
+  if (weatherEl) weatherEl.hidden = page !== "weather";
+  if (mapEl) mapEl.hidden = phone && page !== "map";
+  if (ordersEl) ordersEl.hidden = phone && page !== "queue";
   setPanel("camp", campHtml(state, world, cal, ui.rateDisplay));
   setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
   setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));
@@ -1049,13 +1060,6 @@ function onClick(ev: Event) {
     case "settings-open":
       ui.settings = true;
       break;
-    // The legend is static markup shown and hidden by a class on its panel,
-    // never rendered, so the toggle needs no state of its own.
-    case "legend-toggle": {
-      const map = document.getElementById("map")!;
-      target.setAttribute("aria-expanded", String(map.classList.toggle("legend-open")));
-      break;
-    }
     case "settings-close":
       ui.settings = false;
       break;
@@ -1520,8 +1524,6 @@ window.addEventListener("pagehide", () => {
   persistGame();
   void session?.flush(true);
 });
-// The terrain letters never change, so the legend is set once rather than rebuilt with the map.
-document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
 
 // The map's tooltip. pointermove covers mouse, pen and a touch drag with one
 // listener; a tap fires it too, which is what gives a touch device the

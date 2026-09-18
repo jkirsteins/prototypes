@@ -493,6 +493,9 @@ html.sync-readonly [data-act="settings-open"], html.sync-readonly #settings { po
    ancestor, and without this they found the viewport and sat over the
    queue column. */
 #map { padding: 8px; min-width: 0; position: relative; display: flex; flex-direction: column; }
+/* The display rule above beats the user agent's [hidden] { display: none }: on a
+   phone the map is a page of the right slot and must go when another page is on. */
+#map[hidden] { display: none; }
 /* The map's own corner: the zoom controls float over the bottom left of the
    grid rather than taking a row above it. */
 /* The chain of min-height: 0 that lets the board give way to the panels
@@ -603,34 +606,10 @@ html.sync-readonly [data-act="settings-open"], html.sync-readonly #settings { po
 }
 .grid:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 
-.legend .fog-key { color: #4a5160; }
-.legend .memory-key { color: #777d86; }
-.legend .far-key { color: #5b6270; }
-.legend .part-key { color: #6a7382; }
-
-/* The legend's sample of the walk line; the walk itself is drawn on the canvas in the same two strokes. */
+/* The walk line, drawn on the canvas in two strokes. */
 polyline.walk-ahead, polyline.walk-behind { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
 polyline.walk-ahead { stroke: rgba(230, 194, 41, 0.9); stroke-width: 2px; }
 polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; stroke-dasharray: 3 3; }
-.legend .walk-key svg { width: 24px; height: 6px; vertical-align: middle; }
-
-.legend .pl-key { text-decoration: underline; text-decoration-color: #e6c229; }
-
-/* The legend has no cell background to draw a marker against, so its letters take the
-   background colour each mark uses on the map instead. */
-#map .legend b.mk-player { color: #b8860b; }
-#map .legend b.mk-fire { color: #b8431a; }
-#map .legend b.mk-coals { color: #7a3d1a; }
-#map .legend b.mk-shelter { color: #4a5a78; }
-#map .legend b.mk-camp { color: #6fcf6f; }
-#map .legend b.mk-trap { color: #4a5a78; }
-#map .legend b.mk-seep { color: #6fa8dc; }
-#map .legend b.mk-stream { color: var(--water); }
-#map .legend b.mk-animal { color: #b7ad87; }
-#map .legend b.ice-thin,
-#map .legend b.ice-safe { color: #3a6fd8; padding: 0 2px; }
-#map .legend b.ice-thin { background-color: #142533; }
-#map .legend b.ice-safe { background-color: #243746; }
 .mk-den { color: #d6aa72; }
 
 /*
@@ -716,12 +695,6 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   .portrait.is-firelit::before { opacity: .32; transform: none; }
   .portrait.is-firelit::after { opacity: .18; transform: none; }
 }
-
-/* The glyph tooltips need hover; a device without it gets this line instead,
-   so it is present always but shown only under (hover: none). */
-.legend { margin-top: 6px; flex-wrap: wrap; gap: 4px 12px; color: var(--dim); font-size: 12px; }
-#map .legend { display: none; }
-#map .legendtoggle { display: none; }
 
 /* Region card */
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; }
@@ -925,7 +898,9 @@ button.act small, span.act small { display: block; color: var(--dim); }
 /* The alert stack: worst on top, standing while true. A block a colour
    and a word, the way RimWorld's right-edge alerts read across a room. */
 #alerts { flex: none; }
-#rightpages { display: flex; gap: 4px; flex: none; margin-bottom: 4px; }
+#rightpages { display: flex; gap: 4px; flex: none; margin-bottom: 4px; flex-wrap: wrap; align-items: center; }
+/* On a phone the strip's far end carries the manual and settings buttons. */
+#rightpages .spacer { flex: 1; }
 #rightpages .tab.on { color: var(--accent); border-color: var(--accent); }
 .badge { display: inline-block; min-width: 1.4em; margin-left: 4px; padding: 0 4px; border-radius: 8px; font-size: 11px; text-align: center; color: #111; }
 .badge.bad { background: var(--bad); }
@@ -1118,14 +1093,10 @@ button.act small.gives, span.act small.gives,
   #center { grid-column: 1 / -1; order: -1; }
 }
 
-/* Touch has no hover: the map's tooltips move into the legend line, and
-   every control grows to a thumb's width. */
+/* Touch has no hover: a tap on a cell opens the map's tooltip instead (no
+   key under the board - the board keeps the screen), and every control
+   grows to a thumb's width. */
 @media (hover: none) {
-  /* The legend stands in for the hover tooltips, folded behind its button
-     so the board keeps the screen: 300px of key on every check-in was the
-     phone's biggest cost. A tap on a cell names its ground anyway. */
-  #map .legendtoggle { display: inline-block; align-self: flex-start; margin-top: 6px; }
-  #map.legend-open .legend { display: flex; }
   button, input, select { min-height: 40px; }
   /* A checkbox is not a button: 40px of box around a 13px tick floats it
      away from its own label. The label is the thumb's target. */
@@ -1152,14 +1123,17 @@ button.act small.gives, span.act small.gives,
   #shopping { order: 0; }
   #task { order: 1; }
   #stats { order: 2; }
-  #weather { order: 3; }
-  #forecastbox { order: 4; }
-  /* The page tabs sit with the panel they switch, not at the top of the
-     page three panels above it. */
+  /* The page tabs and their pages, map first: on a phone the board and
+     the queue are pages of this slot, not panels to scroll past. The pages
+     share an order and only one is shown, so which comes first in the DOM
+     is moot. The If-you-leave panel is not shown on a phone at all; its
+     manual and settings buttons move to the strip's far end. */
   #rightpages { order: 3; }
-  #alerts { order: 3; }
-  #orders { order: 6; }
-  #map { order: 7; }
+  #map { order: 4; }
+  #orders { order: 4; }
+  #alerts { order: 4; }
+  #weather { order: 4; }
+  #forecastbox { display: none; }
   #panes { order: 8; }
   #camp { order: 9; }
   #pane-gear { order: 10; }
@@ -1173,10 +1147,8 @@ button.act small.gives, span.act small.gives,
   #dopurposes .grp { width: auto; }
   #doitems { padding-left: 0; overflow-y: visible; }
 
-  /* The board gets a height of its own instead of 50vh less a 300px
-     legend: the legend the touch rules show took the panel's height and
-     left the board a 94px strip. The page scrolls, so the legend follows
-     the board rather than squeezing it. */
+  /* The board gets a height of its own: as a page of the slot it is what
+     the phone turned to, so it takes most of the screen. */
   #map { height: auto; }
   #mapdyn { flex: none; height: 70vh; min-height: 260px; }
 

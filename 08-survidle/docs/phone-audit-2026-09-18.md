@@ -6,7 +6,7 @@ both true), seed 42 on day 200, from the landing through the check-in,
 the map, the Do pane, settings and the catalog. The page is one
 responsive layout - `@media (max-width: 700px)` folds the three columns
 into one and orders the sections, `@media (hover: none)` grows every
-control to 40px and shows the legend in place of the glyph tooltips -
+control to 40px and lets a tap open the glyph tooltip -
 not a phone URL of its own; the phone check-in page the roadmap names is
 still unbuilt and waits for item P. Shots in `docs/phone-audit-shots/`.
 
@@ -17,10 +17,11 @@ still unbuilt and waits for item P. Shots in `docs/phone-audit-shots/`.
    container's `place-items: center`; once the board (792px) is wider
    than the panel (352px) the margin resolves to zero and the board pins
    to the left. The survivor, the middle column, sat 200px off the right
-   edge. On top of that, `#map` was 50vh with the 300px legend inside it,
+   edge. On top of that, `#map` was 50vh with a 300px legend inside it,
    which left the board a 94px strip. Now `.scroll-x` sizes both tracks
    `minmax(0, 1fr)`, `.grid` has no auto margin, and under 700px the
-   board has a height of its own (55vh) with the legend following it.
+   board is a page of the right slot (Map, Alerts, Weather; the map the
+   default) with 70vh of its own.
    `before-map.png` against `after-map.png`; a tap on a cell now opens
    the tooltip (`after-map-tap.png`).
 2. **The boat's three cards were 40px each over 200px of person.**
@@ -52,12 +53,15 @@ scroll anywhere (`scrollWidth` 390), and the page throws nothing.
 ## Left as found, for a later pass
 
 - ~~The legend is 300px between the board and the Do pane~~ Decided the
-  same day: the board gets the screen. The legend is folded behind a
-  `legend` button on touch and the board is 70vh; a tap on a cell names
-  its ground anyway.
-- **The page is 3,600px tall**: skills alone are ten bars of four lines.
-  The check-in order puts what matters first, so this is a scroll rather
-  than a fault; the phone page in the roadmap is the answer.
+  same day, twice: first folded behind a button, then removed outright at
+  every width - a tap on a cell names its ground, and the desktop never
+  showed it either. The board is a page of the right slot, first of Map,
+  Alerts, Weather, and takes 70vh.
+- ~~The page is 3,600px tall~~ Shorter by a third the same day: the map
+  and the queue are pages of the right slot beside the alerts and the
+  weather (Map, Queue, Alerts, Weather; the manual and settings buttons
+  at the strip's far end), and If-you-leave is not shown on a phone.
+  Skills, ten bars of four lines, are still the long tail at the foot.
 - **Tab rows wrap** (Journal onto a second line; Exploration and Mastery
   in the catalog). Readable; a scrolling row would be tidier.
 - **Small type**: several readings are 10 to 11px (`.mini`, `.dim`, the

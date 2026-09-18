@@ -401,23 +401,31 @@ describe("the phone", () => {
     expect(narrow).toMatch(/#mapdyn \{[^}]*flex: none;[^}]*height: 70vh;/);
   });
 
-  it("folds the legend behind its button on touch, so the board keeps the screen", () => {
-    const touch = css.slice(css.indexOf("@media (hover: none) {"));
-    expect(rule("#map .legend")).toContain("display: none");
-    expect(rule("#map .legendtoggle")).toContain("display: none");
-    expect(touch).toMatch(/#map \.legendtoggle \{ display: inline-block;/);
-    expect(touch).toMatch(/#map\.legend-open \.legend \{ display: flex; \}/);
-    expect(touch).not.toMatch(/\n {2}#map \.legend \{ display: flex; \}/);
-    expect(readFileSync("index.html", "utf8")).toContain('data-act="legend-toggle"');
+  it("draws no legend anywhere: a tap on a cell is the key", () => {
+    expect(css).not.toMatch(/\.legend\b/);
+    expect(readFileSync("index.html", "utf8")).not.toContain("legend");
+  });
+
+  it("makes the map and the queue pages of the right slot, and drops If-you-leave", () => {
+    expect(narrow).toMatch(/#rightpages \{ order: 3; \}/);
+    expect(narrow).toMatch(/#map \{ order: 4; \}/);
+    expect(narrow).toMatch(/#orders \{ order: 4; \}/);
+    expect(narrow).toMatch(/#alerts \{ order: 4; \}/);
+    expect(narrow).toMatch(/#weather \{ order: 4; \}/);
+    expect(narrow).toMatch(/#forecastbox \{ display: none; \}/);
+    // The strip's spacer pushes the manual and settings buttons to its far end.
+    expect(rule("#rightpages .spacer")).toContain("flex: 1");
+    // #map's own display rule would beat [hidden]; the page must actually go.
+    expect(rule("#map[hidden]")).toContain("display: none");
   });
 
   it("stacks the boat's cards at their own height", () => {
     expect(narrow).toMatch(/\.card \{ flex: none; \}/);
   });
 
-  it("keeps the page tabs with the panel they switch", () => {
+  it("keeps the page tabs with the pages they switch", () => {
     expect(narrow).toMatch(/#rightpages \{ order: 3; \}/);
-    expect(narrow).toMatch(/#alerts \{ order: 3; \}/);
-    expect(narrow).toMatch(/#weather \{ order: 3; \}/);
+    expect(narrow).toMatch(/#alerts \{ order: 4; \}/);
+    expect(narrow).toMatch(/#weather \{ order: 4; \}/);
   });
 });

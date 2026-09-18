@@ -33,10 +33,11 @@ describe("innerHTML has one home", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("main.ts assigns it once, for the legend written at startup", () => {
-    // Static markup, written once before the first frame, and the one
-    // exemption. A second assignment here is a panel that stopped morphing.
+  it("main.ts never assigns it", () => {
+    // The one exemption used to be the map's legend, static markup written
+    // once at startup; the legend went with the phone audit of 2026-09-18.
+    // An assignment here is a panel that stopped morphing.
     const hits = readFileSync("src/main.ts", "utf8").match(/\.innerHTML\s*=/g) ?? [];
-    expect(hits.length).toBe(1);
+    expect(hits.length).toBe(0);
   });
 });
