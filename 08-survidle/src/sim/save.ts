@@ -17,12 +17,12 @@ import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
 import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type Species, type StructureId, type TaskId, type Until } from "./types";
 import { emptyWildlife } from "./wildlife-agents";
-import { decodeKnowledge, encodeKnowledge, type KnowledgeChunks, newKnowledge, setKnowledge } from "./fineknowledge";
+import { decodeKnowledge, encodeKnowledge, type KnowledgeChunks, newKnowledge } from "./fineknowledge";
 import { migrateWeather } from "./weather";
 import { DISTURBANCE_PROFILES } from "./species";
 import { precipitationStormKind } from "./weather";
 import { metricPointForStoredCell } from "./wildlife-space";
-import { inspectSave, SAVE_VERSION, WORLD_VERSION } from "./world-version";
+import { inspectSave, SAVE_VERSION } from "./save-version";
 
 export const SAVE_KEY = "survidle.save";
 
@@ -31,23 +31,19 @@ export function awaySeconds(state: GameState): number {
   return state.awayHours * 3600;
 }
 
-export interface SaveFile { version: typeof SAVE_VERSION; worldVersion: typeof WORLD_VERSION; savedAt: number; state: GameState }
-
-/** A save written for a world this build can no longer make, with the sentence to show for it. */
-export interface RefusedSave { refused: string }
+export interface SaveFile { version: typeof SAVE_VERSION; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
   // Knowledge is chunked typed arrays, which JSON cannot carry: it goes out
   // as its own compact string and comes back through migrate.
   const carried = { ...state, knowledge: encodeKnowledge(state.knowledge) };
   delete (carried as unknown as Record<string, unknown>)["goals"];
-  return JSON.stringify({ version: SAVE_VERSION, worldVersion: WORLD_VERSION, savedAt: now, state: carried });
+  return JSON.stringify({ version: SAVE_VERSION, savedAt: now, state: carried });
 }
 
-/** A save's knowledge field as it may arrive: encoded, a cell-keyed record from before the lattice, or absent. */
+/** A save's knowledge field as it may arrive: encoded, a structured clone, or absent. */
 interface LegacyKnowledge {
   knowledge?: KnowledgeChunks | string;
-  mapped?: Record<number, 1 | 3>;
 }
 
 function loadKnowledge(state: LegacyKnowledge): KnowledgeChunks {
@@ -60,26 +56,16 @@ function loadKnowledge(state: LegacyKnowledge): KnowledgeChunks {
     if (!(carried.coarse instanceof Map)) carried.coarse = new Map();
     return carried;
   }
-  const knowledge = newKnowledge();
-  // A save written while knowledge was a property per cell: the same ground,
-  // dim where the journal held it. Ground nobody had is simply absent.
-  for (const [cell, level] of Object.entries(state.mapped ?? {})) {
-    setKnowledge(knowledge, Number(cell), level === 3 ? "inherited" : "seen");
-  }
-  delete state.mapped;
-  return knowledge;
+  return newKnowledge();
 }
 
 /**
- * A save carries no world, only its seed, and nothing migrates across a
- * world-version boundary: the patch ids of a save written on another terrain
- * model mean nothing on this one. Such a save is refused with its reason
- * rather than read.
+ * A save carries no world, only its seed. One of another schema version is
+ * not read: nothing older than this version exists to migrate from, and a
+ * newer one is the sync's to refuse by name (its "outdated" state).
  */
-export function deserialize(text: string): SaveFile | RefusedSave | null {
-  const compatibility = inspectSave(text);
-  if (compatibility === "invalid") return null;
-  if (compatibility === "old-world") return { refused: "This save is from a world made by an older map and cannot be loaded; a new world begins." };
+export function deserialize(text: string): SaveFile | null {
+  if (inspectSave(text) !== "current") return null;
   try {
     const file = JSON.parse(text) as SaveFile;
     migrate(file.state);
@@ -625,25 +611,14 @@ export function saveGame(state: GameState, storage: Storage = localStorage, now 
   storage.setItem(SAVE_KEY, serialize(state, now));
 }
 
-/**
- * The save a text holds, or null where there is none to read: unreadable, or
- * refused. Callers that must tell the player why it was refused read
- * `deserialize` itself, which keeps the reason.
- */
+/** The save a text holds, or null where there is none this build can read. */
 export function readSave(text: string): SaveFile | null {
-  const file = deserialize(text);
-  return file && "state" in file ? file : null;
+  return deserialize(text);
 }
 
-/** A refused save loads as nothing; the caller is told why so the new run can say it. */
-export function loadGame(storage: Storage = localStorage, onRefused?: (reason: string) => void): SaveFile | null {
+export function loadGame(storage: Storage = localStorage): SaveFile | null {
   const text = storage.getItem(SAVE_KEY);
-  const file = text ? deserialize(text) : null;
-  if (file && "refused" in file) {
-    onRefused?.(file.refused);
-    return null;
-  }
-  return file;
+  return text ? deserialize(text) : null;
 }
 
 export function clearSave(storage: Storage = localStorage): void {

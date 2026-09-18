@@ -85,7 +85,7 @@ function make(store: FakeStore, timers = fakeTimers()): { session: Session; chan
     device: "me",
     label: "desktop",
     version: VERSION,
-    canRun: (text) => JSON.parse(text).worldVersion === 5,
+    canRun: (text) => JSON.parse(text).version === VERSION,
     now: () => store.now,
     onChange: () => changes.push(session.view().state),
     timers,
@@ -155,10 +155,6 @@ describe("boot", () => {
     expect((await b.session.boot(null)).kind).toBe("older");
     expect(older.leases).toEqual([]);
 
-    const otherWorld = fakeStore(JSON.stringify({ version: VERSION, worldVersion: 4, savedAt: 5000, state: {} }), 5000);
-    const c = make(otherWorld);
-    expect((await c.session.boot(null)).kind).toBe("older");
-    expect(otherWorld.leases).toEqual([]);
   });
 
   it("starts a new world on the code under a forced lease once the old save is refused", async () => {

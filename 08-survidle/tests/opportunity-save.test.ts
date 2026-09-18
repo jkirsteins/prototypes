@@ -11,9 +11,8 @@ const newState = () => newGame(3).state;
 
 /**
  * A current save still carrying the goals field an older build wrote. The
- * version cannot be older: a save below 10 stands on ground this build no
- * longer makes and is refused rather than read, so the legacy shape is what
- * reaches the migration, not the version number.
+ * version cannot be older: a save of another version is not read at all, so
+ * the legacy shape is what reaches the migration, not the version number.
  */
 function legacyGoalsFixture(goals: Record<string, unknown>): { version: number; state: GameState & Record<string, unknown> } {
   const state = newState();

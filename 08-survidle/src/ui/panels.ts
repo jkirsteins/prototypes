@@ -1197,14 +1197,6 @@ export function landingHtml(state: GameState, world: World): string {
  * is the new-world action. Its own text already asks the question reset-world's
  * generic confirm() would ask again, so this button skips that dialog.
  */
-export function oldWorldHtml(): string {
-  return `<div class="box">
-<h1>Old save</h1>
-<p>This saved world used the old 300 m terrain model. Start a new world to use the 50 m simulation.</p>
-<button class="act" data-act="old-world-new">Start a new world</button>
-</div>`;
-}
-
 export function manualHtml(): string {
   const sections = MANUAL_SECTIONS.map((s) => `<h2>${esc(s.title)}</h2>${s.lines.map((l) => `<p>${esc(l)}</p>`).join("")}`).join("");
   const links = MANUAL_LINKS.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join("");

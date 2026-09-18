@@ -7,7 +7,6 @@
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { ensureCareRows } from "./bodyorder";
 import { log } from "./log";
-import { setKnowledge } from "./fineknowledge";
 import { readShore } from "./knowledge";
 import { body, hasQuirk } from "./person";
 import { watersideCell } from "./position";
@@ -93,15 +92,6 @@ export function campSite(st: RegionState): Site | null {
  * load, with the world in hand, which migrate does not have.
  */
 export function fillPopulations(state: GameState, world: World): void {
-  // A save from before cells were the thing walked: everything its survivor entered or
-  // read of is ground they could have walked, so it opens whole rather than stranding
-  // them on ground routing no longer trusts.
-  if (state.knowledge.chunks.size === 0) {
-    for (const [id, d] of Object.entries(state.discovered)) {
-      if (d === SEEN) continue;
-      for (const c of regionAt(world, Number(id)).cells) setKnowledge(state.knowledge, c, d === DIM ? "inherited" : "seen");
-    }
-  }
   for (const [key, st] of Object.entries(state.regions)) {
     const id = Number(key);
     const start = startingPop(world, id);
