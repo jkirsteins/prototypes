@@ -15,7 +15,7 @@ import {
   vesselLitres, WATER_FULL, waterLossPerHour, waterSource,
 } from "../src/sim/water";
 import { ensureGround } from "../src/sim/weather";
-import { inventoryHtml } from "../src/ui/panels";
+import { waterLine } from "../src/ui/water";
 import { siteCamp } from "./siting-helpers";
 import { testAtmosphere } from "./weather-helpers";
 import { dryForestNear } from "./world-facts";
@@ -87,7 +87,7 @@ describe("water", () => {
     expect(waterSource(state, world)).toBe(false);
   });
 
-  it("an iced-over shore logs the warning once and offers a disabled drink button saying so", () => {
+  it("an iced-over shore logs the warning once, and the water line under foot says so", () => {
     const { state, world } = newGame(42);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "shore");
@@ -95,10 +95,10 @@ describe("water", () => {
     advance(state, world, 1);
     const lines = state.log.filter((e) => e.text === "The shore is iced over.");
     expect(lines).toHaveLength(1);
-    // The drink button stands over the stores it draws on, in Inventory, so
-    // the reason it is refused stands there too.
-    const html = inventoryHtml(state, world, calendar(state.minute));
-    expect(html).toContain("iced over");
+    // There is no drink button any more - the self-care row is the one route
+    // to a drink (panels.ts, inventoryHtml) - so the reason the shore gives
+    // nothing stands on the water line for the cell under foot instead.
+    expect(waterLine(state, world, calendar(state.minute))).toContain("iced over");
   });
 
   it("a working day without drinking ends thirsty and, left alone, dead of thirst before starvation", () => {

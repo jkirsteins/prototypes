@@ -33,6 +33,7 @@ describe("the meal line", () => {
     // empty at every healthy moment, with nothing on it saying so.
     const { state, world } = newGame(17);
     let lo = Number.POSITIVE_INFINITY;
+    let awakeLo = Number.POSITIVE_INFINITY;
     let hi = Number.NEGATIVE_INFINITY;
     for (let m = 0; m < 2 * 1440; m++) {
       // A mixed larder, so a gut cap never walls the body off from eating and
@@ -43,9 +44,15 @@ describe("the meal line", () => {
       if (m > 1440) {
         lo = Math.min(lo, state.player.kcal);
         hi = Math.max(hi, state.player.kcal);
+        if (state.task?.id !== "sleep") awakeLo = Math.min(awakeLo, state.player.kcal);
       }
     }
-    expect(lo).toBeGreaterThanOrEqual(HUNGRY_LINE - 1);
+    // Awake, the line holds: the body eats the minute it crosses. Asleep it
+    // does not - only a thirst wakes a sleeper (body.ts, needFrom) - so a
+    // night that starts near the line ends a little under it, and the first
+    // waking minute is the meal. That dip is what the bar's lower half is
+    // for, and the fed body never reaches it.
+    expect(awakeLo).toBeGreaterThanOrEqual(HUNGRY_LINE - 1);
     expect(lo / KCAL_FULL).toBeGreaterThanOrEqual(0.5);
     expect(hi / KCAL_FULL).toBeLessThanOrEqual(1);
   });

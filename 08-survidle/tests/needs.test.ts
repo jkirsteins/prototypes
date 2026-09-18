@@ -13,7 +13,7 @@ import { publishFireNeed } from "../src/sim/needs";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { ensureGround, localWeather } from "../src/sim/weather";
-import { placeAt, straightKm } from "../src/sim/position";
+import { cellOf, placeAt, straightKm } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { seepGround } from "../src/sim/seep";
 import { huntedLand } from "../src/sim/species";
@@ -368,13 +368,21 @@ describe("thirst and the seep", () => {
     expect(state.seeps[wet].litres).toBeLessThan(5);
   });
 
-  it("thirsty with only a trickling seep waits beside it, drinking as it fills", () => {
+  it("thirsty with only a trickling seep goes to it and stays, drinking as it fills", () => {
     const s = withSeep(0.2, true);
     if (!s) return;
-    const { g, state, p } = s;
+    const { g, state, world, p, wet } = s;
     p.water = 0.5;
-    expect(until(g, () => state.intent?.step === "waiting at the seep", 600)).toBe(true);
+    // The pool is short of the need, so the walk is named for the wait rather than the drink.
+    expect(until(g, () => / to wait at the seep$/.test(state.intent?.step ?? ""), 600)).toBe(true);
+    // At the seep the minute's trickle is a drink on the spot, and a want
+    // answered on the spot leaves no claim standing (bodyorder.ts, serveNeed):
+    // no "waiting at the seep" rest is named over it. The survivor simply
+    // stays, sipping the seep as it refills, until the sips carry the body
+    // over the line - and the pool never gets ahead of him.
     expect(until(g, () => p.water > 1, 600)).toBe(true);
+    expect(cellOf(state, world)).toBe(wet);
+    expect(state.seeps[wet].litres).toBeLessThan(1);
   });
 });
 
