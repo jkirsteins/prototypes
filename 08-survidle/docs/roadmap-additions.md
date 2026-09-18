@@ -329,6 +329,31 @@ reason: what lasts, how long in terms that mean something, and whether it
 survives a life. Worth deciding both at once, since an heir finding one
 ancestor's hearth is a good moment and finding ninety years of them is not.
 
+## The old camp's bearing lived in one log line
+
+**Raised** 2026-09-18 by the author, landing as an heir and finding nothing
+that said where the old camp was. The landing line said it - region,
+distance and wind - but the log is cleared at every boat, reads newest
+first, and an heir's landing writes a rung line per carried rung straight
+after it, so the one sentence that pointed the way was the first thing the
+log scrolled past.
+
+Done the same day. The old camp is kept on the heir's record
+(`LifeRecord.oldCamp`, read back off the world for older saves), the welcome
+says where it lies, and the activity strip under the map keeps the bearing
+with the one click toward it - the walk when a way is known, the search for
+one when none is - until the heir walks into that country and the map holds
+the camp. The strip's search button matters on its own: the Do pane's
+"Search for a way home" reads the current region's camp, which an heir has
+none of, so the pane hid it, and only the reference runner could point a
+search at the old camp's region. Not done, and still open above: the camp's
+own mark on a dim region's map, which the dim-map rule (ground and name
+only, until visited) currently forbids.
+
+What would look wrong: the row still there after the heir has stood in the
+old camp's region; a "walk there" that stops at the edge of known ground
+without saying so (that is `Go to` reaching a frontier, as it always has).
+
 ## Small things the camp siting work left
 
 **Raised** 2026-09-08. None of these are load-bearing; they are recorded so

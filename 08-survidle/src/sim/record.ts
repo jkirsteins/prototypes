@@ -10,7 +10,7 @@ import { FOODS, type FoodId } from "./items";
 import type { DeathCause, Died, GameState, LifeEvent, LifeEventBody, LifeRecord, Person, SkillId, WorldDate } from "./types";
 
 export function newRecord(index: number, name: LifeRecord["name"], landed: WorldDate, gapDays: number, person: Person): LifeRecord {
-  return { name, person, index, landed, gapDays, events: [], worst: null, forecast: [], died: null };
+  return { name, person, index, landed, gapDays, events: [], worst: null, forecast: [], died: null, oldCamp: null };
 }
 
 /** The living survivor's record: the last in the list. */

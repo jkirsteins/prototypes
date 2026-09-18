@@ -340,7 +340,12 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
 - **The journal** reads the life record: what season it is, what came before,
   and every ancestor's life under their epitaph. A heir carries a quarter
   of what the last survivor knew in every skill, named at landing and
-  marked "carried from {name}" in the skills panel.
+  marked "carried from {name}" in the skills panel. Where the old camp lies
+  - its region, whole kilometres and one of the eight winds - is on the
+  heir's welcome and then under the map in the activity strip, with the one
+  click toward it: the walk when a way there is known, the search for one
+  when none is. The line leaves once the heir walks into that country, and
+  the map holds the camp from then on.
 - **How to survive.** A one-page manual - the first days in order, what
   kills you and how fast, food and the seasons, orders and being away -
   opens once, unasked, on a world's first landing, and after that from

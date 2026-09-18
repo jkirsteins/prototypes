@@ -38,6 +38,16 @@ carries the same bar (`data-bar="task"`, written by `bars.ts` each
 frame like every bar), so the tab says how far the work is while the
 map or the weather is showing.
 
+An heir's activity strip carries one more row under the running work:
+where the old camp lies from here, what the ancestor's journal lists
+there, and the one click toward it - the walk when a way is known, the
+search for one when none is. It is in the middle because it is acted on
+and not only read, and the strip is on the first screen at every width:
+under the map on a desktop, over the tabs on a phone. The row leaves the
+moment the heir walks into that country; the map holds the camp from
+then on. `tests/ui.test.ts` holds the row to heirs, and to heirs who have
+not yet been there.
+
 ## Nothing off the screen at 1440 by 900
 
 The check-in - the bars, Doing with its bar, the ways out, and the Do

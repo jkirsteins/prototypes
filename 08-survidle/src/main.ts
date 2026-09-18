@@ -730,7 +730,7 @@ function render(nowMs = performance.now()) {
     setPanel("overlay", tombstoneHtml(state, world, ui));
     setHidden(overlay, false);
   } else if (ui.welcome) {
-    setPanel("overlay", welcomeHtml(state, cal));
+    setPanel("overlay", welcomeHtml(state, world, cal));
     setHidden(overlay, false);
   } else if (ui.teach) {
     setPanel("overlay", conceptHtml(state, world, cal, ui.teach));

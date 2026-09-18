@@ -798,6 +798,14 @@ export interface LifeRecord {
   died: Died | null;
   /** Practice minutes per skill at death, what a heir carries a share of. */
   skills?: Partial<Record<SkillId, number>>;
+  /**
+   * The camp of the life before, as the heir was told it at landing: the cell
+   * the landing line pointed at. Null for a first survivor and for an heir
+   * whose ancestor never made camp. Kept so the way there can be said again
+   * after the log has moved on. Optional only for a record saved before it
+   * existed; `migrate` fills those in.
+   */
+  oldCamp?: number | null;
 }
 
 /**

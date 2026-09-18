@@ -9,6 +9,7 @@ import { intentOption } from "../sim/intent";
 import { orderGate } from "../sim/ladder";
 import { fmtName } from "../sim/names";
 import { orderSentence } from "../sim/orders";
+import { oldCampHint } from "../sim/landing";
 import { current } from "../sim/record";
 import { RUNG_LEVEL, SKILL_IDS, SKILL_NAMES, skillLevel } from "../sim/skills";
 import { CONCEPTS, tipFor } from "../sim/teach";
@@ -88,14 +89,24 @@ ${shown}
 /**
  * The welcome a landing opens to, fresh survivor or heir alike. The first
  * welcome says who arrived and what they know. Opportunities say what to do next.
+ *
+ * An heir's welcome also says where the old camp lies. The landing line in
+ * the log says the same and is the first thing the log scrolls past, so the
+ * welcome is where it is read, and the activity strip is where it stays.
  */
-export function welcomeHtml(state: GameState, cal: Calendar): string {
+export function welcomeHtml(state: GameState, world: World, cal: Calendar): string {
   const rec = current(state);
   const skills = SKILL_IDS.map((s) => `<span class="tag">${esc(SKILL_NAMES[s])} ${skillLevel(state, s)}</span>`).join("");
+  const hint = oldCampHint(state, world);
+  const oldCamp = hint
+    ? `<p class="welcome-label">The old camp</p>
+<p>${esc(`${hint.name} lies ${hint.km} km ${hint.bearing}.${hint.built ? ` ${hint.ancestor}'s journal lists ${hint.built} there.` : ""} The bearing stays beside what you are doing until you walk into that country.`)}</p>
+`
+    : "";
   return `<div class="box teach welcome">
 <h1>${esc(fmtName(rec.name))}</h1>
 <p class="dim">${esc(fmtDate(cal))}, day ${cal.day}.</p>
-<p class="welcome-label">Starting skills</p>
+${oldCamp}<p class="welcome-label">Starting skills</p>
 <div class="statuses">${skills}</div>
 <p class="welcome-label">Tip</p>
 <p>${esc(tipFor(state.seed, state.survivors.length))}</p>

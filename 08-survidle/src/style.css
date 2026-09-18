@@ -863,6 +863,12 @@ button.act small, span.act small { display: block; color: var(--dim); }
 #orders .pin.skipping { background: #181e27; box-shadow: none; }
 #task .head, #orders .head { display: flex; justify-content: space-between; align-items: baseline; }
 #task .aside { margin-top: 8px; border-top: 1px dotted var(--line); padding-top: 6px; }
+/* An heir's bearing to the old camp, under the activity row until that
+   country is walked into. The sentence wraps rather than clipping - a phone
+   gets two lines - and the one button keeps to the right. */
+#task .oldcamp { display: flex; align-items: center; gap: 8px; }
+#task .oldcamp .what { flex: 1; }
+#task .oldcamp .mini { white-space: nowrap; }
 #task .paused { padding: 2px 0; }
 #task .order, #orders .order { padding: 4px 0; border-top: 1px dotted var(--line); }
 #task .order:first-of-type, #orders .order:first-of-type { border-top: 0; }

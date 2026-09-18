@@ -6,7 +6,9 @@ import { addItem, assertPileIndexConsistent, herePile, pile, pileCells, qty } fr
 import { spoilPiles } from "../src/sim/camp";
 import { setSkillLevel } from "../src/sim/horizon";
 import { giveOrder } from "../src/sim/ladder";
-import { beginAgain, demoteFog, land, landingCell, landingDate, layDownPack } from "../src/sim/landing";
+import { beginAgain, demoteFog, land, landingCell, landingDate, layDownPack, oldCampHint } from "../src/sim/landing";
+import { STRUCTURES } from "../src/sim/items";
+import { loadGame, saveGame } from "../src/sim/save";
 import { markKnown } from "../src/sim/mapped";
 import { fmtName } from "../src/sim/names";
 import { newGame } from "../src/sim/newgame";
@@ -14,7 +16,7 @@ import { ordersHere } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { cellOf, placeAtSpot } from "../src/sim/position";
 import { current } from "../src/sim/record";
-import { campSite, DIM, discovery, enterRegion, regionState, siteFor } from "../src/sim/regionstate";
+import { campSite, DIM, discovery, enterRegion, regionState, siteFor, VISITED } from "../src/sim/regionstate";
 import { SKILL_IDS } from "../src/sim/skills";
 import { seasonalMean } from "../src/sim/weather";
 import { board, glyphsWith } from "./board";
@@ -323,5 +325,70 @@ describe("what the heir is told", () => {
     beginAgain(state, world);
     land(state, world, { first: "Aino", last: "Berzins" });
     expect(state.log[state.log.length - 1].text).not.toContain("journal");
+  });
+});
+
+/** A storage saveGame and loadGame can use without a DOM. */
+function memoryStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  } as unknown as Storage;
+}
+
+describe("the way to the old camp", () => {
+  /** An ancestor with a camp and a fire site, dead a region over, and the heir landed. */
+  function heir() {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const home = state.player.region;
+    const st = regionState(state, world, home);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    current(state).events.push({ kind: "built", structure: "firePit", day: 2, date: { year: 1, doy: 91 } });
+    const neighbour = regionAt(world, home).neighbours[0].id;
+    placeAtSpot(state, world, neighbour, "camp");
+    die(state, "froze", regionAt(world, neighbour).name);
+    beginAgain(state, world);
+    land(state, world, { first: "Ilze", last: "Berg" });
+    return { state, world, home, camp: st.campCell! };
+  }
+
+  it("keeps the old camp on the heir's record, and none on a first survivor's", () => {
+    const first = newGame(17);
+    expect(current(first.state).oldCamp ?? null).toBeNull();
+    expect(oldCampHint(first.state, first.world)).toBeNull();
+    const { state, camp } = heir();
+    expect(current(state).oldCamp).toBe(camp);
+  });
+
+  it("says the landing line's bearing again from wherever the heir stands, until they walk into that country", () => {
+    const { state, world, home, camp } = heir();
+    // The heir lands in fresh country: the old camp's region is the journal's, not this life's.
+    expect(discovery(state, home)).toBe(DIM);
+    const h = oldCampHint(state, world)!;
+    expect(h).not.toBeNull();
+    expect(h.cell).toBe(camp);
+    expect(h.region).toBe(home);
+    expect(h.name).toBe(regionAt(world, home).name);
+    // Read from the landing cell, it is the landing line, word for word.
+    expect(state.log[0].text).toContain(`The old camp at ${h.name} lies ${h.km} km ${h.bearing}.`);
+    expect(h.built).toBe(`a ${STRUCTURES.firePit.name}`);
+    expect(h.ancestor).toBe(fmtName(state.survivors[0].name));
+    enterRegion(state, world, home);
+    expect(discovery(state, home)).toBe(VISITED);
+    expect(oldCampHint(state, world)).toBeNull();
+  });
+
+  it("reads an old save's heir back off the world, and leaves an ancestor's record unknown", () => {
+    const { state, camp } = heir();
+    delete current(state).oldCamp;
+    delete state.survivors[0].oldCamp;
+    const storage = memoryStorage();
+    saveGame(state, storage);
+    const loaded = loadGame(storage)!.state;
+    expect(current(loaded).oldCamp).toBe(camp);
+    expect(loaded.survivors[0].oldCamp).toBeNull();
   });
 });

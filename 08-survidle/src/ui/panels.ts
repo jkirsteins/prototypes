@@ -16,7 +16,7 @@ import { knownShare, knowledgeGen } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
-import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
+import { daysInWords, landingDate, nextBoatDate, type OldCampHint, oldCampHint } from "../sim/landing";
 import { MANUAL_LINKS, MANUAL_SECTIONS } from "../sim/manual";
 import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
@@ -948,7 +948,31 @@ export function taskHtml(state: GameState, world: World, cal: Calendar, hurrySta
   const speedKind = hurryState ? hurryKind(state) : "none";
   const speeding = !!hurryState?.pulse;
   const speed = speedKind === "click" ? `<button class="mini speed-up${speeding ? " on" : ""}" data-act="hurry"${speeding ? " disabled" : ""}>speed up</button>` : "";
-  return `<div class="now"><span class="what">${what}</span>${now?.progress ? TASK_BAR : ""}${speed}${stop}</div>`;
+  const hint = oldCampHint(state, world);
+  return `<div class="now"><span class="what">${what}</span>${now?.progress ? TASK_BAR : ""}${speed}${stop}</div>${hint ? oldCampHtml(state, world, cal, hint) : ""}`;
+}
+
+/**
+ * An heir's way to the life before, under the activity row: where the old
+ * camp lies from here, what the journal says stands there, and the one click
+ * toward it - the walk when a way there is known, the search when none is.
+ * The strip is the one place on the first screen at every width (under the
+ * map on a desktop, over the tabs on a phone), and the line carries an
+ * action, which is what the middle column is for. Gone once the heir walks
+ * into that country: the map holds the camp from then on.
+ */
+function oldCampHtml(state: GameState, world: World, cal: Calendar, h: OldCampHint): string {
+  const arg = `region:${h.region}`;
+  const t = state.task;
+  // Already on the way: the walk's route ends at the camp, or the search names it home.
+  const underway = (t?.id === "travel" && state.route?.target === h.cell) || (t?.id === "searchHome" && t.home === h.cell);
+  let button = "";
+  if (!underway) {
+    if (check(state, world, cal, "travel", arg).ok) button = `<button class="mini" data-act="task" data-id="travel" data-arg="${arg}">walk there</button>`;
+    else if (check(state, world, cal, "searchHome", arg).ok) button = `<button class="mini" data-act="task" data-id="searchHome" data-arg="${arg}" title="Sweeps the country between, and ends the moment a way opens">search for a way there</button>`;
+  }
+  const journal = h.built ? ` ${h.ancestor}'s journal lists ${h.built} there.` : "";
+  return `<div class="aside oldcamp" data-oldcamp><span class="what"><b>The old camp</b> at ${esc(h.name)} lies ${h.km} km ${esc(h.bearing)}.${esc(journal)}</span>${button}</div>`;
 }
 
 /**
