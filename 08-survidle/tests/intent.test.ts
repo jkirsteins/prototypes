@@ -388,7 +388,7 @@ describe("the work tier", () => {
     expect(until(g, () => state.intent === null, 8000)).toBe(true);
     expect(campSite(regionState(state, world, region))!.structures.leanTo).toBe(true);
     expect(qty(pile(state, forest), "log")).toBe(0);
-    expect(state.log.some((e) => e.text === "lean-to: done.")).toBe(true);
+    expect(state.log.some((e) => e.text === "Build lean-to: done.")).toBe(true);
   });
 
   it("a build with materials nowhere in the region does not start; the button already says why", () => {
@@ -450,7 +450,7 @@ describe("the work tier", () => {
     addItem(state.player.pack, "stone", 34 / ITEM_KG.stone);
     expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(true);
     expect(until(g, () => state.intent === null, 500)).toBe(true);
-    expect(state.log.some((e) => /^lean-to: short .* at camp\. \{You\} \{stop\}\.$/.test(e.text))).toBe(true);
+    expect(state.log.some((e) => /^Build lean-to: short .* at camp\. \{You\} \{stop\}\.$/.test(e.text))).toBe(true);
   });
 
   it("a build already finished is never offered a fetch, whatever sits elsewhere in the region", () => {

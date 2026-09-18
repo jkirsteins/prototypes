@@ -566,11 +566,15 @@ describe("away for the season", () => {
     const duck = check(state, g.world, june, "hunt", "mallard");
     expect(duck.ok).toBe(false);
     expect(duck.why).toBe("the lake is frozen");
-    // Fish are reached through the ice, however thick it is.
+    // Fish are reached through the ice, however thick it is. Whichever lake
+    // fish this lake holds: a species has country it lives in and country it
+    // does not (wildlifeCapacity's range noise), so which one that is belongs
+    // to the world, like the region itself.
     ensureGround(state, g.world, state.player.region).iceCm = 30;
-    const perch = check(state, g.world, june, "fish", "perch");
-    expect(perch.ok).toBe(true);
-    expect(perch.why).toBe("");
+    const held = fishSpecies().find((s) => waterOf(s) === "lake" && (regionAt(g.world, g.region).capacity[s] ?? 0) >= 1)!;
+    const fish = check(state, g.world, june, "fish", held);
+    expect(fish.ok).toBe(true);
+    expect(fish.why).toBe("");
   });
 
   it("the card and the row say the same thing about an absent species", () => {

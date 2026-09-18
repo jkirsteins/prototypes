@@ -11,7 +11,7 @@
  * Every finder is pure geometry over the solved arrays, so it costs a flood of
  * a region or two and never a route search.
  */
-import { cellAt, fineSurfaceAt, fordAt, hasSpot, heightAt, neighbours, regionAt, regionOf, solvedTerrainAt, streamAt, terrainOf, waterKindOf, type World } from "../src/world/gen";
+import { cellAt, fineSurfaceAt, fordAt, hasSpot, heightAt, neighbours, regionAt, regionOf, solvedTerrainAt, streamAt, terrainOf, waterBesideAt, waterKindOf, type World } from "../src/world/gen";
 import { FINE_PER_PARENT, PATCH_M } from "../src/world/spatial";
 import { CANOPY_HEIGHT_M } from "../src/world/terrain";
 import { LEE_FULL_RATIO, LEE_REACH_M, UPWIND_STEP } from "../src/sim/shelter";
@@ -183,7 +183,9 @@ export function openBlock(
 export function watersideNear(world: World, from: number, kind: "lake" | "sea" | "river", accept: (cell: number) => boolean = () => true): number {
   const cx = xOf(world, from);
   const cy = yOf(world, from);
-  const beside = (cell: number) => neighbours(world, cell).some((n) => waterKindOf(world, n) === kind);
+  // Read at the 50 m patch, the way the sim reads a shore (waterBesideAt): a
+  // lake at its 300 m parent is wider than the water itself.
+  const beside = (cell: number) => waterBesideAt(world, cell, kind);
   for (let r = 1; r < 400; r++) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
@@ -384,7 +386,11 @@ export function seaShoreBesideLake(
 
 /**
  * The nearest region to `home` holding a lake, with a land cell on its lake
- * shore. `accept` is the caller's own further test on the region, for the cases
+ * shore. The shore is read the way the sim reads it, at the 50 m patch
+ * (`waterBesideAt`): a lake at its 300 m parent is wider than the water
+ * itself, so a patch whose parent neighbours are lake can stand a hundred
+ * metres from the nearest wet one and fail every "stand by the water" row.
+ * `accept` is the caller's own further test on the region, for the cases
  * that want what lives in the lake as well as the water.
  */
 export function lakeShoreNear(
@@ -393,8 +399,7 @@ export function lakeShoreNear(
 ): { region: number; cell: number } {
   for (const id of lakeRegionsOutward(world, home)) {
     if (!accept(id)) continue;
-    const cell = regionAt(world, id).cells.find((c) =>
-      passable(cellAt(world, c).terrain) && neighbours(world, c).some((n) => waterKindOf(world, n) === "lake"));
+    const cell = regionAt(world, id).cells.find((c) => passable(cellAt(world, c).terrain) && waterBesideAt(world, c, "lake"));
     if (cell !== undefined) return { region: id, cell };
   }
   throw new Error(`no region within reach of ${home} holds a lake shore`);

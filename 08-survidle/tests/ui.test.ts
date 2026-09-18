@@ -20,7 +20,7 @@ import { current } from "../src/sim/record";
 import { discovery, regionState, SEEN, siteFor } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
-import { ambientTemperature, conditionsAt, ensureGround } from "../src/sim/weather";
+import { ambientTemperature, conditionsAt, DEEP_SNOW_CM, ensureGround, patchGroundModifiers } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapBoardHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
@@ -35,6 +35,7 @@ import { advanceHurry, hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
 import { huntedLand } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, speciesHere, spotOf } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
+import { survivorRoute } from "../src/sim/routing";
 import { siteCamp } from "./siting-helpers";
 import { hasLineOfSight, visibleCells } from "../src/sim/sight";
 import { PATCH_KM } from "../src/world/spatial";
@@ -107,11 +108,25 @@ describe("reachability: everything in the catalogue has a button", () => {
     // learned there was anywhere to go. Every neighbour is listed, always.
     const cal = calendar(state.minute);
     const ways = travelHtml(state, world, cal);
+    const here = cellOf(state, world);
+    let roads = 0;
     for (const nb of regionAt(world, state.player.region).neighbours) {
+      const row = ways.split('<div class="way" ').find((r) => r.startsWith(`data-way="${nb.id}"`));
+      expect(row, `a row for ${nb.id}`).toBeDefined();
       // A neighbour across water has no dry road out, so the button it gets is
-      // the ice crossing; every neighbour has one or the other.
-      expect(ways).toContain(`data-arg="region:${nb.id}`);
+      // the ice crossing. A neighbour across water that has not frozen has
+      // neither - at 50 m a patch the world has straits no first week can
+      // cross - and its row says so rather than vanishing, since a name with
+      // no way to it is still the news that there is somewhere to go.
+      const camp = regionAt(world, nb.id).campCell!;
+      if (survivorRoute(state, world, here, camp, "thin")) {
+        expect(row).toContain(`data-arg="region:${nb.id}`);
+        roads++;
+      } else {
+        expect(row).toContain("no way there");
+      }
     }
+    expect(roads).toBeGreaterThan(0);
   });
   it("shows a legal button, not a greyed one, when the inputs are there", () => {
     const rich = newGame(21);
@@ -156,6 +171,25 @@ describe("reachability: everything in the catalogue has a button", () => {
     expect(document.querySelector('[data-opt="intent:deadwood:"] .bar.mastery')).toBeNull();
   });
 });
+
+/** Whether a patch falls on the board drawn at this rung, which is centred on the survivor. */
+function inView(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"], zoom: number, cell: number): boolean {
+  const { x0, y0 } = viewOrigin(state, world, zoom);
+  const l = LEVELS[zoom];
+  const x = cell % world.w - x0;
+  const y = Math.floor(cell / world.w) - y0;
+  return x >= 0 && y >= 0 && x < l.w * l.finePerGlyph && y < l.h * l.finePerGlyph;
+}
+
+/**
+ * A patch on the closest rung's board with the survivor at the centre, kept
+ * a few glyphs in from the edge so the marks and rings round it fit too.
+ */
+function nearOnBoard(world: ReturnType<typeof newGame>["world"], from: number, cell: number): boolean {
+  const dx = cell % world.w - from % world.w;
+  const dy = Math.floor(cell / world.w) - Math.floor(from / world.w);
+  return Math.abs(dx) <= 30 && Math.abs(dy) <= 14;
+}
 
 describe("panels", () => {
   beforeEach(() => {
@@ -283,11 +317,19 @@ describe("panels", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
     const ui = newUiState();
+    // Cell zoom is the closest rung, one glyph to a patch. The default rung
+    // stands a glyph over thirty-six patches and reads them as one block, so
+    // one patch's own knowledge is not a thing it can show.
+    ui.zoom = 0;
     mapRegion(state, world, state.player.region);
     const visible = visibleCells(state, world, cal, cellOf(state, world));
-    const remembered = regionAt(world, state.player.region).cells.find((cell) => !visible.has(cell));
+    // The board is 3.6 by 1.8 km round the survivor; the region's first cells
+    // in index order are its far corner, so the patches asked about are
+    // picked from the ones actually drawn.
+    const dark = (cell: number) => inView(state, world, ui.zoom, cell) && !visible.has(cell);
+    const remembered = regionAt(world, state.player.region).cells.find((cell) => dark(cell) && neighbours(world, cell).some(dark));
     expect(remembered).toBeDefined();
-    const inherited = neighbours(world, remembered!).find((cell) => !visible.has(cell));
+    const inherited = neighbours(world, remembered!).find(dark);
     expect(inherited).toBeDefined();
     setKnowledge(state.knowledge, inherited!, "inherited");
     const b = board(world, state, ui, cal);
@@ -304,17 +346,21 @@ describe("panels", () => {
     const st = regionState(state, world, state.player.region);
     mapRegion(state, world, state.player.region);
     const camp = st.campCell!;
+    // Standing where the camp is on the closest rung's board but out of its
+    // sight; at the block rungs a fire's mark is knowledge, not a sighting.
     const away = regionAt(world, state.player.region).cells.find((cell) => {
-      if (cellAt(world, cell).terrain === "water") return false;
+      if (cellAt(world, cell).terrain === "water" || !nearOnBoard(world, camp, cell)) return false;
       const distanceKm = Math.hypot(cell % world.w - camp % world.w, Math.floor(cell / world.w) - Math.floor(camp / world.w)) * PATCH_KM;
-      return distanceKm <= 5 && !hasLineOfSight(world, cell, camp, 1.5);
+      return distanceKm >= 0.3 && !hasLineOfSight(world, cell, camp, 1.5);
     });
     expect(away).toBeDefined();
     placeAt(state, world, away!);
     state.minute = 15 * 60;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
-    const b = board(world, state, newUiState(), calendar(state.minute, state.startDoy));
+    const ui = newUiState();
+    ui.zoom = 0;
+    const b = board(world, state, ui, calendar(state.minute, state.startDoy));
     expect(glyphsWith(b, "mk-fire")).toHaveLength(0);
     expect(glyphsWith(b, "mk-camp").length + glyphsWith(b, "mk-shelter").length).toBeGreaterThan(0);
     expect(b.glyphs.filter((g) => has(g, "lit-0") || has(g, "lit-1") || has(g, "lit-2"))).toHaveLength(0);
@@ -332,7 +378,11 @@ describe("panels", () => {
     state.minute = 15 * 60;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
-    const fire = glyphOfCell(board(world, state, newUiState(), calendar(state.minute, state.startDoy)), camp);
+    // The closest rung: a glyph up, the neighbour and the camp share one
+    // glyph and the survivor's mark takes it.
+    const ui = newUiState();
+    ui.zoom = 0;
+    const fire = glyphOfCell(board(world, state, ui, calendar(state.minute, state.startDoy)), camp);
     expect(fire?.classes).toContain("mk-fire");
     expect(fire?.classes).toContain("lit-0");
     expect(fire?.classes).not.toContain("memory");
@@ -341,28 +391,50 @@ describe("panels", () => {
   it("shows a distant night fire in clear air but hides it behind dense weather", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
-    const st = regionState(state, world, state.player.region);
-    const camp = st.campCell!;
-    const observer = regionAt(world, state.player.region).cells.find((cell) => {
-      if (cellAt(world, cell).terrain === "water") return false;
-      const distanceKm = Math.hypot(cell % world.w - camp % world.w, Math.floor(cell / world.w) - Math.floor(camp / world.w)) * PATCH_KM;
-      return distanceKm >= 2 && distanceKm <= 5 && hasLineOfSight(world, cell, camp, 1.5);
-    });
-    expect(observer).toBeDefined();
-    mapRegion(state, world, state.player.region);
-    placeAt(state, world, observer!);
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    // A fire is "distant" past the kilometre its glow reaches (map.ts,
+    // CAMPFIRE_LOCAL_LIGHT_KM), and the closest rung's board is 3.6 km
+    // across, so the pair wanted is a fire and an observer a little over a
+    // kilometre apart with a clear line between them. The seed's own camp
+    // stands in birch, where the eye stops at the trees, so the camp is
+    // sited where the search finds open ground rather than where the seed
+    // put it, the way the straddle test below sites its own.
+    const land = regionAt(world, region).cells.filter((cell) => cellAt(world, cell).terrain !== "water");
+    const landSet = new Set(land);
+    let pair: { fire: number; observer: number } | null = null;
+    for (const fire of land) {
+      const fx = fire % world.w;
+      const fy = Math.floor(fire / world.w);
+      for (let dy = -6; dy <= 6 && !pair; dy++) {
+        for (const dx of [-30, -28, -26, -24, -22, 22, 24, 26, 28, 30]) {
+          const observer = (fy + dy) * world.w + fx + dx;
+          if (!landSet.has(observer) || Math.hypot(dx, dy) * PATCH_KM <= 1) continue;
+          if (hasLineOfSight(world, observer, fire, 1.5)) { pair = { fire, observer }; break; }
+        }
+      }
+      if (pair) break;
+    }
+    expect(pair).not.toBeNull();
+    const camp = pair!.fire;
+    st.campCell = camp;
+    siteFor(st, camp).structures.firePit = true;
+    mapRegion(state, world, region);
+    placeAt(state, world, pair!.observer);
     state.minute = 15 * 60;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
+    const ui = newUiState();
+    ui.zoom = 0;
     testAtmosphere({ extinctionPerKm: 0.06 });
-    const clear = board(world, state, newUiState(), calendar(state.minute, state.startDoy));
+    const clear = board(world, state, ui, calendar(state.minute, state.startDoy));
     const fire = glyphOfCell(clear, camp);
     expect(fire?.classes).toContain("mk-fire");
     expect(fire?.classes).toContain("fire-far");
     expect(clear.glyphs.filter((g) => has(g, "lit-0") || has(g, "lit-1") || has(g, "lit-2"))).toHaveLength(0);
 
     testAtmosphere({ extinctionPerKm: MAX_OPTICAL_DEPTH / 0.2 });
-    const dense = board(world, state, newUiState(), calendar(state.minute, state.startDoy));
+    const dense = board(world, state, ui, calendar(state.minute, state.startDoy));
     expect(glyphOfCell(dense, camp)?.classes).not.toContain("mk-fire");
     expect(glyphsWith(dense, "mk-camp").length + glyphsWith(dense, "mk-shelter").length).toBeGreaterThan(0);
   });
@@ -409,7 +481,11 @@ describe("panels", () => {
     state.minute = 15 * 60;
     state.weather.clear = false;
     const cal = { ...calendar(state.minute, state.startDoy), moonLight: 0 };
-    const b = board(world, state, newUiState(), cal);
+    // The rings are patches round the fire, so the rung is the one that
+    // draws a patch a glyph (map.ts, litRings: two rings at 50 m).
+    const ui = newUiState();
+    ui.zoom = 0;
+    const b = board(world, state, ui, cal);
     const ringed = (index: number) => { const g = glyphOfCell(b, index)!; return has(g, "lit-1") || has(g, "lit-2"); };
     expect(ringed(scenario!.exposed)).toBe(true);
     expect(ringed(scenario!.hidden)).toBe(false);
@@ -421,6 +497,9 @@ describe("panels", () => {
     siteCamp(state, world);
     const cal = calendar(0);
     const ui = newUiState();
+    // One glyph to a patch, so a pile a step from the survivor has a glyph of
+    // its own to be marked on; at the default rung their mark would cover it.
+    ui.zoom = 0;
     const z = ZOOMS[ui.zoom];
     const glyphs = (cells: number[]) => {
       const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -464,6 +543,8 @@ describe("panels", () => {
     siteCamp(state, world);
     const cal = calendar(0);
     const ui = newUiState();
+    // A step off camp leaves its glyph only where a glyph is one patch.
+    ui.zoom = 0;
     const st = regionState(state, world, state.player.region);
     expect(glyphsWith(board(world, state, ui, cal), "mk-camp").length).toBe(0);
     const nb = neighbours(world, st.campCell!).find((c) => cellAt(world, c).terrain !== "water")!;
@@ -510,13 +591,18 @@ describe("panels", () => {
     state.route = { target: next, path: [next], walked: [here], lastLand: here, label: "the shore", ice: "none" };
     state.task = { id: "walk", progress: 0, duration: 10, repeat: false };
     let html = taskHtml(state, world, calendar(0), newHurry());
-    expect(html).toContain("walking 0.3 km for water");
+    // The manner, the distance and what it is for, and nothing of the route's
+    // own label. One patch is 50 m, so the figure is whatever a step rounds to.
+    expect(html).toMatch(/walking \d\.\d km for water/);
     expect(html).toContain('data-act="hurry"');
     expect(html).not.toContain("walking to the shore");
 
-    ensureGround(state, world, state.player.region).snowCm = 31;
+    // The region's figure is what is set; the patch stood on holds its own
+    // share of it (weather.ts, patchGroundModifiers), so the figure is
+    // scaled up until the patch itself is over the deep-snow line.
+    ensureGround(state, world, state.player.region).snowCm = (DEEP_SNOW_CM + 1) / patchGroundModifiers(world, here).snow;
     html = taskHtml(state, world, calendar(0), newHurry());
-    expect(html).toContain("struggling through deep snow 0.3 km for water");
+    expect(html).toMatch(/struggling through deep snow \d\.\d km for water/);
 
     state.intent = { mode: "care", care: "body", need: "sleep", orderId: 7, step: "sleeping where {you} {stand}; no way to camp" };
     state.route = null;
@@ -620,6 +706,10 @@ describe("panels", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const ui = newUiState();
+    // A thread four patches long is a thing only the patch rung can draw; a
+    // block rung reads it as a block partly seen, and this test reads the
+    // board patch by patch.
+    ui.zoom = 0;
     const cal = calendar(state.minute, state.startDoy);
     const home = regionAt(world, state.player.region);
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -669,18 +759,15 @@ describe("panels", () => {
     expect(knownShare(state, world, nbId)).toBe(0);
     const ui = newUiState();
     const b = board(world, state, ui, cal);
-    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
-    const l = LEVELS[ui.zoom];
+    // A patch of the neighbour on the board, in a block the neighbour owns
+    // that nothing has been seen of: the landing's look from the shore reads
+    // some of the far country, and a block it read draws that, not fog.
     const cellInView = nb.cells.find((c) => {
-      const x = c % world.w;
-      const y = Math.floor(c / world.w);
-      return x >= x0 && y >= y0 && x < x0 + l.w && y < y0 + l.h;
+      const g = glyphOfCell(b, c);
+      return g !== undefined && g.region === nbId && has(g, "fog");
     });
     expect(cellInView).toBeDefined();
-    const x = cellInView! % world.w;
-    const y = Math.floor(cellInView! / world.w);
-    const glyph = b.glyphs[(y - y0) * l.w + (x - x0)];
-    expect(has(glyph, "fog")).toBe(true);
+    const glyph = glyphOfCell(b, cellInView!)!;
     const tip = tipHtml(state, world, cal, cellInView!);
     expect(tip).toContain("Unknown ground");
     expect(tip).not.toContain("<button");
@@ -855,12 +942,11 @@ describe("the Do panel", () => {
     const roster = regionAt(world, state.player.region);
     for (const species of huntedLand()) if (roster.capacity[species]) noteHuntSign(state, cellOf(state, world), species);
     const html = allPanesHtml(state, world, cal);
-    // Eating and drinking stand over the stores they draw on, in Inventory,
-    // rather than in the Do pane beside the work or under the map, where
-    // they read as a queue with something already in it.
+    // Eating is nobody's button: not the Do pane's, not the strip under the
+    // map's, and (the pack test below) not the pack's either. The self-care
+    // row is the one route to a meal.
     expect(html).not.toContain('data-act="eat"');
     expect(taskHtml(state, world, cal)).not.toContain('data-act="eat"');
-    expect(inventoryHtml(state, world, cal)).toContain('data-act="eat"');
     // Felling is legal from camp because the intent walks to the forest itself.
     expect(html).toContain('data-act="intent" data-id="chop" data-arg=""');
     expect(html).not.toContain('class="opt off" data-opt="intent:chop:"');
@@ -940,7 +1026,11 @@ describe("the Do panel", () => {
     expect(html).toContain('data-act="intent" data-id="build" data-arg="leanTo"');
   });
 
-  it("a build already finished renders as a greyed row, not a fetchable one, however much sits elsewhere", () => {
+  it("a build already finished has no row at all, not a fetchable one, however much sits elsewhere", () => {
+    // A structure the site holds one of is not drawn once it stands
+    // (dopanel.ts, alreadyStands): a greyed "already built here" row was
+    // still a row, and a second pit got ordered from it. The logs at the
+    // forest must not bring it back as a fetch.
     const g = newGame(3);
     siteCamp(g.state, g.world);
     const ust = regionState(g.state, g.world, g.state.player.region);
@@ -949,7 +1039,9 @@ describe("the Do panel", () => {
     const forest = spotOf(r, "forest")!.cell;
     addItem(pile(g.state, forest), "log", 4);
     const html = paneHtml(g.state, g.world, calendar(g.state.minute), "build", "leanTo");
-    expect(html).toContain('class="opt off" data-opt="intent:build:leanTo"');
+    expect(html).not.toContain('data-opt="intent:build:leanTo"');
+    // Its upkeep is what the pane offers for it now.
+    expect(html).toContain('data-opt="intent:mend:leanTo"');
   });
 
   it("the activity row names work started by hand as its whole order, and set-aside work can be finished from anywhere", () => {
