@@ -59,9 +59,17 @@ scroll anywhere (`scrollWidth` 390), and the page throws nothing.
   Alerts, Weather, and takes 70vh.
 - ~~The page is 3,600px tall~~ Shorter by a third the same day: the map
   and the queue are pages of the right slot beside the alerts and the
-  weather (Map, Queue, Alerts, Weather; the manual and settings buttons
-  at the strip's far end), and If-you-leave is not shown on a phone.
+  weather (Map, Queue, Alerts, Weather; the manual and the settings are
+  links in the footer), and If-you-leave is not shown on a phone.
   Skills, ten bars of four lines, are still the long tail at the foot.
+  The activity strip sits directly over the tabs and the Queue tab's foot
+  carries the running task's bar (`after-task-running.png`).
+- **The Camp tab was one run of lines** - the fire's state, its two
+  buttons and its fuel bar on one row, then "fire site", the yard, and
+  four rosters with nothing between them. It is four groups under small
+  headings now - Fire, Standing, Stores, About - one fact to a line, the
+  fire's setting on a row of its own, what stands as a list
+  (`after-camp-tab.png`). Every string the tests read is unchanged.
 - **Tab rows wrap** (Journal onto a second line; Exploration and Mastery
   in the catalog). Readable; a scrolling row would be tidier.
 - **Small type**: several readings are 10 to 11px (`.mini`, `.dim`, the

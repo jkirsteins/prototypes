@@ -127,12 +127,17 @@ body { display: flex; flex-direction: column; height: 100vh; }
 
 /* What was built, for telling one deploy from the next. */
 .build {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
   flex: none;
   padding: 0 12px 6px;
   color: var(--dim);
   font-size: 11px;
   text-align: right;
 }
+/* Links and not buttons: the manual and the settings are looked up, not reached for. */
+.build .links { display: inline-flex; gap: 14px; }
+.build .linkish { background: none; border: none; padding: 0; min-height: 0; color: var(--dim); font: inherit; text-decoration: underline; cursor: pointer; }
+.build .linkish:hover { color: var(--accent); }
 
 /* Each column is the viewport's height and scrolls inside itself, so a
    check-in never needs the page to scroll to reach what a column holds
@@ -793,6 +798,15 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .mini:hover { border-color: var(--accent); }
 .mini.on { color: var(--accent); border-color: var(--accent); }
 .fire-keep { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; }
+/* The Camp tab: four groups under small headings, one fact to a line. */
+#camp .camp-sec { margin-top: 10px; }
+#camp .camp-sec:first-of-type { margin-top: 0; }
+#camp .camp-sec h3 { margin: 0 0 4px; padding-bottom: 2px; border-bottom: 1px solid var(--line); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); font-weight: normal; }
+#camp .camp-row { padding: 2px 0; }
+#camp .camp-row .fire-keep { margin-left: 0; }
+#camp .camp-list { margin: 0; padding: 0 0 0 1.1em; }
+#camp .camp-list li { padding: 2px 0; }
+#camp .roster > div { padding: 2px 0; }
 .mini.danger { color: var(--bad); }
 .mini:disabled { color: #5d6570; cursor: default; border-color: var(--line); }
 .mini.off { color: #5d6570; cursor: default; }
@@ -899,8 +913,10 @@ button.act small, span.act small { display: block; color: var(--dim); }
    and a word, the way RimWorld's right-edge alerts read across a room. */
 #alerts { flex: none; }
 #rightpages { display: flex; gap: 4px; flex: none; margin-bottom: 4px; flex-wrap: wrap; align-items: center; }
-/* On a phone the strip's far end carries the manual and settings buttons. */
-#rightpages .spacer { flex: 1; }
+/* The running task's progress along the Queue tab's foot, so the tab says
+   how far the work is even while another page is showing. */
+#rightpages .tab { position: relative; overflow: hidden; }
+#rightpages .tabfill { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--accent); pointer-events: none; }
 #rightpages .tab.on { color: var(--accent); border-color: var(--accent); }
 .badge { display: inline-block; min-width: 1.4em; margin-left: 4px; padding: 0 4px; border-radius: 8px; font-size: 11px; text-align: center; color: #111; }
 .badge.bad { background: var(--bad); }
@@ -1121,13 +1137,17 @@ button.act small.gives, span.act small.gives,
   .opportunity-modal { padding: 16px; }
   #overlay .box.opportunity-catalog { --opportunity-page-size: 6; --opportunity-row-height: 96px; padding: 14px; }
   #shopping { order: 0; }
-  #task { order: 1; }
   #stats { order: 2; }
   /* The page tabs and their pages, map first: on a phone the board and
      the queue are pages of this slot, not panels to scroll past. The pages
      share an order and only one is shown, so which comes first in the DOM
      is moot. The If-you-leave panel is not shown on a phone at all; its
      manual and settings buttons move to the strip's far end. */
+  /* The activity strip sits right over the tabs: what is running is read
+     outside the Queue page, and the Queue tab's foot carries its progress. */
+  #task { order: 3; background: var(--panel); border: 1px solid var(--line); padding: 8px 12px; }
+  #task .now { flex-wrap: wrap; }
+  #task .now .what { flex: 1 1 100%; white-space: normal; }
   #rightpages { order: 3; }
   #map { order: 4; }
   #orders { order: 4; }

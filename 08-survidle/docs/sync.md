@@ -36,39 +36,44 @@ allows.
 answers: the Pages origin, which covers branch previews, and the two dev
 server origins. A new origin goes there, and `npm run deploy` again.
 
-## Turn it on
+## Always on: the world is in the address
 
-Settings > Sync across devices > `turn on`. The page draws a code of
-three words (`heron-pine-ember`), uploads the local save, takes the
-lease, and from then on this device runs the world and puts its save
-every minute it advances, and as the tab hides or closes.
+There is nothing to turn on. `?w=heron-pine-ember` on the page's address
+names the world, and the page keeps the parameter there, so a bookmark, a
+tab handed to the phone (Safari's Handoff, "send to device"), or an
+address typed in brings the same world with nothing to copy. Opened
+without one, the page goes to the world this browser last had, or draws a
+new one, and rewrites the address to carry it. Each visitor gets a world
+of their own that way; a tester's two devices share one by sharing the
+address.
 
-`copy link` copies the page URL with `?sync=<code>`. Opened on the phone,
-the link stores the code and drops it from the address bar; if the phone
-already has a survivor of its own, it asks once before replacing it. The
-parameter is only a way to carry the three words to the other device
-without typing them; the same settings block takes the code typed by
-hand (`join`), for a phone reading it off a desktop's screen. Either way
-the code ends up in that browser's local storage and the address is the
-same page as always. The
-phone then shows the desktop's save read-only under a banner, "The
+The device that opens the world takes the lease and runs it, putting its
+save every minute it advances and as the tab hides or closes. A second
+device on the same address shows the save read-only under a banner, "The
 desktop has the world, saved 12 s ago", with `take over` and `refresh`.
-Take over moves the world to the phone at once and the desktop's banner
-says so without a reload; refresh re-reads the store, and takes the world
-without a tap once the desktop has been quiet past the grace period (60 s
-with no heartbeat, which a closed lid or a tab in the background produces
-within a couple of minutes). The read-only device re-reads on its own
-every minute.
+Take over moves the world at once and the first device's banner says so
+without a reload; refresh re-reads the store, and takes the world without
+a tap once the holder has been quiet past the grace period (60 s with no
+heartbeat, which a closed lid or a tab in the background produces within
+a couple of minutes). A read-only device re-reads on its own every
+minute.
 
-Anyone with the code can read and take the world. There are no accounts;
-`turn off` forgets the code on this device and leaves the store as it is.
+Anyone with the address can read and take the world. There are no
+accounts. Settings names the world and offers `new world`: a new address,
+the old world left where it was. The test aids (`?seed=`, `?day=`) are
+runs of their own and never sync. When the store cannot be reached the
+page shows the local save read-only and offers `play offline`, which runs
+it without the store for this session; the address keeps its world and
+the next load asks again. In development that means running
+`npm run worker:dev` beside `npm run dev`, or playing offline.
 
 ## Check it
 
 - `npm test` covers the lease rules (`tests/lease.test.ts`), the session
   state machine against a store in memory (`tests/sync-session.test.ts`),
-  the code's vocabulary (`tests/sync-code.test.ts`) and the banner and
-  settings block (`tests/sync-panel.test.ts`). None of it needs wrangler.
+  the code's vocabulary (`tests/sync-code.test.ts`), the world in the
+  address (`tests/sync-address.test.ts`) and the banner and settings
+  block (`tests/sync-panel.test.ts`). None of it needs wrangler.
 - `npm run worker:typecheck` type-checks the Worker against
   `@cloudflare/workers-types`; the prototype's own `tsc` never sees it.
 - `npm run worker:dev` in one terminal and `npm run worker:smoke` in
@@ -81,16 +86,17 @@ Anyone with the code can read and take the world. There are no accounts;
   and a phone at 390 wide with touch emulation, against the dev server
   and a store (`SYNC_URL`, default `wrangler dev`). It plays the spec's
   pass in order and reads every step from the page as the player sees it
-  and from the store's own headers: turn sync on at the desktop; open the
-  link on the phone and see the held banner, read-only, the page under it
-  taking no pointer, the take-over button thumb height; take over by a
-  real touch and see the desktop's revoked banner appear without a reload
-  and its clock stop; reload the desktop from the phone's save and take
-  the world back; freeze the desktop tab past the grace period, take the
-  lapsed lease on the phone without force, put from the phone as its tab
-  hides, wake the desktop and confirm it does not catch up; turn off on
-  the phone and see it run on with the store left as it was. Screenshots
-  in `docs/sync-shots/`.
+  and from the store's own headers: the desktop opens the plain address
+  and gets a world in it; the phone opens that address and sees the held
+  banner, read-only, the page under it taking no pointer, the take-over
+  button thumb height; take over by a real touch and see the desktop's
+  revoked banner appear without a reload and its clock stop; reload the
+  desktop from the phone's save and take the world back; freeze the
+  desktop tab past the grace period, take the lapsed lease on the phone
+  without force, put from the phone as its tab hides, wake the desktop
+  and confirm it does not catch up; start a new world on the phone and
+  see it at a new address with the old world left in the store.
+  Screenshots in `docs/sync-shots/`.
 
   Run 2026-09-18 against `wrangler dev`: every check passed, at both
   widths; the desktop heard the phone's take-over in 749 to 901 ms; the

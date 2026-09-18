@@ -2240,8 +2240,9 @@ and the client both import; `worker/` (the fetch handler, the
 client and the session state machine (`off`, `checking`, `running`,
 `readonly`, `revoked`, `unreachable`, `outdated`, `older`) with the rule
 in front of every catch-up and every live frame; the settings block, the
-banner, and the `?sync=<code>` join; four fast suites, 47 tests, none
-needing wrangler. The Worker was deployed the same day and its URL is the
+banner, and the world in the address - always on, `?w=<code>` kept in
+the page's address so a tab handed to the phone is the world, no link to
+copy; five fast suites, none needing wrangler. The Worker was deployed the same day and its URL is the
 constant in `src/sync/config.ts` (`docs/sync.md`). Open, in order: the browser
 pass against a deployed store; the beacon counting one player on two
 devices as two; the phone solve untimed, with the R2 escape hatch waiting

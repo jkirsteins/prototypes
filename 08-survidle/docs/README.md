@@ -585,9 +585,9 @@ Every browser pass runs at 1440 by 900 and at 390 wide against
 `docs/ux.md`.
 
 The save sync - the run following the player to a phone, one device
-running the world at a time - is off until Settings turns it on, and
-inert until the store is deployed once and its URL pasted into
-`src/sync/config.ts`. `docs/sync.md` is the runbook: `npm run worker:dev`
+running the world at a time - is always on: the world is in the address
+(`?w=heron-pine-ember`), and a build with no store URL in
+`src/sync/config.ts` is the one case with no sync at all. `docs/sync.md` is the runbook: `npm run worker:dev`
 and `npm run worker:smoke` drive the store locally, `npm run
 worker:deploy` publishes it, and the Worker's dependencies are its own
 under `worker/` so none of this touches `npm install` here.

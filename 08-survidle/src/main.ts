@@ -30,7 +30,7 @@ import { abandon, feltTemperature } from "./sim/player";
 import { campCellOf, cellOf, placeAtPatch } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
-import { awaySeconds, catchUp, clearSave, knowLoadedGround, loadGame, readSave, SAVE_KEY, type SaveFile, saveGame, serialize } from "./sim/save";
+import { awaySeconds, catchUp, clearSave, knowLoadedGround, loadGame, readSave, SAVE_KEY, type SaveFile, serialize } from "./sim/save";
 import { recordOpportunityEvent } from "./sim/opportunities";
 import { canPersist, inspectSave, SAVE_VERSION } from "./sim/world-version";
 import { clearShopping, trackShopping } from "./sim/shopping";
@@ -42,7 +42,8 @@ import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars, updateFills } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { createStoreClient } from "./sync/client";
-import { drawCode, normalizeCode } from "./sync/code";
+import { resolveWorld, WORLD_PARAM } from "./sync/address";
+import { drawCode } from "./sync/code";
 import { SYNC_URL } from "./sync/config";
 import { deviceLabel, loadIdentity, saveCode } from "./sync/identity";
 import { type BootOutcome, createSession, type LocalSave, type Session } from "./sync/session";
@@ -176,6 +177,7 @@ function persistGame(): void {
   const now = Date.now();
   const text = serialize(state, now);
   localStorage.setItem(SAVE_KEY, text);
+  localSaveIsForeign = false;
   session?.offer(text, now);
 }
 const ui = newUiState();
@@ -222,26 +224,26 @@ let startupReady = false;
 // settings block. With one, `session` is the state machine that says
 // whether this device runs the world, and every catch-up and live frame
 // asks it first. Design: docs/superpowers/specs/2026-09-11-survidle-save-sync-design.md
+//
+// The world is in the address and the sync is always on: `?w=<code>` names
+// it and the page keeps it there, so a bookmark or a tab handed to the
+// phone brings the same world with nothing to copy. Opened without one, the
+// page goes to the world this browser last had, or draws a new one. The
+// test aids (?seed, ?day) are runs of their own and never sync.
 const syncConfigured = SYNC_URL !== "";
 const syncIdentity = loadIdentity(localStorage);
 const syncLabel = deviceLabel(window.matchMedia("(pointer: coarse)").matches);
-{
-  // The sync link sets the code once and leaves the address, the way the tester link does.
-  const raw = params.get("sync");
-  if (raw !== null) {
-    const code = normalizeCode(raw);
-    params.delete("sync");
-    const q = params.toString();
-    history.replaceState(null, "", `${location.pathname}${q ? `?${q}` : ""}${location.hash}`);
-    if (code && code !== syncIdentity.code && syncConfigured) {
-      // A survivor already saved here is replaced by the store's, once the player says so.
-      const hasSave = localStorage.getItem(SAVE_KEY) !== null;
-      if (!hasSave || window.confirm("Join this world? The survivor saved in this browser is replaced.")) {
-        syncIdentity.code = code;
-        saveCode(localStorage, code);
-      }
-    }
+const devRun = Boolean(forcedSeed) || startDoy !== undefined;
+/** The save cached in this browser is another world's: the address named a different one. It is never offered to the store. */
+let localSaveIsForeign = false;
+if (syncConfigured && !devRun) {
+  const world = resolveWorld(params.toString(), syncIdentity.code, drawCode);
+  localSaveIsForeign = world.switched;
+  if (world.code !== syncIdentity.code) {
+    syncIdentity.code = world.code;
+    saveCode(localStorage, world.code);
   }
+  if (world.rewrite) history.replaceState(null, "", `${location.pathname}${world.search}${location.hash}`);
 }
 let session: Session | null = null;
 let syncPanel: SyncPanel | null = null;
@@ -258,10 +260,10 @@ function makeSession(code: string): Session {
     onChange: () => { if (startupReady && !solving) render(); },
   });
 }
-if (syncIdentity.code && syncConfigured) session = makeSession(syncIdentity.code);
-/** The local save as the store would take it, or nothing when there is none this build can run. */
+if (syncIdentity.code && syncConfigured && !devRun) session = makeSession(syncIdentity.code);
+/** The local save as the store would take it, or nothing when there is none this build can run, or when it is another world's. */
 function localSave(): LocalSave | null {
-  const text = localStorage.getItem(SAVE_KEY);
+  const text = localSaveIsForeign ? null : localStorage.getItem(SAVE_KEY);
   if (!text || inspectSave(text) !== "current") return null;
   let savedAt = 0;
   try {
@@ -490,78 +492,43 @@ async function resumeAfterSleep(seconds: number): Promise<void> {
   render();
 }
 
-async function turnSyncOn(): Promise<void> {
-  if (session || !syncConfigured || solving) return;
-  // The local save is written first, so the store gets the run as it stands.
-  saveGame(state);
-  const code = drawCode();
-  syncIdentity.code = code;
-  saveCode(localStorage, code);
-  session = makeSession(code);
-  const local = localSave();
-  await applySync(await session.boot(local), local?.text ?? null, true);
-  lastReal = performance.now();
-  render();
-}
-
-/** Forgets the code and this device's lease; the store is left as it is, and the world stays reachable by the code. */
-async function turnSyncOff(): Promise<void> {
+/**
+ * The store cannot be reached and the player would rather play than wait:
+ * this session runs the local save without the store. The address keeps
+ * its world, and the next load asks the store again.
+ */
+async function playOffline(): Promise<void> {
   if (!session || solving) return;
-  const wasRunning = session.view().state === "running";
-  if (wasRunning) await session.flush(false);
   session.stop();
   session = null;
-  syncIdentity.code = null;
-  saveCode(localStorage, null);
   document.documentElement.classList.remove("sync-readonly");
-  // A device that was reading the store's save goes back to its own.
-  if (!wasRunning) await boot();
+  await boot();
   lastReal = performance.now();
   render();
 }
 
 /**
- * A code typed in by hand: the other way in beside the link, for a phone
- * reading three words off a desktop's screen. The same question as the
- * link when a survivor is already saved here; a code the store has never
- * seen becomes a new world holding this browser's save, as turning on does.
+ * A new world at a new address. The old one stays where it is, reachable
+ * by its own address; this browser's save is the new world's from here on,
+ * and it goes up to the store before anything runs on it.
  */
-async function joinSync(code: string): Promise<void> {
-  if (!syncConfigured || solving || code === syncIdentity.code) return;
-  const hasSave = localStorage.getItem(SAVE_KEY) !== null;
-  if (hasSave && !window.confirm("Join this world? The survivor saved in this browser is replaced.")) return;
-  if (session) {
-    session.stop();
-    session = null;
-  }
+async function syncNewWorld(): Promise<void> {
+  if (!session || solving) return;
+  if (!window.confirm("Start a new world at a new address? This one stays reachable at its own.")) return;
+  session.stop();
+  const code = drawCode();
   syncIdentity.code = code;
   saveCode(localStorage, code);
+  localSaveIsForeign = false;
+  const search = new URLSearchParams(location.search);
+  search.set(WORLD_PARAM, code);
+  history.replaceState(null, "", `${location.pathname}?${search.toString()}${location.hash}`);
   session = makeSession(code);
-  const local = localSave();
-  await applySync(await session.boot(local), local?.text ?? null, false);
-  lastReal = performance.now();
-  render();
-}
-
-async function copySyncLink(): Promise<void> {
-  if (!syncIdentity.code) return;
-  const link = `${location.origin}${location.pathname}?sync=${syncIdentity.code}`;
-  try {
-    await navigator.clipboard.writeText(link);
-  } catch {
-    window.prompt("Copy this link", link);
-  }
-}
-
-/** For a store holding a save this build refuses: a fresh world goes up on the code under a forced lease. */
-async function syncNewWorld(): Promise<void> {
-  if (session?.view().state !== "older" || solving) return;
-  if (!window.confirm("Start a new world on this code? The save in the store is replaced.")) return;
   await fresh(undefined, undefined, 0, false);
   const now = Date.now();
   const text = serialize(state, now);
   localStorage.setItem(SAVE_KEY, text);
-  await applySync(await session.startNewWorld({ text, savedAt: now }), text, true);
+  await applySync(await session.boot({ text, savedAt: now }), text, true);
   lastReal = performance.now();
   render();
 }
@@ -1076,7 +1043,7 @@ function onClick(ev: Event) {
       void syncAct(() => session!.boot(null));
       return;
     case "sync-offline":
-      void turnSyncOff();
+      void playOffline();
       return;
     case "reset-world":
       if (!window.confirm("Reset all world data? This cannot be undone.")) break;
@@ -1396,13 +1363,9 @@ mountBeaconPanel(document.getElementById("beacon")!, beacon, beaconConfigured, (
 });
 syncPanel = mountSyncPanel(document.getElementById("sync")!, {
   configured: syncConfigured,
-  code: () => syncIdentity.code,
+  code: () => (session ? syncIdentity.code : null),
   view: () => session?.view() ?? null,
-  turnOn: () => { void turnSyncOn(); },
-  turnOff: () => { void turnSyncOff(); },
-  copyLink: () => { void copySyncLink(); },
   newWorld: () => { void syncNewWorld(); },
-  join: (code) => { void joinSync(code); },
 });
 // A device reading the store's save re-reads it every minute, and takes the
 // world if the holder has gone quiet past the grace period meanwhile.

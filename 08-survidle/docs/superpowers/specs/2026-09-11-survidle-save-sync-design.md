@@ -43,8 +43,14 @@ while building:
   The tab learns it when it wakes, from the check in front of its
   catch-up, and offers the reload. That is the rule working rather than a
   leak: a hidden tab does not advance the world either.
-- **`turn off` puts once more** when the device was running, so the store
-  holds the run as it stood when the code was forgotten.
+- **The sync is always on and the world is in the address** (decided
+  2026-09-18, the same day, after the first build's turn-on / copy-link /
+  join-by-code was tried): `?w=<code>` names the world and the page keeps
+  it in the address, so a bookmark or a tab handed to the phone brings the
+  same world with nothing to copy, and the settings block is one line
+  and a `new world` button. The "Off by default" principle below is
+  withdrawn with it: without a store URL the page is as before, but with
+  one every open is a synced open. `src/sync/address.ts` is the rule.
 - **The same seed is the same world.** A read-only device re-reading a new
   save over the seed it already holds swaps the state under the page
   without solving or reading the cache again, and a refresh that finds

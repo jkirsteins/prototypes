@@ -213,8 +213,8 @@ describe("the layout", () => {
 
   it("the sound and the beacon live in a settings panel that is hidden until it is asked for", () => {
     const html = readFileSync("index.html", "utf8");
-    const open = html.indexOf('data-act="settings-open"');
-    expect(open).toBeGreaterThan(0);
+    // The button that opens it is the footer's (buildHtml), not the page's.
+    expect(buildHtml("x", "")).toContain('data-act="settings-open"');
     const settings = html.indexOf('id="settings"');
     expect(settings).toBeGreaterThan(0);
     // Hidden on the same element, so a fresh page spends no room on either control.
@@ -401,6 +401,14 @@ describe("the phone", () => {
     expect(narrow).toMatch(/#mapdyn \{[^}]*flex: none;[^}]*height: 70vh;/);
   });
 
+  it("keeps the manual and the settings as links in the footer and nowhere else on the page", () => {
+    expect(buildHtml("abc1234", "")).toBe('<span class="links"><button type="button" class="linkish" data-act="manual-open">how to survive</button><button type="button" class="linkish" data-act="settings-open">settings</button></span><span>survidle abc1234</span>');
+    const page = readFileSync("index.html", "utf8");
+    expect(page).not.toContain("manual-open");
+    expect(page).not.toContain("settings-open");
+    expect(rule(".build .linkish")).toContain("text-decoration: underline");
+  });
+
   it("draws no legend anywhere: a tap on a cell is the key", () => {
     expect(css).not.toMatch(/\.legend\b/);
     expect(readFileSync("index.html", "utf8")).not.toContain("legend");
@@ -413,10 +421,15 @@ describe("the phone", () => {
     expect(narrow).toMatch(/#alerts \{ order: 4; \}/);
     expect(narrow).toMatch(/#weather \{ order: 4; \}/);
     expect(narrow).toMatch(/#forecastbox \{ display: none; \}/);
-    // The strip's spacer pushes the manual and settings buttons to its far end.
-    expect(rule("#rightpages .spacer")).toContain("flex: 1");
     // #map's own display rule would beat [hidden]; the page must actually go.
     expect(rule("#map[hidden]")).toContain("display: none");
+  });
+
+  it("keeps the activity strip over the tabs, and the task's progress on the Queue tab's foot", () => {
+    expect(narrow).toMatch(/#task \{ order: 3;/);
+    expect(narrow).not.toMatch(/#task \{ order: 1; \}/);
+    expect(rule("#rightpages .tabfill")).toContain("width: 0");
+    expect(rule("#rightpages .tabfill")).toContain("bottom: 0");
   });
 
   it("stacks the boat's cards at their own height", () => {

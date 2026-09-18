@@ -43,8 +43,6 @@
           <div id="forecast"></div>
           <div id="away">
             <input type="range" min="1" max="24" step="1" data-away="hours" aria-label="hours away" />
-            <button type="button" class="mini" data-act="manual-open">how to survive</button>
-            <button type="button" class="mini" data-act="settings-open">settings</button>
           </div>
         </section>
         <section id="skills" class="panel"></section>
@@ -123,9 +121,9 @@
         <label><input type="checkbox" data-beacon="on" /> share anonymous play data</label>
         <span class="dim" data-beacon="note"></span>
       </div>
-      <!-- Sync across devices: static markup mounted once, like the beacon's. -->
+      <!-- The world this page is for, always synced: static markup mounted once, like the beacon's. -->
       <div id="sync">
-        <div><b>Sync across devices</b> <span class="dim" data-sync="line"></span></div>
+        <div><b>World</b> <span class="dim" data-sync="line"></span></div>
         <div data-sync="actions"></div>
       </div>
       <div><button type="button" class="mini bad" data-act="reset-world">reset world data</button></div>

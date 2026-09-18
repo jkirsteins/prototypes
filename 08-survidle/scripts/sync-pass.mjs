@@ -162,34 +162,32 @@ try {
   await A.goto(URL_BASE);
   await A.waitFor("window.survidle && !window.survidle.state.landing && document.documentElement.dataset.loading !== 'true'", "the reload");
   await closeDoors(A);
-  check((await A.banner()) === "" && !(await A.readonly()), "desktop: no banner and not read-only with sync off");
 
-  log("2. Turn sync on");
-  // 2. Turn sync on at the desktop.
-  await A.click("[data-act=settings-open]");
-  await A.waitFor("document.querySelector('[data-sync=on]') && !document.querySelector('[data-sync=on]').hidden", "the turn-on button");
-  await A.click("[data-sync=on]");
-  await A.waitFor("document.querySelector('#sync code') && document.querySelector('#sync code').textContent.includes('-')", "the code");
-  const code = await A.evalJs("document.querySelector('#sync code').textContent");
+  // 2. The desktop's address carries its world and the store holds the save.
+  log("2. The desktop's address carries its world");
+  await A.waitFor("new URLSearchParams(location.search).get('w') && !document.documentElement.classList.contains('sync-readonly') && document.getElementById('syncbanner').hidden", "the desktop running with its world in the address");
+  const code = await A.evalJs("new URLSearchParams(location.search).get('w')");
   log(`code: ${code}`);
-  await A.waitFor("!document.documentElement.classList.contains('sync-readonly') && document.getElementById('syncbanner').hidden", "the desktop running with sync on");
-  check(await A.evalJs("document.querySelector('#sync').textContent.includes('This device runs the world')"), "desktop: the settings line says this device runs the world");
+  await A.click("[data-act=settings-open]");
+  await A.waitFor("document.querySelector('#sync code') && document.querySelector('#sync code').textContent.includes('-')", "the settings line");
+  check((await A.evalJs("document.querySelector('#sync code').textContent")) === code, "desktop: settings names the world the address carries");
+  check(await A.evalJs("document.querySelector('#sync').textContent.includes('This device runs it')"), "desktop: the settings line says this device runs it");
   let head = await storeHead(code);
-  check(head.status === 200, `store: holds the save after turn on (${head.status})`);
+  check(head.status === 200, `store: holds the save (${head.status})`);
   check(head.lease?.label === "desktop", `store: the desktop holds the lease (${JSON.stringify(head.lease)})`);
   await A.shot("01-desktop-sync-on");
   await A.click("[data-act=settings-close]");
 
-  log("3. The phone opens");
-  // 3. The phone opens the link and sees the held banner, read-only.
-  await B.goto(`${URL_BASE}?sync=${code}`);
+  // 3. The phone opens the same address and sees the held banner, read-only.
+  log("3. The phone opens the address");
+  await B.goto(`${URL_BASE}?w=${code}`);
   await B.waitFor("window.survidle && document.documentElement.dataset.loading !== 'true'", "the phone's page");
   await B.waitFor("!document.getElementById('syncbanner').hidden && document.getElementById('syncbanner').textContent.includes('has the world')", "the held banner on the phone");
   const heldText = await B.banner();
   log(`phone banner: ${heldText}`);
   check(heldText.startsWith("The desktop has the world"), `phone: the banner names the desktop (${heldText})`);
   check(await B.readonly(), "phone: read-only class while the desktop holds the world");
-  check((await B.evalJs("location.search")) === "", "phone: the sync parameter left the address");
+  check((await B.evalJs("new URLSearchParams(location.search).get('w')")) === code, "phone: the address keeps the world");
   check((await B.evalJs("localStorage.getItem('survidle.sync.code')")) === code, "phone: the code is stored");
   check((await B.evalJs("getComputedStyle(document.getElementById('app')).pointerEvents")) === "none", "phone: the page under the banner takes no pointer");
   check(await B.evalJs("document.querySelector('[data-act=sync-take-over]').getBoundingClientRect().height >= 40"), "phone: the take-over button is thumb height");
@@ -199,7 +197,6 @@ try {
   check((await B.minute()) === phoneMinute, "phone: the world does not advance while read-only");
   await B.shot("02-phone-held");
 
-  log("4. The phone takes over");
   // 4. The phone takes over; the desktop hears it without a reload.
   await A.evalJs("window.__syncPassMarker = 1");
   const desktopMinuteBeforeRevoke = await A.minute();
@@ -264,19 +261,21 @@ try {
   check(await A.readonly(), "desktop: read-only after waking");
   await A.shot("08-desktop-woken-no-catchup");
 
-  log("7. Turn off on the phone");
-  // 7. Turn off on the phone: it keeps running its world; the store is left as it is.
-  // Clicks rather than taps here: a tab that has been frozen and woken no
-  // longer takes dispatched touch events in headless Chromium, and the tap
-  // has been proved above.
+  // 7. A new world on the phone: a new address, the old world left where it was.
+  log("7. A new world on the phone");
   await B.click("[data-act=settings-open]");
-  await B.waitFor("document.querySelector('[data-sync=off]') && !document.querySelector('[data-sync=off]').hidden", "the phone's turn-off button");
-  await B.click("[data-sync=off]");
-  await B.waitFor("localStorage.getItem('survidle.sync.code') === null", "the phone forgetting the code");
-  check((await B.banner()) === "" && !(await B.readonly()), "phone: runs on with sync off");
+  await B.waitFor("document.querySelector('[data-sync=new]') && !document.querySelector('[data-sync=new]').hidden", "the phone's new-world button");
+  await B.evalJs("window.confirm = () => true");
+  await B.click("[data-sync=new]");
+  await B.waitFor(`new URLSearchParams(location.search).get('w') && new URLSearchParams(location.search).get('w') !== ${JSON.stringify(code)} && document.getElementById('syncbanner').hidden && !document.documentElement.classList.contains('sync-readonly')`, "the phone's new world");
+  const code2 = await B.evalJs("new URLSearchParams(location.search).get('w')");
+  log(`new code: ${code2}`);
+  check((await B.evalJs("localStorage.getItem('survidle.sync.code')")) === code2, "phone: the new world is the stored one");
+  for (let i = 0; i < 40 && (await storeHead(code2)).status !== 200; i++) await sleep(250);
+  check((await storeHead(code2)).status === 200, "store: the new world's save is up");
   head = await storeHead(code);
-  check(head.status === 200, "store: the save stays after turn off");
-  await B.shot("09-phone-sync-off");
+  check(head.status === 200, "store: the old world stays");
+  await B.shot("09-phone-new-world");
 
   for (const [name, p] of [["desktop", A], ["phone", B]]) check(p.errors.length === 0, `${name}: the page threw nothing (${p.errors.join(" | ")})`);
 } catch (err) {

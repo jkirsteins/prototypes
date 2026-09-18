@@ -25,20 +25,25 @@ describe("the right column's pages", () => {
     expect(rightPagesHtml("map", { bad: 1, warn: 0 }, true)).toContain('class="badge bad"');
   });
 
-  it("orders the tabs map, queue, alerts, weather on a phone, and alerts, weather on a desktop", () => {
+  it("orders the tabs map, queue, alerts, weather on a phone, and weather, alerts on a desktop as always", () => {
     const pages = (html: string) => [...html.matchAll(/data-page="(\w+)"/g)].map((m) => m[1]);
-    expect(pages(rightPagesHtml("weather", { bad: 0, warn: 0 }))).toEqual(["alerts", "weather"]);
+    expect(pages(rightPagesHtml("weather", { bad: 0, warn: 0 }))).toEqual(["weather", "alerts"]);
     expect(pages(rightPagesHtml("map", { bad: 0, warn: 0 }, true))).toEqual(["map", "queue", "alerts", "weather"]);
     expect(rightPagesHtml("map", { bad: 0, warn: 0 }, true)).toMatch(/data-page="map" aria-pressed="true"/);
     expect(PHONE_PAGES).toEqual(["map", "queue"]);
   });
 
-  it("carries the manual and settings buttons at its far end on a phone only", () => {
-    const phone = rightPagesHtml("queue", { bad: 0, warn: 0 }, true);
-    expect(phone).toContain('data-act="settings-open"');
-    expect(phone).toContain('data-act="manual-open"');
-    expect(phone.indexOf('class="spacer"')).toBeLessThan(phone.indexOf('data-act="manual-open"'));
-    expect(rightPagesHtml("weather", { bad: 0, warn: 0 })).not.toContain("data-act=\"settings-open\"");
+  it("wears the running task's bar on the Queue tab, written by bars.ts like every bar", () => {
+    const phone = rightPagesHtml("map", { bad: 0, warn: 0 }, true);
+    expect(phone).toMatch(/data-page="queue"[^>]*>Queue<i class="tabfill" data-bar="task"><\/i><\/button>/);
+    expect(rightPagesHtml("weather", { bad: 0, warn: 0 })).not.toContain("tabfill");
+  });
+
+  it("carries no button but its tabs: the manual and the settings are the footer's", () => {
+    for (const html of [rightPagesHtml("queue", { bad: 0, warn: 0 }, true), rightPagesHtml("weather", { bad: 0, warn: 0 })]) {
+      expect(html).not.toContain("settings");
+      expect(html).not.toContain("manual");
+    }
   });
 
   it("keeps the choice across reloads and falls back to what the caller names", () => {

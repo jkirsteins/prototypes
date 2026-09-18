@@ -26,10 +26,17 @@ column but that slider, and nothing but Orders in the right.
 `tests/layout.test.ts` holds the same rule against `index.html`.
 
 On a phone there are no columns. The right slot's strip is the page's
-tabs - Map, Queue, Alerts, Weather, in that order, the map the default -
-with the manual and settings buttons at its far end, and the If-you-leave
-panel is not shown at all: the away dial is a desktop's control. The
-check-in above the strip is the task line and the survivor's bars.
+tabs - Map, Queue, Alerts, Weather, in that order, the map the default
+(a desktop's strip stays Weather, Alerts) - and the If-you-leave panel
+is not shown at all: the away dial is a desktop's control. The manual
+and the settings are links in the footer at the very bottom of the page,
+at every width, and nowhere else. The
+check-in above the strip is the survivor's bars and then the activity
+strip - what is running, its bar and its time left - so the running
+item is read without opening the Queue page, and the Queue tab's foot
+carries the same bar (`data-bar="task"`, written by `bars.ts` each
+frame like every bar), so the tab says how far the work is while the
+map or the weather is showing.
 
 ## Nothing off the screen at 1440 by 900
 

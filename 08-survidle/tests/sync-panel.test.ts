@@ -58,11 +58,7 @@ describe("the settings block", () => {
       configured,
       code: () => code,
       view: () => (code ? view({ state, lease }) : null),
-      turnOn: () => calls.push("on"),
-      turnOff: () => calls.push("off"),
-      copyLink: () => calls.push("copy"),
       newWorld: () => calls.push("new"),
-      join: (code) => calls.push(`join:${code}`),
     });
     const visible = () => [...root.querySelectorAll<HTMLButtonElement>("button")].filter((b) => !b.hidden && !b.closest("[hidden]")).map((b) => b.dataset.sync);
     return { root, panel, calls, visible };
@@ -74,39 +70,14 @@ describe("the settings block", () => {
     expect(visible()).toEqual([]);
   });
 
-  it("offers turn on while off, and the code with copy and turn off while on", () => {
-    const off = mount(true, null);
-    expect(off.root.textContent).toContain("lives in this browser");
-    expect(off.visible()).toEqual(["on", "joinbutton"]);
-    off.root.querySelector<HTMLButtonElement>("[data-sync=on]")!.click();
-    expect(off.calls).toEqual(["on"]);
-
+  it("names the world, says the address carries it, and offers a new one", () => {
     const on = mount(true, "heron-pine-ember", "running");
     expect(on.root.querySelector("code")?.textContent).toBe("heron-pine-ember");
-    expect(on.root.textContent).toContain("Anyone with the code can take this world");
-    expect(on.root.textContent).toContain("This device runs the world");
-    expect(on.visible()).toEqual(["copy", "off"]);
-  });
-
-  it("joins a world by a typed code, and refuses a typo without a call", () => {
-    const { root, calls } = mount(true, null);
-    const input = root.querySelector<HTMLInputElement>("[data-sync=join]")!;
-    const button = root.querySelector<HTMLButtonElement>("[data-sync=joinbutton]")!;
-    input.value = "heron-birch-notaword";
-    button.click();
-    expect(calls).toEqual([]);
-    expect(root.querySelector("[data-sync=joinnote]")?.textContent).toContain("not a code");
-    input.value = " Heron  pine-EMBER ";
-    button.click();
-    expect(calls).toEqual(["join:heron-pine-ember"]);
-    expect(input.value).toBe("");
-    // With a code set, the row is put away: the device is in a world already.
-    const on = mount(true, "heron-pine-ember", "running");
-    expect(on.root.querySelector<HTMLElement>("[data-sync=joinrow]")?.hidden).toBe(true);
-  });
-
-  it("offers a new world only once the store's save is refused", () => {
-    const { visible } = mount(true, "heron-pine-ember", "older");
-    expect(visible()).toEqual(["copy", "off", "new"]);
+    expect(on.root.textContent).toContain("anyone with the address can read and take this world");
+    expect(on.root.textContent).toContain("This device runs it");
+    expect(on.visible()).toEqual(["new"]);
+    on.root.querySelector<HTMLButtonElement>("[data-sync=new]")!.click();
+    expect(on.calls).toEqual(["new"]);
+    expect(mount(true, "heron-pine-ember", "older").root.textContent).toContain("start a new world");
   });
 });
