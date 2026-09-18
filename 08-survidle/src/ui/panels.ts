@@ -661,7 +661,7 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
   // fire under foot. Every fire that exists is on this tab whatever cell
   // the survivor stands in, until the camp view (roadmap P part 1) takes
   // them over.
-  const keepButtons = (region: number | "field", keep: FireKeep, choices: readonly FireKeep[]) =>
+  const keepButtons = (region: number, keep: FireKeep, choices: readonly FireKeep[]) =>
     `<span class="fire-keep">${choices.map((k) => `<button class="mini${k === keep ? " on" : ""}" data-act="fire-keep" data-region="${region}" data-keep="${k}" title="${KEEP_TITLE[k]}">${KEEP_WORD[k]}</button>`).join(" ")}</span>`;
   // A cold pit with a drill and dry wood in reach is one click from lit:
   // the setting keeps a fire that is alive and never starts one, so the
@@ -676,7 +676,7 @@ export function campHtml(state: GameState, world: World, cal: Calendar, display:
     ? `<div>fire: ${fireWord} ${light} ${keepButtons(id, st.fire.keep, KEEP_CHOICES)}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}${pitHint}`
     : "";
   const fieldFire = state.player.fieldFire && state.player.fieldFire.cell === cellOf(state, world)
-    ? `<div>field fire here: ${fmtKg(state.player.fieldFire.fuelKg)} in it ${keepButtons("field", state.player.fieldFire.keep, ["burning", "out"])}</div>`
+    ? `<div>field fire here: ${fmtKg(state.player.fieldFire.fuelKg)} in it <small class="dim">the body's own; fed from the pack while it is wanted</small></div>`
     : "";
   const elsewhere = Object.entries(state.regions)
     .filter(([rid, other]) => Number(rid) !== id && other.campCell !== null && campSite(other)?.structures.firePit)

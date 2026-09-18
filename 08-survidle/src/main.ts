@@ -851,12 +851,8 @@ function onClick(ev: Event) {
       break;
     case "fire-keep": {
       const keep = target.dataset.keep as FireKeep;
-      if (target.dataset.region === "field") {
-        if (state.player.fieldFire) state.player.fieldFire.keep = keep;
-      } else {
-        const st = state.regions[Number(target.dataset.region)];
-        if (st) st.fire.keep = keep;
-      }
+      const st = state.regions[Number(target.dataset.region)];
+      if (st) st.fire.keep = keep;
       break;
     }
     case "shopping-find": {

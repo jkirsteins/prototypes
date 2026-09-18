@@ -153,7 +153,7 @@ describe("the purposes and the filter", () => {
     expect(html).not.toContain('data-opt="intent:night:');
   });
 
-  it("offers material tracking only inside an eligible Make or Build row", () => {
+  it("offers material tracking on the face of an eligible Make or Build row, and not on one with no materials", () => {
     const { state, world } = newGame(3);
     revealEverything(state);
     const cal = calendar(state.minute, state.startDoy);
@@ -170,7 +170,13 @@ describe("the purposes and the filter", () => {
       panes: { pane: "do" as const, subtab: "Build" as const, purpose: "Fire" },
       open: { id: "build" as TaskId, arg: "firePit" },
     };
-    expect(doHtml(state, world, cal, noMaterials)).not.toContain('data-act="shopping-track"');
+    // The pit needs nothing, so its own row carries no pin; rows beside it with materials do.
+    const pane = doHtml(state, world, cal, noMaterials);
+    const at = pane.indexOf('data-opt="intent:build:firePit"');
+    expect(at).toBeGreaterThan(-1);
+    const next = pane.indexOf('data-opt="', at + 1);
+    const row = pane.slice(at, next < 0 ? undefined : next);
+    expect(row).not.toContain('data-act="shopping-track"');
   });
 
   it("the invisible keywords find a row whose own words never say what it is for", () => {

@@ -171,10 +171,8 @@ export function migrate(state: GameState): void {
   }
   state.player.skyReadDay ??= null;
   state.player.fieldFire ??= null;
-  if (state.player.fieldFire) {
-    state.player.fieldFire.keep ??= "burning";
-    if ((state.player.fieldFire.keep as string) === "coals") state.player.fieldFire.keep = "burning";
-  }
+  // A field fire carried a setting for one round; it is the body's own fire and has none.
+  if (state.player.fieldFire) delete (state.player.fieldFire as { keep?: string }).keep;
   state.seeps ??= {};
   state.carcasses ??= [];
   state.nextCarcassId ??= 1;

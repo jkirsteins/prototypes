@@ -129,7 +129,7 @@ describe("a fire where you stand", () => {
 
     state.opportunities.completedAt.fieldFire = 0;
     testRain(0);
-    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 3, keep: "burning" };
+    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 3 };
     addItem(state.player.pack, "rawMeat", 1);
     expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
     removeItem(state.player.pack, "rawMeat", 1);
@@ -226,7 +226,7 @@ describe("a fire where you stand", () => {
     const warm = feltTemperature(state, world, 0);
     state.player.fieldFire = null;
     expect(warm - feltTemperature(state, world, 0)).toBeCloseTo(15);
-    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 10, keep: "burning" };
+    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 10 };
     testRain(0);
     state.player.wetness = 50;
     addItem(state.player.pack, "wetFirewood", 1);

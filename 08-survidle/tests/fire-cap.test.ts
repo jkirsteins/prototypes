@@ -31,7 +31,7 @@ describe("one fire to a cell", () => {
   it("does not build the pit over a burning field fire", () => {
     const { state, world, cal } = camped();
     expect(check(state, world, cal, "build", "firePit").ok).toBe(true);
-    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 3, keep: "burning" };
+    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 3 };
     const o = check(state, world, cal, "build", "firePit");
     expect(o.ok).toBe(false);
     expect(o.why).toContain("a fire is burning here");

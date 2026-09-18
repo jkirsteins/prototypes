@@ -273,14 +273,19 @@ describe("firelight at night", () => {
     expect(glyphsWith(b, "lit-2").length).toBeGreaterThan(0);
   });
 
-  it("keeps the source lit at the default rung, where the glow fits inside one glyph", () => {
-    // A ring of glyphs at 300 m each would claim 600 m of firelight, so the
-    // rings shrink as the glyph grows and only the source is left.
+  it("lights the source and spills onto its neighbours at the default rung", () => {
+    // The glow footprint, not the fire's visibility: the source pulses and
+    // the eight glyphs round it take a weak spill (map.ts, litRings), a
+    // soft edge on the pulse rather than lit terrain; a large fire reaches
+    // one ring further and no fire reaches past that.
     const { state, world, night } = litCamp();
     const ui = open(DEFAULT_ZOOM);
     const b = board(world, state, ui, night);
     expect(glyphsWith(b, "lit-0").length).toBe(1);
-    expect(glyphsWith(b, "lit-1").length + glyphsWith(b, "lit-2").length).toBe(0);
+    // Eight neighbours less whatever the board's edge or the void cuts off.
+    expect(glyphsWith(b, "lit-1").length).toBeGreaterThanOrEqual(3);
+    expect(glyphsWith(b, "lit-1").length).toBeLessThanOrEqual(8);
+    expect(glyphsWith(b, "lit-2").length).toBeLessThanOrEqual(16);
   });
 });
 

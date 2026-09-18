@@ -840,7 +840,7 @@ describe("the shared storm plan", () => {
     const here = cellOf(state, world);
     const site = siteFor(regionState(state, world, state.player.region), here);
     site.structures.leanTo = true;
-    state.player.fieldFire = { cell: here, fuelKg: 3, keep: "burning" };
+    state.player.fieldFire = { cell: here, fuelKg: 3 };
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(state.player.pack, "firewood", 4);
     state.weather.storm = { id: 32, source: "natural", kind: "rain", from: 60, until: 420, warned: false };

@@ -183,7 +183,7 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
  */
 export function campNeed(state: GameState, world: World, cal: Calendar): CampNeed | null {
   const want = campFireWant(state, world);
-  if (want === "feed" || want === "bank" || fieldFireWantsWood(state, world)) return "fire";
+  if (want === "feed" || want === "bank") return "fire";
   if (snaresWaiting(state, world, cal) !== null) return "snares";
   // Raising the pit takes minutes with the drill, and it is the least
   // urgent want here: a catch in a snare is food, and a body that wants
@@ -277,6 +277,9 @@ export function raiseFire(state: GameState, world: World, cal: Calendar, at: num
   const current: FireLevel = camp ? fireLevelOf(st.fire) : fireAt(state, world, at) ? "full" : "none";
   if (fireAtLeast(current, level)) {
     if (camp && level === "full" && fuelTotal(st.fire) <= FIRE_LOW_KG && dryWoodInReach(state, at) > 1e-9) feedFire(state, world, state.player.region, FIRE_MAX_KG - fuelTotal(st.fire), true);
+    // The field fire is the body's own: fed from the pack to the spread mark.
+    const field = state.player.fieldFire;
+    if (!camp && level === "full" && field && field.cell === at && field.fuelKg < SPREAD_FUEL_KG && qty(state.player.pack, "firewood") > 1e-9) addFirewood(state, world, SPREAD_FUEL_KG - field.fuelKg);
     return null;
   }
   if (current === "none" && !ignite) return { refused: "no fire to raise; light one first" };
@@ -1018,12 +1021,6 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
  * lighting rather than wood, and fireStep is what answers that.
  */
 function fireNeedStep(state: GameState, world: World, cal: Calendar, dry: boolean): Step | null {
-  const field = state.player.fieldFire;
-  if (field && fieldFireWantsWood(state, world)) {
-    if (dry) return DRY_READY;
-    addFirewood(state, world, SPREAD_FUEL_KG - field.fuelKg);
-    return null;
-  }
   const st = regionState(state, world, state.player.region);
   const camp = st.campCell;
   if (camp === null || cellOf(state, world) !== camp) return null;
@@ -1068,11 +1065,7 @@ function st_fuel(state: GameState, world: World): number {
   return regionState(state, world, state.player.region).fire.fuelKg;
 }
 
-/** A field fire under foot, set to burn, low, with firewood in the pack to give it. */
-function fieldFireWantsWood(state: GameState, world: World): boolean {
-  const f = state.player.fieldFire;
-  return !!f && f.cell === cellOf(state, world) && f.keep === "burning" && f.fuelKg > 0 && f.fuelKg < SPREAD_FUEL_KG && qty(state.player.pack, "firewood") > 1e-9;
-}
+
 
 /**
  * Whether this region's camp can actually warm a cold body: a fire already

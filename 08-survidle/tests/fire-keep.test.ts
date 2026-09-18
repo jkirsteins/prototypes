@@ -7,17 +7,17 @@
  */
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { bodyStep, campNeed } from "../src/sim/body";
+import { bodyStep, campNeed, raiseFire } from "../src/sim/body";
 import { clearNeeds, publishFireNeed } from "../src/sim/needs";
 import { calendar } from "../src/sim/calendar";
 import { BANKED_KG, EMBER_RELIGHT_MINUTES, SPREAD_FUEL_KG } from "../src/sim/fire";
 import { addItem, pile } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { placeAt } from "../src/sim/position";
+import { cellOf, placeAt } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { readSave, serialize } from "../src/sim/save";
 import { campHtml } from "../src/ui/panels";
-import { siteCamp } from "./siting-helpers";
+import { neighbourLandCell, siteCamp } from "./siting-helpers";
 
 /** A camp with a pit, a drill in the pack and dry wood in the pile, at midday. */
 function pit(seed = 3) {
@@ -93,30 +93,28 @@ describe("the camp row and a fire's setting", () => {
     expect(campNeed(state, world, cal)).toBeNull();
   });
 
-  it("feeds a field fire under foot from the pack when set to burn", () => {
-    const { state, world, cal, rng } = pit();
-    const here = state.player.pack;
-    addItem(here, "firewood", 5);
-    state.player.fieldFire = { cell: regionState(state, world, state.player.region).campCell!, fuelKg: 2, keep: "burning" };
-    expect(campNeed(state, world, cal)).toBe("fire");
-    expect(bodyStep(state, world, cal, rng, "fire")).toBeNull();
+  it("feeds a field fire under foot from the pack as the body's own fire, not the camp row's", () => {
+    const { state, world, cal } = pit();
+    addItem(state.player.pack, "firewood", 5);
+    const here = regionState(state, world, state.player.region).campCell!;
+    placeAt(state, world, neighbourLandCell(world, here));
+    state.player.fieldFire = { cell: cellOf(state, world), fuelKg: 2 };
+    expect(campNeed(state, world, cal)).toBeNull();
+    expect(raiseFire(state, world, cal, cellOf(state, world), "full", true)).toBeNull();
     expect(state.player.fieldFire.fuelKg).toBeGreaterThan(2);
     expect(state.player.fieldFire.fuelKg).toBeLessThanOrEqual(SPREAD_FUEL_KG + 1e-9);
-    state.player.fieldFire.keep = "out";
-    state.player.fieldFire.fuelKg = 2;
-    expect(campNeed(state, world, cal)).toBeNull();
   });
 
   it("reads burning from a save that predates the setting, and from one that said coals", () => {
     const { state, world, st } = pit();
-    state.player.fieldFire = { cell: st.campCell!, fuelKg: 2, keep: "burning" };
+    state.player.fieldFire = { cell: st.campCell!, fuelKg: 2 };
     const raw = JSON.parse(serialize(state)) as { state: { regions: Record<string, { fire: { keep?: string } }>; player: { fieldFire: { keep?: string } } } };
     for (const region of Object.values(raw.state.regions)) region.fire.keep = "coals";
-    delete raw.state.player.fieldFire.keep;
+    raw.state.player.fieldFire.keep = "burning";
     const loaded = readSave(JSON.stringify(raw));
     expect(loaded).not.toBeNull();
     expect(loaded!.state.regions[state.player.region].fire.keep).toBe("burning");
-    expect(loaded!.state.player.fieldFire?.keep).toBe("burning");
+    expect((loaded!.state.player.fieldFire as { keep?: string } | null)?.keep).toBeUndefined();
     void world;
   });
 });
