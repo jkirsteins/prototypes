@@ -231,17 +231,31 @@ describe("small game moves in", () => {
     const k = seasonalCapacity(world, id, "hare", cal, 0);
     expect(k).toBeGreaterThan(10);
     st.pop.hare = k / 2;
-    for (const nb of regionAt(world, id).neighbours) {
-      const nst = regionState(state, world, nb.id);
-      nst.pop.hare = seasonalCapacity(world, nb.id, "hare", cal, 0) * nbDensity;
-    }
-    return { state, world, id, st, cal, k };
+    const setNeighbours = () => {
+      for (const nb of regionAt(world, id).neighbours) {
+        const nst = regionState(state, world, nb.id);
+        nst.pop.hare = seasonalCapacity(world, nb.id, "hare", cal, 0) * nbDensity;
+      }
+    };
+    setNeighbours();
+    return { state, world, id, st, cal, k, setNeighbours };
   }
 
   it("refills a half-emptied region to nine tenths within thirty summer days when the neighbours are full", () => {
-    const { state, world, st, cal, k } = heath(1);
+    const { state, world, st, cal, k, setNeighbours } = heath(1);
     const rng = new Rng(3);
-    for (let d = 0; d < 30; d++) dailyAnimals(state, world, cal, rng, null);
+    // The rate's arithmetic (0.948^30 in animals.ts) assumes the country
+    // around the region stays full: hares disperse from kilometres beyond the
+    // one ring this fixture materialises. Left alone, that ring is drained
+    // toward the receiver's own density instead - animals are conserved, and
+    // whether it still has enough to give depends on which region seed 5
+    // hands out and how big its neighbours are, not on the rate. Topping the
+    // ring up each day is the reservoir the comment describes; the draining
+    // case is the third test's subject.
+    for (let d = 0; d < 30; d++) {
+      dailyAnimals(state, world, cal, rng, null);
+      setNeighbours();
+    }
     expect(popOf(st, "hare") / k).toBeGreaterThanOrEqual(0.9);
   });
 
