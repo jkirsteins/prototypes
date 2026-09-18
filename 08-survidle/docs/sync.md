@@ -71,14 +71,34 @@ Anyone with the code can read and take the world. There are no accounts;
   save put, the lease taken by force from a second device, and the first
   device's socket must hear `revoked` inside one second. `SYNC_URL` in the
   environment points the smoke test at a deployed store instead.
-- The browser pass, at 1440 by 900 and at 390 wide with touch emulation
-  and a second Chrome profile for the second device: turn sync on, open
-  the link on the phone, see the held banner, take over, see the desktop's
-  revoked banner appear without a reload, reload the desktop from the
-  phone's save, then put the desktop tab to sleep past the grace period,
-  take over on the phone, wake the desktop and confirm it does not catch
-  up. Not yet run against a deployed store; run it once `SYNC_URL` is
-  filled in.
+- `npm run sync-pass` is the browser pass, scripted: two headless
+  Chromium instances with their own profiles, a desktop at 1440 by 900
+  and a phone at 390 wide with touch emulation, against the dev server
+  and a store (`SYNC_URL`, default `wrangler dev`). It plays the spec's
+  pass in order and reads every step from the page as the player sees it
+  and from the store's own headers: turn sync on at the desktop; open the
+  link on the phone and see the held banner, read-only, the page under it
+  taking no pointer, the take-over button thumb height; take over by a
+  real touch and see the desktop's revoked banner appear without a reload
+  and its clock stop; reload the desktop from the phone's save and take
+  the world back; freeze the desktop tab past the grace period, take the
+  lapsed lease on the phone without force, put from the phone as its tab
+  hides, wake the desktop and confirm it does not catch up; turn off on
+  the phone and see it run on with the store left as it was. Screenshots
+  in `docs/sync-shots/`.
+
+  Run 2026-09-18 against `wrangler dev`: every check passed, at both
+  widths; the desktop heard the phone's take-over in 749 to 901 ms; the
+  woken desktop's minute was the minute it fell asleep on. The deployed
+  store could not be reached from the session that ran it (the sandbox's
+  egress policy refuses `workers.dev`), so the same pass against the
+  deployed URL is still owed: `SYNC_URL=https://survidle-sync.janis-kirsteins.workers.dev
+  npm run sync-pass` with `VITE_SYNC_URL` set the same on the dev server.
+  Two things the pass taught: a headless tab that has been frozen and
+  woken no longer takes dispatched touch events, so the last step clicks;
+  and a browser left over from a killed run answers on the debugging port
+  and gets driven instead of a fresh one, so the script refuses a port in
+  use.
 
 ## What to expect on a phone
 
