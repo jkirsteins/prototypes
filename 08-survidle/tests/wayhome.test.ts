@@ -10,7 +10,7 @@ import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { campCellOf, cellOf, placeAtSpot } from "../src/sim/position";
-import { SEEN } from "../src/sim/regionstate";
+import { discovery, regionState, SEEN, siteFor } from "../src/sim/regionstate";
 import { survivorRoute } from "../src/sim/routing";
 import { MASTERY_KEYS, masteryKey, skillOf } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
@@ -107,6 +107,41 @@ describe("searching for the way home", () => {
     for (; minutes < 20000 && state.task; minutes++) stepTask(state, world, calendar(state.minute), rng, 1);
     expect(state.task).toBeNull();
     expect(survivorRoute(state, world, cellOf(state, world), home)).not.toBeNull();
+  });
+
+  it("walks to the edge of a shore mapped whole when nothing named leads on, and glimpses the country beyond", () => {
+    // Seed 17's boat is three people with poor eyes: no neighbour of the
+    // landing region is seen from the shore, and the landing maps that region
+    // whole, so there is no named unmapped country to sweep and no frontier
+    // of its own. Before the edge leg this search could not start at all.
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const home = state.player.region;
+    const st = regionState(state, world, home);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    const neighbour = regionAt(world, home).neighbours[0].id;
+    placeAtSpot(state, world, neighbour, "camp");
+    die(state, "froze", regionAt(world, neighbour).name);
+    beginAgain(state, world);
+    land(state, world);
+    // A minute in: a glimpse at minute 0 stays out of the log, as a landing does.
+    state.minute = 1;
+    const here = state.player.region;
+    expect(here).not.toBe(home);
+    const nbs = regionAt(world, here).neighbours.map((n) => n.id);
+    expect(nbs.every((id) => discovery(state, id) === 0)).toBe(true);
+    const cal = calendar(state.minute);
+    expect(check(state, world, cal, "searchHome", `region:${home}`).ok).toBe(true);
+    expect(startTask(state, world, cal, "searchHome", `region:${home}`)).toBe(true);
+    expect(state.task?.edge).toBe(true);
+    const rng = new Rng(1);
+    for (let minutes = 0; minutes < 20000 && state.task?.edge; minutes++) stepTask(state, world, calendar(state.minute), rng, 1);
+    // The edge leg ended: what lay across is glimpsed, and the search has gone on into it.
+    expect(nbs.some((id) => discovery(state, id) >= SEEN)).toBe(true);
+    expect(state.task?.id).toBe("searchHome");
+    expect(state.task?.edge).toBeUndefined();
+    expect(nbs).toContain(Number(state.task!.arg!.slice("region:".length)));
+    expect(state.log.some((e) => e.text.startsWith("{You} {see} into "))).toBe(true);
   });
 
   it("the body does not walk home over ground it does not know", () => {

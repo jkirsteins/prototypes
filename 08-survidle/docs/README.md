@@ -133,6 +133,13 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   nothing. New country is opened from Do > Explore by going to look: "Explore Stensund"
   walks a sweep of that region until you have all of it. That is hours,
   and it is always your own click - nothing explores while you are away.
+  Country the eye reaches into is country you can name, from a fell top or
+  across a border, so a region seen into can be explored by name. A region
+  you know whole can still be surveyed when it borders a country never
+  glimpsed: the survey walks to its edge and looks across. "Search for a
+  way home" does the same when nothing named leads on - the edge on home's
+  side first - which is how a poor-eyed heir on a shore mapped whole, with
+  no neighbour seen from it, gets out at all.
   Wayfinding is the skill behind it, and what practice buys is a wider
   view and a whole ankle, not a faster sweep.
   Zoom with the two buttons in the map's bottom left corner or the plus and

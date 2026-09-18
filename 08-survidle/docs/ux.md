@@ -48,6 +48,13 @@ moment the heir walks into that country; the map holds the camp from
 then on. `tests/ui.test.ts` holds the row to heirs, and to heirs who have
 not yet been there.
 
+A running search is the strip's activity like any other, named for what it
+is for and where it is now: "Searching for the way to Elglia" over
+"sweeping Stormvik, walking 1.2 km". The bar is the current leg's, a real
+walk with a real end; the search as a whole promises no ETA, and the step
+says so by naming the leg rather than by a number. A browser pass confirms
+the title never reads as a raw task id.
+
 ## Nothing off the screen at 1440 by 900
 
 The check-in - the bars, Doing with its bar, the ways out, and the Do

@@ -227,6 +227,13 @@ export interface Task {
   surveyProgress?: number;
   /** Minutes of the current hour walked on the roughest three grounds, which is what the sweep's injury chance is scaled by. */
   roughMinutes?: number;
+  /**
+   * This leg walks to the region's edge to look into a country never yet
+   * glimpsed, rather than to a vantage over the region's own unmapped ground.
+   * Set by a survey of ground known whole and by a search that nothing named
+   * leads on from; arriving glimpses what lies across.
+   */
+  edge?: true;
 }
 
 /**

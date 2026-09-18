@@ -910,8 +910,19 @@ export function activity(state: GameState, world: World, cal: Calendar): Activit
   const opts = availableTasks(state, world, cal);
   const title = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
   if (t.id === "explore") {
-    const step = t.surveyPhase === "read" ? "reading the water" : state.route ? walkingStep(state, world, cal) : "surveying";
+    const step = t.surveyPhase === "read" ? "reading the water" : state.route ? walkingStep(state, world, cal, t.edge ? " to the edge, to look beyond" : "") : "surveying";
     return { title, step, progress: t.duration > 0 };
+  }
+  if (t.id === "searchHome") {
+    // The search rewrites its arg to the leg's region, so no option matches
+    // it by arg; it is named here from what it is for and where it is now.
+    // The bar is the leg's - a real walk with a real end - and the whole has
+    // no ETA at all, which the step says by naming the leg instead.
+    const homeRegion = t.home === undefined ? state.player.region : cellAt(world, t.home).region;
+    const where = homeRegion === state.player.region ? "home" : `to ${regionAt(world, homeRegion).name}`;
+    const leg = t.arg?.startsWith("region:") ? regionAt(world, Number(t.arg.slice(7))).name : "";
+    const step = !state.route ? "searching" : t.edge ? `to the edge of ${leg} to look beyond, ${walkingStep(state, world, cal)}` : `sweeping ${leg}, ${walkingStep(state, world, cal)}`;
+    return { title: `Searching for the way ${where}`, step, progress: t.duration > 0 };
   }
   if ((t.id === "walk" || t.id === "travel") && state.route) {
     const named = state.route.label.startsWith("a spot ") ? "" : ` to ${state.route.label.replace(/^the /, "")}`;

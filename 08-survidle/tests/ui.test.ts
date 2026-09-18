@@ -1320,6 +1320,19 @@ describe("the old camp in the middle strip", () => {
     const button = line?.querySelector<HTMLButtonElement>('button[data-act="task"]');
     expect(["travel", "searchHome"]).toContain(button?.dataset.id);
     expect(button?.dataset.arg).toBe(`region:${home}`);
+    // Pressed, the search runs as the strip's activity, named for what it is
+    // for and where it is now - never the raw task id - and the row keeps
+    // its bearing while dropping the button.
+    expect(startTask(state, world, cal, "searchHome", `region:${home}`)).toBe(true);
+    setPanel("task", taskHtml(state, world, cal));
+    const now = document.querySelector("#task .now")?.textContent ?? "";
+    expect(now).toContain(`Searching for the way to ${regionAt(world, home).name}`);
+    expect(now).toContain("to the edge of");
+    expect(now).not.toContain("SearchHome");
+    expect(document.querySelector("#task .oldcamp")).not.toBeNull();
+    expect(document.querySelector("#task .oldcamp button")).toBeNull();
+    state.task = null;
+    state.route = null;
     // Nothing of the kind on a first survivor's strip.
     const first = newGame(17);
     setPanel("task", taskHtml(first.state, first.world, cal));
