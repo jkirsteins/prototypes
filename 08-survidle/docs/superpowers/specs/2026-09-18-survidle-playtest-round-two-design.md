@@ -124,3 +124,35 @@ button that filters the Do pane. The author's round-two answer asked for
 exactly that shape. What was missing was a door from a make or build
 goal on the opportunity card, which now offers the same button. Only a
 revealed row can be tracked, which follows from the Do pane's gating.
+
+## 7. The needs ledger, and who owns the fire
+
+Settled 2026-09-18 with the author after an expert's reading of the fire.
+Two facts from the model: the burn rate does not depend on how full the
+pit is, only the hours lit cost wood; and a person does not keep a strong
+open fire all day unless conditions demand it.
+
+- **Fire level**: none, coals, full (`fire.ts`, `FireLevel`). Two live
+  levels for now; the roadmap's four fire states slot in as more levels.
+- **The ledger** (`sim/needs.ts`): the judgement clears it each pass and
+  a blocked row that could run with a better fire publishes the level it
+  wants (`TaskOption.needs`); cook, melt and the torch do today. It is
+  transient and never saved. The Log tab shows it under `?debug` and
+  nothing else in the page reads it.
+- **One helper, two callers** (`raiseFire`): feeds in the minute, hands
+  back a rekindle or a light as a step, or a refusal in words. The camp
+  row calls it at the pit with the required level `max(keep-burning
+  floor = coals, published needs, wet wood drying)`, never igniting a
+  cold pit; it lets down and banks only what it fed itself when nothing
+  wants a full fire. Self-care calls it where the body stands with the
+  body's own level: full when cold, soaked or before bed; while asleep,
+  full only under the warm line. The body's fire stays under the body's
+  rank, so the camp row's rank never decides whether a cold survivor gets
+  a fire, and the field fire on a ridge is the body's, not the camp's.
+- **The row's reason** carries the camp row's refusal ("needs a lit fire;
+  no dry wood to keep a fire") so a need the camp cannot meet is never a
+  silent red row.
+
+Refused for now: a generic ledger (water, light, tool edge, shelter) - a
+second need type is added when a row needs it; and the camp row lighting
+a cold pit for a published need, so the Light row stays a real step.

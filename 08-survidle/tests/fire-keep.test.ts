@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { bodyStep, campNeed } from "../src/sim/body";
+import { clearNeeds, publishFireNeed } from "../src/sim/needs";
 import { calendar } from "../src/sim/calendar";
 import { BANKED_KG, EMBER_RELIGHT_MINUTES, SPREAD_FUEL_KG } from "../src/sim/fire";
 import { addItem, pile } from "../src/sim/inventory";
@@ -40,34 +41,50 @@ function pit(seed = 3) {
 }
 
 describe("the camp row and a fire's setting", () => {
-  it("rekindles coals at night when set to burn, leaves a fire set to go out, and never starts one from cold", () => {
+  it("rekindles coals when a row has asked for a full fire, leaves a fire set to go out, and never starts one from cold", () => {
     const { state, world, st, cal, rng } = pit();
     expect(st.fire.keep).toBe("burning");
-    // Stone cold: the pit is the body's or the player's to light, not the row's.
+    // Stone cold: the pit is the body's or the player's to light, not the row's, whatever is asked.
+    publishFireNeed(state, "full", "Cook raw meat");
     expect(campNeed(state, world, cal)).toBeNull();
+    expect(bodyStep(state, world, cal, rng, "fire")).toBeNull();
+    // Coals with nobody asking and hours in them: left as coals.
+    clearNeeds(state);
     st.fire.embers = EMBER_RELIGHT_MINUTES * 20;
-    // Midday, a warm dry body: coals are left as coals.
     expect(campNeed(state, world, cal)).toBeNull();
-    // The flame useful - the body under the warm line - and the coals are rekindled.
-    state.player.warmth = 40;
+    // A row asks for a full fire: rekindled, and still under "let it go
+    // out" - the setting is the row's floor, not a veto on the other rows.
+    publishFireNeed(state, "full", "Cook raw meat");
+    expect(campNeed(state, world, cal)).toBe("fire");
+    expect(bodyStep(state, world, cal, rng, "fire")?.id).toBe("light");
+    st.fire.keep = "out";
+    expect(campNeed(state, world, cal)).toBe("fire");
+    clearNeeds(state);
+    expect(campNeed(state, world, cal)).toBeNull();
+  });
+
+  it("keeps the floor: coals about to go are rekindled with nobody asking, and not under let-it-go-out", () => {
+    const { state, world, st, cal, rng } = pit();
+    st.fire.embers = EMBER_RELIGHT_MINUTES;
     expect(campNeed(state, world, cal)).toBe("fire");
     expect(bodyStep(state, world, cal, rng, "fire")?.id).toBe("light");
     st.fire.keep = "out";
     expect(campNeed(state, world, cal)).toBeNull();
   });
 
-  it("feeds a low fire while the flame is useful, and banks a full one when it is not", () => {
+  it("feeds a low fire while a full one is wanted, and banks the row's own feeding when nothing wants it", () => {
     const { state, world, st, cal, rng } = pit();
     st.fire.lit = true;
     st.fire.fuelKg = 0.5;
-    // Warm, dry, midday: nobody needs the flame, and half a kilo is under the banked few kilos: nothing.
+    // Nothing asks: half a kilo is under the banked few kilos, so nothing to bank either.
     expect(campNeed(state, world, cal)).toBeNull();
-    state.player.warmth = 40;
+    publishFireNeed(state, "full", "Melt snow");
     expect(campNeed(state, world, cal)).toBe("fire");
     expect(bodyStep(state, world, cal, rng, "fire")).toBeNull();
     expect(st.fire.fuelKg).toBeGreaterThan(5);
-    // Warm again: the surplus goes back to the pile in the minute.
-    state.player.warmth = 80;
+    expect(st.fire.fedByRow).toBe(true);
+    // The need gone: the surplus the row put in goes back to the pile in the minute.
+    clearNeeds(state);
     const pileBefore = pile(state, st.campCell!).items.firewood ?? 0;
     expect(campNeed(state, world, cal)).toBe("fire");
     expect(bodyStep(state, world, cal, rng, "fire")).toBeNull();

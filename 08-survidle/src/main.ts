@@ -101,6 +101,9 @@ import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
 import { newSpeedHistory, updateSpeedHistory } from "./ui/speed-history";
 import { alerts, alertsHtml } from "./ui/alerts";
+import { needsHtml } from "./ui/needs";
+/** ?debug shows the needs ledger on the Log tab; nothing in the main page reads it. */
+const DEBUG = typeof location !== "undefined" && new URLSearchParams(location.search).has("debug");
 import { loadRightPage, type RightPage, rightPagesHtml, saveRightPage } from "./ui/rightpages";
 import { shoppingHtml, shoppingQuery } from "./ui/shopping";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
@@ -436,7 +439,7 @@ function render(nowMs = performance.now()) {
   setPanel("dopurposes", doPurposesHtml(state, world, ui));
   setPanel("doitems", doHtml(state, world, cal, ui));
   setPanel("inventory", inventoryHtml(state, world, cal, ui.travelDisplay));
-  setPanel("log", logHtml(state));
+  setPanel("log", `${logHtml(state)}${DEBUG ? needsHtml(state) : ""}`);
   setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world, document, { hurry: ui.hurry, speed });
   updateFills(state);

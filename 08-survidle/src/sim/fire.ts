@@ -84,6 +84,24 @@ export function hasEmbers(fire: RegionState["fire"]): boolean {
   return !fire.lit && fire.embers > 0;
 }
 
+/**
+ * What a fire is, as a level a need can name: out, coals, or a full fire.
+ * Two live levels for now; the roadmap's fire states (embers, a utility
+ * fire, a heating fire, a long fire) slot in here as more levels, each
+ * with its own burn, warmth, drying and light, once those have sources.
+ */
+export type FireLevel = "none" | "coals" | "full";
+const FIRE_RANK: Record<FireLevel, number> = { none: 0, coals: 1, full: 2 };
+export function fireLevelOf(fire: RegionState["fire"]): FireLevel {
+  return fire.lit ? "full" : hasEmbers(fire) ? "coals" : "none";
+}
+export function fireAtLeast(have: FireLevel, want: FireLevel): boolean {
+  return FIRE_RANK[have] >= FIRE_RANK[want];
+}
+export function higherFire(a: FireLevel, b: FireLevel): FireLevel {
+  return FIRE_RANK[a] >= FIRE_RANK[b] ? a : b;
+}
+
 export const BANKED_KG = 6;
 
 /** Lets a lit fire down to a few kilos before you leave it; the surplus goes back on the pile. */

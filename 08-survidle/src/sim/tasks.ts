@@ -37,7 +37,7 @@ import {
   atCamp, campCellOf, cellOf, forestCell, heathCell, hereTerrain, patchAt,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, fuelTotal, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered, BANKED_KG } from "./fire";
+import { EMBER_RELIGHT_MINUTES, fireAt, fireSiteMinutes, fuelTotal, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered, BANKED_KG, type FireLevel } from "./fire";
 import { recordOpportunityEvent } from "./opportunities";
 import { builtProtection, coverCeiling, EMERGENCY_MINUTES, findCover, improveCover, improveCoverMinutes, protectionOf, PROTECTION_WORDS } from "./shelter";
 import { isRead, readLine, readShore } from "./knowledge";
@@ -103,6 +103,8 @@ export interface TaskOption {
   mastery?: { level: number; share: number; skill: SkillId; key: string };
   /** The recommended level, whether you are under it, and by how many levels. */
   recommended?: { text: string; under: boolean; short: number };
+  /** What the row would need to run, when it cannot: published to the needs ledger by the judgement (sim/needs.ts). */
+  needs?: { fire: FireLevel };
 }
 
 /** Work that stays where it was left: the half-felled tree is on that 50 m patch of forest, and its key names the patch. */
@@ -743,7 +745,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const label = food === "rawFat" ? "Render fat" : `Cook ${ITEM_NAMES[food]}`;
       const detail = food === "rawFat" ? "1 kg at a time; raw fat rots in three warm days, rendered it keeps" : "1 kg at a time over the fire";
       const o = opt({ group: "camp", label, detail, duration: Math.max(1, 10 * kg), repeatable: true });
-      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire" };
+      if (!fireAt(state, world, at)) return { ...o, ok: false, why: "needs a lit fire", needs: { fire: "full" } };
       if (kg <= TRACE_KG) return { ...o, ok: false, why: `no ${ITEM_NAMES[food]} here` };
       if (food === "roots" && disabled("roots")) return { ...o, ok: false, why: "disabled for the probe" };
       return o;
@@ -933,7 +935,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!relight && totalQty(invs, "torch") < 1) return { ...o, ok: false, why: "needs a torch" };
       if (fireAt(state, world, at)) return { ...o, detail: `${o.detail}; lit from the fire` };
       if (hasTool(p, "fireDrill")) return { ...o, duration: 10, detail: `${o.detail}; with the fire drill` };
-      return { ...o, ok: false, why: "needs a fire or a fire drill" };
+      return { ...o, ok: false, why: "needs a fire or a fire drill", needs: { fire: "full" } };
     }
     case "travel":
     case "walk": {
@@ -1059,8 +1061,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = opt({ group: "camp", label: "Melt snow", detail: "1 kg of the fire's wood for a litre", duration: 15, repeatable: true });
       if (!camp && !toolNear(p, "barkBucket", toolInvs)) return { ...o, ok: false, why: "needs a bark bucket" };
       const fire = fireAt(state, world, at);
-      if (!fire) return { ...o, ok: false, why: "needs a lit fire" };
-      if (fire.fuelKg < 1) return { ...o, ok: false, why: "the fire is too low" };
+      if (!fire) return { ...o, ok: false, why: "needs a lit fire", needs: { fire: "full" } };
+      if (fire.fuelKg < 1) return { ...o, ok: false, why: "the fire is too low", needs: { fire: "full" } };
       if (localWeather(state, world, at).snowCm < 1) return { ...o, ok: false, why: "no snow to melt" };
       return o;
     }

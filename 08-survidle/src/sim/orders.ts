@@ -56,6 +56,7 @@
  * again and says nothing more.
  */
 import { Rng } from "../rng";
+import { clearNeeds, needsOf, publishFireNeed } from "./needs";
 import type { World } from "../world/gen";
 import { itemLabel } from "./actions";
 import { currentNeed, KIT_ITEMS, tooExhausted, workResumeAt } from "./body";
@@ -712,6 +713,8 @@ export type Judgement = {
  * known from this same reading rather than from a second one.
  */
 export function judgeOrders(state: GameState, world: World, cal: Calendar): Judgement {
+  // The needs ledger is this pass's: a row struck off takes its need with it.
+  clearNeeds(state);
   const liveId = state.intent?.orderId ?? null;
   const rows = ordersHere(state, world);
   // A throwaway stream: the body row's own reading needs an Rng the way its
@@ -868,7 +871,16 @@ function judgeRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Or
   // "{you} {are} here", and the staying is the row's whole point there.
   if (o.req.until.kind === "dismissed" && typeof o.req.where === "object" && o.req.where.cell === cellOf(state, world)) return { v: "ready" };
   const opt = intentOption(state, world, cal, o.req.task, o.req.arg, o.req.where);
-  if (!opt.ok) return { v: "blocked", why: opt.why };
+  if (!opt.ok) {
+    // A row that could run with a better fire says so to the ledger, and
+    // carries the camp row's own refusal when the pit could not be raised.
+    if (opt.needs?.fire) {
+      publishFireNeed(state, opt.needs.fire, opt.label);
+      const refusal = needsOf(state).fireRefusal;
+      if (refusal) return { v: "blocked", why: `${opt.why}; ${refusal}` };
+    }
+    return { v: "blocked", why: opt.why };
+  }
   const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
   // The dark refuses a once order nothing. The work itself already knows
   // what the dark costs - stepTask rolls the attempt at the light's odds and
