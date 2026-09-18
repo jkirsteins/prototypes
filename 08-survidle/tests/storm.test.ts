@@ -6,23 +6,32 @@ import { newGame } from "../src/sim/newgame";
 import { fatLandmarks, medianPerson } from "../src/sim/person";
 import { feltTemperature, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
+import { isLee } from "../src/sim/shelter";
 import { craftSuccess } from "../src/sim/skills";
 import { check, huntOdds } from "../src/sim/tasks";
 import type { GameState, Terrain } from "../src/sim/types";
 import { ensureGround, localWeather, localStorm } from "../src/sim/weather";
-import { cellAt, type World } from "../src/world/gen";
+import { cellAt, solvedTerrainAt, type World } from "../src/world/gen";
+import { FINE_PER_PARENT } from "../src/world/spatial";
 import { testRain, testAtmosphere } from "./weather-helpers";
 afterEach(() => vi.restoreAllMocks());
 
 const cal = calendar(0);
 
-/** Cap on the ring radius, in cells, a search for a terrain may walk out to. */
+/** Cap on the ring radius, in patches, a search for a terrain walks the fine ground out to: 20 km. */
 const MAX_FIND_RADIUS = 400;
 
 /**
  * The nearest cell of one of these terrains, scanning outward from `from` in
  * growing square rings. Reads only `cellAt`, which fills terrain chunks
  * lazily and caches them; it never touches the (much pricier) region graph.
+ *
+ * Fell is the ground above the treeline, and a landing is tens of kilometres
+ * from the nearest of it, so the ring over 50 m patches would generate half
+ * the world's chunks to reach one. Past the cap the search walks the solved
+ * 300 m lattice instead, which is an array read a parent, and reads the fine
+ * patches of the first parent of that terrain it meets: the parent's ground
+ * refines to a mix, but a fell parent holds fell patches.
  */
 function findCell(world: World, from: number, terrains: Terrain[]): number {
   const cx = from % world.w;
@@ -40,7 +49,31 @@ function findCell(world: World, from: number, terrains: Terrain[]): number {
       }
     }
   }
-  throw new Error(`no cell of ${terrains.join("/")} within ${MAX_FIND_RADIUS} cells of the start`);
+  const px = Math.floor(cx / FINE_PER_PARENT);
+  const py = Math.floor(cy / FINE_PER_PARENT);
+  const pw = Math.ceil(world.w / FINE_PER_PARENT);
+  const ph = Math.ceil(world.h / FINE_PER_PARENT);
+  for (let r = Math.floor(MAX_FIND_RADIUS / FINE_PER_PARENT); r < Math.max(pw, ph); r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = px + dx;
+        const y = py + dy;
+        if (x < 0 || x >= pw || y < 0 || y >= ph) continue;
+        if (!terrains.includes(solvedTerrainAt(world, x * FINE_PER_PARENT, y * FINE_PER_PARENT))) continue;
+        for (let j = 0; j < FINE_PER_PARENT; j++) {
+          for (let i = 0; i < FINE_PER_PARENT; i++) {
+            const fx = x * FINE_PER_PARENT + i;
+            const fy = y * FINE_PER_PARENT + j;
+            if (fx >= world.w || fy >= world.h) continue;
+            const idx = fy * world.w + fx;
+            if (terrains.includes(cellAt(world, idx).terrain)) return idx;
+          }
+        }
+      }
+    }
+  }
+  throw new Error(`no cell of ${terrains.join("/")} anywhere in the world`);
 }
 
 /** Places the player on the nearest cell of one of these terrains, sets the snow, and returns the kcal a walking hour there costs. */
@@ -63,7 +96,13 @@ describe("storms", () => {
     const odds = huntOdds(state, world, cal, 0.5, "hare");
     testRain(10, 5, 40);
     expect(localWeather(state, world).storm).not.toBeNull();
-    expect(feltTemperature(state, world, 5)).toBe(calm - 6);
+    // Unscheduled rain at 40 km/h is a gale, and a gale takes its six degrees
+    // off a body in the open; terrain lee buys a third of that back a level.
+    // Where the region's forest spot stands is the generator's business, and
+    // the wood upwind of it may or may not shelter it, so the lee is read the
+    // way the sim reads it rather than assumed either way.
+    const lee = isLee(world, cellOf(state, world), 0) ? 1 : 0;
+    expect(feltTemperature(state, world, 5)).toBe(calm - 6 * (3 - lee) / 3);
     expect(check(state, world, cal, "chop").why).toBe("too rough");
     expect(huntOdds(state, world, cal, 0.5, "hare")).toBeLessThan(odds * 0.6);
   });
