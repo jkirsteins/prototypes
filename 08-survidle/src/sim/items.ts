@@ -292,6 +292,16 @@ export const STRUCTURES: Record<StructureId, StructureDef> = {
 };
 export const STRUCTURE_IDS = Object.keys(STRUCTURES) as StructureId[];
 /**
+ * A structure a site holds one of. A vedbod is a count, racks are capped at
+ * two, snares are a count on the region and a seep is keyed by its cell;
+ * everything else is a flag on the site, and once it is up the row that
+ * builds it has nothing left to offer and is not drawn (dopanel.ts), nor
+ * queued twice (orders.ts addOrder).
+ */
+export function oneOfAKind(sid: StructureId): boolean {
+  return sid !== "vedbod" && sid !== "dryingRack" && sid !== "snare" && sid !== "seep";
+}
+/**
  * Kochanski: pile snow, let it set, dig it out; the ground under a good
  * cover sits at -3 to -5 C whatever the air. The Swedish handbook: the
  * pile freezes together in four or five hours. Needs this much snow at

@@ -855,6 +855,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (sid === "dryingRack") {
         if ((site?.racks ?? 0) >= MAX_RACKS) return { ...o, ok: false, why: "two racks stand here already" };
       } else if (sid !== "vedbod" && site?.structures[sid]) return { ...o, ok: false, why: "already built here" };
+      // One fire to a cell: a field fire burning where the pit would go is
+      // that cell's fire until it is out.
+      if (sid === "firePit" && p.fieldFire && p.fieldFire.cell === at && p.fieldFire.fuelKg > 0) return { ...o, ok: false, why: "a fire is burning here; let it go out first" };
       if ((sid === "cabin" || sid === "turfHut") && !site?.structures.firePit) return { ...o, ok: false, why: "clear the fire site first" };
       if (done > 0) return { ...o, detail: `${Math.round((done / total) * 100)}% ${def.needs.length ? "built; materials already laid out" : "done"}` };
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: shortList(invs, def.needs) };
@@ -915,6 +918,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (terrain === "water") return { ...o, ok: false, why: "needs dry ground" };
       if (camp && !campSite(st)?.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
       if (fireAt(state, world, at)) return { ...o, ok: false, why: "already burning" };
+      // One fire to a cell: a pit that stands here, at a camp given up, is
+      // this cell's fire, and it is lit as camp, not beside as a field fire.
+      if (!camp && siteAt(st, at)?.structures.firePit) return { ...o, ok: false, why: "a fire site stands here; make camp here to light it" };
       if (!rekindle && !toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (!laid && totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: dryWoodWanted(invs) };
       if (!rekindle && lr.blocked) return { ...o, ok: false, why: lr.blocked };

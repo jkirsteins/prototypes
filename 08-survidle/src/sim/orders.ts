@@ -65,7 +65,7 @@ import { type Calendar, calendar, fmtDoy } from "./calendar";
 import { pileAt, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
 import { fuelTotal } from "./fire";
-import { BARK_DRY_RATIO, FIRE_LOW_KG, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES } from "./items";
+import { BARK_DRY_RATIO, FIRE_LOW_KG, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES, oneOfAKind } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
 import { log } from "./log";
@@ -112,6 +112,12 @@ function placeOf(list: Order[], rank: Landing): number {
  */
 export function addOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: Landing): WorkOrder {
   const st = regionState(state, world, state.player.region);
+  // A structure the site holds one of is asked for once: a second "Build
+  // fire site" on the list is the same pit, and the row is handed back.
+  if (req.task === "build" && req.arg && oneOfAKind(req.arg as StructureId)) {
+    const pending = st.orders.find((o): o is WorkOrder => isWorkOrder(o) && o.req.task === "build" && o.req.arg === req.arg);
+    if (pending) return pending;
+  }
   const n = normalizeOrder(req, kind);
   // A build the player has asked for is a thing the camp is waiting on, not
   // a row in a list. Writing the site entry at placement rather than at the

@@ -3,7 +3,7 @@ import { calendar, type Calendar, monthName, monthStartDoy } from "../sim/calend
 import { capabilityFor } from "../sim/capabilities";
 import { knownHuntSpecies } from "../sim/hunting";
 import { directIntentCell, groundOf, intentOption, yieldItem } from "../sim/intent";
-import { DECAYING, ITEM_NAMES, RECIPE_IDS, RECIPES, STRUCTURE_IDS } from "../sim/items";
+import { DECAYING, ITEM_NAMES, RECIPE_IDS, RECIPES, STRUCTURE_IDS, oneOfAKind } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { knowledgeGen } from "../sim/mapped";
 import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
@@ -11,10 +11,10 @@ import { RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand, type Species } from "../sim/species";
 import { plain } from "../sim/voice";
 import { check, leftBehind, type TaskOption, withProgression } from "../sim/tasks";
-import type { GameState, ItemId, OrderWhen, RecipeId, TaskId, ToolId, Where } from "../sim/types";
+import type { GameState, ItemId, OrderWhen, RecipeId, TaskId, ToolId, Where, StructureId } from "../sim/types";
 import { fmtDuration, fmtRealSeconds } from "../units";
 import { realSecondsForOrder } from "./hurry";
-import { regionState } from "../sim/regionstate";
+import { regionState, campSite } from "../sim/regionstate";
 import { shoppingTarget } from "../sim/shopping";
 import { regionAt, type RegionDef, type World } from "../world/gen";
 import { masteryLine } from "./panels";
@@ -710,11 +710,22 @@ function toolInReach(state: GameState, tool: ToolId): boolean {
   return (state.piles[cell]?.items[tool] ?? 0) > 0;
 }
 
+/**
+ * A build row for a structure the camp already holds one of. "Build fire
+ * site - already built here" is not a row a survivor cannot start yet, it
+ * is one with nothing left to offer, and a second pit was ordered from it.
+ */
+function alreadyStands(state: GameState, world: World, id: TaskId, arg?: string): boolean {
+  if (id !== "build" || !arg || !oneOfAKind(arg as StructureId)) return false;
+  const structures = campSite(regionState(state, world, state.player.region))?.structures as Record<string, boolean | undefined> | undefined;
+  return Boolean(structures?.[arg]);
+}
+
 function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
   const currentRegion = `region:${state.player.region}`;
   const wanted = intentGroups(regionAt(world, state.player.region))
     .flatMap((g) => g.items)
-    .filter((i) => revealed(state, i.id, i.arg))
+    .filter((i) => revealed(state, i.id, i.arg) && !alreadyStands(state, world, i.id, i.arg))
     .filter((i) => subtabOf(i.id, i.arg) === ui.panes.subtab && purposeOf(i.id, i.arg) === ui.panes.purpose)
     .filter((i) => i.id !== "chop" || !i.arg || ui.specific.trees)
     .filter((i) => i.id !== "fish" || i.arg === "any" || ui.specific.fish)
@@ -734,7 +745,7 @@ function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): T
 export function subtabCounts(state: GameState, world: World, ui: UiState): Record<SubtabId, number> {
   const counts = Object.fromEntries(SUBTABS.map((s) => [s, 0])) as Record<SubtabId, number>;
   for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
-    if (!revealed(state, i.id, i.arg)) continue;
+    if (!revealed(state, i.id, i.arg) || alreadyStands(state, world, i.id, i.arg)) continue;
     if (i.id === "chop" && i.arg && !ui.specific.trees) continue;
     if (i.id === "fish" && i.arg !== "any" && !ui.specific.fish) continue;
     if (i.id === "explore" && i.arg !== `region:${state.player.region}` && !ui.specific.regions) continue;
@@ -750,7 +761,7 @@ export function purposeCounts(state: GameState, world: World, ui: UiState): Reco
   const counts: Record<string, number> = {};
   for (const q of PURPOSES[ui.panes.subtab]) counts[q] = 0;
   for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
-    if (!revealed(state, i.id, i.arg)) continue;
+    if (!revealed(state, i.id, i.arg) || alreadyStands(state, world, i.id, i.arg)) continue;
     if (subtabOf(i.id, i.arg) !== ui.panes.subtab) continue;
     if (i.id === "chop" && i.arg && !ui.specific.trees) continue;
     if (i.id === "fish" && i.arg !== "any" && !ui.specific.fish) continue;
