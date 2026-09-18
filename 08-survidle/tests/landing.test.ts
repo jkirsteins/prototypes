@@ -179,6 +179,10 @@ describe("the dim map", () => {
     siteCamp(state, world);
     const cal = calendar(0);
     const ui = newUiState();
+    // One glyph per patch. At the default rung a glyph reads as known only
+    // when most of its 36 patches are, and re-seeing the one patch underfoot
+    // is not most of a block; the question here is about the patch.
+    ui.zoom = 0;
     addItem(herePile(state, world), "stone", 2);
 
     expect(glyphsWith(board(world, state, ui, cal), "pl").length).toBe(1);

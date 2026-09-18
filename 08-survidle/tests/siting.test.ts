@@ -425,6 +425,10 @@ describe("the map marks the camp", () => {
     siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const ui = newUiState();
+    // One glyph per patch: at the default rung a glyph stands over 36 patches
+    // and the survivor's mark takes the whole of it, so a camp one patch away
+    // would be covered by the survivor and not by a fire or shelter.
+    ui.zoom = 0;
     const st = regionState(state, world, state.player.region);
     const generated = st.campCell!;
     // A fresh game starts you standing on the camp, and your own glyph wins the cell,

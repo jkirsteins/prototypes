@@ -24,9 +24,14 @@ import { advance } from "../src/sim/advance";
 import { doHtml } from "../src/ui/dopanel";
 import { mapBoardHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
+import { revealEverything } from "./pane";
 
 describe("a redraw takes nothing away", () => {
+  // The Do pane gates a row on the opportunity that reveals it, and a
+  // landing draws two rows. What is under test is what a redraw does to a
+  // row that is there, so every row is there.
   const { state, world } = newGame(21);
+  revealEverything(state);
   const cal = calendar(state.minute, state.startDoy);
 
   beforeEach(() => {

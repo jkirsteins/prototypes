@@ -89,7 +89,12 @@ describe("the voice", () => {
     const newest = away.entries[away.entries.length - 1];
     const firstRendered = html.match(/<time>[^<]*<\/time>(.*?)<\/div>/)?.[1] ?? "";
     expect(firstRendered).toContain(voice(newest.text, newest.away ? name : null));
+    // The Log panel shows the newest sixty lines, and a catch-up of this
+    // length writes more than that, so the landing line is off the panel;
+    // the newest of what it wrote is on it, told by name.
     const log = logHtml(state);
-    expect(log).toContain(voice(state.log[0].text, null).slice(0, 20));
+    const last = written[written.length - 1];
+    expect(log).toContain(`</time>${voice(last.text, name)}`);
+    expect(log).not.toMatch(/<time>[^<]*<\/time>You /);
   });
 });
