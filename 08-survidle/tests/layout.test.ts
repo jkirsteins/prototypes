@@ -379,3 +379,35 @@ describe("a mark owns its whole cell", () => {
     }
   });
 });
+
+describe("the phone", () => {
+  // The audit of 2026-09-18 at 390 wide with touch emulation found the
+  // board a 94px strip of the empty west of the world, the boat's three
+  // cards 40px each over 200px of person, and the page tabs three panels
+  // above the panel they switch. Each of these is one declaration.
+  const narrow = css.slice(css.indexOf("@media (max-width: 700px) {\n  /* One column"));
+
+  it("centres the board on the survivor in both axes, whatever the panel's width", () => {
+    const track = rule(".scroll-x");
+    expect(track).toContain("grid-template-rows: minmax(0, 1fr)");
+    expect(track).toContain("grid-template-columns: minmax(0, 1fr)");
+    // An auto margin on the item would beat that alignment and, once the
+    // board overflows, resolve to zero: the board pinned to the left.
+    expect(rule(".grid")).not.toMatch(/margin:\s*0 auto/);
+  });
+
+  it("gives the board a height of its own instead of what the legend leaves", () => {
+    expect(narrow).toMatch(/#map \{ height: auto; \}/);
+    expect(narrow).toMatch(/#mapdyn \{[^}]*flex: none;[^}]*height: 55vh;/);
+  });
+
+  it("stacks the boat's cards at their own height", () => {
+    expect(narrow).toMatch(/\.card \{ flex: none; \}/);
+  });
+
+  it("keeps the page tabs with the panel they switch", () => {
+    expect(narrow).toMatch(/#rightpages \{ order: 3; \}/);
+    expect(narrow).toMatch(/#alerts \{ order: 3; \}/);
+    expect(narrow).toMatch(/#weather \{ order: 3; \}/);
+  });
+});

@@ -120,6 +120,18 @@ reachable, and its close button dismisses it without walking anywhere. A
 desktop window resized to 390 never trips `(hover: none)` and would pass
 a check that never ran, so the pass uses touch emulation.
 
+## The board is centred on the survivor at every width
+
+The survivor is the middle glyph and the board is wider than a phone, so
+`.scroll-x` must centre the board in both axes and `.grid` must carry no
+auto margin: an auto margin beats the container's alignment and, once the
+board overflows, resolves to zero and pins the board to its left edge. On
+2026-09-18 that showed a phone the empty west of the world. Under 700px
+the board also has a height of its own rather than what the legend leaves
+of 50vh. A browser pass at 390 confirms the `@` is in the middle of the
+visible board; `tests/layout.test.ts` holds the declarations.
+`docs/phone-audit-2026-09-18.md` is the audit that found it.
+
 ## Buttons reachable by thumb at 390 wide
 
 Under the phone breakpoint, buttons and inputs are at least 40 pixels

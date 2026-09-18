@@ -524,6 +524,11 @@ html.sync-readonly [data-act="settings-open"], html.sync-readonly #settings { po
      in it and overflows both ends alike, so the survivor is in the middle
      of what is visible, which is what "centred and clipped" promised. */
   grid-template-rows: minmax(0, 1fr);
+  /* The same for the column: an auto track grows to the board's width and
+     the panel clips the right of it, so on a phone the survivor - the
+     middle column - sat off the right edge and the visible strip was the
+     empty west of the board. */
+  grid-template-columns: minmax(0, 1fr);
   background-color: #0a0e17;
   background-image: radial-gradient(#141a26 1px, transparent 1px);
   background-size: var(--px) var(--line);
@@ -538,9 +543,13 @@ html.sync-readonly [data-act="settings-open"], html.sync-readonly #settings { po
    over its rect, read exactly what they read when it held the cells. */
 .grid {
   /* A grid narrower than the panel sits in the middle of it rather than in
-     the left corner with the slack all on one side. */
+     the left corner with the slack all on one side: .scroll-x's
+     place-items does that. Never an auto margin here - an auto margin
+     beats the container's alignment, and once the board is wider than the
+     panel it resolves to zero and pins the board to the left, which is how
+     a phone showed the empty west of the world and never the survivor. */
   width: max-content;
-  margin: 0 auto;
+  margin: 0;
   position: relative;
   /* A map is dragged across and clicked on, never read as a passage, and a
      drag that selects a row of glyphs paints the ground blue mid-gesture.
@@ -1113,6 +1122,9 @@ button.act small.gives, span.act small.gives,
 @media (hover: none) {
   #map .legend { display: flex; }
   button, input, select { min-height: 40px; }
+  /* A checkbox is not a button: 40px of box around a 13px tick floats it
+     away from its own label. The label is the thumb's target. */
+  input[type="checkbox"] { min-height: 0; width: 22px; height: 22px; }
 }
 
 /* One column on a phone. `.col` goes `display: contents` so its sections
@@ -1137,6 +1149,10 @@ button.act small.gives, span.act small.gives,
   #stats { order: 2; }
   #weather { order: 3; }
   #forecastbox { order: 4; }
+  /* The page tabs sit with the panel they switch, not at the top of the
+     page three panels above it. */
+  #rightpages { order: 3; }
+  #alerts { order: 3; }
   #orders { order: 6; }
   #map { order: 7; }
   #panes { order: 8; }
@@ -1151,6 +1167,25 @@ button.act small.gives, span.act small.gives,
   #dopurposes { width: auto; border-right: none; border-bottom: 1px solid var(--line); padding: 0 0 4px; display: flex; flex-wrap: wrap; gap: 4px; }
   #dopurposes .grp { width: auto; }
   #doitems { padding-left: 0; overflow-y: visible; }
+
+  /* The board gets a height of its own instead of 50vh less a 300px
+     legend: the legend the touch rules show took the panel's height and
+     left the board a 94px strip. The page scrolls, so the legend follows
+     the board rather than squeezing it. */
+  #map { height: auto; }
+  #mapdyn { flex: none; height: 55vh; min-height: 260px; }
+
+  /* The boat's three cards stack; each takes its own height. `flex: 1 1 0`
+     in a column shared the row's height three ways and every card was 40px
+     of a 200px person. */
+  .card { flex: none; }
+
+  /* The settings panel, one control per line, with a checkbox beside its
+     own words. */
+  #settings > label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0; }
+  #settings > label + label { border-top: 1px solid var(--line); }
+  #sound { flex-wrap: wrap; }
+  #beacon label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 }
 
 /* The sky gallery (sky.html): every condition the weather widget draws, side
