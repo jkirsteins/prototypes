@@ -205,8 +205,8 @@ export interface OpenCall {
 const FULL_MOON_FROM = 0.9;
 /** Illumination a night and a half either side of full; `moonFullness` is 1 from here up. */
 const FULL_MOON_AT = 0.98;
-/** Choruses per real minute from a full pack under a full moon in a clear sky: one every five minutes or so, one or two an April night. */
-const HOWLING_RATE = 0.2;
+/** Choruses per real minute from a full pack under a full moon in a clear sky: one every three or four minutes, two or three an April night. */
+const HOWLING_RATE = 0.3;
 /**
  * Real seconds after a chorus before the next may start. The bout is half a
  * minute long, and a pack that has just rallied is quiet for a while after;
