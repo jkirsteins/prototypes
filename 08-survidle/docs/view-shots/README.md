@@ -21,8 +21,13 @@ Do pane offers Gather, Hunt and Explore.
 
 The same save, one click later. The board is held on the camp - the green `x`
 in the middle - while the survivor stands at the bottom edge of it, and the
-switch names the camp beside the buttons. The Do pane now offers Camp and
-Build.
+Do pane now offers Camp and Build.
+
+Which camp is being shown is captioned on the board, under the carried line.
+It began beside the two buttons and read as a third tab, which is the
+tester's "visually it seems to blur together" (playtest 2026-09-19, note 140)
+earned in a single change. The switch is two buttons; the caption belongs on
+the thing it describes.
 
 **What this shot also shows, and it is a finding rather than a defect.** The
 pane reads "Fire 0 / nothing here yet". Camp view offers camp work, but most

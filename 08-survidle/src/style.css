@@ -101,8 +101,6 @@ body { display: flex; flex-direction: column; height: 100vh; }
    no bottom rule - the panel under it is the board, not a pane body. */
 .viewswitch { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 4px 8px; }
 .viewswitch .tabs { border-bottom: none; margin-bottom: 0; }
-.viewcamp { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; color: var(--dim); }
-.viewcamp .mini.on { color: var(--accent); }
 
 .subs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 6px; }
 .subs:empty { display: none; }
@@ -437,6 +435,29 @@ html.sync-readonly [data-act="settings-open"], html.sync-readonly #settings { po
 #mapinventory .mapinv-label { color: var(--dim); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
 #mapinventory b { color: var(--text); }
 #mapinventory:empty { display: none; }
+
+/* The camp caption sits under the carried line, same box, same corner: both
+   say what the board in front of you is showing. Its picker is the one part
+   that takes a click, so the overlay's pointer-events are restored on it. */
+#mapcamp {
+  position: absolute;
+  z-index: 4;
+  top: calc(var(--map-overlay-inset) + 34px);
+  left: var(--map-overlay-inset);
+  max-width: min(360px, calc(50% - 12px));
+  padding: 4px 7px;
+  background: rgba(12, 15, 20, 0.82);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+#mapcamp .mapinv-label { color: var(--dim); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
+#mapcamp b { color: var(--text); }
+#mapcamp .mini.on { color: var(--accent); }
+#mapcamp:empty { display: none; }
 
 /* The stocks strip: what the camp holds, what it can hold, and which way
    each is moving, spanning the page above the columns. The same panel

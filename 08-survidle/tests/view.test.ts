@@ -12,7 +12,7 @@ import { PURPOSES, SUBTABS } from "../src/ui/purpose";
 import {
   campRegions, DEFAULT_VIEW, loadView, panesInView, purposesInView, purposeView,
   saveView, subtabsInView, toSubtabInView, VIEWS, viewCentre, viewedCampCell,
-  viewedCampRegion, viewSwitchHtml,
+  viewedCampRegion, viewSwitchHtml, campViewHtml,
 } from "../src/ui/view";
 import { siteCamp } from "./siting-helpers";
 
@@ -84,9 +84,12 @@ describe("the camp a camp view is looking at", () => {
     expect(campRegions(state)).toEqual([]);
     expect(viewedCampRegion(state, null)).toBeNull();
     expect(viewedCampCell(state, null)).toBeNull();
-    const html = viewSwitchHtml(state, world, "camp", null);
-    expect(html).toContain('data-act="view"');
-    expect(html).toContain("no camp yet");
+    expect(viewSwitchHtml("camp")).toContain('data-act="view"');
+    // The caption is on the board, and says the camp is missing rather than
+    // disappearing - a landing has none.
+    expect(campViewHtml(state, world, "camp", null)).toContain("none yet");
+    // Survivor view has nothing to caption: the board is centred on the person.
+    expect(campViewHtml(state, world, "survivor", null)).toBe("");
   });
 
   it("takes the one the survivor stands in, and honours a picked one", () => {
@@ -108,9 +111,9 @@ describe("the camp a camp view is looking at", () => {
     const { state, world } = newGame(17);
     const home = state.player.region;
     siteCamp(state, world, home);
-    expect(viewSwitchHtml(state, world, "camp", null)).not.toContain('data-act="camp-view"');
+    expect(campViewHtml(state, world, "camp", null)).not.toContain('data-act="camp-view"');
     siteCamp(state, world, regionAt(world, home).neighbours[0].id);
-    const html = viewSwitchHtml(state, world, "camp", null);
+    const html = campViewHtml(state, world, "camp", null);
     expect(html).toContain('data-act="camp-view"');
     expect(html).toContain("(here)");
   });

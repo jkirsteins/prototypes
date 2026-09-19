@@ -189,33 +189,40 @@ export function saveView(view: View, storage: Storage = localStorage): void {
 }
 
 /**
- * The switch itself, and the camp it is looking at.
+ * The switch itself: two buttons and nothing else.
  *
- * Camp view names the camp beside the buttons rather than in a separate
- * panel, because which camp is being looked at is the thing most likely to
- * be wrong when the board does not show what the player expected. A lineage
- * with one camp gets the name and no picker; a second camp - founded on
- * purpose or by accident - turns it into a row of choices.
- *
- * With no camp anywhere, the view still switches and says so. A landing has
- * no camp until one is sited, and a button that vanishes in that moment
- * would read as the feature breaking rather than as the camp missing.
+ * Which camp is being looked at used to sit beside them, and read as a third
+ * tab - the tester's "visually it seems to blur together" (playtest
+ * 2026-09-19, note 140), earned in one change. It belongs on the board it
+ * describes, which is `campViewHtml` below.
  */
-export function viewSwitchHtml(state: GameState, world: World, view: View, chosen: number | null): string {
+export function viewSwitchHtml(view: View): string {
   const buttons = VIEWS
     .map((id) => `<button class="tab${id === view ? " on" : ""}" data-act="view" data-view="${id}">${VIEW_WORDS[id]}</button>`)
     .join("");
-  if (view !== "camp") return `<div class="tabs">${buttons}</div>`;
+  return `<div class="tabs">${buttons}</div>`;
+}
+
+/**
+ * The camp the board is showing, written on the board, beside the survivor's
+ * own carried line. Empty in survivor view, so the overlay is not there at
+ * all: the board is centred on the person and has nothing to caption.
+ *
+ * A lineage with one camp gets its name. A second camp - founded on purpose
+ * or by accident - turns it into a row of choices, which is also the answer
+ * to 09-07's notes 223-224. With no camp at all it says so rather than
+ * vanishing, because a landing has none and a caption that disappears reads
+ * as the feature breaking rather than as the camp missing.
+ */
+export function campViewHtml(state: GameState, world: World, view: View, chosen: number | null): string {
+  if (view !== "camp") return "";
   const camps = campRegions(state);
   const looking = viewedCampRegion(state, chosen);
-  if (looking === null) {
-    return `<div class="tabs">${buttons}</div><span class="dim viewcamp">no camp yet - site one and it is here</span>`;
-  }
-  if (camps.length === 1) {
-    return `<div class="tabs">${buttons}</div><span class="viewcamp">${esc(campLabel(world, looking))}</span>`;
-  }
+  const label = `<span class="mapinv-label">camp</span> `;
+  if (looking === null) return `${label}<b>none yet</b> - site one and the board comes here`;
+  if (camps.length === 1) return `${label}<b>${esc(campLabel(world, looking))}</b>`;
   const picker = camps
     .map((id) => `<button class="mini${id === looking ? " on" : ""}" data-act="camp-view" data-region="${id}">${esc(campLabel(world, id))}${id === state.player.region ? " (here)" : ""}</button>`)
     .join("");
-  return `<div class="tabs">${buttons}</div><span class="viewcamp">${picker}</span>`;
+  return `${label}${picker}`;
 }

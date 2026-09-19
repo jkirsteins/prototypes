@@ -54,7 +54,7 @@ import { catalogPage, opportunityCatalogAction, opportunityCatalogHtml, opportun
 import { opportunityPanelHtml } from "./ui/opportunity-panel";
 import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml } from "./ui/panes";
-import { loadView, panesInView, purposesInView, purposeView, saveView, subtabsInView, toSubtabInView, type View, viewSwitchHtml } from "./ui/view";
+import { campViewHtml, loadView, panesInView, purposesInView, purposeView, saveView, subtabsInView, toSubtabInView, type View, viewSwitchHtml } from "./ui/view";
 import { paneForOpportunity, PURPOSES } from "./ui/purpose";
 
 /**
@@ -645,6 +645,7 @@ function render(nowMs = performance.now()) {
   if (ordersEl) ordersEl.hidden = phone && page !== "queue";
   setPanel("camp", campHtml(state, world, cal, ui.rateDisplay));
   setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
+  setPanel("mapcamp", campViewHtml(state, world, ui.view, ui.campView));
   setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("opportunities", opportunityPanelHtml(state));
@@ -672,7 +673,7 @@ function render(nowMs = performance.now()) {
   setPanel("task", taskHtml(state, world, cal, ui.hurry));
   setPanel("orders", queueHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
-  setPanel("viewswitch", viewSwitchHtml(state, world, ui.view, ui.campView));
+  setPanel("viewswitch", viewSwitchHtml(ui.view));
   setPanel("panetabs", paneTabsHtml(ui.panes));
   settlePanes();
   setPanel("dosubs", ui.filter.trim() ? "" : subtabsHtml(ui.panes, subtabCounts(state, world, ui)));
