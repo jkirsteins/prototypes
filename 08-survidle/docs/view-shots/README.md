@@ -23,11 +23,17 @@ The same save, one click later. The board is held on the camp - the green `x`
 in the middle - while the survivor stands at the bottom edge of it, and the
 Do pane now offers Camp and Build.
 
-Which camp is being shown is captioned on the board, under the carried line.
-It began beside the two buttons and read as a third tab, which is the
-tester's "visually it seems to blur together" (playtest 2026-09-19, note 140)
-earned in a single change. The switch is two buttons; the caption belongs on
-the thing it describes.
+Both the switch and the camp's name are on the board. The switch sits top
+right, opposite the carried line; which camp is being shown is captioned top
+left, under it.
+
+Neither started there. The switch was a row of its own above the map and the
+camp's name sat beside its buttons, where it read as a third tab - the
+tester's "ui is confusing... visually it seems to blur together" (playtest
+2026-09-19, note 140) earned back in one change, on the row above the three
+levels he was already describing. A control belongs on the picture it
+governs, and a caption on the thing it names; the page carries one band of
+tab-shaped things fewer for it.
 
 **What this shot also shows, and it is a finding rather than a defect.** The
 pane reads "Fire 0 / nothing here yet". Camp view offers camp work, but most

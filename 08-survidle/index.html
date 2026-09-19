@@ -48,10 +48,6 @@
         <section id="skills" class="panel"></section>
       </aside>
       <main id="center" class="col">
-        <!-- The view switch: survivor or camp. Top of the middle column
-             because it is acted on and because it governs both the board
-             under it and which end of the order list the Do pane shows. -->
-        <section id="viewswitch" class="panel viewswitch"></section>
         <section id="map" class="panel">
           <!-- The effects canvas (water shimmer, cloud shadow, weather
                motion) is mapHtml's own markup, inside .scroll-x, so it
@@ -66,6 +62,10 @@
           <!-- Which camp the board is showing, in camp view only: a caption
                on the thing it describes rather than a third tab above it. -->
           <div id="mapcamp"></div>
+          <!-- The view switch, on the board it governs rather than in a row
+               of its own above it: one less band of tab-shaped things across
+               the page (playtest 2026-09-19, note 140). -->
+          <div id="mapview"></div>
           <!-- One element, in the markup from the start, so it is shown and
                hidden rather than created and destroyed under the pointer. -->
           <div id="maptip" hidden></div>

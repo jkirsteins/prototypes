@@ -646,6 +646,7 @@ function render(nowMs = performance.now()) {
   setPanel("camp", campHtml(state, world, cal, ui.rateDisplay));
   setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
   setPanel("mapcamp", campViewHtml(state, world, ui.view, ui.campView));
+  setPanel("mapview", viewSwitchHtml(ui.view));
   setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("opportunities", opportunityPanelHtml(state));
@@ -673,7 +674,7 @@ function render(nowMs = performance.now()) {
   setPanel("task", taskHtml(state, world, cal, ui.hurry));
   setPanel("orders", queueHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
-  setPanel("viewswitch", viewSwitchHtml(ui.view));
+  
   setPanel("panetabs", paneTabsHtml(ui.panes));
   settlePanes();
   setPanel("dosubs", ui.filter.trim() ? "" : subtabsHtml(ui.panes, subtabCounts(state, world, ui)));
