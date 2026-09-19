@@ -24,14 +24,20 @@ import { releasePlannedBuilds } from "./orders";
 import { cellOf } from "./position";
 import { current, newRecord, worldDate } from "./record";
 import { campSite, DIM, discovery, enterRegion, regionState, touchedRegions, VISITED } from "./regionstate";
-import { CARRY_SHARE, carrySkills, level, SKILL_IDS, SKILL_NAMES } from "./skills";
+import { CARRY_SHARE, carrySkills, level, SKILL_CAP, SKILL_IDS, SKILL_NAMES } from "./skills";
 import { resetTeaching } from "./teach";
 import type { GameState, ItemId, LifeEvent, LifeRecord, PerishableId, Person, RegionState, WorldDate } from "./types";
 import { rebaseWeather } from "./weather";
 
 export const GAP_MIN_DAYS = 90;
-export const LANDING_MIN_KM = 3;
 export const LANDING_MAX_KM = 20;
+
+/**
+ * The tightest a carried Wayfinding can draw the landing in. Not a floor on
+ * the distance - the country next door is that, and it is a region rule
+ * rather than a number. See `landingReachKm`.
+ */
+export const LANDING_NEAR_KM = 3;
 
 /** Rule 4.1: at least a season, and only on the open coast. */
 export function landingDate(death: WorldDate): { date: WorldDate; gapDays: number } {
@@ -55,26 +61,68 @@ function isShore(world: World, idx: number): boolean {
   return passable(c.terrain) && neighbours(world, idx).some((n) => cellAt(world, n).terrain === "water");
 }
 
-/** A shore cell 3 to 20 km from the old camp, the same one every time; the nearest shore if the band is empty. */
-export function landingCell(world: World, oldCamp: number, seed: number, index: number): number {
+/**
+ * How far out the boat may still put an heir who carried this much
+ * Wayfinding: the full `LANDING_MAX_KM` with none of it, drawing in to
+ * `LANDING_NEAR_KM` at the cap, straight-line between.
+ *
+ * It is a ceiling, not the distance. Skill takes the far shores off the
+ * table rather than choosing a spot, so a practised lineage lands somewhere
+ * in the country next door instead of a week's search away. The floor is
+ * never a number: it is the region rule below.
+ *
+ * Wayfinding is the skill because it already owns the walk this shortens.
+ * `explore` and `searchHome` are its two actions (skills.ts, MASTERY_KEYS),
+ * and `searchHome` is what a heir with no route to the old camp actually
+ * does: sweep the edge of known ground for a way through. That search, not
+ * the kilometres, is what the walk home costs - the heir gate measures the
+ * arrival in days where the straight line would say hours. So a lineage
+ * that practised searching hands its heir a shorter one, which is the
+ * ratchet: no hectare yields more, the dead walk is simply shorter.
+ */
+export function landingReachKm(wayfindingLevel: number): number {
+  const share = Math.min(1, Math.max(0, (wayfindingLevel - 1) / (SKILL_CAP - 1)));
+  return LANDING_MAX_KM - share * (LANDING_MAX_KM - LANDING_NEAR_KM);
+}
+
+/**
+ * A shore cell for the heir to land on, the same one every time for a seed
+ * and a place in the line: never in the camp's own region, no further than
+ * `LANDING_MAX_KM`, and no nearer than the ancestor's Wayfinding earned.
+ *
+ * The fallbacks go down one constraint at a time rather than all at once, so
+ * a coast that cannot answer the skilled band still answers the rule that
+ * matters: the nearest shore outside the camp's region, and only a world
+ * with no such shore at all falls back to the camp itself.
+ */
+export function landingCell(world: World, oldCamp: number, seed: number, index: number, wayfindingLevel = 1): number {
   const cc = cellAt(world, oldCamp);
+  const home = cc.region;
   const r = Math.ceil(LANDING_MAX_KM / PATCH_KM);
-  const band: number[] = [];
+  const reachKm = landingReachKm(wayfindingLevel);
+  const within: number[] = [];
+  const outside: number[] = [];
   let nearest = -1;
   let nearestD = Number.POSITIVE_INFINITY;
   for (let y = Math.max(0, cc.y - r); y <= Math.min(world.h - 1, cc.y + r); y++) {
     for (let x = Math.max(0, cc.x - r); x <= Math.min(world.w - 1, cc.x + r); x++) {
       const idx = y * world.w + x;
       if (!isShore(world, idx)) continue;
+      // Arriving already home is not an arrival, however well the coast is known.
+      if (cellAt(world, idx).region === home) continue;
       const km = Math.hypot(x - cc.x, y - cc.y) * PATCH_KM;
-      if (km >= LANDING_MIN_KM && km <= LANDING_MAX_KM) band.push(idx);
-      if (km < nearestD && idx !== oldCamp) {
+      if (km > LANDING_MAX_KM) continue;
+      outside.push(idx);
+      if (km <= reachKm) within.push(idx);
+      if (km < nearestD) {
         nearestD = km;
         nearest = idx;
       }
     }
   }
-  if (band.length) return band[new Rng(derive(seed, 1000 + index)).int(band.length)];
+  const rng = new Rng(derive(seed, 1000 + index));
+  if (within.length) return within[rng.int(within.length)];
+  if (outside.length) return outside[rng.int(outside.length)];
   return nearest >= 0 ? nearest : oldCamp;
 }
 
@@ -251,7 +299,11 @@ export function beginAgain(state: GameState, world: World): void {
   state.log = [];
   demoteFog(state);
   // Nobody made camp: the ground the last survivor died on is what the heir lands near.
-  const cell = landingCell(world, oldCamp ?? cellOf(state, world), state.seed, state.survivors.length + 1);
+  // The Wayfinding the heir will wake with, read off the ancestor's record at
+  // the same share `carrySkills` applies - the cell is chosen here, and that
+  // does not run until `land`.
+  const carriedWayfinding = level((current(state)?.skills?.wayfinding ?? 0) * CARRY_SHARE);
+  const cell = landingCell(world, oldCamp ?? cellOf(state, world), state.seed, state.survivors.length + 1, carriedWayfinding);
   const candidates = rollCandidates(state.seed, state.survivors.length + 1, 0, state.survivors.map((s) => s.name));
   state.landing = { cell, region: regionOf(world, cell % world.w, Math.floor(cell / world.w)), date, gapDays, candidates, boat: 0, chosen: 0, name: candidates[0].name, oldCamp };
 }

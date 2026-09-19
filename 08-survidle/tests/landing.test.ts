@@ -7,7 +7,7 @@ import { addItem, assertPileIndexConsistent, herePile, pile, pileCells, qty } fr
 import { spoilPiles } from "../src/sim/camp";
 import { setSkillLevel } from "../src/sim/horizon";
 import { giveOrder } from "../src/sim/ladder";
-import { beginAgain, demoteFog, land, landingCell, landingDate, layDownPack, oldCampHint } from "../src/sim/landing";
+import { beginAgain, demoteFog, land, landingCell, landingDate, LANDING_MAX_KM, LANDING_NEAR_KM, landingReachKm, layDownPack, oldCampHint } from "../src/sim/landing";
 import { STRUCTURES } from "../src/sim/items";
 import { loadGame, saveGame } from "../src/sim/save";
 import { isKnown, knownShare } from "../src/sim/mapped";
@@ -19,7 +19,7 @@ import { die } from "../src/sim/player";
 import { cellOf, placeAtSpot } from "../src/sim/position";
 import { current } from "../src/sim/record";
 import { campSite, DIM, discovery, enterRegion, regionState, siteFor, VISITED } from "../src/sim/regionstate";
-import { SKILL_IDS } from "../src/sim/skills";
+import { SKILL_CAP, SKILL_IDS } from "../src/sim/skills";
 import { seasonalMean } from "../src/sim/weather";
 import { board, glyphsWith } from "./board";
 import { campHtml, tombstoneHtml } from "../src/ui/panels";
@@ -47,7 +47,7 @@ describe("the gap", () => {
 });
 
 describe("the landing", () => {
-  it("picks a shore cell 3 to 20 km from the old camp, the same one every time", () => {
+  it("picks a shore cell within 20 km and never in the camp's own country, the same one every time", () => {
     for (const seed of [17, 19, 42, 79]) {
       const { state, world } = newGame(seed);
       siteCamp(state, world);
@@ -59,8 +59,42 @@ describe("the landing", () => {
       expect(neighbours(world, a).some((n) => cellAt(world, n).terrain === "water")).toBe(true);
       const cc = cellAt(world, camp);
       const km = Math.hypot(c.x - cc.x, c.y - cc.y) * PATCH_KM;
-      expect(km).toBeGreaterThanOrEqual(3);
       expect(km).toBeLessThanOrEqual(20);
+      // Arriving already home is not an arrival: the country next door is the
+      // floor, at every level of Wayfinding.
+      expect(cellAt(world, a).region).not.toBe(cellAt(world, camp).region);
+    }
+  });
+
+  it("a carried Wayfinding draws the landing in, and never inside the camp's own country", () => {
+    // The ceiling falls from the full reach at level 1 to LANDING_NEAR_KM at
+    // the cap, and is monotonic in between: more searching is never a worse
+    // landing.
+    expect(landingReachKm(1)).toBe(LANDING_MAX_KM);
+    expect(landingReachKm(SKILL_CAP)).toBe(LANDING_NEAR_KM);
+    expect(landingReachKm(SKILL_CAP * 10)).toBe(LANDING_NEAR_KM);
+    let last = Number.POSITIVE_INFINITY;
+    for (let l = 1; l <= SKILL_CAP; l++) {
+      const km = landingReachKm(l);
+      expect(km).toBeLessThanOrEqual(last);
+      last = km;
+    }
+
+    for (const seed of [17, 19, 42, 79]) {
+      const { state, world } = newGame(seed);
+      siteCamp(state, world);
+      const camp = regionState(state, world, state.player.region).campCell!;
+      const cc = cellAt(world, camp);
+      const kmAt = (levelOfSkill: number) => {
+        const cell = landingCell(world, camp, seed, 2, levelOfSkill);
+        expect(cellAt(world, cell).region).not.toBe(cc.region);
+        const c = cellAt(world, cell);
+        return Math.hypot(c.x - cc.x, c.y - cc.y) * PATCH_KM;
+      };
+      // A practised lineage is never set down further out than an unpractised
+      // one could be. The shores a coast actually offers decide the rest.
+      expect(kmAt(SKILL_CAP)).toBeLessThanOrEqual(LANDING_MAX_KM);
+      expect(kmAt(1)).toBeLessThanOrEqual(LANDING_MAX_KM);
     }
   });
 
