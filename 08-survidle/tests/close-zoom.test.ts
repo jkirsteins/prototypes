@@ -16,15 +16,17 @@ import { calendar } from "../src/sim/calendar";
 import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
 import { newKnowledge } from "../src/sim/fineknowledge";
 import { newGame } from "../src/sim/newgame";
-import { cellOf } from "../src/sim/position";
+import { cellOf, placeAt } from "../src/sim/position";
+import { hasLineOfSight, visibleCells } from "../src/sim/sight";
+import { canopyHeightAt } from "../src/world/cells";
 import { DEFAULT_ZOOM, glyphSummary, LEVELS, levelAt, mapBoardHtml, mapTargetAtPoint, terrainComposition, viewOrigin, ZOOMS, zoomLabel } from "../src/ui/map";
-import { board, glyphsWith, type MapModel } from "./board";
+import { board, glyphOfCell, glyphsWith, type MapModel } from "./board";
 import { newUiState, type UiState } from "../src/ui/render";
 import { tipHtml } from "../src/ui/tip";
 import { worldCacheStats } from "../src/world/aggregate";
 import { frontierRoute, survivorRoute } from "../src/sim/routing";
 import { PATCH_M } from "../src/world/spatial";
-import { cellAt, neighbours, type World } from "../src/world/gen";
+import { cellAt, neighbours, regionAt, type World } from "../src/world/gen";
 import { passable } from "../src/world/route";
 import type { GameState } from "../src/sim/types";
 
@@ -286,6 +288,43 @@ describe("firelight at night", () => {
     expect(glyphsWith(b, "lit-1").length).toBeGreaterThanOrEqual(3);
     expect(glyphsWith(b, "lit-1").length).toBeLessThanOrEqual(8);
     expect(glyphsWith(b, "lit-2").length).toBeLessThanOrEqual(16);
+  });
+
+  it("lights a stand in a hollow whose floor is out of sight, since the fire is on the trees", () => {
+    // A knoll between the survivor and a birch in a dip hides the dip's
+    // floor, not its trunks and crowns; the ring is aimed at what the fire
+    // lights there (map.ts, firelit).
+    const { state, world, night } = litCamp();
+    const region = state.player.region;
+    const land = regionAt(world, region).cells.filter((cell) => isKnown(state, cell) && cellAt(world, cell).terrain !== "water");
+    let scenario: { camp: number; observer: number; hollow: number } | null = null;
+    for (const camp of land) {
+      const cx = camp % world.w;
+      const cy = Math.floor(camp / world.w);
+      for (let oy = -2; oy <= 2 && !scenario; oy++) {
+        for (let ox = -2; ox <= 2 && !scenario; ox++) {
+          const observer = (cy + oy) * world.w + cx + ox;
+          if ((ox === 0 && oy === 0) || cellAt(world, observer).terrain === "water" || !hasLineOfSight(world, observer, camp, 1.5)) continue;
+          for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]]) {
+            const cell = (cy + dy) * world.w + cx + dx;
+            const canopy = canopyHeightAt(world, cell);
+            if (cell === observer || canopy === 0) continue;
+            if (!hasLineOfSight(world, observer, cell, 0.5) && hasLineOfSight(world, observer, cell, canopy)) { scenario = { camp, observer, hollow: cell }; break; }
+          }
+        }
+      }
+      if (scenario) break;
+    }
+    expect(scenario).not.toBeNull();
+    const { camp, observer, hollow } = scenario!;
+    state.regions[region].campCell = camp;
+    placeAt(state, world, observer);
+    const dark = { ...night, moonLight: 0 };
+    // The sky shows none of it: whatever is lit there, the fire lit.
+    expect(visibleCells(state, world, dark, observer).has(hollow)).toBe(false);
+    const g = glyphOfCell(board(world, state, open(0), dark), hollow)!;
+    expect(g.classes).toContain("lit-1");
+    expect(g.classes).not.toContain("memory");
   });
 });
 

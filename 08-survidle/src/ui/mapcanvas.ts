@@ -38,6 +38,8 @@ export interface MapGlyph {
   region: number;
   /** Flicker delay for a firelit glyph, in seconds, so neighbouring flames are out of step. */
   fd?: number;
+  /** How strongly a firelit glyph's glow shows, 0 to 1 (map.ts, glowOf): the fire against the sky. */
+  glow?: number;
   wildlifeId?: number;
   /** When a seen animal on this glyph recoiled, in wall-clock ms, for the effects layer's shake. */
   wildlifeStart?: number;

@@ -32,6 +32,15 @@ export const CAMP_FIRE_LUX = 20;
  * length. Flagged for the sources audit alongside the fire.
  */
 export const TORCH_LUX = 10;
+/** The camp fire's luminous intensity: the 40 cd behind CAMP_FIRE_LUX. */
+export const CAMP_FIRE_CD = 40;
+/** The brand's luminous intensity: the 8 cd behind TORCH_LUX. */
+export const TORCH_CD = 8;
+
+/** What a flame of this intensity puts on ground `m` metres away: a point source, inverse square. */
+export function flameLuxAt(cd: number, m: number): number {
+  return cd / (m * m);
+}
 /** Overcast transmits this much of the clear-sky sun. Published range 0.1-0.25. */
 const OVERCAST_SUN = 0.15;
 /** Cloud is far crueller to the small lights: a moon or the stars behind it are all but gone. */

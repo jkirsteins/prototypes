@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
+import { EMBER_LUX } from "../src/sim/fire";
+import { CAMP_FIRE_CD, CAMP_FIRE_LUX } from "../src/sim/light";
 import { newKnowledge } from "../src/sim/fineknowledge";
 import { mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -10,14 +12,14 @@ import { visibleCells } from "../src/sim/sight";
 import { ensureGround } from "../src/sim/weather";
 import { WEATHER_SHOTS, weatherShotFixture } from "../src/sim/weather-scenarios";
 import { activateWildlife } from "../src/sim/wildlife-agents";
-import { effectsSnapshot, type EffectsWeatherKind, litRings, mapBoardHtml, WATER_LIT, WATER_RIPPLES, waterRippleDelaysS, waterRipplePeak, waterRipplePhases, weatherGlyphChar } from "../src/ui/map";
+import { DAY_FLAME_GLOW, DAY_RING_GLOW, effectsSnapshot, type EffectsWeatherKind, glowOf, litRings, mapBoardHtml, NIGHT_RING_GAIN, NIGHT_RING_GLOW, RING_GLOW_CAP, WATER_LIT, WATER_RIPPLES, waterRippleDelaysS, waterRipplePeak, waterRipplePhases, weatherGlyphChar } from "../src/ui/map";
 import { filtered, glyphStyle } from "../src/ui/palette";
 import { board, glyphOfCell, glyphsWith } from "./board";
 import { enqueueWildlifeStartle, newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { cellAt, neighbours, regionPeek } from "../src/world/gen";
 import { cellIdx, chunkIndexOf, residentChunk } from "../src/world/cells";
 import { CHANNEL_STREAM } from "../src/world/refine";
-import { FINE_PER_PARENT, patchXY } from "../src/world/spatial";
+import { FINE_PER_PARENT, PATCH_M, patchXY } from "../src/world/spatial";
 import { passable } from "../src/world/route";
 import { css, rule } from "./css";
 import { neighbourLandCell } from "./siting-helpers";
@@ -336,6 +338,31 @@ describe("the map's compositing layers", () => {
     const source = readFileSync("src/ui/map.ts", "utf8");
     const pulses = source.slice(source.indexOf("function drawPulses("), source.indexOf("function drawGlyphOver("));
     expect(pulses).toContain(`cls.includes("${cls}")`);
+  });
+
+  it("scales a fire's glow by its light against the sky's, with a faint floor for a flame by day", () => {
+    // Sky figures are skyLux on 2 April at 62 N: clear noon, overcast sunset,
+    // a clear full-moon night and an overcast moonless one.
+    const fire = { lux: CAMP_FIRE_LUX, cd: CAMP_FIRE_CD, flame: true };
+    const coals = { lux: EMBER_LUX, cd: 0, flame: false };
+    const noon = 52_000;
+    expect(glowOf(fire, 0, PATCH_M, noon)).toBe(DAY_FLAME_GLOW);
+    expect(glowOf(fire, 1, PATCH_M, noon)).toBe(DAY_RING_GLOW);
+    expect(glowOf(fire, 2, PATCH_M, noon)).toBe(DAY_RING_GLOW);
+    expect(glowOf(coals, 0, PATCH_M, noon)).toBeLessThan(0.001);
+    // Dusk: the fire's own cell comes up past its floor; the sun is down, so the rings take the night floor.
+    expect(glowOf(fire, 0, PATCH_M, 9.24)).toBeCloseTo(0.684, 2);
+    expect(glowOf(fire, 1, PATCH_M, 9.24, true)).toBe(NIGHT_RING_GLOW);
+    // Night: a full moon's rings are lifted to the floor, a black night's held to the cap.
+    expect(glowOf(fire, 1, PATCH_M, 0.0569, true)).toBe(NIGHT_RING_GLOW);
+    expect(glowOf(fire, 2, PATCH_M, 0.0569, true)).toBe(NIGHT_RING_GLOW);
+    expect(glowOf(fire, 1, PATCH_M, 0.00182, true)).toBe(RING_GLOW_CAP);
+    expect(glowOf(fire, 2, PATCH_M, 0.00182, true)).toBe(RING_GLOW_CAP);
+    expect(glowOf(fire, 0, PATCH_M, 0.00182, true)).toBeGreaterThan(0.99);
+    // Between the two, the lux and the night gain decide.
+    expect(glowOf(fire, 1, PATCH_M, 0.02, true)).toBeCloseTo(0.444 * NIGHT_RING_GAIN, 2);
+    // Coals and a brand take no floor; a brand's ring still takes the cap.
+    expect(glowOf({ lux: 10, cd: 8, flame: false }, 1, PATCH_M, 52_000, false)).toBeLessThan(0.001);
   });
 
   it("gives a fire a glow footprint at 300 m: its cell, a weak spill on the neighbours, a second ring only for a large fire", () => {

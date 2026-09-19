@@ -13,17 +13,18 @@
  * fainter still. The player never pans; the world moves under them.
  */
 import type { Calendar } from "../sim/calendar";
-import { fuelTotal, hasEmbers, roofed } from "../sim/fire";
+import { EMBER_LUX, fuelTotal, hasEmbers, roofed } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
 import { knowledgeAt, type KnowledgeLevel } from "../sim/fineknowledge";
 import { coarseKnowledgeGen, isKnown, knowledgeAtLevel, knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
-import { visitedCamps } from "../sim/light";
+import { CAMP_FIRE_CD, CAMP_FIRE_LUX, flameLuxAt, skyLux, TORCH_CD, TORCH_LUX, visitedCamps } from "../sim/light";
 import { discovery, siteAt, VISITED } from "../sim/regionstate";
 import type { AgentSpecies, AtmosphereSample, GameState, LocalGroundWeather, RegionState, Terrain, WildlifeSubject } from "../sim/types";
-import { atmosphereAt, conditionsAt, conditionsWithGround, DEEP_SNOW_CM, groundAt, iceMode } from "../sim/weather";
+import { atmosphereAt, conditionsAt, conditionsWithGround, DEEP_SNOW_CM, groundAt, iceMode, localWeather as weatherAtCell } from "../sim/weather";
 import { cellIdx, fineHeightAt, fineHeightPeek, fineWaterPeek, neighbours, regionPeek, terrainPeek, waterKindOf, type World } from "../world/gen";
 import { WORLD_H, WORLD_W } from "../world/terrain";
+import { canopyHeightAt } from "../world/cells";
 import { emptyTerrainCounts, parentSummary } from "../world/aggregate";
 import { FINE_PER_PARENT, PATCH_KM, PATCH_M, type PatchId } from "../world/spatial";
 import { passable, type RouteConditions } from "../world/route";
@@ -46,6 +47,8 @@ import { aggregatePresentation, cellKnowledge as presentationKnowledge, cellPres
 const CAMPFIRE_VISIBLE_KM = 5;
 /** Inside one kilometre the map can resolve firelit ground as well as the point source itself. */
 const CAMPFIRE_LOCAL_LIGHT_KM = 1;
+/** How far above open ground the fire's light is looked for: the lit ground and what stands on it. */
+const FIRELIT_GROUND_M = 0.5;
 
 export const GLYPH = TERRAIN_GLYPH;
 
@@ -1306,7 +1309,7 @@ function shimmerScale(): number {
 /**
  * What used to be CSS keyframes on cells, drawn per frame instead: the
  * player mark's mood pulse (`mood-toil`, a background that breathes between
- * two golds), the night fire's flicker and the coals' slower breath, and
+ * two golds), the fire's flicker and the coals' slower breath, and
  * the lit rings round a fire (`flicker` on `.lit-0` and the `::after`
  * washes of `.lit-1`/`.lit-2`). Each is a fill over the glyph's cell whose
  * colour moves between the two ends of the old animation on the old
@@ -1327,8 +1330,10 @@ const PULSE = {
   lit0: { a: [0xff, 0x8c, 0x2a], b: [0xff, 0xd0, 0x66], periodS: 1.1 },
   lit0Coals: { a: [0x6b, 0x32, 0x18], b: [0x9c, 0x4f, 0x24], periodS: 2.6 },
 } as const;
+// Ring 1's flicker tops out well under the flame's own cell, so the fire
+// stays the brightest thing on a dark night rather than a block of three.
 const LIT_RING: Record<1 | 2, { rgb: [number, number, number]; a: number; b: number }> = {
-  1: { rgb: [255, 176, 64], a: 0.45, b: 0.7 },
+  1: { rgb: [255, 176, 64], a: 0.45, b: 0.6 },
   2: { rgb: [255, 150, 50], a: 0.18, b: 0.32 },
 };
 
@@ -1353,9 +1358,11 @@ function drawPulses(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: n
     const x = g.gx * model.px;
     const y = g.gy * model.line;
     if (cls.includes("mk-player")) {
-      // At night the fire under the survivor's feet outranks their mood:
-      // the flicker or the coals' breath, and the @ over it.
-      const fire = board.night ? cls.includes("at-fire") ? PULSE.fire : cls.includes("at-coals") ? PULSE.coals : null : null;
+      // The fire under the survivor's feet outranks their mood once it is the
+      // stronger light there, which is from dusk on: the flicker or the
+      // coals' breath, and the @ over it. By day the mood keeps the cell.
+      const fireLight = (g.glow ?? 0) >= 0.5;
+      const fire = fireLight ? cls.includes("at-fire") ? PULSE.fire : cls.includes("at-coals") ? PULSE.coals : null : null;
       const mood = fire ?? (cls.includes("mood-walk") ? PULSE.walk : cls.includes("mood-work") ? PULSE.work : null);
       if (!mood) continue;
       ctx.globalAlpha = 1;
@@ -1364,22 +1371,36 @@ function drawPulses(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: n
       drawGlyphOver(ctx, model, g, "#fff");
       continue;
     }
-    if (!board.night) continue;
+    if (cls.includes("fire-far")) {
+      // A fire kilometres off is a point in the dark, and only in the dark.
+      if (!board.night) continue;
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = mix(PULSE.fireFar.a, PULSE.fireFar.b, breath(t, PULSE.fireFar.periodS));
+      ctx.fillRect(x, y, model.px, model.line);
+      drawGlyphOver(ctx, model, g, "#ffe0aa");
+      continue;
+    }
+    // Every wash below is scaled by the glyph's glow (glowOf): full on a dark
+    // night, rising through dusk, and by day the flame's faint floor. A fire
+    // mark with no glow of its own is a night fire drawn the old way.
+    const glow = g.glow ?? (board.night && cls.includes("mk-fire") ? 1 : 0);
+    if (glow <= 0) continue;
     const lit0 = cls.includes("lit-0");
     if (cls.includes("mk-fire")) {
-      const p = cls.includes("fire-far") ? PULSE.fireFar : PULSE.fire;
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = mix(p.a, p.b, breath(t, p.periodS));
+      ctx.globalAlpha = glow;
+      ctx.fillStyle = mix(PULSE.fire.a, PULSE.fire.b, breath(t, PULSE.fire.periodS));
       ctx.fillRect(x, y, model.px, model.line);
-      drawGlyphOver(ctx, model, g, cls.includes("fire-far") ? "#ffe0aa" : "#fff");
+      ctx.globalAlpha = 1;
+      drawGlyphOver(ctx, model, g, board.night ? "#fff" : styleOf(board, g).fg);
     } else if (cls.includes("mk-coals")) {
       const p = lit0 ? PULSE.lit0Coals : PULSE.coals;
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = glow;
       ctx.fillStyle = mix(p.a, p.b, breath(t - (g.fd ?? 0), p.periodS));
       ctx.fillRect(x, y, model.px, model.line);
+      ctx.globalAlpha = 1;
       drawGlyphOver(ctx, model, g, "#fff");
     } else if (lit0) {
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = glow;
       ctx.fillStyle = mix(PULSE.lit0.a, PULSE.lit0.b, breath(t - (g.fd ?? 0), PULSE.lit0.periodS));
       ctx.fillRect(x, y, model.px, model.line);
       drawGlyphOver(ctx, model, g, null);
@@ -1394,7 +1415,7 @@ function drawPulses(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: n
       // eased, a soft edge on the pulse rather than lit terrain. Halved it
       // went muddy over the night shade.
       const spill = board.z > 2 ? 0.8 : 1;
-      ctx.globalAlpha = (ring.a + (ring.b - ring.a) * k) * spill;
+      ctx.globalAlpha = (ring.a + (ring.b - ring.a) * k) * spill * glow;
       ctx.fillStyle = `rgb(${ring.rgb.join(", ")})`;
       ctx.fillRect(x, y, model.px, model.line);
     }
@@ -1706,32 +1727,37 @@ function glyphGround(state: GameState, world: World, visible: Set<number> | null
   return { terrain: dominantByPriority(summary.terrainCounts), region, seen, knowledge, summary, partial: false, far: false };
 }
 
-export interface LightSource { cell: number; reach: number }
+/**
+ * A light on the map: where it burns, how many rings of glyphs its glow may
+ * reach, the lux it gives where a person sits by it and its intensity in
+ * candela for the ground further out, and whether it is an open flame - the
+ * one light that still shows as itself by day.
+ */
+export interface LightSource { cell: number; reach: number; lux: number; cd: number; flame: boolean }
 
 /**
- * Where light is on the map tonight: every visited camp's lit fire, two
- * rings when it is well fed, one when low; banked coals reach only their
- * own cell, since a nightly ember bed is not the glow that finds wood by.
+ * Where light is on the map: every visited camp's lit fire, two rings when
+ * it is well fed, one when low; banked coals reach only their own cell,
+ * since a nightly ember bed is not the glow that finds wood by.
  */
 export function lightSources(state: GameState, world: World): LightSource[] {
   const out: LightSource[] = [];
   for (const { st, cell } of visitedCamps(state)) {
-    if (st.fire.lit) out.push({ cell, reach: fuelTotal(st.fire) >= FIRE_LOW_KG ? 2 : 1 });
-    else if (hasEmbers(st.fire)) out.push({ cell, reach: 0 });
+    if (st.fire.lit) out.push({ cell, reach: fuelTotal(st.fire) >= FIRE_LOW_KG ? 2 : 1, lux: CAMP_FIRE_LUX, cd: CAMP_FIRE_CD, flame: true });
+    else if (hasEmbers(st.fire)) out.push({ cell, reach: 0, lux: EMBER_LUX, cd: 0, flame: false });
   }
-  if (state.player.torch.lit) out.push({ cell: cellOf(state, world), reach: 1 });
+  if (state.player.torch.lit) out.push({ cell: cellOf(state, world), reach: 1, lux: TORCH_LUX, cd: TORCH_CD, flame: false });
   return out;
 }
 
 /**
- * Ring per lit glyph: 0 is the source, 1 and 2 the squares around it with
- * ring 2's corners cut so the glow is round. A glyph reached twice takes
- * the nearer ring. The glow is about a hundred metres across, so the rings
- * shrink as a glyph grows: two at 50 m, one at 100 m, the source alone out
- * to 300 m, and nothing past a glyph the whole glow would sit inside.
+ * Every glyph a source's glow reaches, with its ring: 0 is the source, 1
+ * and 2 the squares around it with ring 2's corners cut so the glow is
+ * round. The glow is about a hundred metres across, so the rings shrink as
+ * a glyph grows: two at 50 m, one at 100 m, the source alone out to 300 m,
+ * and nothing past a glyph the whole glow would sit inside.
  */
-export function litRings(sources: LightSource[], toGlyph: (cell: number) => number, z: number, view: { w: number; h: number }): Map<number, number> {
-  const rings = new Map<number, number>();
+function eachRing(sources: readonly Pick<LightSource, "cell" | "reach">[], toGlyph: (cell: number) => number, z: number, view: { w: number; h: number }, visit: (i: number, ring: number, source: number) => void): void {
   // The glow footprint, not the fire's visibility: a fire is seen from
   // kilometres away (campfireVisible, the far mark) while it lights tens of
   // metres of ground. At 50 m that is two glyphs; at 300 m one cell is
@@ -1740,27 +1766,89 @@ export function litRings(sources: LightSource[], toGlyph: (cell: number) => numb
   // fainter ring (drawPulses halves the spill past 100 m). Coarser than
   // that, a glyph is a kilometre and nothing glows.
   const reachAt = z === 1 ? 2 : z === 2 ? 1 : z <= 6 ? 2 : -1;
-  if (reachAt < 0) return rings;
-  for (const s of sources) {
+  if (reachAt < 0) return;
+  sources.forEach((s, n) => {
     const g = toGlyph(s.cell);
-    if (g < 0) continue;
+    if (g < 0) return;
     const reach = Math.min(s.reach, reachAt);
     const gx = g % view.w;
     const gy = Math.floor(g / view.w);
     for (let dy = -reach; dy <= reach; dy++) {
       for (let dx = -reach; dx <= reach; dx++) {
-        const d = Math.max(Math.abs(dx), Math.abs(dy));
         if (Math.abs(dx) === 2 && Math.abs(dy) === 2) continue;
         const x = gx + dx;
         const y = gy + dy;
         if (x < 0 || y < 0 || x >= view.w || y >= view.h) continue;
-        const i = y * view.w + x;
-        const prev = rings.get(i);
-        if (prev === undefined || d < prev) rings.set(i, d);
+        visit(y * view.w + x, Math.max(Math.abs(dx), Math.abs(dy)), n);
       }
     }
-  }
+  });
+}
+
+/** Ring per lit glyph; a glyph reached twice takes the nearer ring. */
+export function litRings(sources: readonly Pick<LightSource, "cell" | "reach">[], toGlyph: (cell: number) => number, z: number, view: { w: number; h: number }): Map<number, number> {
+  const rings = new Map<number, number>();
+  eachRing(sources, toGlyph, z, view, (i, d) => {
+    const prev = rings.get(i);
+    if (prev === undefined || d < prev) rings.set(i, d);
+  });
   return rings;
+}
+
+/**
+ * The glow floors: a readability cue, not light. Measured against the sky,
+ * a 20 lux fire is under a hundredth of an overcast noon and its light on
+ * the next glyph is nothing, so by lux alone a fire vanishes by day. A lit
+ * flame still says it is there - its own cell breathes, and the glyphs round
+ * it take a faint warm wash - at these fractions of the night-time pulse.
+ * Coals and a brand get no floor: by day there is nothing of them to see.
+ */
+export const DAY_FLAME_GLOW = 0.35;
+export const DAY_RING_GLOW = 0.18;
+/**
+ * An artistic choice, not a lux figure: the ground round a fire on a dark
+ * night reads a little warmer than the contrast alone gives it. It scales
+ * only the lux-driven part of a ring, so it shows where the night is dark
+ * enough for the fire to light the ground and leaves the day floor alone.
+ */
+export const NIGHT_RING_GAIN = 1.25;
+/**
+ * The night band the rings are held to, also a display choice. The dark
+ * shade under a moonless night makes any wash over it read harsh, and the
+ * moonlit board swallows the same wash, so by lux alone a fire looked five
+ * times stronger on a black night than under a full moon. From sunset the
+ * rings sit between these two: a moonlit fire still has a warm ring round
+ * it, a black night's is held back, and the dark night stays the brighter.
+ */
+export const NIGHT_RING_GLOW = 0.4;
+export const RING_GLOW_CAP = 0.7;
+
+/**
+ * How strongly a glyph's glow shows, 0 to 1: the light the source puts on
+ * that glyph against the sky's own light there, as a contrast, and never
+ * under the flame's floor. The source's glyph takes the lux a person sitting
+ * by it gets; a ring takes inverse square at the distance to that glyph's
+ * centre. So the fire's own cell comes up through dusk rather than at
+ * sunset, and a ring is held to the night band (NIGHT_RING_GLOW to
+ * RING_GLOW_CAP) once the sun is down.
+ */
+export function glowOf(source: Pick<LightSource, "lux" | "cd" | "flame">, ring: number, glyphM: number, sky: number, night = false): number {
+  const lux = ring === 0 ? source.lux : flameLuxAt(source.cd, ring * glyphM);
+  const contrast = Math.min(1, (ring === 0 ? 1 : NIGHT_RING_GAIN) * lux / (lux + sky));
+  if (ring === 0) return Math.max(contrast, source.flame ? DAY_FLAME_GLOW : 0);
+  const floor = !source.flame ? 0 : night ? NIGHT_RING_GLOW : DAY_RING_GLOW;
+  return Math.min(RING_GLOW_CAP, Math.max(contrast, floor));
+}
+
+/** Glow per lit glyph; a glyph two sources reach takes the stronger. `skyAt` is the sky's lux at a source. */
+export function litGlow(sources: readonly LightSource[], toGlyph: (cell: number) => number, z: number, view: { w: number; h: number }, skyAt: (source: LightSource) => number, night: boolean): Map<number, number> {
+  const glow = new Map<number, number>();
+  const sky = sources.map(skyAt);
+  eachRing(sources, toGlyph, z, view, (i, d, n) => {
+    const v = glowOf(sources[n], d, z * PATCH_M, sky[n], night);
+    if (v > (glow.get(i) ?? 0)) glow.set(i, v);
+  });
+  return glow;
 }
 
 /** A negative delay under 1.1 s, in seconds, fixed per glyph index, so neighbouring flames are out of step. */
@@ -1944,11 +2032,16 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
     const ground = local?.ground ?? null;
     return `${a.cloud >= 0.15 ? 1 : 0}${a.precip === "rain" ? 1 : 0}${a.precip === "snow" ? 1 : 0}${a.fog >= 0.05 ? 1 : 0}${(ground?.snowCm ?? 0) > SNOW_SHOWN_CM ? 1 : 0}${(ground?.snowCm ?? 0) > DEEP_SNOW_CM ? 1 : 0}${iceMode({ iceCm: ground?.iceCm ?? 0 })}`;
   }).join(";");
+  // A fire's glow follows the sky's light (glowOf), so the board is redrawn
+  // as the sky moves a quarter of a decade of lux, not only at sunset.
+  const lights = lightSources(state, world).length > 0;
+  const skyW = lights ? weatherAtCell(state, world, cell) : null;
+  const skyStep = skyW ? Math.round(Math.log10(skyLux(cal, skyW.clear, skyW.snowCm)) * 4) : "";
   const viewRange = z === 1 ? sightRangeCells(state, world, cal, cell) : "";
   const viewshed = projectedViewshed(shed, x0, y0, z, level.w, level.h);
   const startles = activeWildlifeStartles(ui, nowMs).map((cue) => cue.key).join(",");
   const viewport = startles && ui.mapViewport ? Object.values(ui.mapViewport).join(",") : "";
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${ui.destination}|cs${ui.cloudShadows ? 1 : 0}|wx${weatherMinute}:${localWeather}|${cal.isNight}|${marks}|${route}|${piles}|${carcasses}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${coarseKnowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|vis${viewshed}|${animals}|${startles}|${viewport}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${ui.destination}|cs${ui.cloudShadows ? 1 : 0}|wx${weatherMinute}:${localWeather}|${cal.isNight}|sky${skyStep}|${marks}|${route}|${piles}|${carcasses}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${coarseKnowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|vis${viewshed}|${animals}|${startles}|${viewport}`;
 }
 
 function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs: number): MapBuild {
@@ -2081,7 +2174,13 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
     const observable = visibleNow === null || visibleNow.has(source.cell) || visibleFireDistance.has(source.cell);
     return observable && distanceKm <= CAMPFIRE_LOCAL_LIGHT_KM;
   });
-  const rings = cal.isNight ? litRings(sources, toGlyph, z, l) : new Map<number, number>();
+  // The rings are drawn at every hour; how strongly each shows is the
+  // fire's light against the sky's (glowOf), held to a band after sunset.
+  const rings = litRings(sources, toGlyph, z, l);
+  const glows = litGlow(sources, toGlyph, z, l, (source) => {
+    const w = weatherAtCell(state, world, source.cell);
+    return skyLux(cal, w.clear, w.snowCm);
+  }, cal.isNight);
 
   // Region, ground and discovery per glyph, then borders between glyphs.
   const regions = new Int32Array(l.w * l.h);
@@ -2317,7 +2416,14 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
       // while the ground round the fire is plainly lit. Only a glyph that
       // already carries a ring asks - at most the two glyphs round a source
       // inside a kilometre - so this is a few dozen rays, not one per glyph.
-      const firelit = lightRing !== undefined && hasLineOfSight(world, playerCell, mechanicalCell, 0.5);
+      // By day the sky lights that ground already, and a ring is a wash on
+      // what the viewshed shows, never a view of its own.
+      //
+      // The ray is aimed at what the fire lights there: the trunks and crowns
+      // of a stand, or the ground a little above knee height in the open. A
+      // birch in a hollow behind a knoll is in plain view while its floor is
+      // not, and the glyph stands for the trees as much as the ground.
+      const firelit = lightRing !== undefined && cal.isNight && hasLineOfSight(world, playerCell, mechanicalCell, Math.max(FIRELIT_GROUND_M, canopyHeightAt(world, mechanicalCell)));
       const surfaceCurrent = weatherVisibleGlyphs.has(i);
       current = surfaceCurrent || visibleFireDistance.has(mechanicalCell) || firelit;
       if (seen === 1 && !current) cls.push("dim");
@@ -2466,6 +2572,7 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
       mapCell: cx >= 0 && cy >= 0 && cx < world.w && cy < world.h ? cellIdx(world, cx, cy) : null,
       act: named,
       fd: current && lightRing !== undefined ? flickerDelay(i) : undefined,
+      glow: current && lightRing !== undefined ? glows.get(i) : undefined,
       wildlifeId: animalId ?? undefined, wildlifeStart: animalRecoil ?? undefined,
       badge,
     });
