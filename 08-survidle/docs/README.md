@@ -30,656 +30,72 @@ The seconds in brackets on the task bar and on an option row are the wall
 clock under all of that - the hurry and the body's pace - not the one
 scale, so a once action's "40 min (10 s)" is what you will actually wait.
 
-## How it plays
+## How it plays, in brief
 
-- **You give orders, the game keeps them.** Every button adds an order to
-  this camp's list; the strip above says what kind: once, N times, until
-  camp has N, keep camp at N, or forever. Keeps and forevers are standing
-  orders. "Keep camp at 40 kg firewood" triggers when the pile drops under
-  20 and splits back up to 40; "Fell trees, forever, bringing it to camp"
-  soaks up every spare hour. Jobs ("build a cabin", "make 20 arrows") drop
-  off when done. Each kind is earned per skill, five rungs deep: a job (N
-  times or until camp has N) opens at level 3 in the task's skill, a grind
-  (forever) at 5, a keep (keep camp at N) at 10, a condition at 15 - a
-  season window, a stock line, a restart line or a daily count laid on a
-  keep - and pace at 20, a keep due by a date, held after it or spent by
-  the season's close; a once job is always open. The first time a survivor
-  opens a rung by practice the game stops once to say what it now lets them
-  ask for, with an order they could give this minute; every unlock after
-  that, in every skill, is a line in the log. A rung an heir lands already
-  holding is never a moment: the welcome names it instead, so the better
-  the lineage the quieter the landing.
-  A row below its skill's level greys and names the level that opens it. A
-  keep reads its stored forms and not only its own yield: "keep camp at
-  240 kg of meat" counts the dried meat in the rack at its own ratio
-  alongside raw kills. The list is ranked: each free minute the game
-  serves the highest order that is unmet and can start, finishes any load
-  it owes camp first, and never switches mid-task. A blocked order shows
-  why ("needs an axe", "missing materials at camp") and waits; a job
-  placed above the grind that will haul its logs in is how a cabin gets
-  built while you are away. With orders but nothing to do, you wait at
-  camp, where the nights are by the fire. The game does the walking, the
-  work, the hauling, and when the body asks for it, the walk back to camp,
-  a fire from what is at camp, and the night's sleep. A once order is
-  yours: it goes to the top of the list and starts on the click, whatever
-  the body says, and nothing interrupts it - spent, sleepy and cold are
-  tags and log lines while it runs, and what to do about them is your
-  call. Standing and counted orders are the runner's, and so is the gap
-  between any two orders: there the body speaks first, and the next order
-  starts once it has been served. So a list of once orders left to run
-  while you are away still sleeps, drinks and lights its fire, between
-  them rather than in them. An "advanced" toggle
-  shows the raw single actions underneath, one at a time. The reference
-  runner the sim measures itself against plays this way too: below a rung
-  it works the plain shape at today's reading, giving or withdrawing it as
-  the condition would have, and every gate prints the mornings that cost -
-  the attention the plan asked of a player at that level.
-- **Every landing opens with a welcome.** It names the survivor, what they
-  land knowing and what those levels already let them ask for - nothing at
-  all for a first life, a rung or two for a well-practised heir - and one
-  rule of the north, a different one each landing, so a sixth survivor
-  still meets something they had not noticed.
-- **A boat lands three people, and you choose one.** A new world opens on
-  the landing screen, and so does every death: three candidates, each a
-  face, a name, four grades shown as words or quantities (what they carry
-  and how long they work, how heavy they are and whether they sleep warm,
-  their hands, their eyes) and a quirk or two that names a capability and
-  a fear. The other two sail on. "Next boat" lands a week later with three
-  new people, and the world runs on without you meanwhile. The survivor's
-  card lives in the journal with what they know, fear and have lost and
-  three stories from their record, and a copy button puts it on the
-  clipboard as text; the tombstone and the cemetery keep it. While you are
-  here the log says "you"; what happened while the tab was closed is told
-  by name.
-- **A fire needs no stone.** The fire site is ground cleared to bare earth,
-  so no camp is ever one where a fire is impossible; what the ground changes
-  is the work. Twenty minutes on a dry meadow, half an hour under spruce
-  where the duff has to be scraped back, an hour on peat, which cannot be
-  scraped at all and takes a platform of green wood instead - and the same
-  platform, another half hour, over deep snow.
-- **An axe is honed, not worn out.** The iron axe blunts with use and a
-  whetstone brings the edge back for nothing; only a flaked stone axe
-  shatters, and an iron axe is lost only through the ice. A fire needs no
-  axe: dead wood off the forest floor is firewood by hand, and two wedges
-  from a knife split a log at a third the axe's pace. The stone axe is a
-  ground celt at twenty hours and Crafting 5, or a flaked one in an evening.
-- **Camp is the cell the run lives around.** It starts at the region's
-  centre; walk to a better cell and make camp there while nothing stands at
-  the old one, and the region panel says what the cell offers first.
-- **Orders belong to a camp.** Walk into a new region and its list is
-  empty; come back and the old list resumes.
-- **A big north.** The world is about 540 by 667 km, real ground from 61 N
-  to 67 N: height in metres above the sea, valleys cut by erosion and
-  drainage rather than drawn in, glacial lakes that each have an outlet -
-  chains of them along the valley floors and shallow ones pitting the
-  plateau, about a twentieth of the land as in Norway - streams and
-  rivers running down to fjords on the west coast, stone exposed at the
-  rate real geology gives it, and the treeline set by latitude and distance
-  from the sea. Solving that takes a few seconds at the start of a run,
-  shown by a loading bar; after that, the map and regions are still built
-  as you touch them, the same as before. Regions are about 4 km across;
-  country you have never entered is fog, and the next valley over is
-  dimly seen. The map is always centred on you;
-  the fog is per cell, not per region: what you have walked is a thread
-  through the black, and what the eye reaches from where you stand is a
-  blot around it. Closed spruce shows you the ground underfoot and no
-  more, but trees at the water's edge show you the water and the far
-  shore; open bog and a fell top show you the horizon; the dark shows you
-  nothing at all.
-- **You cannot walk where you do not know the way.** A route may not cross
-  ground you have never seen, so "walk to camp" can say there is no way
-  you know, and a heir landing in fresh country may have no way home at
-  all - only "search for a way home", which looks for one and promises
-  nothing. New country is opened from Do > Explore by going to look: "Explore Stensund"
-  walks a sweep of that region until you have all of it. That is hours,
-  and it is always your own click - nothing explores while you are away.
-  Wayfinding is the skill behind it, and what practice buys is a wider
-  view and a whole ankle, not a faster sweep.
-  Zoom with the two buttons in the map's bottom left corner or the plus and
-  minus keys, from the whole north on one screen down to 50 m visual detail.
-  The default map has one glyph per 300 m simulation cell. The first close
-  rung divides each of those cells into a deterministic 3 by 3 field of trees,
-  scrub, stone and water texture; the closest divides it again into a 6 by 6
-  field. The fields join seamlessly, without a border around every simulation
-  cell. These details are visual: clicking, resources and encounters still
-  resolve to the containing 300 m cell.
-- **Walking crosses close-map detail without inventing another task.** The
-  simulation already keeps the survivor's continuous position between cell
-  centres. Close zoom projects that position into its visual details, so `@`
-  crosses them during the existing Walk task while the containing 300 m cell
-  remains authoritative. The existing task progress bar is the only walking
-  bar; no separate walking skill, task or progress state is introduced.
-- **Large animals roam through close-map detail.** A visible animal takes a
-  stable visual position inside its 300 m cell. Wandering animals move through
-  that field over game time; an animal with a real route crosses toward the
-  edge of its next simulation cell. Several subjects in one cell spread over
-  separate details. Their position within the cell is illustrative and does
-  not change detection, pursuit, targeting or encounter distance.
-- **You are a point on the map.** Regions are split by blue borders; your
-  region is outlined in yellow and `@` is your actual cell. What you can do depends on the ground under foot: fell trees and hunt
-  in forest, gather stone on rock, fish beside water, hares and berries on
-  bog or meadow, and camp things at camp. Named spots (forest, outcrop,
-  shore, heath) are waypoints with walk buttons; routes go around lakes and
-  across bog only when they must, and your walk is drawn as a line, solid
-  ahead of you and dashed behind, that goes when the walk ends. This
-  region's camp is an `x` whenever you are off it. Stop a walk and you
-  stand where you are.
-- **Stopping never loses work.** Felling, gathering, crafting and the rest
-  keep their share done, listed under "Set aside" with a resume button, or
-  the place to walk back to. Walking keeps nothing because your position is
-  the progress.
-- **Carrying matters.** Your pack is comfortable to 25 kg and impossible past
-  35. Logs weigh 20 kg and never go in the pack: they lie where they fell.
-  A kill remains a carcass on its cell while you field dress it. Skill and
-  a knife improve the usable share; warm delay loses meat to spoilage and
-  scavengers. Recovered goods that do not fit land on the pile under your
-  feet, and cells with goods or a carcass are underlined on the map. "Bring
-  it to camp" hauls a full load at a time: load 35 kg, walk to camp, drop,
-  walk back, and the rest when the work is over; "Haul to camp" under
-  advanced does the same for whatever lies where you stand. Building uses
-  the camp pile plus your pack.
-- **Water at camp.** Buckets and waterskins left in the camp pile hold
-  water; "fill vessels, keep camp at 4 litres" carries it home. It freezes
-  without a fire and thaws by one, and an ice hole cut with the axe on a
-  frozen shore is open until morning.
-- **Species.** About thirty animals live in the north, each with a range:
-  capercaillie in some old spruce country and not all of it, ptarmigan and
-  reindeer on the fell, eider and cod on the coast, perch and pike in the
-  lakes, wolves in patches of forest where the nights are dangerous. The
-  region card lists what lives here. Hunt or fish for a chosen species,
-  or for anything, and what you meet is drawn by how many are about. Each
-  species has its own mastery, yields and recommended level; fur-bearers
-  give fur, deer and bigger give hide, and big animals carry fat, the
-  richest food there is - full in autumn, half through winter, down to a
-  fifth by spring, and cracking a bone for marrow follows the same curve,
-  last of all to thin out. Herring, char, salmon and trout run oily and
-  carry roe at the spawning window; the rest of the catch stays lean.
-- **Sound.** The place has a voice: wind in the trees or over the fell,
-  water at the shore, rain, the fire at camp, footsteps on leaves, snow or
-  bog, the axe. The species that live here call at their hours and in
-  their seasons: loons on a June evening, cranes on the bog, wolves at
-  night by the moon, and the whole pack in chorus, far off, on the three
-  or four nights a month the moon is full and the sky is clear enough to
-  show it. The calls roll on the game clock from the world seed, so a
-  seed's night sounds the same every time it is played and
-  `npm run calls -- <seed> [day] [hours]` lists when each call comes.
-  Click once to start it; the Sound control mutes,
-  sets the volume and turns the ambience off on its own. Recordings and
-  their licences are listed in `public/audio/manifest.md`; several are for
-  this prototype only and are marked for replacement.
-- **Body.** Food is a kilocalorie reserve. Every food has a lean share:
-  meat and fish are wholly lean and feed nothing past 1,600 kcal a day -
-  a hare or a deer alone starves you as surely as no food at all - while
-  oily fish, roe and eggs count for less against that ceiling and fat and
-  marrow for none of it. Berries, seaweed, roots and bark flour carry no
-  lean share either, but each has its own gut ceiling instead: full
-  credit to a line, half past it, none past a second, two litres of
-  berries, about 1.2 kg, among them. Warmth settles toward what
-  your felt temperature can hold: ambient, plus clothing, fire and shelter
-  at camp, plus activity, minus wetness. Below 20 warmth you lose health
-  fast. Stamina drains through physical work. At 20 Stamina the survivor
-  collapses and must Rest to 55 before working again. Sleepiness is separate, read as the alertness band under the Stamina fill:
-  its pressure and the time of day determine when the survivor falls asleep
-  and wakes. Sleep is automatic; Rest remains an explicit action.
-- **The elements.** Water is a reserve like food: drink at a shore, carry it
-  in a bark bucket or a waterskin, melt snow at the fire in winter for a kilo
-  of wood a litre. Lakes freeze; thin ice is a shortcut that can take you,
-  safe ice is a road until it melts and strands you. Clothing gets wet
-  garment by garment and a soaked coat is half a coat; wet boots in frost
-  are frostbite, which heals only by a fire under a roof and can cost toes.
-  Wood split in rain is wet wood that smokes and gives half the heat; rain
-  makes lighting chancy and eats the fire. A fire left big on dry August
-  ground can spread. A fire inside a closed cabin without a hearth fills it
-  with smoke and can kill you in your sleep. Storms are announced an hour
-  ahead. Spent, you miss more, spoil more and recover slower. The runner
-  drinks, shelters from a storm, is home before dark in winter and banks
-  the fire it leaves, and nothing more.
-- **Camp.** Fire pit, then fire (needs a fire drill and firewood); lean-to,
-  then a cabin (40 logs, 60 hours), or, once 40 cm of snow lies at camp
-  and no hut or cabin stands, a snow shelter (no materials, five hours,
-  holds -3 C whatever the night does but takes no fire, and slumps after
-  three warm days running); drying rack (40 kg of raw meat at 1,100 kcal
-  a kilo, 3 kg raw to 1 kg dried at 3,300, the same kcal in less weight,
-  two dry days or four wet; a camp can stand two); a vedbod, a roof on
-  posts over an open stack (6 logs, 12 sticks, 20 bark, 3 cordage, 300
-  minutes), covering 1,050 kg of firewood against the rain and drying wet
-  firewood at 2 kg an hour whatever the weather, the same as a cabin or a
-  lit fire; a trap line of up to
-  forty snares on the heath, checked at dawn. "Hang meat to dry" is a
-  task, and a keep on dried meat runs it as the rack has room. Cracking a
-  bone gives marrow, and a kill's fat must be rendered at a fire within
-  three days or it spoils like meat. Roots dug at the water or through
-  winter ice, a patch giving them up slower as it is dug over and
-  growing back over the summer, pine inner bark stripped and ground to flour, birch sap
-  tapped for three weeks in May and shore seaweed on a coastal camp fill
-  the season's plant band; nests give eggs in May and June. Once the
-  larder holds a winter's food, hunting and fishing stand down for the
-  woodpile until it dips back under that line. The self-care and camp
-  rows on the activity queue eat, drink and feed the fire while the tab is
-  closed, as long as the food and firewood are there and the player has
-  not ranked work over them; nothing eats behind those rows' backs.
-  Ground is what limits a camp before the 300 m cell ever does: a landing
-  camp has about 30 m2 of yard, enough for a fire site, a lean-to, a rack
-  and a trough with a little spare, and widening it is a task whose
-  minutes the ground under the camp sets - 12 m2 an hour on a dry meadow,
-  8 under spruce where the duff has to be scraped back, 4 on peat, the
-  same rate the fire site's own minutes already charge for clearing.
-- **The stocks strip.** A bar above the three columns reads what camp
-  holds in four groups - wood, food, water, pack - each against its cap
-  where the sim has one and each with which way it is moving. Hovering a
-  group, or tapping it on a phone, opens what it is made of, the cap's
-  reason where it is sitting at one, the signed causes behind the rate
-  and, for wood, the stand the store is coming out of, so a rising
-  woodpile reads beside the patch it is thinning. A click pins a group's
-  panel open until the same group is clicked again, so a mouse can move
-  onto what it opened without losing it to the next thing it passes over.
-  Rates read in game time by default - a kilogram an hour is the pace the
-  sim itself keeps - or in real time from the rates setting in the
-  settings panel; the two are exactly convertible, since a game hour is a
-  real minute, so the setting only changes the words and the decimal
-  point, never the number underneath.
-- **Spares.** A tool recipe yields a spare that is taken up when the one in
-  hand breaks; "keep camp at 1 axe" is how the axe is never the end of the
-  run.
-- **Light.** Every tile carries its ground's colour as a dark background.
-  At night a lit fire glows on the map, two rings when it is fed and one
-  when it burns low, and you can see your own camp from the next valley.
-  The dark never refuses work; it charges for it. How much light there is
-  where you stand is a real illuminance, summed from the sun's altitude,
-  the moon at its phase, the cloud, the snow underfoot and any flame in
-  reach, and the clock line names it: daylight, overcast, twilight,
-  firelit, moonlit, starlit, pitch dark. Work that needs light to be sure
-  of itself - finding sticks, picking berries, handwork, an edge judged by
-  eye - rolls against that light and says its odds on its own row, and a
-  failed try costs the attempt rather than the work: a bundle of sticks
-  gathered at 5% a try is the same bundle, twenty times the hours. Walking
-  and a hunter's odds read the same number, so the pitch dark is the
-  handbook's third of day speed and a moonlit snowfield is most of the way
-  back to it. A torch (1 stick, 2 bark, 20 minutes; lit at a fire in a
-  minute or with the fire drill in ten) burns for an hour, lights one ring
-  around you, takes very nearly all of the night off your walking and your
-  work, and keeps the wolves off.
+The full list, one bullet per mechanic as built, is `docs/how-it-plays.md`.
+The shape of it:
 
-  Standing orders still wait for first light, and camp chores still want a
-  fire: the runner keeps its own hours. What runs at any hour is work you
-  start yourself, and nothing stops it but the body giving out, which
-  leaves you asleep where you were standing.
-- **Bedding.** Most of a night's heat goes into the ground. A bough bed (12
-  sticks, half an hour) gives +4 C asleep at that camp and goes flat after
-  four days; a keep lays it again before then, for the same sticks and
-  half hour. A hide blanket (4 kg hide, 2 sinew, a needle, 4 hours) is
-  3 kg in the pack and gives +8 C asleep or resting anywhere. The sleep
-  button says what you lie on and under: "on bare ground, in the open" or
-  "on a bough bed, under your blanket and the roof, by the fire".
-- **Skills.** Every minute at a task is a minute of practice in one of six
-  skills (Woodcraft, Foraging, Hunting, Fishing, Crafting, Building) and in
-  that action's mastery. A level is hours behind the tool: 2 h to level 2,
-  162 h to 10, 722 h to 20. Each level is 1% faster, and 1% better odds for
-  hunting and fishing, 1% less tool wear for crafting. Mastery adds a
-  quarter percent per level on that one action, with a concrete extra at
-  20 and 50. Every mastery minute also fills the skill's pool; at 10, 25,
-  50 and 95 percent it gives skill-wide perks. Gates are soft: a button
-  says "Hunting 8" and stays live, but under it the odds halve per level
-  short and an elk can hurt you; a craft under level can spoil the piece.
-  The skills panel marks the five order-kind rungs (3, 5, 10, 15, 20) on
-  each skill and reads how far off the next one is, "jobs 3, 8 h to go".
-- **Away.** Close the tab and the world keeps going. While it is closed the
-  elapsed time is simulated up to the away dial on the settings strip, 1 to
-  24 real hours, default 8 (20 game days at the game scale). On return a
-  panel tells you what happened, and, above the log, what each order did
-  while you were gone and what any of them is blocked on. You can die
-  while away.
-- **Ahead.** The Ahead panel runs the game forward ten times per horizon
-  (until you are back, tonight, a week, a month) and prints how many of
-  the ten runs die and of what. Dim text with "..." is a row from an
-  older state, not yet replaced by the latest request.
-- **Winter** is December to February at 62 N: about five hours of light,
-  -9 C mean, cold snaps to -30 C, deep snow that halves your walking speed.
-  Deer and elk thin out, the mallards and geese are gone south, the eider
-  stay on the coast, and the lakes' birds leave with the ice. You need
-  hide clothing, a cabin or a snow shelter, and a wood pile. An open fire
-  burns 3 kg an hour at zero and more as the cold deepens - 6 at -10, 9 at
-  -20, 15 at -40; a fire under the turf hut's smoke hole takes 40 percent
-  of that, and the hut holds at 5 C while it is lit, whatever the air
-  outside is doing.
-- **The journal** reads the life record: what season it is, what came before,
-  and every ancestor's life under their epitaph. A heir carries a quarter
-  of what the last survivor knew in every skill, named at landing and
-  marked "carried from {name}" in the skills panel.
-- **How to survive.** A one-page manual - the first days in order, what
-  kills you and how fast, food and the seasons, orders and being away -
-  opens once, unasked, on a world's first landing, and after that from
-  the landing screen's "how to survive" button or the button beside the
-  away dial; it links the two handbooks it was read against.
-
-## Debug URL parameters
-
-- For an ordinary wildlife encounter, follow the
-  [natural seed 19 playtest](natural-wildlife-playtest.md): land, then click
-  the deer one map cell west of the survivor for a 300 m walk.
-- `?seed=123` starts a fresh run with that world seed. While present, every
-  reload starts over instead of loading the save. Without it, a reload
-  returns to whatever phase the save is in: alive, the tombstone, or the
-  landing screen.
-- `?speed=60` runs the clock 60 times faster than the game scale. For
-  reaching winter in an afternoon; not a game feature.
-- `window.survidle` exposes `state`, `world`, `advance(minutes)` and `speed`
-  in the console.
-- `?tester=<cohort>` marks this device a tester for the round and names its
-  cohort; the parameter is dropped from the address after one open, and the
-  mark survives a new world. The settings strip shows the beacon id and the
-  cohort. See docs/testing.md.
-- `?faces=1` opens the face self-test page (`faces.html`): locally generated
-  Toon Head identities at 64px and 24px, the full expression set, layered
-  focused, hot, cold and firelit states, plus blink, glance and flavor motion.
-  It is the review surface for portrait variety and legibility, not a game
-  feature.
-
-## Spatial weather and visibility
-
-The atmosphere is a deterministic field of the world seed, absolute weather
-time and coordinates. It never rolls separately in each 300 m cell and never
-draws from the gameplay RNG. Pressure, humidity and temperature anomaly use a
-12 km sampling lattice. Their seeded component wavelengths are 5, 7 and 11
-lattice spacings, or 60, 84 and 132 km. A subordinate 1.2 km lattice has 6,
-8.4 and 13.2 km wavelengths. It can shape a precipitation edge or terrain fog
-only where the broad cloud field supplies support, so nearby cells normally
-belong to one continuous weather feature rather than unrelated showers.
-
-The whole field translates continuously at a seed-dependent 6 to 46 km/h.
-That system motion is separate from local surface wind. Surface wind combines
-the prevailing flow with the centred pressure gradient over 12 km, is smoothly
-bounded below 60 km/h, and supplies the same vector used by map and sky motion.
-Elevation cools air by 6.5 C/km. The upwind and downwind terrain samples are
-6 km away: rising ground adds humidity and precipitation, lee ground dries the
-air, and damp depressions increase fog potential. These are local modifiers to
-one larger system, not new weather systems.
-
-Every atmospheric sample contains temperature, pressure, relative humidity,
-cloud, liquid-equivalent precipitation, rain and snow phase rates, wind, fog,
-blowing snow and optical extinction. Rain and snow blend continuously from all
-rain at +1 C to all snow at -1 C. Frozen liquid uses the model's 10:1 fresh
-snow conversion, so 1 mm water equivalent becomes 1 cm fresh snow.
-
-### Ray extinction
-
-Visibility uses the 5 percent contrast threshold
-
-    tau_max = -ln(0.05) = 2.9957
-    beta_clear = tau_max / 50 km
-    MOR = tau_max / beta_total
-
-where every beta is in 1/km. The clear baseline is counted once. Rain, snow,
-fog and blowing-snow excess coefficients are added to it. Rain MOR anchors are
-20 km at 0.5 mm/h, 8 km at 2.5 mm/h, 3 km at 7.5 mm/h and 0.8 km at 25 mm/h.
-Snow anchors are 5 km at 0.4 cm/h, 1.2 km at 1 cm/h and 0.4 km at 2.5 cm/h.
-Between rate anchors the interpolation is logarithmic:
-
-    t = ln(rate / rate0) / ln(rate1 / rate0)
-    MOR = MOR0 * (MOR1 / MOR0) ^ t
-    beta_excess = tau_max / MOR - beta_clear
-
-Rates below the first anchor ramp linearly to zero excess; rates above the last
-anchor clamp. Fog moves exponentially from a 10 km onset MOR to 0.2 km at full
-density, and blowing snow from 12 km to 0.3 km. Both use a smooth onset over
-density 0 to 0.05.
-
-A sight ray walks each 300 m segment at its midpoint and accumulates
-
-    tau = sum(beta(segment midpoint) * segment length km)
-
-Each midpoint beta is bilinearly interpolated from the four surrounding
-integer cell-centre atmosphere samples. Every centre uses its own authoritative
-regional snow cover and is sampled at most once per visibility pass. The fixed
-centres make the result independent of ray enumeration order while retaining a
-continuous field between adjacent cells. A midpoint outside the world is
-opaque rather than borrowing an in-world edge value.
-
-The target is hidden once tau exceeds tau_max. Clear air after fog cannot
-restore lost contrast. Terrain, light, eyesight, skill and the geometric
-horizon set the maximum radius; weather only shortens it. The candidate set is
-circular, not square, and is capped at the 50 km clear-air MOR before ray
-work. A canopy remains a hard blocker. Ground already mapped remains known,
-while wildlife and newly mapped ground require current visibility.
-
-Live weather is rendered only where known ground intersects that current
-viewshed. Remembered ground outside it keeps its terrain memory but shows no
-current cloud, cloud shadow, fog, rain or snow, and never-seen ground shows
-neither terrain nor weather. This observation rule also applies to coarse map
-blocks, so zooming out cannot turn the map into a weather radar. The simulation
-still evolves the continuous weather field everywhere. The map key includes
-the exact projected viewshed at every zoom and shares that result with the
-markup once per displayed game minute, preventing stale coarse weather without
-adding another ray pass.
-
-Cloud feature translation follows game minutes, including the ordinary clock
-and accelerated work. The same simulated wind vector drives rain and snow
-drift. Fog and optional ASCII cloud glyphs use slower presentation-only cycles
-of 12 and 16 real seconds. Those decorative shape changes do not accelerate
-with work, pause, or alter the simulated feature's location or visibility.
-Liquid water in the current viewshed ripples on the same kind of wall clock.
-It is faked for the eye, not modelled: three smooth waves cross the sheet in
-different directions, with wavelengths of 4, 2.5 and 6 cells and periods of
-5, 3.75 and 8 real seconds, and each cell shows their sum. A cell's start in
-each wave comes from its position, with up to a radian of seeded jitter, and
-each wave peaks at its own seeded brightness, so neighbours move together
-without the sheet sliding as one texture. Each wave is an overlay in the
-cell's lit blue whose opacity is animated; at the two close zoom rungs the
-peak is halved so a big cell does not wash out its detail glyphs. Three
-overlays per water cell is not free, whatever the compositor does with the
-opacity itself: measured on a live page, disabling the shimmer alone drops
-style recalculation from 3.59 to 0.52 seconds per thirty, and the whole
-frame from 37 to 15 percent of a core. It is the single most expensive
-thing the game draws, and moving it to the effects canvas is what the
-render-surface migration is for. Ice, marked cells and
-remembered water lie still, and reduced motion turns it off. `?shimmer=2`
-is a test aid that runs all three waves twice as fast; it is not a game
-feature.
-
-Panels are rendered from state ten times a second, not on every display
-frame: nothing a panel shows moves faster than a game minute, and every
-per-frame writer compares before it writes. Motion that must be smooth is
-CSS on the compositor. Input still renders at once through its own
-handlers, and the map tip draws on the pointer event itself.
-
-### Stationary ground consequences
-
-Moving clouds and stationary ground are separate state. Each materialized
-roughly 4 km region stores its last completed weather hour, snow depth, surface
-water, soil moisture, frost, standing-water ice, dry hours and the partial
-day's temperature integral. Completed hours replay deterministically when a
-region is next needed. In each hour the ground integrator applies, in order:
-
-    snow += snow_cm_per_hour
-    melt = min(2 cm, snow), only while temperature > 2 C
-    surface_water += rain_mm_per_hour + melt_cm
-    infiltration = min(surface_water, 2 * (1 - soil_moisture)) mm
-    soil_moisture += infiltration / 50
-    evaporation = 0.08 * (1 - relative_humidity)
-                  * max(0, temperature_C + 5) * (1 + wind_kmh / 20)
-
-Evaporation consumes surface water before the 50 mm soil store. Moist frozen
-ground adds `min(1, -temperature_C / 12) / 24` frost per hour; temperature
-above zero removes `temperature_C / 12`. Dry hours reset after at least 0.2 mm
-of hourly precipitation or while soil moisture exceeds 0.2, otherwise they
-increment. At local midnight snow settles by 5 percent. Standing-water ice
-uses the local daily mean: freezing grows squared thickness by 7.2 per
-freezing degree-day, while thaw removes 2 cm per positive degree-day.
-
-Version 1 saves copy their global snow, ice and drought into every already
-materialized region at the save's completed hour. Wet-day saves begin with
-1 mm surface water and 0.5 soil moisture; dry saves use zero and 0.1. Frost
-starts at zero. Untouched regions initialize from deterministic seasonal
-history. Version 2 saves retain their local records. Weather time has its own
-elapsed offset, so a new survivor can reset the life clock without moving the
-atmosphere or ground backward.
-
-Map glyphs sample atmosphere at their own coordinates and share one caught-up
-ground record per represented region. Unknown terrain stays secret while air
-can remain visible over it. Fog remains in the map's cell vocabulary: every
-300 m sample controls the opacity of one same-colour ASCII ripple, with a
-coordinate-stable animation phase and no weather border or separate viewport
-layer. Neighboring values remain coherent because they come from the same
-continuous simulated field. Rain and snow particles keep transparent
-backgrounds so precipitation cannot turn those cells into gray tiles. The
-default cloud display uses that same per-cell density to dim the ground as a
-moving shadow capped at a 14 percent black wash, leaving terrain glyphs
-readable. Ordinary cells have no border on any side; only actual region edges
-restore their owned boundary line. The persistent "clouds cast
-map shadows" setting can be turned off to replace those shadows with
-same-colour ASCII cloud ripples. The setting changes presentation only: cloud
-location, density, movement, light, visibility, rain and snow remain simulation
-output. Terrain memory and inherited-map dimming apply to terrain and signals,
-not the cell-owned atmosphere, so weather does not acquire discovery-state
-seams. The weather panel and sky use the player's same sample; CSS only
-amplifies opacity and motion from that sample. The legacy
-`Weather`-shaped fields are a derived player summary kept for save and narrow
-no-world compatibility. They do not drive the atmospheric field or ground
-integration. Cell-specific version 2 work, water, routes, audio and rendering
-query local conditions.
-
-Repeated current-cell reads in one simulation minute share one atmospheric
-sample through a one-entry `WeakMap` memo per live `GameState`. Its key covers
-world identity and seed, absolute weather minute, cell, climate start day and
-local snow input. The memo is not serialized, returns copies to callers, and
-does not apply to historical ground replay or sight's per-pass cell-centre cache.
-
-This is a physically inspired mesoscale model, not CFD. It deliberately omits
-metre-scale turbulence, shelter aerodynamics, cloud microphysics, fronts with
-vertical structure and forecast uncertainty. The performance probe is
-`npm run weather:profile`; it reports deterministic work and host timings but
-has no flaky timing gate. On the 2026-09-10 development host, seed 17 measured
-10,000 atmospheric samples in 57.29 ms and 10,000 identical memoized
-current-cell reads in 1.40 ms, the maximum-range open-fell sight
-workload over exactly 87,604 integer lattice candidates in 3.52 ms, 2,592
-map-sized atmospheric samples in 14.03 ms, one day of catch-up for 100 ground
-regions in 16.34 ms, and the 2,592-glyph late-day map render in 32.43 ms. The
-sight workload chooses a broadly open fell/rock origin, searches daylight for
-the clearest local atmosphere. That run reached 855 cells before optical
-attenuation and retained 287 visible cells, with deterministic checksum
-`855:287:570357823`, so it exercises long open rays instead of ending
-immediately in forest canopy.
-The 87,604 count
-is an exact enumeration of every non-origin `(dx, dy)` with
-`hypot(dx, dy) <= 167`: 167 cells follows from `ceil(50 km / 0.3 km)` and the
-clear-air maximum MOR. Those figures are calibration
-evidence, not portable budgets. The sight candidate cap removed an observed
-2,787,736-cell, 18.9 second scan of rays that the 50 km clear-air extinction
-limit could never reveal.
+- **You give orders and the game keeps them**: once, N times, until camp
+  has N, keep camp at N, forever. The standing kinds are earned per skill,
+  five rungs deep. The runner does the walking, the hauling, the fire and
+  the night's sleep between orders; a once order is yours, starts on the
+  click, and nothing interrupts it.
+- **A boat lands three people and you choose one.** Death keeps the world.
+  The heir lands months later carrying a quarter of what the last survivor
+  knew, and the journal holds every life before them.
+- **A big north**: 540 by 667 km of real ground from 61 N to 67 N, fog per
+  cell, and routes only over ground you have seen. Exploring new country is
+  always your own click.
+- **Every quantity is real**: a pack of 25 kg comfortable and 35 impossible,
+  kilocalories with a lean ceiling, litres, degrees, centimetres of ice.
+  Wet clothes, frostbite, smoke in a closed cabin, fire on dry August
+  ground and thin ice each kill, and each warns in the log first.
+- **Camp is a cell**: fire site, lean-to, cabin, turf hut or snow shelter,
+  drying rack, vedbod, water trough, a trap line, and a yard the ground
+  under it limits.
+- **About thirty species** with ranges, seasons, fat curves and calls at
+  their hours. Hunt or fish for one, or for anything.
+- **Light is a real illuminance.** The dark never refuses work; it charges
+  for it, and a torch buys most of the night back.
+- **Ten skills**, each a matter of hours behind the tool. Levels open
+  order kinds and named capabilities, never only a percentage.
+- **Close the tab and the world runs on**, up to the away dial. The Ahead
+  panel runs ten futures per horizon and counts the deaths.
 
 ## Development
 
     npm install
     npm run dev      # http://127.0.0.1:5173/prototypes/08/
-    npm test
+    npm test         # the commit gate and the only suite
     npm run build
-    npm run weather:profile
-    npm run terrain
 
-`npm test` is the commit gate and the only suite. A fresh clone pays for
-the worlds first: the suite touches about fourteen full-size seeds, each
-solved once and cached, which is around seventy seconds and six hundred MB
-under `node_modules/.cache/`. See `docs/testing.md` for the cache. The
-slow suite that held the whole-season runs was deleted; see "Reinstate the
-useful slow tests, under a time budget" in `docs/roadmap-additions.md`.
+A fresh clone pays for the worlds on the first `npm test`: about fourteen
+seeds solved once and cached under `node_modules/.cache/`, around seventy
+seconds. Everything else a developer runs - the browser check, the debug
+URL parameters, the headless probes that read the sim over a season - is
+in `docs/development.md`.
 
-Every browser pass runs at 1440 by 900 and at 390 wide against
-`docs/ux.md`.
+## The docs
 
-The save sync - the run following the player to a phone, one device
-running the world at a time - is always on: the world is in the address
-(`?w=heron-pine-ember`), and a build with no store URL in
-`src/sync/config.ts` is the one case with no sync at all. `docs/sync.md` is the runbook: `npm run worker:dev`
-and `npm run worker:smoke` drive the store locally, `npm run
-worker:deploy` publishes it, and the Worker's dependencies are its own
-under `worker/` so none of this touches `npm install` here.
-
-The browser check plays the real game. Run the development server in one
-shell and `npm run e2e` in another: headless Chrome opens seed 42 on day
-200, lands through the real candidate and landing controls, clicks the
-board with real mouse events at real screen coordinates, presses the real
-zoom buttons and lets night fall, and writes what it saw to `docs/e2e/`.
-Every image is a screenshot of the page as the player sees it, and every
-reading is taken from the model the canvas drew and from the canvas itself
-- never from a fixture world, an off-screen copy of the board or a
-synthetic click on a glyph. It holds the game to: one click on known
-ground orders a walk at the block rung and at 50 m; while walking at a
-block rung the view origin moves only by whole glyphs and the glyphs
-between moves change only where sight reaches something new; the survivor
-is drawn in the middle of the visible panel throughout; the board is
-painted at every rung and at night; and the page throws nothing.
-
-`scripts/mapstats.ts` prints a downsampled view of the whole world and its
-terrain shares, plus the full-resolution water kinds, stream count, rock
-share and a height histogram: `npx vite-node scripts/mapstats.ts 42`.
-
-`npm run terrain` is the realism report: for seeds 42, 1 and 7 it solves
-(or reads the cached solve) and prints each measure from the
-terrain-hydrology spec's section 6 beside its real target - distance from
-land to water, lake share and the five largest lakes, the largest river
-mouths, coastline length,
-exposed rock by band, bog share by latitude, valley bearings, mean slope
-per class and the solve time. `npm run terrain -- <seed>` runs one seed;
-`npm run terrain -- --time` runs the older stage-by-stage timing spike
-instead of the report.
-
-`npm run reference` runs the day-one order list a competent player would
-write, headless, on five seeds; the gate is alive and
-fed on game day 26 from the arrival kit, in April - a short-term survival
-problem for a beginner with fire, a roof and water at the deficit the yield
-tables allow, with the day derived from that deficit and the food clause
-on top so the gate measures the loop rather than the fat reserve. `npm run
-reference -- --kitted` runs a diagnostic that starts with tools and a
-fire already in hand instead of from scratch, and `npm run reference --
---start=<doy>` opens the run on that day of year instead of 1 April (200
-is 20 July, 235 is 24 August); a start from July on is measured at the
-first snow rather than at a day. It is not part of `npm test`.
-
-A life costs about two minutes of wall time on the solved world, so the
-five seeds are about ten of them and not the ten seconds this paragraph
-used to claim.
-
-**Do not run the heir lineage (`--heir`) until one life is measured under
-two minutes.** It is 24 lives, so it costs a life times 24: about 80
-minutes when it was last read on 2026-09-11, and about 50 after the sign
-table stopped being walked once per cell and species. Time one life first
-with `npx vite-node scripts/reference.ts 17`, which prints its own
-seconds. The script refuses `--heir` outright until it is passed
-`--i-have-timed-a-life`, so the hour is never started by accident. What is left is the shape of the chooser rather than a slow
-function: `bestHuntCell` scores every mapped cell of the region, and of
-the neighbouring regions above hunting 8, for every species. Cutting that
-sweep moves the cell the chooser picks, which `tests/hunting-chooser.test.ts`
-pins on purpose, so it is a design call about how far a survivor looks and
-not an optimisation.
-
-`npm run horizon` runs a stocked camp with no player forward for up to 30
-days on the same five seeds, at each stage of the delegation ladder in
-turn (manual only, jobs and grinds, keeps), and reports the day and cause
-of the first death. It checks how long an idle camp holds at each stage,
-against the roadmap's provisional bands. `npm run horizon -- --start=<doy>`
-opens each stage's camp on that day of year instead of 1 April (200 is
-20 July, 235 is 24 August). It is not part of `npm test`.
-
-`npm run year` runs the best survivor the sim can hold: a kitted camp with
-every producer, all six skills at 20, the reference list, from 1 April for
-a year, on the five seeds. It prints a line on the first of each month
-(kcal eaten and burned a day, the stock at camp), the day of the first
-hang and the first large-game kill, the week before the death, and the
-outcome; the gate is alive after a year on 4 seeds. `--level=N` sets the
-skills, `--fresh` runs the arrival kit at level 1, `--winter` runs a
-stocked December camp to 1 March (the winter gate), `--start=<doy>` opens
-on another day. About a minute; not part of `npm test`. The survivor is a
-diagnostic, not a claim about players: if this one cannot live a year, no
-lineage can.
-
-`npm run december` runs thirty days of that stocked December camp against
-the shortest days of the year and prints, per seed, hours asleep a day,
-hours of work by light and by dark with the dark morning split from the
-dark evening, the median hour the body falls asleep and wakes, and how
-many sleeps begin in daylight. It is the only probe that reads the working
-day against the sun, which is what the sleep model was written to change.
-`--days=N` and `--level=N` change the span and the skills. About a minute;
-not part of `npm test`, and it has no gate: every line is a reading.
+- `docs/how-it-plays.md`: every mechanic as built, one bullet each,
+  grouped by theme. Kept current as mechanics land.
+- `docs/development.md`: scripts and probes (`reference`, `year`,
+  `horizon`, `december`, `terrain`, `e2e`, `weather:profile`), the debug
+  URL parameters, and the warning on the heir probe's cost.
+- `docs/weather-model.md`: the atmosphere, visibility and ground-state
+  model with its formulas and measured costs. `docs/sky-model.md`: the sky
+  widget's astronomy.
+- `docs/ux.md`: the UI rules every browser pass is checked against, at
+  1440 by 900 and at 390 wide.
+- `docs/testing.md`: the tester round and the beacon. `docs/sync.md`: the
+  save sync runbook.
+- `docs/superpowers/specs/2026-09-03-survidle-realism-roadmap.md`: the
+  roadmap. `docs/roadmap-additions.md`: items raised and not yet placed in
+  it, including what was measured and what was ruled out and why.
+- `docs/superpowers/specs/`: one dated design per piece of work, and the
+  sources behind its numbers; `docs/superpowers/plans/` the plans.
+- `docs/playtest-*.md` and `docs/*-shots/`: playtest records and the
+  screenshots the browser passes wrote.
 
 ## Where the numbers live
 
