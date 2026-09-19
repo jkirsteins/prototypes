@@ -1,4 +1,4 @@
-import type { Region } from "./types";
+import type { Faction, Region } from "./types";
 import { renderMap, darkenColor, brightenColor, inkFor } from "./map-render";
 import {
   createTooltip, settlementTooltipText,
@@ -12,12 +12,16 @@ import { attachInteraction, DRAG_THRESHOLD_PX, landAtPoint } from "./interaction
 // appends events to a `GameState` goes through `./moves`, whose wrappers are
 // shaped for `apply` so there is no local path around either door.
 import {
-  newGame, viewOf, repeatOnlyOf, takesNoTurn, turnOpen, transferLimit,
-  type GameEvent, type GameState,
+  humanFactionOf, newGame, viewOf, repeatOnlyOf, takesNoTurn, turnOpen,
+  transferLimit, type GameEvent, type GameState,
 } from "./game";
 import {
-  actionBlock as gateBlock, shouldReask, type PlayerAction, type ScreenFacts,
+  actionBlock as gateBlock, shouldAskPick, shouldReask,
+  type PlayerAction, type ScreenFacts,
 } from "./gates";
+import {
+  boonLine, duelStakes, rewardFor, rewardLine, type Boon,
+} from "./gauntlet";
 import { fullRealmOf, isUnheld, realmOf, realmRootOf } from "./relations";
 import { playsTurns } from "./passives";
 import { hasRuler, rulerNameOf } from "./rulers";
@@ -38,7 +42,9 @@ import {
 } from "./playability";
 import { armiesOn, axesOf, type March, type Marches } from "./marches";
 import { crossingBetween, ringsOf, type Crossing, type Pt } from "./borders";
-import { emphasisFor, renderArrowScene, type ArrowSpec, type SceneCtx } from "./arrow-scene";
+import {
+  emphasisFor, renderArrowScene, type ArrowSpec, type Rect, type SceneCtx,
+} from "./arrow-scene";
 import { animations, runAnimation } from "./animate";
 import {
   defenseMaxOf, defenseOf, gateBandOf, MIN_RAID_SPEND, type GateBand,
@@ -86,7 +92,7 @@ import { parseBootParams } from "./boot-params";
 import {
   advanceMove, bootGame, chooseBuildMove, pickFactionMove, startGameMove,
 } from "./moves";
-import { REGIONS, setActiveRegion, type RegionId } from "./regions";
+import { REGIONS, activeRegion, setActiveRegion, type RegionId } from "./regions";
 import {
   forcesDiscardWhenStuck, RULES_PREFS_KEY, loadRulesPrefs,
   saveRulesPrefs, type RuleSelections,
@@ -96,6 +102,7 @@ import {
   holderOf, politicalFactionForPolygon, realmHoldingLine, relationshipLine,
 } from "./view";
 import { defenseMaxOf as mapDefenseMax, factionAdjacencyOf, siteCapsOf, siteListsOf } from "./adjacency";
+import { mapInkBoxes } from "./map-detail";
 import "./style.css";
 
 const app = document.getElementById("app")!;
@@ -274,10 +281,45 @@ for (const region of regionPaths.values()) {
   });
 }
 const tooltip = createTooltip(app);
-const factionById = new Map(data.factions.map((f) => [f.id, f]));
+/** Every faction the screen may have to NAME or COLOUR, which is the map's own
+ *  plus the power beyond the frame.
+ *
+ *  The power is not in `MapData.factions` - it holds no polygon on the map and
+ *  borrows a baked neighbour's ground - so a lookup over the map alone fell
+ *  back to its id, and the run's last fight was offered as "Duel foreign-rus"
+ *  on the modal and in the scoreboard. It is added here, once, so every
+ *  surface that resolves a faction id gets the same answer.
+ *
+ *  `type` and `ethnicity` are the flattest true things that can be said about
+ *  it: it is a land in the descriptive sense the type carries (no mechanics
+ *  ride on it), and it belongs to no people on this map. */
+const foreignFaction = ((): Faction => {
+  const power = activeRegion().foreignPower;
+  return {
+    id: power.id, name: power.name, ethnicity: power.id,
+    type: "land", color: power.color,
+    // A name like "The Maghreb" or "Lands of Rus'" is already a place and
+    // takes no article, the same rule Lietuva is flagged with.
+    placeName: true,
+  };
+})();
+const factionById = new Map(
+  [...data.factions, foreignFaction].map((f) => [f.id, f]),
+);
 const regionById = new Map(data.regions.map((r) => [r.id, r]));
 const factionByRegion = new Map(data.regions.map((r) => [r.id, r.faction]));
 const regionByFaction = new Map(data.regions.map((r) => [r.faction, r.id]));
+// The power's ground under the SAME two ids as every land: the id a click
+// resolves and the faction that holds it are one string here, because the
+// power borrows a silhouette rather than holding a region of its own.
+//
+// This is what makes the last act playable by a person rather than only by the
+// policy. Every surface that aims goes point -> `landAtPoint` -> this map ->
+// faction, so without an entry the expedition could be marched by `aiTakeTurn`
+// and by nothing a player could click: the aim preview read "no land" over the
+// power and the click fell through to a pan.
+factionByRegion.set(activeRegion().foreignPower.id, activeRegion().foreignPower.id);
+regionByFaction.set(activeRegion().foreignPower.id, activeRegion().foreignPower.id);
 /** The further sites each land can settle: its locked settlements, in the order
  *  the map authors them. A land is settled into these one at a time, so the Nth
  *  founding reveals the Nth dot and the drawing follows the count in state
@@ -586,6 +628,7 @@ function screenFacts(): ScreenFacts {
     busy: screenBusy(),
     harvestOpen: pendingHarvest !== null,
     transferOwed: liveTransferPending(),
+    pickOwed: localPickPending(),
     localTurn: isLocalTurn(),
   };
 }
@@ -637,17 +680,141 @@ function refreshWhenSettled(): void {
  *  The rule itself is `shouldReask` in src/gates.ts, where it can be tested;
  *  this is the wiring that reads the screen for it. */
 function reaskOwedQuestions(): void {
-  const owed = shouldReask(game(), {
+  const facts = {
     // `pendingHarvest` folds in here: a harvest offer is the overlay too, and
     // one that is mid-flight has not put its own element up yet.
     overlayOpen: hud.overlayOpen() || pendingHarvest !== null,
     awaitingWire,
     transferOwed: liveTransferPending(),
-  });
-  if (!owed) return;
-  // No stage is holding this one, so it owes nobody a release - the same
-  // shape, and the same reason, as the boot tail's call.
-  askTransfer(() => {});
+    pickOwed: localPickPending(),
+  };
+  if (shouldReask(game(), facts)) {
+    // No stage is holding this one, so it owes nobody a release - the same
+    // shape, and the same reason, as the boot tail's call.
+    askTransfer(() => {});
+    return;
+  }
+  // The duel pick, second, because `shouldAskPick` stands down for a
+  // conquest: that question is about the board just shown and holds a stage
+  // open, this one is about the round after next, and the two share one
+  // overlay. Unlike the conquest this is not a reconciliation - the pick has
+  // no one-shot route to lose, so this is simply where a `picking` board puts
+  // its question on screen.
+  if (shouldAskPick(game(), facts)) askDuelPick();
+}
+
+/** Puts the gauntlet's offer to the player: which bordering realm the run
+ *  duels next, or none of them - and then what they put up against it.
+ *
+ *  It holds nothing open and releases nothing. The pick is a STATE the engine
+ *  carries until it is answered - `picking` leaves the world unscoped rather
+ *  than blocking, per src/gauntlet.ts - so what holds the screen is
+ *  `localPickPending` inside the action gate, and what takes the modal down is
+ *  the answer moving the gauntlet off `picking`. The stake screen rides inside
+ *  that same window: the gauntlet is still `picking` behind it, so the lock
+ *  spans both screens with nothing extra holding it and Back is free.
+ *
+ *  Both repaints are owed by hand, for the reason every derived lock owes
+ *  them: nothing repaints when the gate opens or closes on its own, so the
+ *  paint that drew the hand greyed would be the one left on screen. */
+function askDuelPick(): void {
+  const g = game();
+  // The rest is the same window with a different question in it, so it is
+  // raised from the same place: one entry point means one repaint rule and one
+  // way for the lock and the modal to agree.
+  if (g.gauntlet.kind === "rest") {
+    askBoonPick(g.gauntlet.boss, g.gauntlet.boons);
+    refresh();
+    return;
+  }
+  if (g.gauntlet.kind !== "picking") return;
+  const v = viewOf(g);
+  const home = humanFactionOf(g);
+  hud.showDuelOffer(
+    {
+      candidates: g.gauntlet.candidates.map((factionId) => ({
+        factionId,
+        // `rewardFor` and not a second table: this is the promise, and the
+        // wrap that pays it reads the same function on the same land.
+        // The act rides along: what a win pays scales with it, and the offer
+        // is the promise the wrap has to keep.
+        reward: rewardLine(rewardFor(v, factionId, g.act)),
+      })),
+      boss: g.gauntlet.boss,
+    },
+    {
+      onPick(factionId) {
+        // Read fresh rather than captured: the realm is the player's own and
+        // their turn may have moved it since the offer was computed at a wrap.
+        const stakes =
+          home === null ? [] : duelStakes(viewOf(game()), home, factionId);
+        // One legal stake is not a question. Every duel is staked - a realm
+        // holding only its home bets that, because losing it is vassalage and
+        // not the end of the run - but a modal with one row and no alternative
+        // is a click that teaches nothing, so it is answered here.
+        if (stakes.length <= 1) {
+          hud.hideHarvestUi();
+          decide({
+            kind: "pick-duel", enemyId: factionId, stakeId: stakes[0] ?? null,
+          });
+          return;
+        }
+        askDuelStake(factionId, stakes);
+      },
+      onDecline() {
+        hud.hideHarvestUi();
+        decide({ kind: "pick-duel", enemyId: null, stakeId: null });
+      },
+    },
+  );
+  // On the way IN, because the gate has answered "locked" since the board
+  // reached `picking` and nothing has repainted the hand under it since.
+  refresh();
+}
+
+/** The breath before a boss: one boon, then the fight.
+ *
+ *  No cancel and no way past. The act does not close until its boss is fought,
+ *  so a rest that could be dismissed would be a rest the player never took and
+ *  a modal that came straight back. `armCancel` is given the smallest boon
+ *  rather than a refusal, which is the harvest's own rule for an offer that
+ *  must be answered. */
+function askBoonPick(boss: string, boons: Boon[]): void {
+  hud.showBoonOffer(
+    { boss, boons: boons.map((id) => ({ id, text: boonLine(id) })) },
+    {
+      onTake(boon) {
+        hud.hideHarvestUi();
+        decide({ kind: "pick-boon", boon });
+      },
+    },
+  );
+}
+
+/** The second screen of the same question. Back re-raises the first, which is
+ *  why it is a function of its own rather than a closure inside the offer. */
+function askDuelStake(enemy: string, stakes: string[]): void {
+  const g = game();
+  const v = viewOf(g);
+  hud.showStakeOffer(
+    {
+      enemy,
+      stakes: stakes.map((factionId) => ({
+        factionId,
+        defense: defenseOf(v, factionId),
+        max: defenseMaxOf(v, factionId),
+      })),
+    },
+    {
+      onStake(factionId) {
+        hud.hideHarvestUi();
+        decide({ kind: "pick-duel", enemyId: enemy, stakeId: factionId });
+      },
+      onBack() {
+        askDuelPick();
+      },
+    },
+  );
 }
 
 /** The seat this screen plays. 0 for solo and host; the guest learns its
@@ -813,6 +980,31 @@ function owedTransfer(): { from: string; to: string } | null {
  *  same question the modal is raised on. */
 function liveTransferPending(): boolean {
   return owedTransfer() !== null;
+}
+
+/** Whether the gauntlet is asking THIS screen something - which fight comes
+ *  next, or which boon to take into the act's last one.
+ *
+ *  Both states, one predicate. They are one question in two screens on one
+ *  overlay, and a rest that did not lock would hand the board back with the
+ *  boon still owed - the offer behind it would then arrive with the boss
+ *  already summoned and nothing said about it.
+ *
+ *  `decidedHere` and not a role test written out here: the pick is host-only
+ *  in `DECISION_ROUTES` because the run holds one gauntlet, so the table that
+ *  routes the answer is what decides who is shown the question. Spelled any
+ *  other way, a guest would be locked out of its own turn waiting on a modal
+ *  it is never shown.
+ *
+ *  One predicate, read by the lock and by the raise, so the two cannot
+ *  disagree about whether an answer is owed. */
+function localPickPending(): boolean {
+  const kind = game().gauntlet.kind;
+  return (
+    game().phase === "playing" &&
+    (kind === "picking" || kind === "rest") &&
+    decidedHere("pick-duel", net.role)
+  );
 }
 
 /** Conquests this screen has given up asking about.
@@ -1089,6 +1281,36 @@ function applyOwnership(): void {
     inPlay() && humanOverlord !== undefined
       ? fullRealmOf(humanOverlord, game().overlords, game().incorporated)
       : new Set<string>();
+  // The power beyond the frame, once the last act has called it up. It has no
+  // region of its own - it borrows a baked neighbour's silhouette, which is
+  // ground the map has always drawn and nothing had ever claimed - so it is
+  // painted here rather than in the walk below, which is over `regionPaths`.
+  //
+  // Painted whether or not it is being duelled: it is on the roster, it takes
+  // turns and it sends arrows, and a faction that acts while drawn as scenery
+  // is the map lying about the board.
+  {
+    const power = activeRegion().foreignPower;
+    const path = svg.querySelector<SVGPathElement>(
+      `.neighbors path[data-neighbor="${power.neighbor}"]`,
+    );
+    if (path !== null) {
+      const summoned = inPlay() && game().foreign.includes(power.id);
+      path.classList.toggle("neighbor-power", summoned);
+      // A summoned power is a LAND to point at, and only while it stands: the
+      // id is what `landAtPoint` answers with and `.region` is what the
+      // targeting cues are written on, so the two together are the whole of
+      // "this can be aimed at". Both come off again when it is not summoned,
+      // or a New game would leave the silhouette clickable with nothing behind
+      // it.
+      path.classList.toggle("region", summoned);
+      if (summoned) path.setAttribute("data-id", power.id);
+      else path.removeAttribute("data-id");
+      // Back to the grey the stylesheet gives every other neighbour when it is
+      // not standing - a New game must not leave the last run's enemy painted.
+      path.style.fill = summoned ? power.color : "";
+    }
+  }
   for (const [id, el] of regionPaths) {
     const region = regionById.get(id)!;
     const effective = inPlay() ? fillFactionFor(region.faction) : region.faction;
@@ -1468,8 +1690,29 @@ function regionCenter(factionId: string): { x: number; y: number } | undefined {
   return { x: best.x, y: best.y };
 }
 
+/** Where the threat badges are standing, in map coordinates - what an arrow's
+ *  landing chip steps aside for (`SceneCtx.keepOut`).
+ *
+ *  Written here rather than measured from the badge layer, because here is
+ *  where the geometry is already known: the box the badge draws is the text
+ *  box the code below computes, and reading it back would mean a second
+ *  `getBBox` pass over every badge on every paint.
+ *
+ *  Refreshed whenever the badges are, which is every paint that could move
+ *  one - and emptied first, so a stale box can never outlive the badge it was
+ *  about. The arrows are painted from the same refresh, immediately after
+ *  (`applyTargetCues`, `refresh`). */
+let badgeBoxes: Rect[] = [];
+
+/** How far past its own box a badge's pips reach, above and below the centre
+ *  the badge is translated to: the settlement row is the highest thing on one
+ *  and the disease pips the lowest. Written as the envelope rather than
+ *  measured, because the pips are drawn at fixed offsets a few lines below. */
+const BADGE_PIPS = { top: -30, bottom: 19 };
+
 function renderThreatBadges(): void {
   badgeGroup.replaceChildren();
+  badgeBoxes = [];
   const human = localHuman();
   if (!inPlay() || !human) return;
   const v = viewOf(game());
@@ -1594,6 +1837,16 @@ function renderThreatBadges(): void {
     rect.setAttribute("y", String(textBox.y - pad));
     rect.setAttribute("width", String(textBox.width + pad * 2));
     rect.setAttribute("height", String(textBox.height + pad * 2));
+    // The whole badge, box and pips, in map coordinates - the group is
+    // translated to the centre, so everything inside it is relative to that.
+    const x = cx + textBox.x - pad;
+    const top = Math.min(cy + textBox.y - pad, cy + BADGE_PIPS.top);
+    badgeBoxes.push({
+      x, y: top,
+      w: textBox.width + pad * 2,
+      h: Math.max(cy + textBox.y + textBox.height + pad, cy + BADGE_PIPS.bottom)
+        - top,
+    });
   }
   // The group was rebuilt from nothing, so whatever an arrow hover had taken
   // away is back. Re-asked here rather than at every caller: a refresh landing
@@ -1647,6 +1900,19 @@ const townsByFaction = ((): Map<string, { x: number; y: number }[]> => {
 const ringsByFaction = new Map<string, Pt[][]>(
   data.regions.map((r) => [r.faction, ringsOf(r.path)]),
 );
+// The power's ground, off the silhouette it borrows. Without it `crossingFor`
+// answers null for every pair the power is at either end of, and the scene
+// draws NO ARROW: the expedition was played, the log said so and the defense
+// came off the source, with nothing on the map between the coast and the land
+// the army had been sent at. It shares no vertex with any land here, so the
+// crossing comes out a strait and the arrow spans the gap - which is what an
+// army leaving the map should look like, and is the same treatment Saaremaa's
+// raids already get.
+{
+  const power = activeRegion().foreignPower;
+  const baked = data.neighbors.find((n) => n.id === power.neighbor);
+  if (baked !== undefined) ringsByFaction.set(power.id, ringsOf(baked.path));
+}
 const crossings = new Map<string, Crossing | null>();
 
 /** The border between two lands, from the first's side. `renderArrowScene`
@@ -1680,6 +1946,9 @@ const sceneCtx: SceneCtx = {
   crossingFor,
   freeAnchor: (from) =>
     townsByFaction.get(from)?.[0] ?? regionCenter(from) ?? null,
+  // The badges AND the map's own words. Both are ink the map has already put
+  // down; the chip is the one thing in the scene free to step around them.
+  keepOut: () => [...badgeBoxes, ...mapInkBoxes(svg)],
 };
 
 /** How many turns until this faction acts again, from where the round stands.
@@ -1695,11 +1964,15 @@ function turnsUntilActs(factionId: string): number {
 
 /** Everything in flight at each land, in the order it will resolve.
  *
- *  A march and a claim both land at the start of their actor's next turn, so
- *  the order is "whose turn comes first", and the answer decides whether a
- *  second raid finds a land already flat - or whether a subjugation arrives
- *  before the raids that would have answered it. The player cannot work that
- *  out from the board, so the arrows carry it.
+ *  A march lands at the start of one of its actor's turns - the one its
+ *  `expiry` names, a turn out per land the army crosses - and a claim always
+ *  at the next. So the order is the expiry first and then "whose turn comes
+ *  first", and the answer decides whether a second raid finds a land already
+ *  flat - or whether a subjugation arrives before the raids that would have
+ *  answered it. The player cannot work that out from the board, so the arrows
+ *  carry it. Two arrows at one land no longer resolve in the order they were
+ *  declared: a neighbour's raid declared later overtakes a march that set out
+ *  three lands away.
  *
  *  Grouped by TARGET, and only by target: an ordinal answers "who gets there
  *  first" between things racing for the SAME land.
@@ -2002,6 +2275,19 @@ function paintArrows(): void {
       fill: against || ours ? undefined : arrowInkFor(m.actor),
       label: `${m.damage} STR`,
       chip: order.get(key),
+      // When, as against who gets there first. The ordinal beside it is a
+      // race between the arrows at one land; this is the one fact an arrow
+      // standing alone on a border cannot otherwise tell the player, now that
+      // an army takes a turn for every land it crosses. Rounds, the same clock
+      // `March.expiry` is stated in - so the reading is the one the store
+      // holds rather than a second derivation of it.
+      arrivesIn: m.expiry - game().turn,
+      // Two lands with no border between them are a strait to
+      // `crossingBetween`, which knows only the map's vertices - so a march
+      // walking past two lands is drawn spanning open water. The game graph is
+      // what tells them apart: a strait pair is ADJACENT and shares no vertex,
+      // an overland march is not adjacent at all.
+      overland: !(game().adjacency[m.from] ?? []).includes(m.to),
       dataset: {
         actor: m.actor, target: m.to,
         // The two ENDS, which is what the hover lights. Not the same question
@@ -2249,9 +2535,12 @@ const BEAT_LABEL_MS = 1700;
  *  the player has finished reading what moved it. */
 const BADGE_WALK_MS = 220;
 
-const factionNameById = new Map(data.factions.map((f) => [f.id, f.name]));
+const factionNameById = new Map(
+  [...data.factions, foreignFaction].map((f) => [f.id, f.name]),
+);
 const placeNameFactionIds = new Set(
-  data.factions.filter((f) => f.placeName).map((f) => f.id),
+  [...data.factions, foreignFaction]
+    .filter((f) => f.placeName).map((f) => f.id),
 );
 
 /** The hooks a beat label's segments render through - the same tooltip the
@@ -2908,6 +3197,23 @@ function applyTargeting(): void {
     el.classList.toggle(
       "target-invalid", (live && !valid) || f === takenByHost || sworn,
     );
+  }
+  // The power beyond the frame, on the same two classes. It is not in
+  // `regionPaths` - it borrows a baked silhouette - so the loop above cannot
+  // reach it, and left out it was the one legal target on the map that never
+  // lit up: everything else dimmed to 0.07 around a land with no white outline
+  // on it. Faction and polygon resolve to the same id here, so there is no
+  // political step to take.
+  {
+    const power = activeRegion().foreignPower;
+    const el = svg.querySelector<SVGPathElement>(
+      `.neighbors path[data-neighbor="${power.neighbor}"][data-id]`,
+    );
+    if (el !== null) {
+      const valid = live && targets.has(power.id);
+      el.classList.toggle("target-valid", valid);
+      el.classList.toggle("target-invalid", live && !valid);
+    }
   }
   // Targeting cues win the map while armed - applyHighlight suppresses itself
   // then. Disarming lands here too, and brings the live hover back - never the
@@ -4568,5 +4874,10 @@ if (boot !== null) {
   // board to move defenders on, and the question would be a slider reading
   // `0 of 0` over the postmortem raised one line above - the overlay it sits
   // on outranks the result screen.
-  if (game().phase === "playing") askTransfer(() => {});
+  //
+  // The gauntlet's own question rides the same call, as the conquest's
+  // release: a booted board is in `picking` from turn 1, and the two share one
+  // overlay, so the pick has to wait for whatever the conquest is doing rather
+  // than replacing it.
+  if (game().phase === "playing") askTransfer(reaskOwedQuestions);
 }

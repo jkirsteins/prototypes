@@ -26,6 +26,48 @@ export interface RegionDef {
   /** The realms that already stand when this map opens. Absent for a region
    *  whose every land answers to itself. */
   startingRealms?: StartingRealms;
+  /** The power beyond the frame that the run's last act is fought against.
+   *
+   *  Every region authors one. A run whose last fight was a neighbour like any
+   *  other would end where every other act ends, and the whole point of the
+   *  third one is that it is somewhere else. */
+  foreignPower: ForeignPowerDef;
+}
+
+/** A power that does not stand on the map: the fight the last act is for.
+ *
+ *  It is AUTHORED, the way `terrainEligibility` and `bureaucracyLands` are,
+ *  and for the same reason - there is no rim concept in the code, and this is
+ *  not the change that should invent one. Which lands face outward is a fact
+ *  about the region's geography that the region's own file is the right place
+ *  to state.
+ *
+ *  It borrows its polygon from the map's baked NEIGHBOURS - the grey country
+ *  silhouettes already drawn around the playable lands - rather than carrying
+ *  geometry of its own. The ground is already there and already in the right
+ *  place; what was missing was anything in the game that knew it existed. */
+export interface ForeignPowerDef {
+  /** The faction id it takes when summoned. Prefixed, so it cannot collide
+   *  with a land id and so a reader of a log line can tell at a glance that
+   *  this one is not on the map. */
+  id: string;
+  name: string;
+  /** Which `MapData.neighbors` path it is drawn as. */
+  neighbor: string;
+  /** Polygon fill, deliberately outside every people's hue family: it belongs
+   *  to no ethnicity on the map. */
+  color: string;
+  /** Its defense ceiling. Far above any single land's - the map's biggest is
+   *  18 - because a realm that has taken half the map is what comes for it. */
+  defenseMax: number;
+  /** The lands it borders: the only ground an expedition may set out from,
+   *  and the only lands its own raids reach. Authored rather than derived,
+   *  per the note above. */
+  landings: readonly string[];
+  /** Two or three sentences, shown when it is summoned. Must not contain any
+   *  card or faction name - the rich-text segment rule, and there is no
+   *  renderer for one here. */
+  blurb: string;
 }
 
 /** Both keyed by the HELD land's faction id -> the holder's, matching the
@@ -157,6 +199,48 @@ const IBERIA_STARTING_REALMS: StartingRealms = {
   },
 };
 
+/** The Rus' beyond the Daugava and the eastern forests. Its landings are the
+ *  lands that actually faced east in 1100: Jersika on the Daugava trade road
+ *  to Polotsk, Ugandi and Virumaa against Pskov and Novgorod, and the
+ *  Sudovian and Dainavian bands whose own flavour line on this map already
+ *  says they "raid into Rus' and Mazovia and are raided in turn". */
+const BALTIC_FOREIGN: ForeignPowerDef = {
+  id: "foreign-rus",
+  name: "Lands of Rus'",
+  neighbor: "RU",
+  color: "#6b5b7b",
+  defenseMax: 40,
+  landings: [
+    "vironians", "ugandians", "jersikans", "selonians",
+    "eastern-aukstaitian-confederacy", "dainavians", "sudovians",
+  ],
+  blurb:
+    "Beyond the eastern forests the princes have stopped quarrelling among " +
+    "themselves and started counting your lands. Their levies gather where " +
+    "the trade roads come out of the woods. This one does not wait to be " +
+    "attacked, and it cannot be reached without leaving the map behind.",
+};
+
+/** The Maghreb across the strait. Its landings are the southern coast and the
+ *  islands: the Algarve, the Guadalquivir mouth, the sierras of Bobastro and
+ *  Elvira above Malaga, and the Balearics, which were not Umayyad until Isam
+ *  al-Khawlani sailed for them in 902. */
+const IBERIA_FOREIGN: ForeignPowerDef = {
+  id: "foreign-maghreb",
+  name: "The Maghreb",
+  neighbor: "MA",
+  color: "#7b6b4b",
+  defenseMax: 40,
+  landings: [
+    "algarvians", "sevillans", "hafsunids", "elvirans", "balearians",
+  ],
+  blurb:
+    "Across the strait the Berber emirs have watched the peninsula come " +
+    "apart and put together again, and they have drawn their own conclusion. " +
+    "Their ships are at Ceuta. This one does not wait to be attacked, and it " +
+    "cannot be reached without leaving the map behind.",
+};
+
 export const DEFAULT_REGION: RegionId = "baltic";
 
 export const REGIONS: Record<RegionId, RegionDef> = {
@@ -173,6 +257,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     rulerNames: balticPools,
     terrainEligibility: BALTIC_TERRAIN_ELIGIBILITY,
     bureaucracyLands: BALTIC_BUREAUCRACY_LANDS,
+    foreignPower: BALTIC_FOREIGN,
   },
   iberia: {
     id: "iberia",
@@ -189,6 +274,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     terrainEligibility: IBERIA_TERRAIN_ELIGIBILITY,
     bureaucracyLands: IBERIA_BUREAUCRACY_LANDS,
     startingRealms: IBERIA_STARTING_REALMS,
+    foreignPower: IBERIA_FOREIGN,
   },
 };
 
@@ -228,7 +314,13 @@ export function regionFingerprint(): string {
   const cached = fingerprintCache.get(region.id);
   if (cached !== undefined) return cached;
   const realms = JSON.stringify(region.startingRealms ?? null);
-  const text = `${region.id}:${realms}:${JSON.stringify(region.map)}`;
+  // The foreign power is in the fingerprint because it is a fact about what
+  // this map's run IS - two builds that disagree about which power the last
+  // act is fought against, where it lands, or how much it holds would deal
+  // the same board and then play two different games on it.
+  const power = JSON.stringify(region.foreignPower);
+  const text =
+    `${region.id}:${realms}:${power}:${JSON.stringify(region.map)}`;
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     h ^= text.charCodeAt(i);

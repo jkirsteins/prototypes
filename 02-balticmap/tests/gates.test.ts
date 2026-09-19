@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  actionBlock, shouldReask,
+  actionBlock, shouldAskPick, shouldReask,
   type PlayerAction, type ReaskFacts, type ScreenFacts,
 } from "../src/gates";
 import {
@@ -24,7 +24,8 @@ function playing(): GameState {
 }
 
 const CLEAR: ScreenFacts = {
-  busy: false, harvestOpen: false, transferOwed: false, localTurn: true,
+  busy: false, harvestOpen: false, transferOwed: false, pickOwed: false,
+  localTurn: true,
 };
 
 const ACTIONS: PlayerAction[] =
@@ -98,6 +99,7 @@ describe("actionBlock", () => {
 describe("shouldReask", () => {
   const IDLE: ReaskFacts = {
     overlayOpen: false, awaitingWire: false, transferOwed: true,
+    pickOwed: false,
   };
 
   it("puts an owed conquest back on screen when nothing is asking it", () => {
@@ -129,5 +131,55 @@ describe("shouldReask", () => {
     // question back.
     const won: GameState = { ...playing(), phase: "victory" };
     expect(shouldReask(won, IDLE)).toBe(false);
+  });
+});
+
+describe("an owed duel pick", () => {
+  const owed: ScreenFacts = { ...CLEAR, pickOwed: true };
+
+  it("stops the turn, and leaves the two ways out alone", () => {
+    // In the gate rather than beside it, the rule the docked-hand regression
+    // wrote down: a term the renderer cannot read is a card that draws live
+    // and swallows the click. Surrender stays open for the same reason it
+    // survives a conquest - a gate that removes the way out is a trap.
+    const g = playing();
+    expect(actionBlock("play", g, owed)).toMatch(/question on screen/);
+    expect(actionBlock("end-turn", g, owed)).toMatch(/question on screen/);
+    expect(actionBlock("map", g, owed)).toMatch(/question on screen/);
+    expect(actionBlock("surrender", g, owed)).toBeNull();
+  });
+});
+
+describe("shouldAskPick", () => {
+  const IDLE: ReaskFacts = {
+    overlayOpen: false, awaitingWire: false, transferOwed: false,
+    pickOwed: true,
+  };
+
+  it("puts the offer on screen when the board is between duels", () => {
+    expect(shouldAskPick(playing(), IDLE)).toBe(true);
+  });
+
+  it("stands down for a conquest, which shares the overlay and comes first", () => {
+    // That question is about the board just shown and holds a transition
+    // stage open; this one is about the round after next. Two modals, one
+    // overlay, so the order is the whole of which is seen.
+    expect(shouldAskPick(playing(), { ...IDLE, transferOwed: true })).toBe(false);
+  });
+
+  it("raises nothing over a modal already up, or across a wire", () => {
+    expect(shouldAskPick(playing(), { ...IDLE, overlayOpen: true })).toBe(false);
+    expect(shouldAskPick(playing(), { ...IDLE, awaitingWire: true })).toBe(false);
+  });
+
+  it("asks nobody who does not answer it", () => {
+    // `pickOwed` folds in `decidedHere`: the run holds one gauntlet, so a
+    // second person is never shown a question whose answer has nowhere to go.
+    expect(shouldAskPick(playing(), { ...IDLE, pickOwed: false })).toBe(false);
+  });
+
+  it("asks nothing once the run is over", () => {
+    const won: GameState = { ...playing(), phase: "victory" };
+    expect(shouldAskPick(won, IDLE)).toBe(false);
   });
 });

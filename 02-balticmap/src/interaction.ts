@@ -146,7 +146,13 @@ export function attachInteraction(
     for (const [id, el] of regionPaths) {
       el.classList.toggle("selected", id === state.selected);
     }
-    cb.onSelect(state.selected ? byId.get(state.selected)! : null);
+    // `?? null` rather than `!`: a selectable thing on the map need not be one
+    // of the map's own regions. The power beyond the frame borrows a baked
+    // neighbour's silhouette and carries a `data-id` so it can be aimed at, so
+    // a click on it resolves an id this table has never heard of - and the `!`
+    // handed `onSelect` an `undefined` typed as a Region, which is a crash one
+    // line later rather than a pin that does nothing.
+    cb.onSelect(state.selected ? byId.get(state.selected) ?? null : null);
   }
 
   for (const [id, el] of regionPaths) {

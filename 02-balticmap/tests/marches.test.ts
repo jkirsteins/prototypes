@@ -12,7 +12,7 @@ import {
 let nextTestMarchId = 1;
 const march = (over: Partial<March> = {}): March => ({
   id: nextTestMarchId++, actor: "selonians", from: "selija", to: "talava",
-  cardId: "raid", damage: 4, holdsArmy: true, expiry: 3, ...over,
+  cardId: "raid", damage: 4, holdsArmy: true, declared: 1, expiry: 3, ...over,
 });
 
 /** This module takes a land's army cap as a plain argument now - it knows
@@ -117,22 +117,49 @@ describe("axesOf", () => {
 
   it("names the side that declared first as the one that opened", () => {
     let marches: Marches = {};
-    // Declared on turn 1 (expiry 2); the answer comes on turn 2 (expiry 3).
-    marches = addMarch(marches, march({ from: "talava", to: "selija", expiry: 2 }));
-    marches = addMarch(marches, march({ from: "selija", to: "talava", expiry: 3 }));
-    // The axis sorts selija before talava, so the opener is side b.
-    expect(axesOf(marches)[0].opening).toBe("b");
+    // Inserted in reverse of declaration order, and tied on expiry (left at
+    // the factory default), so a reader still keyed on expiry falls through
+    // to the insertion-order tie-break and picks the WRONG side (b, inserted
+    // first) - only a reader of `declared` picks a (declared first, but
+    // inserted second).
+    marches = addMarch(marches, march({ from: "talava", to: "selija", declared: 5 }));
+    marches = addMarch(marches, march({ from: "selija", to: "talava", declared: 1 }));
+    expect(axesOf(marches)[0].opening).toBe("a");
+  });
+
+  it("reads the opening side off the declaration, not the arrival", () => {
+    // A far attack declared first and a near answer declared later can land on
+    // the SAME turn once travel time exists. The opening side is the one that
+    // started the quarrel, which only `declared` knows.
+    //
+    // Both marches expire on the same turn, so a reader still keyed on
+    // `expiry` falls through to the insertion-order tie-break - and a
+    // `Marches` record's integer-like keys enumerate in ASCENDING id order
+    // regardless of call order (see the `Marches` doc comment), so the
+    // smaller id is what that tie-break actually favours. Giving the smaller
+    // id to the LATER-declared march (side b) means the two readings
+    // disagree: an expiry-tie-then-insertion-order reader picks b, and a
+    // declared-order reader picks a.
+    let marches: Marches = {};
+    marches = addMarch(marches, march({
+      id: 1, from: "talava", to: "selija", declared: 3, expiry: 4,
+    }));
+    marches = addMarch(marches, march({
+      id: 2, from: "selija", to: "talava", declared: 1, expiry: 4,
+    }));
+    const [axis] = axesOf(marches);
+    expect(axis.opening).toBe(axis.a === "selija" ? "a" : "b");
   });
 
   it("falls back to declaration order for two declared in the same round", () => {
     let marches: Marches = {};
-    marches = addMarch(marches, march({ from: "talava", to: "selija", expiry: 2 }));
-    marches = addMarch(marches, march({ from: "selija", to: "talava", expiry: 2 }));
+    marches = addMarch(marches, march({ from: "talava", to: "selija", declared: 2 }));
+    marches = addMarch(marches, march({ from: "selija", to: "talava", declared: 2 }));
     expect(axesOf(marches)[0].opening).toBe("b");
     // And the other way round, so the tie-break is really being read.
     let other: Marches = {};
-    other = addMarch(other, march({ from: "selija", to: "talava", expiry: 2 }));
-    other = addMarch(other, march({ from: "talava", to: "selija", expiry: 2 }));
+    other = addMarch(other, march({ from: "selija", to: "talava", declared: 2 }));
+    other = addMarch(other, march({ from: "talava", to: "selija", declared: 2 }));
     expect(axesOf(other)[0].opening).toBe("a");
   });
 

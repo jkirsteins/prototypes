@@ -109,7 +109,7 @@ describe("renderSegments", () => {
         { text: "Keyword: Raid", blockStart: true },
         { text: expect.stringContaining("leaves your turn open") },
         { text: "Keyword: Hostile", blockStart: true },
-        { text: expect.stringContaining("up your own chain of fealty") },
+        { text: expect.stringContaining("aimed at your own realm") },
       ],
       10, 20,
     );

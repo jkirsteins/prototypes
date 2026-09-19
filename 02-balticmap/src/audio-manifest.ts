@@ -85,6 +85,23 @@ export const EVENT_SOUNDS: Record<GameEventType, SoundName | null> = {
   // Nothing landed and no score moved - an arrow evaporating is the log's
   // news, not the ear's.
   "march-lapsed": null,
+  // The same cue the turnip bar's payoff gets, and for the same reason: this
+  // is the other moment in the run where a reward simply arrives, earned by
+  // something the player did several turns ago.
+  "duel-won": "harvest",
+  // The other two ways a duel settles. They earn a sound for the same reason
+  // they earn a beat: the fight has been running for up to twenty rounds and
+  // the ear is half of how the player learns it is over. The heavy bell is
+  // what a land changing hands already sounds like, and a duel lost is a land
+  // gone; a lapsed one gets the quietest cue there is, because nothing
+  // happened and the sound should say so.
+  "duel-lost": "bell-heavy",
+  "duel-void": "rustle",
+  // The prophecy takes the heaviest bell in the set. It is the one line in a
+  // run that says something is coming rather than reporting what happened.
+  "boss-foretold": "bell-heavy",
+  // The rest's own pick, cued beside the hand like every other card choice.
+  "boon-taken": "harvest",
   "harvest-earned": "harvest",
   "harvest-picked": "confirm",
   "harvest-burned": "burn",

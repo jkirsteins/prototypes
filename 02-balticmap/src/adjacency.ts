@@ -47,3 +47,55 @@ export function defenseMaxOf(data: MapData): Record<string, number> {
     Object.fromEntries(data.regions.map((r) => [r.faction, r.population])),
   );
 }
+
+/** How many lands an army crosses going from `from` to `to`: 1 for a
+ *  neighbour, null past `max` or for a land there is no path to at all.
+ *
+ *  Bounded rather than complete on purpose. The answer is wanted for a march,
+ *  a march may not cross more than `MAX_MARCH_HOPS`, and a bounded walk stops
+ *  at that ring instead of touring the map for an answer the caller will throw
+ *  away. So `null` past `max` DISCARDS a real distance rather than reporting
+ *  the map has none: a land five hops off and a land on another continent
+ *  answer the same, and no caller may read "null" as "unreachable".
+ *
+ *  Breadth-first, and it has to be: the answer is the SHORTEST way round, so a
+ *  walk that took the first path it found would report a detour as the
+ *  distance and cost a march turns it does not owe. */
+export function hopsBetween(
+  adjacency: Record<string, string[]>,
+  from: string,
+  to: string,
+  max: number,
+): number | null {
+  if (from === to) return 0;
+  const seen = new Set([from]);
+  let ring = [from];
+  for (let hops = 1; hops <= max; hops++) {
+    const next: string[] = [];
+    for (const land of ring) {
+      for (const neighbour of adjacency[land] ?? []) {
+        if (seen.has(neighbour)) continue;
+        if (neighbour === to) return hops;
+        seen.add(neighbour);
+        next.push(neighbour);
+      }
+    }
+    if (next.length === 0) return null;
+    ring = next;
+  }
+  return null;
+}
+
+/** How far an army may march. Three, stated as a rule rather than left to
+ *  emerge from how long a fight lasts: the duel clock that would have capped
+ *  it does not exist yet, and without a cap every land on the map is a legal
+ *  target - an aim preview lighting up all 26 and an AI scoring every faction
+ *  from every source. Three also keeps the rule sayable, which an emergent cap
+ *  never is.
+ *
+ *  It is a LEGALITY dial, so it rides in `CARD_RULES` and therefore in
+ *  `cardRulesHash`: two deploys that differ on it shake hands and then
+ *  disagree about which lands a Raid may be aimed at, what the aim preview
+ *  draws and what the host will accept - the exact divergence the handshake
+ *  exists to refuse. */
+export const MAX_MARCH_HOPS = 3;

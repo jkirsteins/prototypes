@@ -409,11 +409,14 @@ A land also changes hands on the table rather than on arrival:
 cd 02-balticmap && grep -n "subjugated" tests/game.test.ts | head
 ```
 
-`landSubjugation` is reached by a claim answering, so the test to sit beside is
-whichever one asserts a `subjugated` event out of the play path. Read it and
-note three things: how it builds the state, the name it gives the state after
-the play, and the id it subjugates. The new test reuses all three rather than
-building a fourth setup.
+A revived Subjugate claim answers through `landClaims` into `takeLand`, not
+through `landSubjugation` - `landSubjugation`'s one caller is the
+no-successor assassination branch. So the test to sit beside is whichever one
+asserts a `subjugated` event out of THAT play path, driven by `playCard`
+alone with no `landMarches`/`beginTurn` needed. Read it and note three
+things: how it builds the state, the name it gives the state after the play,
+and the id it subjugates. The new test reuses all three rather than building
+a fourth setup.
 
 - [ ] **Step 2: Write the failing test**
 

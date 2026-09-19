@@ -82,3 +82,73 @@ export function detailClassesAt(scale: number): string[] {
   if (peopleTooSmall) classes.push(GROUP_LABEL_CLASS);
   return classes;
 }
+
+/** A box in map coordinates. Structurally the `Rect` the arrow scene dodges;
+ *  spelled here rather than imported so the ladder does not depend on the
+ *  scene it feeds. */
+export interface InkBox { x: number; y: number; w: number; h: number }
+
+/** Every word the map itself draws, and where: a people's name, a river, a
+ *  neighbour, a settlement, and the big group headings that stand in when the
+ *  per-people names are too small to read.
+ *
+ *  This exists for the landing chip on an arrow (`SceneCtx.keepOut`), which
+ *  knew about the threat badges and about nothing else. Measured on the
+ *  deployed build, a `1st` chip stood with all 114 of its pixels inside the
+ *  word SELONIANS, which then read `S E [1st] O N I A N S` - two things
+ *  unreadable where one was. A name the cartography put down before the run
+ *  started has at least as good a claim to its ground as a note pinned behind
+ *  an arrow's tail.
+ *
+ *  Here rather than beside the badges because this is the module that already
+ *  answers "which labels are on the map at this zoom". Visibility is read off
+ *  the <svg> root's own classes - the switch `applyDetailClasses` throws - and
+ *  never re-derived from the scale: a layer the ladder has taken off the map
+ *  is not ink, and a chip that kept dodging it would be dodging nothing.
+ *
+ *  Queried per call rather than held, because founded settlements' labels come
+ *  and go with play. The BOXES are cached per element: a label's position is
+ *  map data and never moves, so the only per-paint work is the query and one
+ *  `matches` per layer. */
+export const INK_SELECTOR = ".labels text, .settlement-label";
+
+const inkBoxes = new WeakMap<Element, InkBox>();
+
+export function mapInkBoxes(svg: SVGSVGElement): InkBox[] {
+  const root = svg.classList;
+  const out: InkBox[] = [];
+  for (const el of svg.querySelectorAll<SVGGraphicsElement>(INK_SELECTOR)) {
+    const layer = DETAIL_LAYERS.find((l) => el.matches(l.selector));
+    if (layer !== undefined && root.contains(layer.hideClass)) continue;
+    // The group headings are the one layer shown by a class rather than hidden
+    // by one: they exist exactly while the people labels are too small.
+    if (el.matches(GROUP_LABEL_SELECTOR) && !root.contains(GROUP_LABEL_CLASS)) {
+      continue;
+    }
+    const hit = inkBoxes.get(el);
+    if (hit !== undefined) {
+      out.push(hit);
+      continue;
+    }
+    const box = inkBoxOf(el);
+    if (box === null) continue;
+    inkBoxes.set(el, box);
+    out.push(box);
+  }
+  return out;
+}
+
+/** One label's box in map coordinates, or null where there is nothing laid out
+ *  to measure - an unattached node, or an environment with no `getBBox`. A
+ *  zero box is never cached: it means "not measured yet", and caching it would
+ *  freeze that label out of the keep-out set for the life of the page. */
+function inkBoxOf(el: SVGGraphicsElement): InkBox | null {
+  try {
+    const b = el.getBBox();
+    return b.width > 0 && b.height > 0
+      ? { x: b.x, y: b.y, w: b.width, h: b.height }
+      : null;
+  } catch {
+    return null;
+  }
+}

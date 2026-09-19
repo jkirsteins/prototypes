@@ -29,6 +29,8 @@ const ORDER = ["alpha", "beta", "gamma", "delta"];
  *  heal and a raid both quote a number the cap has not already swallowed. */
 const v = (partial: Partial<RulesView> = {}): RulesView => ({
   overlords: new Map(), incorporated: {},
+  // Nothing beyond the frame: these views are about the map's own rules.
+  foreign: [],
   adjacency: {
     alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta", "delta"],
     delta: ["gamma"],
@@ -101,7 +103,7 @@ describe("explainTargetEligibility", () => {
       "Beta",
       "Defenses already stand at full strength.",
       "Already your vassal.",
-      "You owe them fealty, directly or through your lords.",
+      "Your own realm: you owe them fealty, or you both answer to the same crown.",
       "Already incorporated.",
       "You cannot target yourself.",
       "Not your vassal.",

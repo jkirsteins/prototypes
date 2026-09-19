@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, beginTurn,
   playCard, discardCard, endTurn, advance, surrender, viewOf,
-  autoTransfer, transferDefense, transferLimit,
-  OPENING_HAND, MAX_ACTIVE, TURNIP_HARVEST_THRESHOLD,
+  autoTransfer, transferDefense, transferLimit, takesNoTurn,
+  OPENING_HAND, QUIET_LANDS, MIN_ACTING, TURNIP_HARVEST_THRESHOLD,
   victoryRealmSize, winSizeFor, keepPlaying, type GameState,
 } from "../src/game";
 import {
@@ -15,7 +15,7 @@ import { CARDS, isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
   DEFAULT_DEFENSE_MAX, INDEPENDENCE_GATE, LAND_GROWTH, SUBJUGATION_GATE,
   FORTIFY_HEAL, HARVEST_FEAST_HEAL, HILLFORT_HEAL, STRONG_BONUS,
-  MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, turnipThresholdFor,
+  MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, independenceGateOpen, turnipThresholdFor,
   WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
 import {
@@ -23,6 +23,7 @@ import {
   validTargetsFor,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
+import { plaguePreviewLines } from "../src/target-explanations";
 import { aiTakeTurn } from "../src/ai";
 import {
   SIM_ADJACENCY, SIM_DEFENSE_MAX, SIM_ETHNICITIES, SIM_FACTION_IDS,
@@ -161,6 +162,23 @@ it("victoryRealmSize is half the map: 2 of 4 lands, 3 of 6, 13 of 26", () => {
 it("earns a harvest every second turnip, in a world nobody handed a map to", () => {
   expect(TURNIP_HARVEST_THRESHOLD).toBe(2);
 });
+
+/** A board on which the run's last act has been fought and won: a power from
+ *  beyond the frame, standing on the roster and taken.
+ *
+ *  Half the map no longer ends a run - it summons the last act's boss, and the
+ *  only victory is the expedition that beats it. A fixture that wants a WON
+ *  board therefore has to have won that fight. The land count is untouched:
+ *  `foreign` is out of `homeRoster`, so every bar measured in map lands means
+ *  exactly what it meant before. */
+function beyondTheFrame(g: GameState, home: string): GameState {
+  return {
+    ...g,
+    factionIds: [...g.factionIds, "foreign-power"],
+    foreign: ["foreign-power"],
+    incorporated: { ...g.incorporated, "foreign-power": home },
+  };
+}
 
 describe("setup", () => {
   it("newGame initializes defense-score state", () => {
@@ -489,7 +507,7 @@ describe("raid", () => {
     expect(Object.values(after.marches)).toEqual([{
       id: g.nextMarchId,
       actor: "beta", from: "beta", to: "alpha", cardId: "raid",
-      damage: MIN_RAID_SPEND, holdsArmy: true, expiry: g.turn + 1,
+      damage: MIN_RAID_SPEND, holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
     }]);
   });
 
@@ -530,15 +548,85 @@ describe("raid", () => {
     let g = playingState(LINE_ADJ); // alpha - beta - gamma - delta
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     g = withHand(g, 0, ["raid"]);
-    // beta and gamma both border delta's neighbour gamma; only gamma borders
-    // delta itself, so gamma is the one legal tail.
+    // Both of the realm's lands can send an army at delta - gamma next door
+    // and beta the long way - so naming either is honoured.
     const out = playCard(g, 0, rng(), "delta", { sourceId: "gamma" });
     expect(Object.values(out.marches)[0]).toMatchObject({
       from: "gamma", to: "delta",
     });
-    // beta does not border delta, so naming it is refused outright rather
-    // than quietly redirected.
-    expect(playCard(g, 0, rng(), "delta", { sourceId: "beta" })).toBe(g);
+    // alpha is nobody's to march out of, so naming it is refused outright
+    // rather than quietly redirected to a land that is.
+    expect(playCard(g, 0, rng(), "delta", { sourceId: "alpha" })).toBe(g);
+  });
+
+  it("takes a turn for every land the army crosses", () => {
+    let g = playingState(LINE_ADJ); // alpha - beta - gamma - delta
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["raid"]);
+    // beta - gamma - delta: two lands crossed, so the arrow stands on the map
+    // for two turns.
+    const far = playCard(g, 0, rng(), "delta", { sourceId: "beta" });
+    expect(Object.values(far.marches)[0]).toMatchObject({
+      from: "beta", to: "delta", declared: g.turn, expiry: g.turn + 2,
+    });
+    // And a neighbour is still next turn, which is the case that would say
+    // something had gone wrong by changing.
+    const near = playCard(g, 0, rng(), "delta", { sourceId: "gamma" });
+    expect(Object.values(near.marches)[0]).toMatchObject({
+      from: "gamma", to: "delta", declared: g.turn, expiry: g.turn + 1,
+    });
+  });
+
+  it("stands on the map through the turn it is still walking", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["raid"]);
+    const far = playCard(g, 0, rng(), "delta", { sourceId: "beta" });
+    const midway = landMarches(far);
+    expect(Object.keys(midway.marches)).toHaveLength(1); // still walking
+    expect(midway.defense.delta).toBeUndefined();
+    const arrived = landMarches(midway);
+    expect(arrived.marches).toEqual({});
+    expect(arrived.defense.delta).toBe(FIXTURE_MAX - MIN_RAID_SPEND);
+  });
+
+  it("is judged when it lands and never while it is still walking", () => {
+    // The target joins the actor's own bloc mid-flight - beta and delta both
+    // kneeling to alpha - so the arrow is illegal a full turn before it
+    // arrives. It stays on the map anyway and lapses at its own landing:
+    // a march is asked the targeting rules twice, at declaration and on
+    // arrival, and never in between.
+    let g = playingState(LINE_ADJ); // alpha - beta - gamma - delta
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["raid"]);
+    const far = playCard(g, 0, rng(), "delta", { sourceId: "beta" });
+    expect(Object.values(far.marches)[0]).toMatchObject({
+      from: "beta", to: "delta", expiry: g.turn + 2,
+    });
+    // beta is held UNDER the independence gate, or its own turn start frees it
+    // and the fixture quietly tests a faction that answers to nobody.
+    const sibling: GameState = {
+      ...far,
+      overlords: new Map([
+        ["gamma", "beta"], ["beta", "alpha"], ["delta", "alpha"],
+      ]),
+      defense: { ...far.defense, beta: INDEPENDENCE_LINE - 1 },
+    };
+    const walking = far.log.length;
+    const midway = landMarches(sibling);
+    expect(Object.keys(midway.marches)).toHaveLength(1);
+    expect(fresh(midway, walking).some((e) => e.type === "march-lapsed"))
+      .toBe(false);
+
+    const before = midway.log.length;
+    const arrived = landMarches(midway);
+    expect(arrived.marches).toEqual({});
+    expect(arrived.defense.delta).toBeUndefined(); // no damage, no capture
+    expect(arrived.overlords.get("delta")).toBe("alpha"); // and no conquest
+    expect(fresh(arrived, before)).toContainEqual(expect.objectContaining({
+      type: "march-lapsed", cardId: "raid",
+      targetFactionId: "delta", sourceFactionId: "beta",
+    }));
   });
 
   it("adds the ruler's leadership to the damage, frozen at declaration", () => {
@@ -660,7 +748,7 @@ describe("the counter-raid clash", () => {
         ),
         [String(g.nextMarchId)]: {
           id: g.nextMarchId, actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
-          damage: alphaDamage, holdsArmy: true, expiry: g.turn + 1,
+          damage: alphaDamage, holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
         },
       },
     };
@@ -709,7 +797,7 @@ describe("the counter-raid clash", () => {
       id: number, from: string, to: string, cardId: string, damage: number,
     ) => ({
       id, actor: from, from, to, cardId, damage,
-      holdsArmy: true, expiry: g.turn + 1,
+      holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
     });
     const after = landMarches({
       ...g,
@@ -747,7 +835,7 @@ describe("the counter-raid clash", () => {
     const g = playingState(LINE_ADJ);
     const arrow = (id: number) => ({
       id, actor: "beta", from: "beta", to: "alpha", cardId: "raid",
-      damage: 1, holdsArmy: true, expiry: g.turn + 1,
+      damage: 1, holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
     });
     const after = landMarches({
       ...g,
@@ -780,6 +868,67 @@ describe("the counter-raid clash", () => {
     expect(landMarches(facingRaids(4, 10)).marches).toEqual({});
   });
 
+  it("leaves this actor's own later arrow walking when an earlier one lands", () => {
+    // Two raids down the same axis, out of a source with two armies: one
+    // declared at T landing at T+2, one declared at T+1 and still a turn from
+    // arriving. The axis is taken whole for the COUNTER's sake - an answer,
+    // not a trade - and that reason says nothing about the attacker's own
+    // second arrow, which has not got there yet.
+    const g = {
+      ...playingState(LINE_ADJ),
+      overlords: new Map([["gamma", "beta"]]),
+    };
+    const after = beginTurn({
+      ...g,
+      turn: g.turn + 2,
+      marches: {
+        "1": {
+          id: 1, actor: "beta", from: "beta", to: "delta", cardId: "raid",
+          damage: 3, holdsArmy: true, declared: g.turn, expiry: g.turn + 2,
+        },
+        "2": {
+          id: 2, actor: "beta", from: "beta", to: "delta", cardId: "raid",
+          damage: 5, holdsArmy: true,
+          declared: g.turn + 1, expiry: g.turn + 3,
+        },
+      },
+    }, rng());
+    expect(Object.keys(after.marches)).toEqual(["2"]);
+    expect(after.defense.delta).toBe(FIXTURE_MAX - 3);
+    // And it is still going to land: nothing about it was reported.
+    expect(after.log.filter((e) => e.type === "march-resolved")).toHaveLength(1);
+  });
+
+  it("takes the whole axis at the earlier arrival, however far apart they set out", () => {
+    // Both directions of a clash cross the same lands, so a counter is always
+    // the same number of turns as what it answers - what separates them now is
+    // the turn each set out on. beta's army left two rounds before delta's
+    // answer, so it arrives two rounds sooner and takes delta's arrow with it,
+    // still walking.
+    const g = {
+      ...playingState(LINE_ADJ),
+      overlords: new Map([["gamma", "beta"]]),
+    };
+    const after = beginTurn({
+      ...g,
+      turn: g.turn + 2,
+      marches: {
+        "1": {
+          id: 1, actor: "beta", from: "beta", to: "delta", cardId: "raid",
+          damage: 3, holdsArmy: true, declared: g.turn, expiry: g.turn + 2,
+        },
+        "2": {
+          id: 2, actor: "delta", from: "delta", to: "beta", cardId: "raid",
+          damage: 1, holdsArmy: true,
+          declared: g.turn + 2, expiry: g.turn + 4,
+        },
+      },
+    }, rng());
+    expect(after.marches).toEqual({});
+    expect(after.defense.delta).toBe(FIXTURE_MAX - 2);
+    expect(after.defense.beta).toBeUndefined();
+  });
+
   it("a landing states the force aimed at it, not just what got through", () => {
     // A 3-strength raid onto a land holding 1. `amount` is floored at the
     // defense that was there; `incoming` is what was thrown.
@@ -790,7 +939,7 @@ describe("the counter-raid clash", () => {
       marches: {
         "1": {
           id: 1, actor: "beta", from: "beta", to: "alpha", cardId: "raid",
-          damage: 3, holdsArmy: true, expiry: g.turn + 1,
+          damage: 3, holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
         },
       },
     });
@@ -823,7 +972,7 @@ describe("the counter-raid clash", () => {
       id: number, from: string, to: string, cardId: string, damage: number,
     ) => ({
       id, actor: from, from, to, cardId, damage,
-      holdsArmy: true, expiry: g.turn + 1,
+      holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
     });
     const after = landMarches({
       ...g,
@@ -1052,6 +1201,40 @@ describe("disease", () => {
       type: "plagued", targetFactionId: "alpha", amount: 0,
     });
     expect(after.disease).toEqual({});
+  });
+
+  it("the hover preview quotes exactly what the play deals, sibling stacks excluded", () => {
+    // beta is alpha's vassal, gamma is alpha's other vassal - a sibling beta
+    // may not strike. beta holds a stack on gamma (untouchable) and on delta
+    // (a genuine foreigner, legal). The preview and the real play must agree,
+    // and neither may count gamma's stack: the hover promising damage the
+    // resolution then does not deal is the bug this test exists to catch.
+    let g = playingState();
+    g = {
+      ...g,
+      overlords: new Map([["beta", "alpha"], ["gamma", "alpha"]]),
+      disease: { gamma: { beta: 2 }, delta: { beta: 3 } },
+    };
+    g = withHand(g, 0, ["plague"]);
+    const preview = plaguePreviewLines(viewOf(g), "beta");
+    const match = preview[0]?.match(/^Would deal (\d+) damage across (\d+) land/);
+    if (match === null || match === undefined) {
+      throw new Error(`expected a plague preview line, got ${JSON.stringify(preview)}`);
+    }
+    const [, quotedTotal, quotedLands] = match;
+    const before = g.log.length;
+    const after = playCard(g, 0, rng());
+    const plagued = fresh(after, before).filter((e) => e.type === "plagued");
+    const dealt = plagued.reduce((sum, e) => sum + (e.amount ?? 0), 0);
+    // The preview's promise matches the play's outcome...
+    expect(Number(quotedTotal)).toBe(dealt);
+    expect(Number(quotedLands)).toBe(plagued.length);
+    // ...and both are the delta-only figure, not gamma's stack counted in.
+    expect(Number(quotedTotal)).toBe(3 * PLAGUE_DAMAGE_PER_STACK);
+    expect(plagued.map((e) => e.targetFactionId)).toEqual(["delta"]);
+    // The sibling's stack was never spent - it is not this card's to burn.
+    expect(after.disease.gamma).toEqual({ beta: 2 });
+    expect(after.defense.gamma).toBeUndefined();
   });
 
   it("foul-winds claims every stack on every land, logging what was gained", () => {
@@ -1609,6 +1792,9 @@ describe("endings", () => {
     // vassals; a one-level walk would see 2 lands and never end the run.
     let g = playingState();
     g = { ...g, overlords: new Map([["gamma", "beta"], ["delta", "gamma"]]) };
+    // The run is won by taking ground beyond the map now; what this test is
+    // about is the WALK that counts the realm, which is unchanged.
+    g = beyondTheFrame(g, "beta");
     g = withHand(g, 0, ["grow-crops"]);
     const after = playCard(g, 0, rng());
     expect(after.phase).toBe("victory");
@@ -1720,6 +1906,10 @@ describe("a card that plays again", () => {
         ...g,
         overlords: new Map([["gamma", "beta"]]),
         armies: { beta: 1, gamma: 1 },
+        // Nothing in the air: a quiet land's restless raid at the opening
+        // wrap is real and is somebody else's question, and counting arrows
+        // is how this test reads what the two plays did.
+        marches: {},
       },
       0, ["raid", "raid", "fortify"],
     );
@@ -2122,10 +2312,9 @@ describe("the hand sweep", () => {
 });
 
 describe("who acts", () => {
-  /** A ring of twenty: each land borders the next, so the spacing rule has
-   *  real work, and there is room for five apart from each other. A ring of
-   *  ten would not be - a 10-cycle has exactly one five-land independent set,
-   *  and greedy placement is not meant to search for it. */
+  /** A ring of twenty: comfortably over `MIN_ACTING`, so the quiet draw takes
+   *  its full `QUIET_LANDS`, and shaped rather than complete so "who borders
+   *  whom" is a real question about the deal. */
   const RING = [
     "a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
     "k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
@@ -2151,25 +2340,26 @@ describe("who acts", () => {
     }
   });
 
-  it("lets exactly five of them act, the human first", () => {
+  it("leaves exactly the quiet draw out, and the human acts first", () => {
     const g = deal(1);
-    expect(acting(g)).toHaveLength(MAX_ACTIVE);
+    expect(acting(g)).toHaveLength(RING.length - QUIET_LANDS);
     expect(acting(g)[0]).toBe("a");
   });
 
-  it("never lets two acting factions border each other", () => {
+  it("quietens exactly the draw, whatever the seed and whoever they border", () => {
+    // No spacing rule: two quiet lands may perfectly well touch. What is
+    // pinned is the COUNT, because that is the whole of the seeding now - see
+    // the comment on `actingFactions` for the measurement that took the
+    // spacing test out.
     for (const seed of [1, 2, 3, 7, 11]) {
-      const homes = acting(deal(seed));
-      for (const home of homes) {
-        for (const other of homes) {
-          if (home === other) continue;
-          expect(ringAdj[home], `seed ${seed}`).not.toContain(other);
-        }
-      }
+      const g = deal(seed);
+      const quiet = RING.filter((id) => !playsTurns(g.passives, id));
+      expect(quiet, `seed ${seed}`).toHaveLength(QUIET_LANDS);
+      expect(quiet, `seed ${seed}`).not.toContain("a");
     }
   });
 
-  it("picks the same five twice from the same seed", () => {
+  it("draws the same quiet lands twice from the same seed", () => {
     expect(acting(deal(5))).toEqual(acting(deal(5)));
   });
 
@@ -2177,30 +2367,23 @@ describe("who acts", () => {
     expect(acting(deal(4, { reservedFactionIds: ["f"] }))).toContain("f");
   });
 
-  it("seats the table anyway on a map with no room to spread out", () => {
-    // A ring of five wanting five: every candidate borders one already
-    // chosen, so the spacing pass finds nothing and the fallback fills the
-    // table. Placement never failing outranks placement being pretty.
-    const TIGHT = ["a", "b", "c", "d", "e"];
-    const tightAdj = Object.fromEntries(
-      TIGHT.map((id, i) => [
-        id,
-        [TIGHT[(i + 1) % TIGHT.length], TIGHT[(i + TIGHT.length - 1) % TIGHT.length]],
-      ]),
-    );
-    const g = pickFaction(
-      chooseBuild(startGame(newGame(TIGHT, tightAdj)), "warpath", seededRng(1)),
-      "a", seededRng(1),
-    );
-    expect(acting(g)).toHaveLength(MAX_ACTIVE);
-  });
-
-  it("lets everybody act when the map is smaller than the table", () => {
+  it("never quietens the map below the acting floor", () => {
+    // Three lands: `MIN_ACTING` is under the roster, so the quiet draw takes
+    // nobody and a tiny test map has everybody at the table.
     const g = pickFaction(
       chooseBuild(startGame(newGame(["a", "b", "c"])), "warpath", seededRng(1)),
       "a", seededRng(1),
     );
     expect(acting(g)).toHaveLength(3);
+    // And six: one land over the floor is one land the draw may take.
+    const six = pickFaction(
+      chooseBuild(
+        startGame(newGame(["a", "b", "c", "d", "e", "f"])),
+        "warpath", seededRng(1),
+      ),
+      "a", seededRng(1),
+    );
+    expect(acting(six)).toHaveLength(MIN_ACTING);
   });
 
   it("skips a quiet seat when the turn moves on", () => {
@@ -2213,8 +2396,8 @@ describe("who acts", () => {
 
 describe("the ground under the faction picker", () => {
   /** Real land ids, because the terrain tables name the shipped map and this
-   *  is a question about what the shipped map's picker can say. More lands
-   *  than MAX_ACTIVE, so somebody ends up quiet. */
+   *  is a question about what the shipped map's picker can say. Enough lands
+   *  over `MIN_ACTING` that the quiet draw takes somebody. */
   const GROUND = [
     "lietuva", "selonians", "jersikans", "sakalans",
     "ugandians", "talavians", "dainavians", "osilians",
@@ -2281,6 +2464,31 @@ describe("a claim in flight", () => {
     const landed = landMarches(g);
     expect(landed.overlords.get("alpha")).toBe("beta");
     expect(landed.claims["beta>alpha"]).toBeUndefined();
+  });
+
+  it("leaves the land's own arrows flying when the demand takes it", () => {
+    // alpha's army is two turns from beta when beta's demand lands and alpha
+    // kneels. The arrow is aimed up alpha's own new chain and is therefore
+    // dead on arrival - but it is not called off HERE. A march is judged at
+    // declaration and again on landing, so the board keeps its promise that
+    // an arrow stands until it arrives.
+    const g = declared();
+    const flying: GameState = {
+      ...g,
+      marches: {
+        "1": {
+          id: 1, actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
+          damage: 1, holdsArmy: true,
+          declared: g.turn, expiry: g.turn + 2,
+        },
+      },
+    };
+    const before = flying.log.length;
+    const landed = landMarches(flying);
+    expect(landed.overlords.get("alpha")).toBe("beta");
+    expect(landed.marches["1"]).toBeDefined();
+    expect(fresh(landed, before).some((e) => e.type === "march-lapsed"))
+      .toBe(false);
   });
 
   it("lapses when it finds the gate closed, and takes nothing", () => {
@@ -2425,7 +2633,7 @@ describe("an army walking into a broken land", () => {
       marches: {
         "1": {
           id: 1, actor: raider, from: raider, to: target, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: g.turn,
+          damage: 1, holdsArmy: true, declared: g.turn - 1, expiry: g.turn,
         },
       },
     };
@@ -2448,7 +2656,7 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: "beta", from: "beta", to, cardId: "raid",
-          damage, holdsArmy: true, expiry: base.turn + 1,
+          damage, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2489,7 +2697,7 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: "beta", from: "beta", to: "alpha", cardId: "strong-raid",
-          damage: 2, holdsArmy: true, expiry: base.turn + 1,
+          damage: 2, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2533,7 +2741,7 @@ describe("an army that overwhelms a land", () => {
     // Those defenders are exactly what a second arrow must NOT take back off.
     const taker = base.factionIds.find(
       (f) => hasRuler(base.rulers, f) &&
-        f !== "beta" && f !== "alpha" && f !== "gamma",
+        f !== "beta" && f !== "alpha" && f !== "gamma" && f !== "delta",
     )!;
     const after = landMarches({
       ...base,
@@ -2547,11 +2755,11 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: taker, from: taker, to: "alpha", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
         "2": {
           id: 2, actor: taker, from: "gamma", to: "alpha", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2585,7 +2793,7 @@ describe("an army that overwhelms a land", () => {
     const base = playingTen();
     const taker = base.factionIds.find(
       (f) => hasRuler(base.rulers, f) &&
-        f !== "beta" && f !== "alpha" && f !== "gamma",
+        f !== "beta" && f !== "alpha" && f !== "gamma" && f !== "delta",
     )!;
     // Both arrows resolve in the same pass: the sweep over the seats that
     // never take a turn runs every one of them inside a single beginTurn.
@@ -2597,7 +2805,7 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: taker, from: taker, to: "alpha", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2621,7 +2829,7 @@ describe("an army that overwhelms a land", () => {
     const base = playingTen();
     const taker = base.factionIds.find(
       (f) => hasRuler(base.rulers, f) &&
-        f !== "beta" && f !== "alpha" && f !== "gamma",
+        f !== "beta" && f !== "alpha" && f !== "gamma" && f !== "delta",
     )!;
     const before = base.log.length;
     const after = landMarches({
@@ -2632,11 +2840,11 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: taker, from: taker, to: "alpha", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
         "2": {
           id: 2, actor: taker, from: "gamma", to: "delta", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2678,11 +2886,11 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: "beta", from: "beta", to: foe, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
         "2": {
           id: 2, actor: foe, from: foe, to: "beta", cardId: "raid",
-          damage: 3, holdsArmy: true, expiry: base.turn + 1,
+          damage: 3, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2706,7 +2914,7 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: "beta", from: "beta", to: "alpha", cardId: "great-raid",
-          damage: 4, holdsArmy: true, expiry: base.turn + 1,
+          damage: 4, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     };
@@ -2735,7 +2943,7 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: raider, from: raider, to: target, cardId: "raid",
-          damage: 3, holdsArmy: true, expiry: g.turn,
+          damage: 3, holdsArmy: true, declared: g.turn - 1, expiry: g.turn,
         },
       },
     }, rng());
@@ -2764,15 +2972,18 @@ describe("a run that ends at turn start", () => {
       (f) => f !== actor && f !== "gamma",
     )!;
     return {
-      ...base,
+      ...beyondTheFrame(base, actor),
       current,
       // Two lands already: itself and a vassal. The capture is the third.
+      // The power beyond the frame is already taken, so what this fixture is
+      // one land short of is the LAND count the ending still reads for a rival
+      // unification - and for the human, the arrival at turn start.
       overlords: new Map([...base.overlords, ["gamma", actor]]),
       defense: { [target]: 0, [actor]: 40 },
       marches: {
         "1": {
           id: 1, actor, from: actor, to: target, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn,
+          damage: 1, holdsArmy: true, declared: base.turn - 1, expiry: base.turn,
         },
       },
     };
@@ -2810,10 +3021,13 @@ describe("a run that ends at turn start", () => {
 });
 
 describe("playing on past a won run", () => {
-  /** A won board: beta holds itself plus a vassal, and 2 of 4 wins. */
+  /** A won board: beta holds itself plus a vassal, and the power beyond the
+   *  frame that the run's last act was fought for. The land count is what it
+   *  always was - 2 of 4 - because a foreign power is out of the roster. */
   function won(): GameState {
     let g = playingState();
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = beyondTheFrame(g, "beta");
     g = withHand(g, 0, ["grow-crops"]);
     const after = playCard(g, 0, rng());
     expect(after.phase).toBe("victory");
@@ -2919,7 +3133,7 @@ describe("playing on past a won run", () => {
     const seat = base.players.findIndex((p) => p.factionId === rival);
     const ended = beginTurn(
       {
-        ...base,
+        ...beyondTheFrame(base, "beta"),
         current: seat,
         overlords: new Map([
           ...base.overlords, ...vassals.map((v) => [v, "beta"] as const),
@@ -3025,9 +3239,13 @@ describe("the defense transfer", () => {
     // Deterministic - no rng - so an AI seat's conquest replays identically.
     const g = { ...playingSix(), defense: { alpha: 0, beta: 41 } };
     expect(autoTransfer(g, "beta", "alpha")).toBe(20);
-    // And still clamped by the destination's room.
-    const tight = { ...g, defense: { alpha: FIXTURE_MAX - 3, beta: 41 } };
-    expect(autoTransfer(tight, "beta", "alpha")).toBe(3);
+    // And never past the destination's own independence line. That cap sits
+    // under the destination's ceiling at every gate share below 1, so it is
+    // the clamp that binds here and the room clamp never gets to speak.
+    const near = { ...g, defense: { alpha: INDEPENDENCE_LINE - 3, beta: 41 } };
+    expect(autoTransfer(near, "beta", "alpha")).toBe(2);
+    const already = { ...g, defense: { alpha: INDEPENDENCE_LINE, beta: 41 } };
+    expect(autoTransfer(already, "beta", "alpha")).toBe(0);
   });
 
   it("moves it on the spot for an AI capture, with no question left over", () => {
@@ -3045,7 +3263,7 @@ describe("the defense transfer", () => {
       marches: {
         "1": {
           id: 1, actor: raider, from: raider, to: target, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn,
+          damage: 1, holdsArmy: true, declared: base.turn - 1, expiry: base.turn,
         },
       },
     };
@@ -3054,6 +3272,38 @@ describe("the defense transfer", () => {
     expect(after.pendingTransfers).toEqual({});
     expect(after.defense[raider]).toBe(20);
     expect(after.defense[target]).toBe(20);
+  });
+
+  it("leaves an AI's new vassal below its own independence gate", () => {
+    // A small polygon is where the automatic half bites: half of a healthy
+    // raider is more than a 2-defense land's whole gate, so the garrison the
+    // taker is forced to send would win the land its freedom at its very
+    // first turn start. Asserted against `independenceGateOpen` rather than
+    // against a number, so the threshold can move without rotting this.
+    const base = playingSix();
+    const raider = base.factionIds.find(
+      (f) => f !== "beta" && hasRuler(base.rulers, f),
+    )!;
+    const target = base.factionIds.find((f) => f !== "beta" && f !== raider)!;
+    const g: GameState = {
+      ...base,
+      current: base.players.findIndex((p) => p.factionId === raider),
+      defenseMax: { ...base.defenseMax, [target]: 2 },
+      defense: { [target]: 0, [raider]: 40 },
+      marches: {
+        "1": {
+          id: 1, actor: raider, from: raider, to: target, cardId: "raid",
+          damage: 1, holdsArmy: true, declared: base.turn - 1, expiry: base.turn,
+        },
+      },
+    };
+    const after = beginTurn(g, rng());
+    expect(after.overlords.get(target)).toBe(raider);
+    const view = { defense: after.defense, defenseMax: after.defenseMax };
+    expect(independenceGateOpen(view, target)).toBe(false);
+    // And it is a garrison rather than nothing: the cap trims the transfer,
+    // it does not refuse it.
+    expect(after.defense[target]).toBe(1);
   });
 
   it("asks EVERY person, not only the seat the phase speaks for", () => {
@@ -3074,7 +3324,7 @@ describe("the defense transfer", () => {
       marches: {
         "1": {
           id: 1, actor: raider, from: raider, to: target, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn,
+          damage: 1, holdsArmy: true, declared: base.turn - 1, expiry: base.turn,
         },
       },
     };
@@ -3156,7 +3406,7 @@ describe("the defense transfer", () => {
         String(i + 1),
         {
           id: i + 1, actor: "beta", from: "beta", to: t, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       ])),
     });
@@ -3268,7 +3518,7 @@ describe("the restless middle of the map", () => {
         marches: {
           "1": {
             id: 1, actor, from: actor, to: quiet, cardId: "raid",
-            damage: 1, holdsArmy: true, expiry: turn,
+            damage: 1, holdsArmy: true, declared: turn - 1, expiry: turn,
           },
         },
       },
@@ -3360,18 +3610,38 @@ describe("a status that does something says so", () => {
     });
   });
 
-  it("names the march it clears when a passive-taken land had one aimed at its new lord", () => {
-    // landSubjugation is the peer of callOffMarchesAgainstLord, reached
-    // through a play rather than a turn start: alpha already has a raid
-    // aimed at beta, no-successor hands alpha to beta on the same play, and
-    // the raid - now aimed up alpha's own new chain - is cleared with it.
+  it("a land subjugated on the table wakes up too", () => {
+    // This still passes with landSubjugation's seatRuler call deleted: the
+    // no-successor branch runs replaceRuler on "alpha" immediately above,
+    // which always seats a successor, so the chair this asserts against is
+    // already occupied before landSubjugation ever runs. What this pins is
+    // the door's end state, not the new call - the only caller that could
+    // prove the call live would be one that reaches landSubjugation with a
+    // vacant chair, and none exists today.
+    const g: GameState = {
+      ...playingState(),
+      passives: { alpha: ["no-successor"] },
+    };
+    const after = playCard(
+      withHand(g, 0, ["assassinate-ruler"]), 0, rng(), "alpha",
+    );
+    expect(hasRuler(after.rulers, "alpha")).toBe(true);
+    expect(takesNoTurn(after, "alpha")).toBe(false);
+  });
+
+  it("leaves a passive-taken land's arrow flying when it is aimed at its new lord", () => {
+    // alpha already has a raid aimed at beta, and no-successor hands alpha to
+    // beta on the same play. The arrow is now aimed up alpha's own new chain,
+    // and it STAYS ON THE BOARD - a march is judged when it is declared and
+    // again when it lands, never at the moment somebody else's play reshapes
+    // the pyramid under it.
     const g: GameState = {
       ...playingState(),
       passives: { alpha: ["no-successor"] },
       marches: {
         "1": {
           id: 1, actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: 99,
+          damage: 1, holdsArmy: true, declared: 98, expiry: 99,
         },
       },
     };
@@ -3380,9 +3650,9 @@ describe("a status that does something says so", () => {
       withHand(g, 0, ["assassinate-ruler"]), 0, rng(), "alpha",
     );
     expect(after.overlords.get("alpha")).toBe("beta");
-    expect(after.marches).toEqual({});
-    const lapsed = fresh(after, before).find((e) => e.type === "march-lapsed");
-    expect(lapsed).toMatchObject({ marchIds: [1] });
+    expect(after.marches["1"]).toBeDefined();
+    expect(fresh(after, before).some((e) => e.type === "march-lapsed"))
+      .toBe(false);
   });
 });
 
@@ -3578,7 +3848,7 @@ describe("every march that leaves the store is named by an event", () => {
       ...g.marches,
       [String(staleId)]: {
         id: staleId, actor, from: foreignLand, to: actor, cardId: "raid",
-        damage: 1, holdsArmy: true, expiry: g.turn + 1,
+        damage: 1, holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
       },
     };
     const before = new Set(Object.values(staleMarches).map((m) => m.id));

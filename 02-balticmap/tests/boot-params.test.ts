@@ -108,8 +108,18 @@ describe("parseBootParams", () => {
       seed: 7, build: null, screen: null, faction: null, hand: null, turns: 0,
       defense: {}, disease: {}, leadership: {}, armies: {}, settlements: {},
       marches: [], realm: null, turnips: null, wealth: null, popups: null,
-      rules: null, region: null,
+      rules: null, region: null, duel: null, stake: null, act: null,
     });
+  });
+
+  it("clamps the act into the run's own range", () => {
+    // The one boot param that reaches a state an act is normally EARNED into,
+    // so it is clamped like every other number here: a URL is the same attack
+    // surface as a hand-edited record.
+    expect(params("?act=3").act).toBe(3);
+    expect(params("?act=0").act).toBe(1);
+    expect(params("?act=99").act).toBe(3);
+    expect(params("?act=later").act).toBeNull();
   });
 
   it("reads build as one of the two builds, and drops anything else", () => {
@@ -313,9 +323,22 @@ describe("applyBootParams", () => {
     expect(boot("?faction=beta&settlements=selija:1").settlements).toEqual({});
   });
 
+  it("declares a march across two lands, and dates it two turns out", () => {
+    // The line is alpha - beta - gamma - delta. With alpha and gamma annexed,
+    // delta borders the realm and is therefore something beta may attack -
+    // two lands from beta's own army, so the arrow is two turns in the air.
+    const g = boot("?faction=beta&realm=3&march=beta>delta");
+    const march = Object.values(g.marches)[0];
+    expect([march.from, march.to]).toEqual(["beta", "delta"]);
+    expect(march.expiry).toBe(g.turn + 2);
+    expect(march.declared).toBe(g.turn);
+  });
+
   it("drops a march the rules would refuse, rather than conjuring one", () => {
-    // beta does not border delta, and a URL that could draw an impossible
-    // arrow would be checking a state the game cannot reach.
+    // delta is not something a lone beta may attack - it borders nothing beta
+    // holds - and a URL that could draw an impossible arrow would be checking
+    // a state the game cannot reach. Distance is not what refuses it: the
+    // realm=3 case above sends the same arrow.
     expect(boot("?faction=beta&march=beta>delta").marches).toEqual({});
     // Nor can one land send more armies than it has: shrink beta's ceiling so
     // its army cap (armyCapFor) reads as one, then ask for two marches.
@@ -577,6 +600,34 @@ describe("applyBootParams", () => {
       // Under the threshold, which is what the parse clamps to.
       const g = boot("?faction=beta&turnips=1");
       expect(g.turnips.beta).toBe(1);
+    });
+  });
+
+  describe("?duel", () => {
+    it("leaves the run standing on its question when unnamed", () => {
+      // The default a fresh deal reaches, and the state every browser check
+      // opens on unless the URL says otherwise.
+      expect(boot("?faction=beta").gauntlet.kind).toBe("picking");
+    });
+
+    it("opens a duel against a land the offer holds", () => {
+      const g = boot("?faction=beta&duel=alpha");
+      expect(g.gauntlet).toMatchObject({ kind: "duel", enemy: "alpha" });
+    });
+
+    it("takes `none` as declining the whole offer", () => {
+      const g = boot("?faction=beta&duel=none");
+      // The world round a decline costs, priced from the turn it was answered
+      // on - see `declineDuel`.
+      expect(g.gauntlet).toEqual({ kind: "world-tick", until: g.turn + 2 });
+    });
+
+    it("drops a clause naming a land the offer does not hold", () => {
+      // Through the real `pickDuel`, so a URL cannot scope the turn loop to a
+      // faction nobody may fight - the same rule `march=` keeps. delta is two
+      // hops down the line from beta and out of reach.
+      expect(boot("?faction=beta&duel=delta").gauntlet.kind).toBe("picking");
+      expect(boot("?faction=beta&duel=nobody").gauntlet.kind).toBe("picking");
     });
   });
 });
