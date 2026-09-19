@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { knowledgeAt } from "../src/sim/fineknowledge";
 import { advance } from "../src/sim/advance";
 import { bodyRowOf, campRowOf, isBodyRow, isCampRow, isCareRow } from "../src/sim/bodyorder";
 import { calendar, COAST_OPEN_FROM, COAST_OPEN_TO, coastOpen } from "../src/sim/calendar";
@@ -9,9 +10,10 @@ import { giveOrder } from "../src/sim/ladder";
 import { beginAgain, demoteFog, land, landingCell, landingDate, layDownPack, oldCampHint } from "../src/sim/landing";
 import { STRUCTURES } from "../src/sim/items";
 import { loadGame, saveGame } from "../src/sim/save";
-import { markKnown } from "../src/sim/mapped";
+import { isKnown, knownShare } from "../src/sim/mapped";
 import { fmtName } from "../src/sim/names";
 import { newGame } from "../src/sim/newgame";
+import { seeFrom } from "../src/sim/sight";
 import { ordersHere } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { cellOf, placeAtSpot } from "../src/sim/position";
@@ -155,6 +157,41 @@ describe("the landing", () => {
     expect(state.log[0].text).toContain(`The old camp at ${startName}`);
   });
 
+  it("an heir lands on ground nobody has walked, keeping only what the eye reaches", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const startRegion = state.player.region;
+    advance(state, world, 5 * 1440);
+    const walkedBefore = knownShare(state, world, startRegion);
+    expect(walkedBefore).toBeGreaterThan(0);
+    die(state, "froze", regionAt(world, startRegion).name);
+    beginAgain(state, world);
+    land(state, world, { first: "Ilze", last: "Berg" });
+    // The ancestor's country is gone. The valley the heir stepped into is not
+    // handed over either - only the shore they stand on and what can be seen
+    // from it, which is `newPerson`'s own look.
+    expect(knownShare(state, world, startRegion)).toBeLessThan(walkedBefore);
+    expect(isKnown(state, cellOf(state, world))).toBe(true);
+    expect(knownShare(state, world, state.player.region)).toBeLessThan(1);
+  });
+
+  it("sighting the old camp hands back its country, and every country the lineage stands in", () => {
+    const { state, world } = newGame(17);
+    siteCamp(state, world);
+    const startRegion = state.player.region;
+    const st = regionState(state, world, startRegion);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    die(state, "froze", regionAt(world, startRegion).name);
+    beginAgain(state, world);
+    land(state, world, { first: "Ilze", last: "Berg" });
+    expect(knownShare(state, world, startRegion)).toBeLessThan(1);
+    // The camp comes into view: not the ancestor's footsteps back, but the
+    // region entire, which is what a journal and a skyline can honestly say.
+    seeFrom(state, world, calendar(state.minute, state.startDoy), st.campCell!, false);
+    expect(knownShare(state, world, startRegion)).toBe(1);
+    expect(knowledgeAt(state.knowledge, regionAt(world, startRegion).cells[0])).toBe("inherited");
+  });
+
   it("lands: a second survivor with a fresh body, the first log line pointing at the old camp", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
@@ -191,9 +228,12 @@ describe("the dim map", () => {
     expect(dim.glyphs.some((g) => g.info.includes("something lies here"))).toBe(false);
 
     enterRegion(state, world, state.player.region);
-    // A real re-entry always comes with a look around (placeAt's seeFrom); enterRegion
-    // alone only marks the region, so the ground underfoot is re-seen here by hand.
-    markKnown(state, cellOf(state, world));
+    // A real re-entry always comes with a look around (placeAt's seeFrom);
+    // enterRegion alone only marks the region. Marking the one patch underfoot
+    // is not a stand-in for that any more: a heir's ground is forgotten rather
+    // than dimmed, so at the 300 m rung a single known patch leaves its parent
+    // unreadable and the pile on it undrawn. The look is what earns the glyph.
+    seeFrom(state, world, cal, cellOf(state, world), false);
     expect(glyphsWith(board(world, state, ui, cal), "pl").length).toBe(1);
   });
 });

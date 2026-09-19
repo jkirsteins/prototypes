@@ -175,21 +175,28 @@ export function markCoarse(knowledge: KnowledgeChunks, patch: PatchId, level: Ex
 }
 
 /**
- * The journal: what a dead survivor knew, the heir has read rather than
- * walked. The far country is not dimmed with it. It was never a claim about
- * ground anyone stood on - it is the shape of the country, which is exactly
- * what a journal carries whole.
+ * A death takes the ground with it. Every patch and every parent goes back
+ * to unknown: the heir has never been here, and a map drawn from an
+ * ancestor's walking is a claim this survivor cannot make. What they are
+ * given instead is the note (`oldCampHint`, landing.ts) - a region's name
+ * and a direction - and `inheritRegion` hands back a whole region the
+ * moment the camp in it is actually seen.
+ *
+ * The far country goes with it. It used to be kept whole, on the argument
+ * that a coarse mark is the shape of the country rather than ground anyone
+ * stood on; roadmap-additions' "Far country is not dimmed on inheritance"
+ * left that open for a playtest, and the call is that an heir opening the
+ * map to a survey an ancestor earned from a fell they have never climbed
+ * is the same borrowed knowledge at a wider grain.
+ *
+ * Dropping the chunks rather than zeroing them is the same state - unknown
+ * is all-zero and an absent chunk reads unknown - and hands the memory back.
  */
-export function inheritKnowledge(knowledge: KnowledgeChunks): void {
-  for (const chunk of knowledge.chunks.values()) {
-    for (let i = 0; i < chunk.length; i++) {
-      const byte = chunk[i];
-      if (byte === 0) continue;
-      let dimmed = 0;
-      for (let shift = 0; shift < 8; shift += 2) if ((byte >> shift) & 3) dimmed |= 1 << shift;
-      chunk[i] = dimmed;
-    }
-  }
+export function forgetKnowledge(knowledge: KnowledgeChunks): void {
+  if (knowledge.chunks.size === 0 && knowledge.coarse.size === 0) return;
+  knowledge.chunks.clear();
+  knowledge.coarse.clear();
+  writes++;
 }
 
 /** Walks the touched chunks, never the world. */

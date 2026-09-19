@@ -12,7 +12,7 @@ import { CANOPY_HEIGHT_M } from "../world/terrain";
 import type { Calendar } from "./calendar";
 import { CLEAR_MOR_KM, MAX_OPTICAL_DEPTH, sampleAtmosphere } from "./climate";
 import { lightFactor, skyLux, SPOT_LUX, WALK_LUX } from "./light";
-import { markCoarseKnown, markKnown } from "./mapped";
+import { markCoarseKnown, markKnown, recoverLineageGround } from "./mapped";
 import { discoverAvailableOpportunities } from "./opportunity-catalog";
 import { glimpseRegions } from "./regionstate";
 import { body } from "./person";
@@ -854,6 +854,10 @@ export function seeFrom(state: GameState, world: World, cal: Calendar, cell: num
   // neighbour seen on entry, so "Explore X" can be aimed at it. Only what is
   // really in sight counts; the coarse horizon written below does not.
   glimpseRegions(state, world, visible, announce);
+  // Sighting the old camp hands the lineage's country back; see
+  // recoverLineageGround (mapped.ts). A Set lookup on every look, and nothing
+  // more until the camp is actually in front of the eye.
+  recoverLineageGround(state, world, visible);
   markCoarseSeen(state, world, cal, cell);
   discoverAvailableOpportunities(state, world, cal, announce);
 }

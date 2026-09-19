@@ -16,7 +16,7 @@ import type { Calendar } from "../sim/calendar";
 import { fuelTotal, hasEmbers, roofed } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
 import { knowledgeAt, type KnowledgeLevel } from "../sim/fineknowledge";
-import { coarseKnowledgeGen, isKnown, knowledgeAtLevel, knowledgeGen } from "../sim/mapped";
+import { coarseKnowledgeGen, forgetGen, isKnown, knowledgeAtLevel, knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
 import { discovery, siteAt, VISITED } from "../sim/regionstate";
@@ -526,17 +526,16 @@ function addKnownPatch(state: GameState, world: World, out: GlyphSummary, x: num
  * Whether every one of a parent's thirty-six patches is known, cached per
  * world and invalidated by the fine knowledge generation counter.
  *
- * The invariant this leans on is narrower than "knowledge only rises":
- * `demoteFog` (landing.ts, run on a heir's landing) calls `dimAll`, which
- * calls `inheritKnowledge` (fineknowledge.ts), and that DOES lower a
- * patch's level - `seen`/`visited` both collapse to `inherited`. Levels are
- * not monotonic. What is: `inheritKnowledge` remaps any nonzero two-bit
- * slot to a nonzero one, never to zero, so `isKnown` (`knowledgeAt(...) !==
- * "unknown"`, bit nonzero, not which tier) never flips true to false. That
- * is the one thing this cache actually needs, and it is why a parent once
- * found fully known can be trusted forever without a rescan. A future
- * writer that zeroes a previously-known bit - a "forget this region"
- * mechanic, say - would break that invariant and this cache with it.
+ * A parent once found fully known is trusted without a rescan, because
+ * every ordinary write to the lattice raises a patch and `isKnown`
+ * (`knowledgeAt(...) !== "unknown"`, bit nonzero, not which tier) cannot
+ * flip true to false under one. Exactly one writer breaks that: `forgetGround`
+ * (mapped.ts), on a heir's landing, which zeroes every patch so the heir
+ * starts on ground they have not walked. This comment used to say no such
+ * writer existed and that one would break this cache; it now does, and
+ * `forgetGen` is how the cache is told. A cached `true` is good only while
+ * that counter stands still, and any future writer that lowers a patch must
+ * move it too.
  *
  * The cache is a WeakMap keyed on `World`. `beginAgain` (landing.ts, the
  * death-to-heir path, which is what calls `demoteFog`) reuses the same
@@ -545,7 +544,7 @@ function addKnownPatch(state: GameState, world: World, out: GlyphSummary, x: num
  * always returns a new object, so those start with an empty cache with
  * nothing to invalidate.
  */
-const parentKnownCache = new WeakMap<World, Map<number, { gen: number; known: boolean }>>();
+const parentKnownCache = new WeakMap<World, Map<number, { gen: number; forget: number; known: boolean }>>();
 
 function parentFullyKnown(state: GameState, world: World, px: number, py: number): boolean {
   const x0 = px * FINE_PER_PARENT;
@@ -559,10 +558,11 @@ function parentFullyKnown(state: GameState, world: World, px: number, py: number
   const stride = Math.ceil(world.w / FINE_PER_PARENT) + 1;
   const key = py * stride + px;
   const gen = knowledgeGen();
+  const forget = forgetGen();
   const cached = cache.get(key);
-  if (cached && (cached.known || cached.gen === gen)) return cached.known;
+  if (cached && cached.forget === forget && (cached.known || cached.gen === gen)) return cached.known;
   const known = scanParentKnown(state, world, x0, y0);
-  cache.set(key, { gen, known });
+  cache.set(key, { gen, forget, known });
   return known;
 }
 

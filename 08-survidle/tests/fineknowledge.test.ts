@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  decodeKnowledge, encodeKnowledge, inheritKnowledge, knowledgeAt, knowledgeCounts,
-  knownPatches, markSeen, markVisited, newKnowledge, setKnowledge,
+  coarseAt, decodeKnowledge, encodeKnowledge, forgetKnowledge, knowledgeAt, knowledgeCounts,
+  knownPatches, markCoarse, markSeen, markVisited, newKnowledge, setKnowledge,
 } from "../src/sim/fineknowledge";
 import { readSave, serialize } from "../src/sim/save";
 import { newGame } from "../src/sim/newgame";
@@ -56,15 +56,30 @@ describe("compact fine knowledge", () => {
     }
   });
 
-  it("raises a level but never lowers one, and the journal dims what is left", () => {
+  it("raises a level but never lowers one", () => {
     const knowledge = newKnowledge();
     const patch = patchId(20, 20);
     expect(markVisited(knowledge, patch)).toBe(true);
     expect(markSeen(knowledge, patch)).toBe(false);
     expect(knowledgeAt(knowledge, patch)).toBe("visited");
-    inheritKnowledge(knowledge);
-    expect(knowledgeAt(knowledge, patch)).toBe("inherited");
-    expect(knowledgeCounts(knowledge)).toEqual({ inherited: 1, seen: 0, visited: 0, known: 1, coarseParent: 0, coarseAggregate: 0 });
+    expect(knowledgeCounts(knowledge)).toEqual({ inherited: 0, seen: 0, visited: 1, known: 1, coarseParent: 0, coarseAggregate: 0 });
+  });
+
+  it("a death takes every patch and every parent, and hands the chunks back", () => {
+    const knowledge = newKnowledge();
+    const patch = patchId(20, 20);
+    markVisited(knowledge, patch);
+    markCoarse(knowledge, patch, "parent");
+    expect(knowledge.chunks.size).toBe(1);
+    expect(knowledge.coarse.size).toBe(1);
+    forgetKnowledge(knowledge);
+    expect(knowledgeAt(knowledge, patch)).toBe("unknown");
+    expect(coarseAt(knowledge, patch)).toBe("unknown");
+    expect(knowledgeCounts(knowledge)).toEqual({ inherited: 0, seen: 0, visited: 0, known: 0, coarseParent: 0, coarseAggregate: 0 });
+    // Unknown is all-zero, so forgetting frees the arrays rather than walking them.
+    expect(knowledge.chunks.size).toBe(0);
+    expect(knowledge.coarse.size).toBe(0);
+    // Ground forgotten is ground that can be earned again.
     expect(markSeen(knowledge, patch)).toBe(true);
     expect(knowledgeAt(knowledge, patch)).toBe("seen");
   });

@@ -1,10 +1,15 @@
 /**
  * The map's per-world parent-known cache (src/ui/map.ts, parentKnownCache)
- * leans on a narrower invariant than "knowledge only rises": isKnown is
- * append-only, but the tier behind it is not - demoteFog lowers seen and
- * visited patches to inherited on the heir-landing path. This pins the
- * behaviour the cache's comment promises: ground already read fully known
- * still draws as known, not fog, after that demotion.
+ * answers "is every patch of this parent known" and, for speed, trusts a
+ * `true` for ever: every ordinary write to the lattice raises a patch, so
+ * known ground stays known and a parent found whole need never be rescanned.
+ *
+ * `forgetGround` (mapped.ts), on a heir's landing, is the one writer that
+ * breaks that - it takes every patch back to unknown so the heir starts on
+ * ground they have not walked - and `forgetGen` is how the cache is told.
+ * This file pins that telling. Without it the cache keeps answering `true`
+ * and `glyphSummary` takes the fast path, summarising all thirty-six patches
+ * of terrain for a parent the survivor can no longer see: a map drawn of fog.
  */
 import { describe, expect, it } from "vitest";
 import { demoteFog } from "../src/sim/landing";
@@ -20,8 +25,8 @@ import { FINE_PER_PARENT } from "../src/world/spatial";
 
 const CAL = calendar(10);
 
-describe("the parent-known cache across a demotion", () => {
-  it("keeps a fully known parent's summary unchanged after demoteFog lowers its tier", () => {
+describe("the parent-known cache across a forgetting", () => {
+  it("stops summarising a parent the heir no longer knows, having summarised it before", () => {
     const { state, world } = newGame(21);
     // One whole parent, marked known directly rather than through mapRegion,
     // so the block glyphSummary(0, 0, FINE_PER_PARENT) reads is exactly the
@@ -29,22 +34,24 @@ describe("the parent-known cache across a demotion", () => {
     for (let y = 0; y < FINE_PER_PARENT; y++) {
       for (let x = 0; x < FINE_PER_PARENT; x++) markKnown(state, cellIdx(world, x, y));
     }
+    // Reading it first is the point: this is what puts `known: true` in the
+    // cache, so the call after the forgetting is answered from a stale entry
+    // unless the forget stamp has moved.
     const before = glyphSummary(state, world, 0, 0, FINE_PER_PARENT);
-    expect(before.samples).toBeGreaterThan(0);
+    expect(before.samples).toBe(FINE_PER_PARENT * FINE_PER_PARENT);
     expect(knowledgeAt(state.knowledge, cellIdx(world, 0, 0))).toBe("seen");
 
     demoteFog(state);
 
-    // The demotion actually happened - this patch dropped a tier - but the
-    // bit isKnown reads never went back to zero.
-    expect(knowledgeAt(state.knowledge, cellIdx(world, 0, 0))).toBe("inherited");
-    expect(isKnown(state, cellIdx(world, 0, 0))).toBe(true);
+    expect(knowledgeAt(state.knowledge, cellIdx(world, 0, 0))).toBe("unknown");
+    expect(isKnown(state, cellIdx(world, 0, 0))).toBe(false);
 
+    // Nothing known, so nothing sampled: the block has no ground to describe.
     const after = glyphSummary(state, world, 0, 0, FINE_PER_PARENT);
-    expect(after).toEqual(before);
+    expect(after.samples).toBe(0);
   });
 
-  it("draws a known region as known, not fog, right after a demotion", () => {
+  it("draws a forgotten region as fog, having drawn it as known before", () => {
     const { state, world } = newGame(21);
     mapRegion(state, world, state.player.region);
     const parentZoom = LEVELS.findIndex((l) => l.finePerGlyph === FINE_PER_PARENT);
@@ -57,11 +64,10 @@ describe("the parent-known cache across a demotion", () => {
 
     demoteFog(state);
 
-    // Same known footprint, none of it fallen back to fog: a demotion dims
-    // ground, it does not unknow it.
+    // The ancestor's country is not this survivor's to read. What the board
+    // keeps is what the heir's own eye reaches, and that is not this region.
     const after = board(world, state, ui, CAL);
-    expect(knownOn(after).length).toBe(knownBefore);
-    expect(knownOn(after).filter((g) => has(g, "fog"))).toHaveLength(0);
-    expect(glyphsWith(after, "fog", "cur")).toHaveLength(0);
+    expect(knownOn(after).length).toBeLessThan(knownBefore);
+    expect(glyphsWith(after, "fog").length).toBeGreaterThan(0);
   });
 });

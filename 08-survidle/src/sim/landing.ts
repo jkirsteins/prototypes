@@ -16,7 +16,7 @@ import { rebaseOpportunityContextClock } from "./opportunity-context";
 import { addAgedStack, addItem, pile } from "./inventory";
 import { STRUCTURES } from "./items";
 import { log } from "./log";
-import { dimAll, mapRegion } from "./mapped";
+import { forgetGround, mapRegion } from "./mapped";
 import { fmtName } from "./names";
 import { rollCandidates } from "./person";
 import { newPerson } from "./newgame";
@@ -97,10 +97,17 @@ export function layDownPack(state: GameState, world: World): void {
   p.tools = [];
 }
 
-/** Every discovered region and every walked cell forgets to dim: known once, from the journal now, not from standing there. */
+/**
+ * A death takes the ground with it. Every region a name was learned for dims
+ * to what a journal can carry - a place that is spoken of - and every patch
+ * of ground goes back to unknown, because the heir has not walked it. What
+ * replaces the ancestor's map is the note: `oldCampHint`'s region, bearing
+ * and journal line, and `inheritRegion` handing the camp's country back
+ * whole once the camp itself is seen.
+ */
 export function demoteFog(state: GameState): void {
   for (const id of Object.keys(state.discovered)) state.discovered[Number(id)] = DIM;
-  dimAll(state);
+  forgetGround(state);
 }
 
 /** How much stands at a camp: the eight one-off structures plus however many snares. */
@@ -348,7 +355,9 @@ export function land(state: GameState, world: World, name = state.landing?.name,
     newPerson(state, world, l.cell, l.region);
     state.landing = null;
     enterRegion(state, world, l.region);
-    // A camp is chosen, and a choice needs the ground in front of you.
+    // The world's first survivor is set down in country they are taken to
+    // know: a camp is chosen on the first day, and a choice needs the ground
+    // in front of you. An heir is not given this - see below.
     mapRegion(state, world, l.region, false);
     const here = regionAt(world, l.region).name;
     if (l.date.doy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${here}. {You} {have} an axe, wool on {your} back and a kilo of dried meat.`);
@@ -361,8 +370,12 @@ export function land(state: GameState, world: World, name = state.landing?.name,
   newPerson(state, world, l.cell, l.region);
   state.landing = null;
   enterRegion(state, world, l.region);
-  // A camp is chosen, and a choice needs the ground in front of you.
-  mapRegion(state, world, l.region, false);
+  // No ground is handed to an heir, not even the valley they step into. The
+  // first survivor's line above reads "a choice needs the ground in front of
+  // you" and that is true of siting a camp from nothing; an heir's work is
+  // to find the camp that already stands, and the note is what points them
+  // at it. What they can see from the shore, `newPerson`'s own look gave
+  // them; the rest is Explore, on foot.
   const lc = cellAt(world, l.cell);
   // Nobody made camp in the life before, so there is no camp to be told the way to
   // and nothing standing for a journal to list.
