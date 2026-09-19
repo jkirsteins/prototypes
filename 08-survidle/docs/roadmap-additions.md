@@ -2116,3 +2116,26 @@ case at the pulled baseline and current head, and record root cause, production
 contract and minimal regression. Commit each verified correction independently,
 then run the complete slow suite on the settled head. The in-flight old-head
 run is diagnostic evidence, not final validation of subsequent commits.
+
+## Need bars as words, not numbers
+
+Raised at the guided playtest of 2026-09-19 (`docs/playtest-2026-09-19.md`).
+Show each need as a graded word - "a bit sleepy", "very sleepy" - rather
+than a number out of 100 such as "50/100 sleepiness". Project Zomboid reads
+its moodles this way. The tester said he likes it there: "It means you dont optimize minmax sleep values e.g., but you still
+get a sense of what is working."
+
+This is the grades-not-numbers rule the survivor card already follows
+(item I), carried over to the body's bars. What it has to answer:
+
+- Each word must sit on a real decision line and not on an even slice of
+  the bar. The sleep model already has the lines: `SLEEPY_AT` (50),
+  `SLEEP_ONSET` (60) and `WAKE_AT` (25) in `src/sim/sleep.ts`, and the
+  energy lines `SPENT_AT`, `SLEEP_AT` and `RESTED_AT`. A word that changes
+  where nothing happens tells the player nothing.
+- The playtest showed the bars unread until an intervention (notes 79, 86,
+  89, 101), and after it the tester called them "useful". Words must not
+  cost that. Decide whether the bar stays and the number goes, or the word
+  replaces the bar.
+- Some decisions need the number: the queue's lines ("stops work and
+  rests") and the forecast. Decide where a number survives, if anywhere.
