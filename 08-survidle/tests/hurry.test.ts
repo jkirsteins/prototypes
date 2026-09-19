@@ -6,6 +6,9 @@ import { addItem, herePile } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
+import { cellOf } from "../src/sim/position";
+import { insertWalkAtTop } from "../src/sim/walkorders";
+import { neighbourLandCell } from "./siting-helpers";
 import { die } from "../src/sim/player";
 import { startTask } from "../src/sim/tasks";
 import { workSpeed } from "../src/sim/player";
@@ -227,6 +230,22 @@ describe("what is hurried", () => {
     expect(hurryKind(state)).toBe("auto");
     die(state, "froze");
     expect(hurryKind(state)).toBe("none");
+  });
+
+  it("a map click's walk is auto on the way and clicked once there, where it is a rest until struck off", () => {
+    const { state, world } = newGame(3);
+    const cell = neighbourLandCell(world, cellOf(state, world));
+    insertWalkAtTop(state, world, cell);
+    advance(state, world, 1);
+    expect(state.intent?.orderId).not.toBeNull();
+    expect(state.intent && "until" in state.intent ? state.intent.until?.kind : null).toBe("dismissed");
+    expect(state.task?.id).not.toBe("rest");
+    expect(hurryKind(state)).toBe("auto");
+    expect(peakFor(state)).toBe(WALK_PEAK);
+    for (let i = 0; i < 240 && !(cellOf(state, world) === cell && state.task?.id === "rest"); i++) advance(state, world, 1);
+    expect(cellOf(state, world)).toBe(cell);
+    expect(state.task?.id).toBe("rest");
+    expect(hurryKind(state)).toBe("click");
   });
 
   it("finite care can be hurried with an explicit click", () => {
