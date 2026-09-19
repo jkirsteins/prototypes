@@ -25,9 +25,16 @@ A browser pass confirms nothing interactive has appeared in the left
 column but that slider, and nothing but Orders in the right.
 `tests/layout.test.ts` holds the same rule against `index.html`.
 
+In a window under 1300px wide there are two columns, the map across the
+top of both, and the right slot's strip takes the queue as its first
+page - Queue, Alerts, Weather, the queue the default - because the
+queue given what was left of the column under a full weather panel was
+a heading with no rows on a short window. The queue is still the right
+column's; it is a page of it rather than a panel under the weather.
+
 On a phone there are no columns. The right slot's strip is the page's
 tabs - Map, Queue, Alerts, Weather, in that order, the map the default
-(a desktop's strip stays Weather, Alerts) - and the If-you-leave panel
+(a wide desktop's strip stays Weather, Alerts) - and the If-you-leave panel
 is not shown at all: the away dial is a desktop's control. The manual
 and the settings are links in the footer at the very bottom of the page,
 at every width, and nowhere else. The

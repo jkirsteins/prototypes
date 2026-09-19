@@ -1104,6 +1104,12 @@ button.act small.gives, span.act small.gives,
   .cards { flex-direction: column; }
 }
 
+/* Two columns: the map spans the top and the side columns share what is
+   left under it, which on a short window is not much. The right slot's
+   strip takes the queue as a page here (Queue, Alerts, Weather; see
+   ui/rightpages.ts), because a queue given the column's leftover height
+   under a full weather panel was a heading with no rows and no way to
+   reach them - #right does not scroll, the queue scrolls inside itself. */
 @media (max-width: 1300px) {
   #app { grid-template-columns: 1fr 1fr; }
   #center { grid-column: 1 / -1; order: -1; }

@@ -1,9 +1,10 @@
 /**
- * The right column's top slot: the alerts and the weather as pages, and on
- * a phone the map first, the strip carrying the alerts page's counts.
+ * The right column's top slot: the alerts and the weather as pages, in a
+ * narrow window the queue in front of them, and on a phone the map first,
+ * the strip carrying the alerts page's counts.
  */
 import { describe, expect, it } from "vitest";
-import { loadRightPage, PHONE_PAGES, RIGHT_PAGE_KEY, rightPagesHtml, saveRightPage } from "../src/ui/rightpages";
+import { loadRightPage, RIGHT_PAGE_KEY, RIGHT_PAGES, rightPagesHtml, saveRightPage } from "../src/ui/rightpages";
 
 function fakeStorage(): Storage {
   const m = new Map<string, string>();
@@ -22,25 +23,34 @@ describe("the right column's pages", () => {
     expect(alerts).not.toContain("badge");
     expect(alerts).toMatch(/data-page="alerts" aria-pressed="true"/);
     expect(rightPagesHtml("weather", { bad: 0, warn: 0 })).not.toContain("badge");
-    expect(rightPagesHtml("map", { bad: 1, warn: 0 }, true)).toContain('class="badge bad"');
+    expect(rightPagesHtml("map", { bad: 1, warn: 0 }, "phone")).toContain('class="badge bad"');
+    expect(rightPagesHtml("queue", { bad: 1, warn: 0 }, "narrow")).toContain('class="badge bad"');
   });
 
-  it("orders the tabs map, queue, alerts, weather on a phone, and weather, alerts on a desktop as always", () => {
+  it("orders the tabs map, queue, alerts, weather on a phone, queue, alerts, weather in a narrow window, and weather, alerts wide as always", () => {
     const pages = (html: string) => [...html.matchAll(/data-page="(\w+)"/g)].map((m) => m[1]);
     expect(pages(rightPagesHtml("weather", { bad: 0, warn: 0 }))).toEqual(["weather", "alerts"]);
-    expect(pages(rightPagesHtml("map", { bad: 0, warn: 0 }, true))).toEqual(["map", "queue", "alerts", "weather"]);
-    expect(rightPagesHtml("map", { bad: 0, warn: 0 }, true)).toMatch(/data-page="map" aria-pressed="true"/);
-    expect(PHONE_PAGES).toEqual(["map", "queue"]);
+    expect(pages(rightPagesHtml("queue", { bad: 0, warn: 0 }, "narrow"))).toEqual(["queue", "alerts", "weather"]);
+    expect(pages(rightPagesHtml("map", { bad: 0, warn: 0 }, "phone"))).toEqual(["map", "queue", "alerts", "weather"]);
+    expect(rightPagesHtml("map", { bad: 0, warn: 0 }, "phone")).toMatch(/data-page="map" aria-pressed="true"/);
+    expect(rightPagesHtml("queue", { bad: 0, warn: 0 }, "narrow")).toMatch(/data-page="queue" aria-pressed="true"/);
+    // The strip is the table: every layout's default is its first page, and the map is only ever a phone's page.
+    for (const layout of ["wide", "narrow", "phone"] as const) expect(pages(rightPagesHtml(RIGHT_PAGES[layout][0], { bad: 0, warn: 0 }, layout))).toEqual([...RIGHT_PAGES[layout]]);
+    expect(RIGHT_PAGES.wide[0]).toBe("weather");
+    expect(RIGHT_PAGES.narrow[0]).toBe("queue");
+    expect(RIGHT_PAGES.phone[0]).toBe("map");
+    expect(RIGHT_PAGES.narrow).not.toContain("map");
   });
 
   it("wears the running task's bar on the Queue tab, written by bars.ts like every bar", () => {
-    const phone = rightPagesHtml("map", { bad: 0, warn: 0 }, true);
-    expect(phone).toMatch(/data-page="queue"[^>]*>Queue<i class="tabfill" data-bar="task"><\/i><\/button>/);
+    for (const layout of ["narrow", "phone"] as const) {
+      expect(rightPagesHtml("alerts", { bad: 0, warn: 0 }, layout)).toMatch(/data-page="queue"[^>]*>Queue<i class="tabfill" data-bar="task"><\/i><\/button>/);
+    }
     expect(rightPagesHtml("weather", { bad: 0, warn: 0 })).not.toContain("tabfill");
   });
 
   it("carries no button but its tabs: the manual and the settings are the footer's", () => {
-    for (const html of [rightPagesHtml("queue", { bad: 0, warn: 0 }, true), rightPagesHtml("weather", { bad: 0, warn: 0 })]) {
+    for (const html of [rightPagesHtml("queue", { bad: 0, warn: 0 }, "phone"), rightPagesHtml("queue", { bad: 0, warn: 0 }, "narrow"), rightPagesHtml("weather", { bad: 0, warn: 0 })]) {
       expect(html).not.toContain("settings");
       expect(html).not.toContain("manual");
     }
