@@ -1007,6 +1007,8 @@ round, a camp across several cells, the catchment overlay).
 
 ## The solved world: principles to keep, and the order of what is next
 
+**Amended 2026-09-19.** Priority 3's "run the slow suite whole once" no longer has a suite to run: it went with `50bef32`, and the whole-run readings are `npm run reference`, `year` and `horizon`. The ten-seed sweep is still open (`scripts/terrain.ts` still reads 42, 1 and 7). Nothing else in the list has moved.
+
 The terrain landed 2026-09-12 (PR 13, then the glacial basins). The
 principle to preserve above every item below: generate a plausible world
 first, then adapt the game to living in it. The danger from here is seeing
@@ -1201,6 +1203,8 @@ its own cap.
 
 ## The long-horizon gates have not been read since the fine world
 
+**Amended 2026-09-19.** The April, winter, year and lineage gates were slow-suite tests and were deleted with it (`50bef32`); what remains of them is `npm run reference`, `npm run year -- --winter` and `npm run horizon`, which are readings and not gates. No reading has been retaken since the fine world. Run those three and record the numbers here before concluding anything from the item below.
+
 **Raised** 2026-09-13, at the end of the authoritative-close-zoom branch.
 
 The April, winter, year and lineage gates and the balance sweep were all last
@@ -1391,6 +1395,8 @@ once.
 
 ## Fast suite is five minutes against the repo's own rule
 
+**Superseded 2026-09-19** by "Reinstate the useful slow tests, under a time budget" at the end of this file. The remedy below - move slow files behind their own script - is no longer available: the slow suite, `test:slow` and `SURVIDLE_TEST_SUITE` are gone, and the repo rule is now cut down or delete, never a side suite. The six named files still run unbudgeted in `npm test` and fall under that item's 2 s rule.
+
 **Raised** 2026-09-13, from the pre-merge triage.
 
 `npm test` runs the fast suite in about 313 seconds (1182 cases, measured in
@@ -1478,6 +1484,8 @@ What would look wrong: a neighbouring region's forest thinning from a fire
 its own survivor never lit or saw.
 
 ## Dead refusal branches after succession
+
+**Still open 2026-09-19.** Line references have moved: the guards are at `tasks.ts` 520, 529 and 556, the fell string is now "nothing left worth felling", and the `ground(forestCell(...))` door still answers first.
 
 **Raised** 2026-09-13, from the pre-merge triage and the phase 3 fix wave.
 
