@@ -377,7 +377,10 @@ describe("the purposes and the filter", () => {
   it("the left pane counts what each purpose holds", () => {
     const { state, world } = newGame(21);
     revealEverything(state);
-    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Camp" as const, purpose: "Fire" } };
+    // Camp is camp work, so the left pane's counts are read in camp view: the
+    // view chooses which purposes a subtab offers, and a Camp subtab showing
+    // under the survivor is a state the switch cannot produce.
+    const ui = { ...newUiState(), view: "camp" as const, panes: { pane: "do" as const, subtab: "Camp" as const, purpose: "Fire" } };
     const counts = purposeCounts(state, world, ui);
     // Every purpose Camp offers is present, and none of them is empty.
     expect(Object.keys(counts).sort()).toEqual(["Fire", "Food", "Fuel", "Rest", "Tools", "Water"]);

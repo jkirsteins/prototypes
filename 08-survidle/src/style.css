@@ -96,6 +96,14 @@ body { display: flex; flex-direction: column; height: 100vh; }
 }
 .tabs .tab.on { color: var(--accent); border-color: var(--line); background: var(--panel); margin-bottom: -1px; }
 
+/* The view switch sits above the board and reads as one line: the two
+   views, then which camp the camp view is looking at. Its own tab row has
+   no bottom rule - the panel under it is the board, not a pane body. */
+.viewswitch { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 4px 8px; }
+.viewswitch .tabs { border-bottom: none; margin-bottom: 0; }
+.viewcamp { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; color: var(--dim); }
+.viewcamp .mini.on { color: var(--accent); }
+
 .subs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 6px; }
 .subs:empty { display: none; }
 .subs .sub { background: none; border: none; color: var(--dim); padding: 2px 6px; font: inherit; cursor: pointer; }

@@ -53,7 +53,8 @@ import { doHtml, doPurposesHtml, KW_PREFIX, purposeCounts, subtabCounts } from "
 import { catalogPage, opportunityCatalogAction, opportunityCatalogHtml, opportunityCatalogKeyboard } from "./ui/opportunity-catalog";
 import { opportunityPanelHtml } from "./ui/opportunity-panel";
 import { nextOpportunityPresentation, opportunityModalAction, opportunityModalHtml, opportunityModalKeyboard } from "./ui/opportunity-modal";
-import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
+import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml } from "./ui/panes";
+import { loadView, panesInView, purposesInView, purposeView, saveView, subtabsInView, toSubtabInView, type View, viewSwitchHtml } from "./ui/view";
 import { paneForOpportunity, PURPOSES } from "./ui/purpose";
 
 /**
@@ -74,12 +75,33 @@ function settlePanes(): void {
   panesSettled = true;
   const counts = purposeCounts(state, world, ui);
   if ((counts[ui.panes.purpose] ?? 0) > 0) return;
-  const filled = PURPOSES[ui.panes.subtab].find((q) => (counts[q] ?? 0) > 0);
+  // Only this view's purposes are candidates. Settling onto the other view's
+  // work would put the Do pane on a subtab the strip does not even draw here,
+  // which is how Survivor view came to open on Build.
+  const filled = purposesInView(ui.panes.subtab, ui.view).find((q) => (counts[q] ?? 0) > 0);
   if (filled) {
     ui.panes = { ...ui.panes, purpose: filled };
   } else {
     const where = currentOpportunityPane(state);
-    if (where) ui.panes = { ...ui.panes, pane: "do", subtab: where.subtab, purpose: where.purpose };
+    // The game's current ask may be the other view's work - "make camp" is,
+    // on a landing. The view is the player's choice, so the pane follows the
+    // ask only when the ask is here; otherwise it takes this view's own first.
+    if (where && purposeView(where.subtab, where.purpose) === ui.view) {
+      ui.panes = { ...ui.panes, pane: "do", subtab: where.subtab, purpose: where.purpose };
+    } else {
+      // Nothing in this subtab and no ask here: take the first subtab of this
+      // view that actually holds something, rather than settling onto an empty
+      // one. "Traps 0 / nothing here yet" is a camp view that looks broken.
+      ui.panes = panesInView(ui.panes, ui.view);
+      for (const subtab of subtabsInView(ui.view)) {
+        const at = toSubtabInView(ui.panes, subtab, ui.view);
+        const holds = purposesInView(subtab, ui.view).some((q) => (purposeCounts(state, world, { ...ui, panes: at })[q] ?? 0) > 0);
+        if (!holds) continue;
+        const filledHere = purposesInView(subtab, ui.view).find((q) => (purposeCounts(state, world, { ...ui, panes: at })[q] ?? 0) > 0);
+        ui.panes = { ...at, purpose: filledHere ?? at.purpose };
+        break;
+      }
+    }
   }
   savePanes(localStorage, ui.panes);
 }
@@ -310,7 +332,11 @@ async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: numbe
   ui.confirmAbandon = false;
   // A fresh world stands where its opportunity is, not on a constant: on a
   // landing that is "Make camp here", and Gather > Woodcutting holds nothing.
-  ui.panes = loadPanes(localStorage, currentOpportunityPane(state));
+  ui.view = loadView(localStorage, currentOpportunityPane(state));
+  ui.panes = panesInView(loadPanes(localStorage, currentOpportunityPane(state)), ui.view);
+  // A new world's camps are not this one's; the picker starts unchosen and
+  // `viewedCampRegion` falls back to wherever the survivor is.
+  ui.campView = null;
   ui.confirmCamp = false;
   resetPanels();
   resetForecastAt();
@@ -325,7 +351,12 @@ async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: numbe
 }
 
 async function boot() {
-  ui.panes = loadPanes(localStorage);
+  // The view is read before the panes, because a stored pane belonging to the
+  // other view has to be moved into this one before it is ever drawn. No
+  // opportunity is read here: `state` is not assigned until a world is loaded,
+  // and the world-load path below settles both against the current ask.
+  ui.view = loadView(localStorage);
+  ui.panes = panesInView(loadPanes(localStorage), ui.view);
   ui.rightPage = loadRightPage(localStorage, phoneLayout() ? "map" : "weather");
   if (session && !forcedSeed && startDoy === undefined) {
     // The store decides what this device shows and whether it runs it.
@@ -641,6 +672,7 @@ function render(nowMs = performance.now()) {
   setPanel("task", taskHtml(state, world, cal, ui.hurry));
   setPanel("orders", queueHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
+  setPanel("viewswitch", viewSwitchHtml(state, world, ui.view, ui.campView));
   setPanel("panetabs", paneTabsHtml(ui.panes));
   settlePanes();
   setPanel("dosubs", ui.filter.trim() ? "" : subtabsHtml(ui.panes, subtabCounts(state, world, ui)));
@@ -887,13 +919,25 @@ function onClick(ev: Event) {
       ui.panes = { ...ui.panes, pane: target.dataset.pane as PaneId };
       savePanes(localStorage, ui.panes);
       break;
+    case "view": {
+      ui.view = target.dataset.view as View;
+      // The Do pane comes with: a subtab or purpose the new view does not own
+      // would leave the player looking at work this view is not for.
+      ui.panes = panesInView(ui.panes, ui.view);
+      savePanes(localStorage, ui.panes);
+      saveView(ui.view, localStorage);
+      break;
+    }
+    case "camp-view":
+      ui.campView = Number(target.dataset.region);
+      break;
     case "right-page":
       ui.rightPage = target.dataset.page as RightPage;
       saveRightPage(localStorage, ui.rightPage);
       break;
     case "subtab": {
       const subtab = target.dataset.subtab as SubtabId;
-      ui.panes = toSubtab(ui.panes, subtab);
+      ui.panes = toSubtabInView(ui.panes, subtab, ui.view);
       // Its first purpose that holds something, not simply its first: with
       // rows revealed a rung at a time, Camp's first purpose is Fire and the
       // row the player came for is under Rest. Landing on the empty one

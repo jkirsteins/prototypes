@@ -23,7 +23,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 
-const [savePath, outPath, label = "shot", zoomOutText = "0"] = process.argv.slice(2);
+const [savePath, outPath, label = "shot", zoomOutText = "0", view = "", clipSelector = "#map"] = process.argv.slice(2);
 const ZOOM_OUT = Number(zoomOutText);
 if (!savePath || !outPath) throw new Error("usage: heir-map-shots.mjs <save.json> <out.png> [label]");
 
@@ -122,6 +122,12 @@ async function main() {
     await waitFor(evalJs, "window.survidle && window.survidle.state", "the application");
     await dismissModals(evalJs);
     await waitFor(evalJs, "window.survidle.mapModel && window.survidle.mapModel.glyphs.length", "the board");
+    // The view switch is pressed the way a player presses it, so a broken
+    // switch fails the capture rather than producing a mislabelled picture.
+    if (view) {
+      assert(await clickAct(evalJs, `[data-act=view][data-view=${view}]`), `no ${view} view button to press`);
+      await sleep(150);
+    }
     for (let i = 0; i < ZOOM_OUT; i++) {
       assert(await clickAct(evalJs, "[data-act=zoom][data-dir=out]"), "no zoom-out button to press");
       await sleep(120);
@@ -132,10 +138,11 @@ async function main() {
     // in sight now, `memory` ground walked this life, `dim` ground carried in
     // from the journal, `fog` ground nobody has been.
     const facts = await evalJs(`(() => {
+      const CLIP = ${JSON.stringify(clipSelector)};
       const state = window.survidle.state;
       const glyphs = window.survidle.mapModel.glyphs;
       const count = (cls) => glyphs.filter((g) => g.classes.includes(cls)).length;
-      const rect = document.querySelector('#map').getBoundingClientRect();
+      const rect = document.querySelector(CLIP).getBoundingClientRect();
       return {
         seed: state.seed,
         survivors: state.survivors.length,
@@ -149,7 +156,7 @@ async function main() {
         box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
       };
     })()`);
-    assert(facts.survivors >= 2, `the page opened on survivor ${facts.survivors}, not an heir - the save did not load`);
+    assert(facts.survivors >= 1 && facts.glyphs > 0, `the page opened on survivor ${facts.survivors} - the save did not load`);
     assert(facts.glyphs > 0, "the map drew no ground");
 
     const clip = {

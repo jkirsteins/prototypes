@@ -41,6 +41,7 @@ import { campfireVisible, hasLineOfSight, sightRangeCells, visibleCells } from "
 import { GROUND_CHANGE_HEADING, SNOW_SHOWN_CM, terrainHeading } from "../sim/cellstatus";
 import type { GroundChangeKind } from "../world/groundchange";
 import { aggregatePresentation, cellKnowledge as presentationKnowledge, cellPresentation, TERRAIN_GLYPH } from "./cellpresentation";
+import { viewCentre, viewedCampCell } from "./view";
 
 /** A small open camp fire remains a distinct light out to about five kilometres on a clear night. */
 const CAMPFIRE_VISIBLE_KM = 5;
@@ -422,7 +423,7 @@ export function mapAggregateAtPoint(world: World, state: GameState, ui: UiState,
   const l = levelAt(ui.zoom);
   const at = glyphAtPoint(l, x, y);
   if (!at) return null;
-  const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+  const { x0, y0 } = viewOrigin(state, world, ui.zoom, viewCentre(state, world, ui.view, ui.campView));
   const box: MapAggregate = { x0: x0 + at.col * l.finePerGlyph, y0: y0 + at.row * l.finePerGlyph, size: l.finePerGlyph };
   // The view can hang over the world's edge, and void is not ground.
   if (box.x0 + box.size <= 0 || box.y0 + box.size <= 0 || box.x0 >= world.w || box.y0 >= world.h) return null;
@@ -1533,11 +1534,15 @@ function drawGlyphs(ctx: CanvasRenderingContext2D, model: EffectsModel, nowMs: n
  * glyph is still the middle one: the snap moves the origin at most z - 1
  * patches back, and the middle glyph is z patches wide.
  */
-export function viewOrigin(state: GameState, world: World, zoom: number): { x0: number; y0: number } {
+export function viewOrigin(state: GameState, world: World, zoom: number, centre?: { x: number; y: number }): { x0: number; y0: number } {
   const l = levelAt(zoom);
   const z = l.finePerGlyph;
-  const px = Math.floor(state.player.xM / PATCH_M);
-  const py = Math.floor(state.player.yM / PATCH_M);
+  // The survivor unless the view says otherwise. Camp view hands in the camp's
+  // patch so the board stays on it while the survivor walks away; everything
+  // below is the same arithmetic either way, and what is *visible* is still
+  // reckoned from where the survivor stands (see view.ts, viewCentre).
+  const px = centre ? centre.x : Math.floor(state.player.xM / PATCH_M);
+  const py = centre ? centre.y : Math.floor(state.player.yM / PATCH_M);
   const spanX = l.w * z;
   const spanY = l.h * z;
   let x0 = Math.floor((px - Math.floor(spanX / 2)) / z) * z;
@@ -1925,7 +1930,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const piles = Object.keys(state.piles).join(",");
   const carcasses = state.carcasses.map((c) => `${c.id}:${c.cell}:${c.warmAge}:${JSON.stringify(c.yields)}`).join(",");
   const dens = Object.keys(state.wildlife.knownDens).join(",");
-  const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+  const { x0, y0 } = viewOrigin(state, world, ui.zoom, viewCentre(state, world, ui.view, ui.campView));
   const level = levelAt(ui.zoom);
   const cell = cellOf(state, world);
   const discoveredSum = Object.values(state.discovered).reduce((a, b) => a + b, 0);
@@ -1955,7 +1960,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const viewshed = projectedViewshed(shed, x0, y0, z, level.w, level.h);
   const startles = activeWildlifeStartles(ui, nowMs).map((cue) => cue.key).join(",");
   const viewport = startles && ui.mapViewport ? Object.values(ui.mapViewport).join(",") : "";
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${ui.destination}|cs${ui.cloudShadows ? 1 : 0}|wx${weatherMinute}:${localWeather}|${cal.isNight}|${marks}|${route}|${piles}|${carcasses}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${coarseKnowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|vis${viewshed}|${animals}|${startles}|${viewport}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.view}|${viewedCampCell(state, ui.campView)}|${ui.selected}|${ui.destination}|cs${ui.cloudShadows ? 1 : 0}|wx${weatherMinute}:${localWeather}|${cal.isNight}|${marks}|${route}|${piles}|${carcasses}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${coarseKnowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${viewRange}|vis${viewshed}|${animals}|${startles}|${viewport}`;
 }
 
 function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calendar, nowMs: number): MapBuild {
@@ -1963,7 +1968,7 @@ function buildMapModel(world: World, state: GameState, ui: UiState, cal: Calenda
   const sel = ui.selected;
   const l = levelAt(ui.zoom);
   const z = l.finePerGlyph;
-  const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+  const { x0, y0 } = viewOrigin(state, world, ui.zoom, viewCentre(state, world, ui.view, ui.campView));
   const startles = activeWildlifeStartles(ui, nowMs);
   const recoilAt = new Map<number, number>();
   for (const { event, startedAtMs } of startles) {

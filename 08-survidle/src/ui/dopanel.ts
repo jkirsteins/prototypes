@@ -21,7 +21,8 @@ import { masteryLine } from "./panels";
 import { purposesHtml } from "./panes";
 import { isOpportunityDiscovered } from "../sim/opportunities";
 import { hasTool } from "../sim/inventory";
-import { PURPOSES, purposeOf, revealOf, type SubtabId, SUBTABS, subtabOf, TOOL_FOR_ROW } from "./purpose";
+import { purposeOf, revealOf, type SubtabId, SUBTABS, subtabOf, TOOL_FOR_ROW } from "./purpose";
+import { purposesInView, purposeView } from "./view";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
 import { formatTravel } from "./travel";
 
@@ -752,12 +753,20 @@ function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): T
  */
 export function subtabCounts(state: GameState, world: World, ui: UiState): Record<SubtabId, number> {
   const counts = Object.fromEntries(SUBTABS.map((s) => [s, 0])) as Record<SubtabId, number>;
+  // A row counts toward the strip only in the view its purpose belongs to, so
+  // the other view's work is not advertised by a tab that opens onto nothing.
+  const inView = (id: TaskId, arg?: string) => {
+    const subtab = subtabOf(id, arg);
+    const purpose = purposeOf(id, arg);
+    return subtab !== null && purpose !== null && purposeView(subtab, purpose) === ui.view;
+  };
   for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
     if (!revealed(state, i.id, i.arg) || alreadyStands(state, world, i.id, i.arg)) continue;
     if (i.id === "chop" && i.arg && !ui.specific.trees) continue;
     if (i.id === "fish" && i.arg !== "any" && !ui.specific.fish) continue;
     if (i.id === "explore" && i.arg !== `region:${state.player.region}` && !ui.specific.regions) continue;
     if ((i.id === "explore" || i.id === "searchHome") && !check(state, world, calendar(state.minute, state.startDoy), i.id, i.arg).ok) continue;
+    if (!inView(i.id, i.arg)) continue;
     const subtab = subtabOf(i.id, i.arg);
     if (subtab !== null) counts[subtab]++;
   }
@@ -767,7 +776,9 @@ export function subtabCounts(state: GameState, world: World, ui: UiState): Recor
 /** How many rows each purpose of the showing subtab holds, for the counts the left pane carries. */
 export function purposeCounts(state: GameState, world: World, ui: UiState): Record<string, number> {
   const counts: Record<string, number> = {};
-  for (const q of PURPOSES[ui.panes.subtab]) counts[q] = 0;
+  // Only this view's purposes are offered, so Hunt shows the game in survivor
+  // view and the trap line in camp view rather than both in each.
+  for (const q of purposesInView(ui.panes.subtab, ui.view)) counts[q] = 0;
   for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
     if (!revealed(state, i.id, i.arg) || alreadyStands(state, world, i.id, i.arg)) continue;
     if (subtabOf(i.id, i.arg) !== ui.panes.subtab) continue;
