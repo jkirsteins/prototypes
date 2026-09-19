@@ -42,7 +42,7 @@ const LOOP_LINGER_MS = 5000;
  *
  * WARM_SLOTS decode shortly after unlock, at low priority, via
  * warmDramaticSet(): the startle departures, ice cracking, a falling tree,
- * a breaking tool, wolves. These are rare, one-off dramatic beats rather
+ * a breaking tool, wolves, the full-moon chorus. These are rare, one-off dramatic beats rather
  * than a constant hum, so they must not delay the first gesture the way
  * IMMEDIATE_SLOTS may - but a silent first occurrence can be the only
  * occurrence a session ever has, so leaving them fully on demand risks
@@ -60,7 +60,7 @@ const WARM_SLOTS: Slot[] = [
   "startle_hoof_light_forest", "startle_hoof_heavy_forest",
   "startle_hoof_light_open", "startle_hoof_heavy_open",
   "startle_hoof_bog", "startle_hoof_snow", "startle_brush_predator",
-  "toolBreaks", "fallThrough", "iceCracks", "treeFalls", "wolves",
+  "toolBreaks", "fallThrough", "iceCracks", "treeFalls", "wolves", "howling",
 ];
 /** How long a background warm step may wait for an idle moment before running anyway. */
 const WARM_IDLE_TIMEOUT_MS = 2000;

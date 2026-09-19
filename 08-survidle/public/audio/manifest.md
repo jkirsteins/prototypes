@@ -746,9 +746,9 @@ and the two generated sections of this file from scratch.
 - Author: BBC Archive.
 - Licence: BBC RemArc (personal, educational and research use only).
 - URL: https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05102193.mp3
-- Processing: cut 126-158 s, highpass=f=120,lowpass=f=3500, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
-- Duration: 32.00 s. Decoded peak: -4.1 dBFS.
-- Note: the pack in chorus, far off: the bout of howling a full-moon night brings, a different half-minute of the recording from the wolves alarm, with the top rolled off as distance takes it
+- Processing: cut 126-159 s, highpass=f=120,lowpass=f=3500,afade=t=in:st=0:d=2,afade=t=out:st=28:d=5, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 33.00 s. Decoded peak: -4.1 dBFS.
+- Note: the pack in chorus, far off: the bout of howling a full-moon night brings, a different half-minute of the recording from the wolves alarm, with the top rolled off as distance takes it and a five-second fade at the end, since the cut ends mid-howl and a bout dies away rather than stopping
 
 ### loon.ogg
 

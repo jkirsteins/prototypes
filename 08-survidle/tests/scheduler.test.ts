@@ -6,8 +6,10 @@ import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
+import { HOWLING_HOLD_S } from "../src/sim/soundscape";
 import { regionAt } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
+import { testAtmosphere } from "./weather-helpers";
 
 function fakeEngine() {
   const played: { slot: string; opts?: { gain?: number; pan?: number; rate?: number; delay?: number } }[] = [];
@@ -87,6 +89,38 @@ describe("scheduler", () => {
     expect(calls.length).toBeLessThanOrEqual(Math.floor(durationMs / 4000) + 1);
     expect(calls.some((p) => p.slot === "raven")).toBe(true);
     expect(new Set(calls.map((p) => p.slot)).size).toBeGreaterThan(1);
+  });
+
+  it("the full-moon chorus holds its slot after a bout while the single howl keeps rolling", () => {
+    const { engine, played } = fakeEngine();
+    function lcg(seed: number): () => number {
+      let x = seed >>> 0;
+      return () => {
+        x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+        return x / 4294967296;
+      };
+    }
+    const s = createScheduler(engine, lcg(7));
+    const { state, world } = newGame(5);
+    let id = -1;
+    for (let i = 0; i < LATTICE_W * LATTICE_H && id < 0; i++) if (regionAt(world, i).capacity.wolf) id = i;
+    placeAt(state, world, requireCamp(regionAt(world, id)));
+    regionState(state, world, id).pop.wolf = regionAt(world, id).capacity.wolf;
+    testAtmosphere({ cloud: 0 });
+    const full = calendar(at(3, 1));
+    // Forty real minutes of a clear full-moon night over a full pack: the
+    // chorus rate alone would pass about six rolls, and the hold lets at most
+    // ten bouts through, so the spacing is what the hold decides.
+    const chorusAt: number[] = [];
+    for (let ms = 0; ms <= 40 * 60000; ms += 250) {
+      const before = played.length;
+      s.frame(state, world, full, 5, ms, true);
+      if (played.length > before && played[played.length - 1].slot === "howling") chorusAt.push(ms);
+    }
+    expect(chorusAt.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < chorusAt.length; i++) expect(chorusAt[i] - chorusAt[i - 1]).toBeGreaterThanOrEqual(HOWLING_HOLD_S * 1000);
+    // The single howl is not held: it plays many times more often.
+    expect(played.filter((p) => p.slot === "wolf").length).toBeGreaterThan(chorusAt.length);
   });
 
   it("a call is rare when the roll is high, and cues go straight through", () => {

@@ -3,8 +3,10 @@
  * surroundings every frame; the task's loop keeps its own beat; calls are
  * rolled every quarter second against their rates, but at most one call
  * plays per burst and bursts are a few seconds apart, near or far at
- * random. Randomness here is the caller's, so the sim's seeded stream is
- * never touched and tests can pin it.
+ * random. A call that names a hold is not rolled again until that much
+ * real time has passed since it last played, so a half-minute chorus never
+ * starts over the top of itself. Randomness here is the caller's, so the
+ * sim's seeded stream is never touched and tests can pin it.
  */
 import type { Calendar } from "../sim/calendar";
 import type { Cue } from "../sim/cues";
@@ -32,6 +34,8 @@ export function createScheduler(engine: AudioEngine, random: () => number = Math
   let lastCall = -Infinity;
   let lastBeat = -Infinity;
   let beatSlot: string | null = null;
+  /** Wall-clock ms before which each held slot is not rolled. */
+  const heldUntil = new Map<string, number>();
 
   return {
     frame(state, world, cal, ambient, nowMs, live) {
@@ -66,7 +70,7 @@ export function createScheduler(engine: AudioEngine, random: () => number = Math
       // weighted by rate, so a common resident at full density is heard
       // more often than a rare passer-by, matching the rates over many
       // bursts rather than letting catalogue order decide.
-      const heard = openCalls(state, world, cal).filter((c) => random() < (c.rate / 60) * (ROLL_MS / 1000));
+      const heard = openCalls(state, world, cal).filter((c) => (heldUntil.get(c.slot) ?? -Infinity) <= nowMs && random() < (c.rate / 60) * (ROLL_MS / 1000));
       if (heard.length) {
         let pick = random() * heard.reduce((sum, c) => sum + c.rate, 0);
         let chosen = heard[heard.length - 1];
@@ -75,6 +79,7 @@ export function createScheduler(engine: AudioEngine, random: () => number = Math
           if (pick <= 0) { chosen = c; break; }
         }
         lastCall = nowMs;
+        if (chosen.holdS) heldUntil.set(chosen.slot, nowMs + chosen.holdS * 1000);
         engine.play(chosen.slot, { gain: 0.3 + 0.7 * random(), pan: random() * 2 - 1 });
       }
     },

@@ -193,14 +193,27 @@ export function cricketSong(cal: Calendar, ambient: number): number {
   return emerged * Math.max(0, Math.min(1, warm));
 }
 
-export interface OpenCall { slot: string; /** calls per real minute */ rate: number }
+export interface OpenCall {
+  slot: string;
+  /** calls per real minute */
+  rate: number;
+  /** The least real seconds before this slot may be rolled again, for a call long enough to land on top of itself. Absent means no hold. */
+  holdS?: number;
+}
 
 /** Illumination three nights either side of full; `moonFullness` is 0 from here down. */
 const FULL_MOON_FROM = 0.9;
 /** Illumination a night and a half either side of full; `moonFullness` is 1 from here up. */
 const FULL_MOON_AT = 0.98;
-/** Choruses per real minute from a full pack under a full moon in a clear sky. */
-const HOWLING_RATE = 0.35;
+/** Choruses per real minute from a full pack under a full moon in a clear sky: one every seven minutes or so, a bit over one an April night. */
+const HOWLING_RATE = 0.15;
+/**
+ * Real seconds after a chorus before the next may start. The bout is half a
+ * minute long, and a pack that has just rallied is quiet for a while after;
+ * without this, the four-second burst gap is all that keeps two bouts apart
+ * and they land on top of each other as two packs.
+ */
+export const HOWLING_HOLD_S = 240;
 /** Cloud this thick hides the moon, and the pack sings as on any other night. */
 const HOWLING_OVERCAST = 0.7;
 
@@ -253,7 +266,7 @@ export function openCalls(state: GameState, world: World, cal: Calendar): OpenCa
     }
     if (s === "wolf") {
       const rate = moonHowling(state, world, cal, d);
-      if (rate > 0) out.push({ slot: "howling", rate });
+      if (rate > 0) out.push({ slot: "howling", rate, holdS: HOWLING_HOLD_S });
     }
   }
   return out;
