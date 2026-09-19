@@ -104,6 +104,13 @@ async function main() {
     `--user-data-dir=${profile}`,
     "--no-first-run",
     "--no-sandbox",
+    // Headless Chrome reports no pointer, so `@media (hover: none)` matches
+    // and the phone's 40px touch minimum lands on every control: the zoom
+    // buttons photograph 18 by 40 where a desktop player sees 18 by 16. A
+    // shot of the desktop page has to be taken with a mouse. `setEmulatedMedia`
+    // is accepted and does not move these features in this build, so the
+    // hover and pointer types are set at launch instead.
+    "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
     `--window-size=${VIEWPORT.width},${VIEWPORT.height}`,
     "about:blank",
   ]);

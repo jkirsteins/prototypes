@@ -99,17 +99,12 @@ body { display: flex; flex-direction: column; height: 100vh; }
 /* The view switch lives on the board it governs, opposite the carried line,
    so the page carries one band of tabs fewer. Its own row has no bottom rule
    and no bottom margin: it is a control on a picture, not a pane header. */
-#mapview {
-  position: absolute;
-  z-index: 4;
-  top: var(--map-overlay-inset);
-  right: var(--map-overlay-inset);
-  background: rgba(12, 15, 20, 0.82);
-  border: 1px solid var(--line);
-  padding: 2px 4px;
-}
-#mapview .tabs { border-bottom: none; margin-bottom: 0; }
-#mapview .tab { padding: 2px 10px; }
+/* Same treatment as the zoom, at the other end of the board: `.maptools`
+   carries the box-less look and the hover, this only moves it to the top
+   right. The showing view is the accent, the way a chosen thing is
+   everywhere else. */
+#mapview { left: auto; right: 6px; top: 6px; bottom: auto; }
+#mapview .mini.on { color: var(--accent); }
 
 .subs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 6px; }
 .subs:empty { display: none; }

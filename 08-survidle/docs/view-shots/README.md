@@ -50,3 +50,17 @@ An heir's camp view before they have found the old camp: the board moves to
 where the camp is and draws fog, because the country is not theirs to read
 yet (roadmap Q ruling 1). Correct, and worth keeping in mind - camp view is
 empty for exactly as long as the walk home takes.
+
+## A note on the harness
+
+These were re-taken on 2026-09-19. The first set was wrong in a way no
+assertion caught: headless Chrome reports no pointer, so `@media (hover: none)`
+matched and the phone's 40px touch minimum landed on every control. The zoom
+buttons photographed 18 by 40 where a desktop player sees 18 by 16 - tall thin
+slots, misaligned with the corner, in every shot. `setEmulatedMedia` is
+accepted and does not move those features in this build, so the harness sets
+the hover and pointer types at launch (`--blink-settings=primaryHoverType=2,
+availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4`).
+
+A shot of the desktop page has to be taken with a mouse. Anything photographed
+before that flag is a picture of the phone layout wearing the desktop's width.

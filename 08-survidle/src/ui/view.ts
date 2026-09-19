@@ -197,10 +197,13 @@ export function saveView(view: View, storage: Storage = localStorage): void {
  * describes, which is `campViewHtml` below.
  */
 export function viewSwitchHtml(view: View): string {
-  const buttons = VIEWS
-    .map((id) => `<button class="tab${id === view ? " on" : ""}" data-act="view" data-view="${id}">${VIEW_WORDS[id]}</button>`)
+  // Drawn as the map's own controls are drawn, not as a panel laid on top:
+  // the board already has a convention for a control that lives on it - the
+  // zoom's `.maptools`, box-less with a shadow behind its words - and one
+  // bordered card floating over the ground is the odd thing out.
+  return VIEWS
+    .map((id) => `<button class="mini${id === view ? " on" : ""}" data-act="view" data-view="${id}">${VIEW_WORDS[id]}</button>`)
     .join("");
-  return `<div class="tabs">${buttons}</div>`;
 }
 
 /**
