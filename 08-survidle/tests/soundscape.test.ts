@@ -208,8 +208,8 @@ describe("open calls", () => {
     const chorus = (cal: ReturnType<typeof calendar>) => openCalls(state, world, cal).find((o) => o.slot === "howling")?.rate ?? 0;
     const clear = chorus(full);
     expect(clear).toBeGreaterThan(0);
-    // A bout is half a minute long and holds the slot for well past its own length.
-    expect(openCalls(state, world, full).find((o) => o.slot === "howling")?.holdS).toBeGreaterThan(60);
+    // A bout is half a real minute long and holds the slot for hours of game time after.
+    expect(openCalls(state, world, full).find((o) => o.slot === "howling")?.hold).toBeGreaterThan(60);
     // The single howl is still there beside it; the chorus is on top, not instead.
     expect(openCalls(state, world, full).some((o) => o.slot === "wolf")).toBe(true);
     // A waning moon two nights on sings less, a week on not at all, and daylight never.

@@ -195,25 +195,26 @@ export function cricketSong(cal: Calendar, ambient: number): number {
 
 export interface OpenCall {
   slot: string;
-  /** calls per real minute */
+  /** Calls per game hour, which at 1x is per real minute. */
   rate: number;
-  /** The least real seconds before this slot may be rolled again, for a call long enough to land on top of itself. Absent means no hold. */
-  holdS?: number;
+  /** The least game minutes before this slot may be rolled again, for a call long enough to land on top of itself. Absent means no hold. */
+  hold?: number;
 }
 
 /** Illumination three nights either side of full; `moonFullness` is 0 from here down. */
 const FULL_MOON_FROM = 0.9;
 /** Illumination a night and a half either side of full; `moonFullness` is 1 from here up. */
 const FULL_MOON_AT = 0.98;
-/** Choruses per real minute from a full pack under a full moon in a clear sky: one every three or four minutes, two or three an April night. */
+/** Choruses per game hour from a full pack under a full moon in a clear sky: one every three or four hours, two or three an April night. */
 const HOWLING_RATE = 0.3;
 /**
- * Real seconds after a chorus before the next may start. The bout is half a
- * minute long, and a pack that has just rallied is quiet for a while after;
- * without this, the four-second burst gap is all that keeps two bouts apart
- * and they land on top of each other as two packs.
+ * Game minutes after a chorus before the next may start: four hours, four
+ * real minutes at 1x. The bout is half a real minute long, and a pack that
+ * has just rallied is quiet for a while after; without this, the burst gap
+ * is all that keeps two bouts apart and they land on top of each other as
+ * two packs.
  */
-export const HOWLING_HOLD_S = 240;
+export const HOWLING_HOLD = 240;
 /** Cloud this thick hides the moon, and the pack sings as on any other night. */
 const HOWLING_OVERCAST = 0.7;
 
@@ -235,8 +236,8 @@ function moonThrough(state: GameState, world: World, cal: Calendar): number {
 }
 
 /**
- * The pack howling in chorus, far off, on a full-moon night: calls per real
- * minute, 0 on every other night. A single wolf already howls more under a
+ * The pack howling in chorus, far off, on a full-moon night: calls per game
+ * hour, 0 on every other night. A single wolf already howls more under a
  * bright moon (see `openCalls`); this is the other thing a bright night
  * brings, the whole pack rallying for half a minute at a time, which the
  * single howl's rate never produces however often it is rolled. It needs
@@ -266,7 +267,7 @@ export function openCalls(state: GameState, world: World, cal: Calendar): OpenCa
     }
     if (s === "wolf") {
       const rate = moonHowling(state, world, cal, d);
-      if (rate > 0) out.push({ slot: "howling", rate, holdS: HOWLING_HOLD_S });
+      if (rate > 0) out.push({ slot: "howling", rate, hold: HOWLING_HOLD });
     }
   }
   return out;

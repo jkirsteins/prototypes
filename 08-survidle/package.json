@@ -29,7 +29,8 @@
     "test:safari": "npm run build && zsh scripts/safari-footprint.sh",
     "sky": "node scripts/sky-shots.mjs",
     "opportunity-ux": "node scripts/opportunity-ux.mjs",
-    "sync-pass": "node scripts/sync-pass.mjs"
+    "sync-pass": "node scripts/sync-pass.mjs",
+    "calls": "vite-node scripts/calls.ts"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
