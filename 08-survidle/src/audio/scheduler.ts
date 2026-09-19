@@ -1,11 +1,20 @@
 /**
- * Turns the sim's answers into sound on the wall clock. Beds follow the
- * surroundings every frame; the task's loop keeps its own beat; calls are
- * rolled every quarter second against their rates, but at most one call
- * plays per burst and bursts are a few seconds apart, near or far at
- * random. Randomness here is the caller's, so the sim's seeded stream is
- * never touched and tests can pin it.
+ * Turns the sim's answers into sound. Beds follow the surroundings every
+ * frame; the task's loop keeps its own beat on the wall clock; calls are
+ * rolled once per game minute against their rates, at most one call per
+ * burst with bursts a few game minutes apart, near or far at random.
+ *
+ * The rolls are on the game clock and from the world seed, not the wall
+ * clock and Math.random: a call at a given minute of a given run is the
+ * same whoever plays it, however fast the clock runs and however the
+ * frames fall, so a seed's night can be listened to in advance with
+ * scripts/calls.ts. At 1x a game minute is a real second, so a rate "per
+ * game hour" reads as it always did, per real minute; under a hurry or
+ * the speed test aid the calls follow the game clock rather than the
+ * wall. The one thing left to the caller's `random` is the beat's pitch
+ * jitter, which is cosmetic and on the wall clock anyway.
  */
+import { derive } from "../rng";
 import type { Calendar } from "../sim/calendar";
 import type { Cue } from "../sim/cues";
 import { activityLoop, ambienceMix, openCalls, surroundings } from "../sim/soundscape";
@@ -22,22 +31,49 @@ export interface Scheduler {
   wildlifeStartle(event: WildlifeStartleEvent, snowCovered?: boolean): void;
 }
 
-const ROLL_MS = 250;
-const CALL_GAP_MS = 4000;
+/** Game minutes between bursts: a real four seconds at 1x, as the wall-clock gap was. */
+const CALL_GAP_MIN = 4;
+/**
+ * A frame that carries more game minutes than this rolls only the last of
+ * them. A hurry pulse is six minutes a second and a return from away is
+ * hours; the calls of a stretch nobody was listening to are not owed.
+ */
+const MAX_ROLLED_MINUTES = 10;
 /** Playback rate jitter on repeating sounds, so a loop of footsteps is not a metronome. */
 const JITTER = 0.06;
 
+/**
+ * Uniform in [0, 1) from the world seed, a game minute and a name. The seed
+ * and the minute go through `derive`, the name through FNV-1a, and the
+ * result through murmur3's finaliser so neighbouring minutes do not roll
+ * neighbouring numbers.
+ */
+export function roll(seed: number, minute: number, key: string): number {
+  let h = derive(seed, minute);
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
 export function createScheduler(engine: AudioEngine, random: () => number = Math.random): Scheduler {
-  let lastRoll = -Infinity;
-  let lastCall = -Infinity;
   let lastBeat = -Infinity;
   let beatSlot: string | null = null;
+  /** The game minute last rolled, or null while nothing is live: the first live minute is a start, not a stretch to catch up. */
+  let lastMinute: number | null = null;
+  let lastCallMinute = -Infinity;
+  /** Game minute before which each held slot is not rolled. */
+  const heldUntil = new Map<string, number>();
 
   return {
     frame(state, world, cal, ambient, nowMs, live) {
       if (!live) {
         engine.setLoops({}, false);
         beatSlot = null;
+        lastMinute = null;
         return;
       }
       const s = surroundings(state, world, ambient);
@@ -56,26 +92,35 @@ export function createScheduler(engine: AudioEngine, random: () => number = Math
         }
       }
 
-      if (nowMs - lastRoll < ROLL_MS) return;
-      lastRoll = nowMs;
-      if (nowMs - lastCall < CALL_GAP_MS) return;
-      // Every open call gets its own roll against its rate (per real minute,
-      // scaled to this quarter second), but a burst is a single moment: more
-      // than one species can pass its roll here, and only one of them is
-      // actually heard. The one heard is picked from the passing set
-      // weighted by rate, so a common resident at full density is heard
-      // more often than a rare passer-by, matching the rates over many
-      // bursts rather than letting catalogue order decide.
-      const heard = openCalls(state, world, cal).filter((c) => random() < (c.rate / 60) * (ROLL_MS / 1000));
-      if (heard.length) {
-        let pick = random() * heard.reduce((sum, c) => sum + c.rate, 0);
+      const minute = Math.floor(state.minute);
+      if (lastMinute === null || minute < lastMinute) {
+        lastMinute = minute;
+        return;
+      }
+      if (minute === lastMinute) return;
+      const from = Math.max(lastMinute + 1, minute - MAX_ROLLED_MINUTES + 1);
+      lastMinute = minute;
+      const open = openCalls(state, world, cal);
+      for (let m = from; m <= minute; m++) {
+        if (m - lastCallMinute < CALL_GAP_MIN) continue;
+        // Every open call gets its own roll against its rate (per game
+        // hour, so per minute is a sixtieth), but a burst is a single
+        // moment: more than one species can pass its roll here, and only
+        // one of them is actually heard. The one heard is picked from the
+        // passing set weighted by rate, so a common resident at full
+        // density is heard more often than a rare passer-by, matching the
+        // rates over many bursts rather than letting catalogue order decide.
+        const heard = open.filter((c) => (heldUntil.get(c.slot) ?? -Infinity) <= m && roll(state.seed, m, c.slot) < c.rate / 60);
+        if (!heard.length) continue;
+        let pick = roll(state.seed, m, "pick") * heard.reduce((sum, c) => sum + c.rate, 0);
         let chosen = heard[heard.length - 1];
         for (const c of heard) {
           pick -= c.rate;
           if (pick <= 0) { chosen = c; break; }
         }
-        lastCall = nowMs;
-        engine.play(chosen.slot, { gain: 0.3 + 0.7 * random(), pan: random() * 2 - 1 });
+        lastCallMinute = m;
+        if (chosen.hold) heldUntil.set(chosen.slot, m + chosen.hold);
+        engine.play(chosen.slot, { gain: 0.3 + 0.7 * roll(state.seed, m, "gain"), pan: roll(state.seed, m, "pan") * 2 - 1 });
       }
     },
     cue(c) {

@@ -690,6 +690,21 @@
     "note": "one long howl from a single animal, which is the night call rather than the pack alarm"
   },
   {
+    "slot": "howling",
+    "file": "howling.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05102193.mp3",
+    "source": "BBC Sound Effects NHU05102193, \"Wolves howling. EUROPEAN WOLF (CANIS LUPUS), London Zoo, UK\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      126.0,
+      159.0
+    ],
+    "filter": "highpass=f=120,lowpass=f=3500,afade=t=in:st=0:d=2,afade=t=out:st=28:d=5",
+    "note": "the pack in chorus, far off: the bout of howling a full-moon night brings, a different half-minute of the recording from the wolves alarm, with the top rolled off as distance takes it and a five-second fade at the end, since the cut ends mid-howl and a bout dies away rather than stopping"
+  },
+  {
     "slot": "loon",
     "file": "loon.ogg",
     "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05054192.mp3",

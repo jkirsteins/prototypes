@@ -1104,9 +1104,25 @@ button.act small.gives, span.act small.gives,
   .cards { flex-direction: column; }
 }
 
+/* Two columns: the map spans the top and the side columns share what is
+   left under it, which on a short window is not much. The right slot's
+   strip takes the queue as a page here (Queue, Alerts, Weather; see
+   ui/rightpages.ts), because a queue given the column's leftover height
+   under a full weather panel was a heading with no rows and no way to
+   reach them - #right does not scroll, the queue scrolls inside itself. */
 @media (max-width: 1300px) {
   #app { grid-template-columns: 1fr 1fr; }
   #center { grid-column: 1 / -1; order: -1; }
+  /* And the page scrolls as a whole, as on a phone. A short window cannot
+     hold the map, the tabbed panes and the columns at once, and a fixed
+     board handed the shortfall to the centre column's overflow: the map and
+     the strip kept their floors and the Do pane was what got clipped, tabs
+     and all. The panes keep an inner scroll under a ceiling, so the columns
+     are never more than a screen or so below the map. */
+  body { height: auto; min-height: 100vh; }
+  #app { flex: none; }
+  #center { overflow: visible; }
+  #panes { flex: none; max-height: 60vh; }
 }
 
 /* Touch has no hover: a tap on a cell opens the map's tooltip instead (no

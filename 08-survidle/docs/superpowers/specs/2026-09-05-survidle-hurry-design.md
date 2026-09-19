@@ -37,7 +37,9 @@ Three states, read from the game state every frame by `hurryKind`:
   an intent with no order behind it that is not `wait` (haul and night
   by hand, or a task resumed with "finish"), or an intent serving an
   order whose `until` is `once`. In every case the intent, if any, is
-  serving no body need.
+  serving no body need. A map click's walk row (`until` `dismissed`,
+  added after this spec) is auto on the way and click once there, where
+  the row is a rest that repeats until struck off.
 - **click**: the work in hand serves an order whose `until` is `times`,
   `campHas` or `forever`, and the intent is serving no body need.
 - **none**: everything else. No task; the runner waiting; an intent

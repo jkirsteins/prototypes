@@ -14,7 +14,7 @@ import { atCamp, cellOf } from "./position";
 import { campSite, regionState } from "./regionstate";
 import { type Call, SPECIES_DEFS } from "./species";
 import type { GameState, RecipeId, Terrain } from "./types";
-import { ICE_THIN_CM, localWeather, stormNow } from "./weather";
+import { conditionsAt, ICE_THIN_CM, localWeather, stormNow } from "./weather";
 
 export type Footing = "leaves" | "grass" | "bog" | "rock" | "snow" | "ice";
 
@@ -193,7 +193,63 @@ export function cricketSong(cal: Calendar, ambient: number): number {
   return emerged * Math.max(0, Math.min(1, warm));
 }
 
-export interface OpenCall { slot: string; /** calls per real minute */ rate: number }
+export interface OpenCall {
+  slot: string;
+  /** Calls per game hour, which at 1x is per real minute. */
+  rate: number;
+  /** The least game minutes before this slot may be rolled again, for a call long enough to land on top of itself. Absent means no hold. */
+  hold?: number;
+}
+
+/** Illumination three nights either side of full; `moonFullness` is 0 from here down. */
+const FULL_MOON_FROM = 0.9;
+/** Illumination a night and a half either side of full; `moonFullness` is 1 from here up. */
+const FULL_MOON_AT = 0.98;
+/** Choruses per game hour from a full pack under a full moon in a clear sky: one every three or four hours, two or three an April night. */
+const HOWLING_RATE = 0.3;
+/**
+ * Game minutes after a chorus before the next may start: four hours, four
+ * real minutes at 1x. The bout is half a real minute long, and a pack that
+ * has just rallied is quiet for a while after; without this, the burst gap
+ * is all that keeps two bouts apart and they land on top of each other as
+ * two packs.
+ */
+export const HOWLING_HOLD = 240;
+/** Cloud this thick hides the moon, and the pack sings as on any other night. */
+const HOWLING_OVERCAST = 0.7;
+
+/**
+ * How full the moon is, 0 to 1, as the night sky reads it: nothing until
+ * three nights either side of full, then a ramp, and 1 for the three
+ * nights the disc looks whole. The illumination curve alone is too flat
+ * for this - a gibbous moon four nights out is still 83% lit - so the
+ * ramp is pinned to the nights that look full rather than to the number.
+ */
+export function moonFullness(cal: Calendar): number {
+  return Math.max(0, Math.min(1, (cal.moonLight - FULL_MOON_FROM) / (FULL_MOON_AT - FULL_MOON_FROM)));
+}
+
+/** How much of the moon the cloud over the survivor lets through, 1 in a clear sky to 0 under overcast. */
+function moonThrough(state: GameState, world: World, cal: Calendar): number {
+  const cloud = conditionsAt(state, world, cal, cellOf(state, world)).cloud;
+  return Math.max(0, Math.min(1, 1 - cloud / HOWLING_OVERCAST));
+}
+
+/**
+ * The pack howling in chorus, far off, on a full-moon night: calls per game
+ * hour, 0 on every other night. A single wolf already howls more under a
+ * bright moon (see `openCalls`); this is the other thing a bright night
+ * brings, the whole pack rallying for half a minute at a time, which the
+ * single howl's rate never produces however often it is rolled. It needs
+ * the moon to be seen: cloud thick enough to hide it takes it back to
+ * nothing, and the moon in this sky is up whenever it is night.
+ */
+export function moonHowling(state: GameState, world: World, cal: Calendar, wolfDensity: number): number {
+  if (!cal.isNight || wolfDensity < 0.15) return 0;
+  const full = moonFullness(cal);
+  if (full <= 0) return 0;
+  return HOWLING_RATE * wolfDensity * full * moonThrough(state, world, cal);
+}
 
 /** Every call open now from a species that lives here above "tracks". */
 export function openCalls(state: GameState, world: World, cal: Calendar): OpenCall[] {
@@ -208,6 +264,10 @@ export function openCalls(state: GameState, world: World, cal: Calendar): OpenCa
       if (!windowOpen(c.when, cal) || !inMonths(c.months, cal.month)) continue;
       const rate = s === "wolf" ? 0.6 * d * (0.3 + 0.7 * cal.moonLight) : 0.5 * c.weight * d;
       out.push({ slot: c.sound, rate });
+    }
+    if (s === "wolf") {
+      const rate = moonHowling(state, world, cal, d);
+      if (rate > 0) out.push({ slot: "howling", rate, hold: HOWLING_HOLD });
     }
   }
   return out;

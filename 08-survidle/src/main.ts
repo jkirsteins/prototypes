@@ -111,7 +111,7 @@ import { alerts, alertsHtml } from "./ui/alerts";
 import { needsHtml } from "./ui/needs";
 /** ?debug shows the needs ledger on the Log tab; nothing in the main page reads it. */
 const DEBUG = typeof location !== "undefined" && new URLSearchParams(location.search).has("debug");
-import { loadRightPage, PHONE_PAGES, type RightPage, rightPagesHtml, saveRightPage } from "./ui/rightpages";
+import { loadRightPage, RIGHT_PAGES, type RightLayout, type RightPage, rightPagesHtml, saveRightPage } from "./ui/rightpages";
 import { shoppingHtml, shoppingQuery } from "./ui/shopping";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
 import { hideLoading, showLoading } from "./ui/loading";
@@ -337,7 +337,7 @@ async function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: numbe
 
 async function boot() {
   ui.panes = loadPanes(localStorage);
-  ui.rightPage = loadRightPage(localStorage, phoneLayout() ? "map" : "weather");
+  ui.rightPage = loadRightPage(localStorage, RIGHT_PAGES[rightLayout()][0]);
   const savedText = forcedSeed || startDoy !== undefined ? null : localStorage.getItem(SAVE_KEY);
   if (savedText && inspectSave(savedText) === "old-world") {
     oldWorldSave = true;
@@ -608,6 +608,8 @@ function syncStockOpen() {
 // Match the existing layout breakpoint; content height never changes page size.
 /** The one-column layout, where the map is a page of the right slot rather than the centre column. */
 function phoneLayout(): boolean { return window.matchMedia("(max-width: 700px)").matches; }
+/** Which pages the right slot has: style.css's two breakpoints, read the same way. */
+function rightLayout(): RightLayout { return phoneLayout() ? "phone" : window.matchMedia("(max-width: 1300px)").matches ? "narrow" : "wide"; }
 function opportunityPageSize(): number { return phoneLayout() ? 6 : 8; }
 let opportunityOpener: HTMLElement | null = null;
 
@@ -621,20 +623,21 @@ function render(nowMs = performance.now()) {
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("alerts", alertsHtml(state, world, cal));
   const standing = alerts(state, world, cal);
-  // On a phone the map and the queue are pages of the slot; on a desktop they
-  // are columns, and a stored phone page (from a window that was narrow)
-  // reads as weather.
-  const phone = phoneLayout();
-  const page: RightPage = phone || !PHONE_PAGES.includes(ui.rightPage) ? ui.rightPage : "weather";
-  setPanel("rightpages", rightPagesHtml(page, { bad: standing.filter((a) => a.level === "bad").length, warn: standing.filter((a) => a.level === "warn").length }, phone));
+  // What is a page of the slot depends on the width: the queue in a narrow
+  // window, the map too on a phone. A stored page the width does not have
+  // (a phone's map, in a window since widened) reads as the width's default.
+  const layout = rightLayout();
+  const pages = RIGHT_PAGES[layout];
+  const page: RightPage = pages.includes(ui.rightPage) ? ui.rightPage : pages[0];
+  setPanel("rightpages", rightPagesHtml(page, { bad: standing.filter((a) => a.level === "bad").length, warn: standing.filter((a) => a.level === "warn").length }, layout));
   const alertsEl = document.getElementById("alerts");
   const weatherEl = document.getElementById("weather");
   const mapEl = document.getElementById("map");
   const ordersEl = document.getElementById("orders");
   if (alertsEl) alertsEl.hidden = page !== "alerts";
   if (weatherEl) weatherEl.hidden = page !== "weather";
-  if (mapEl) mapEl.hidden = phone && page !== "map";
-  if (ordersEl) ordersEl.hidden = phone && page !== "queue";
+  if (mapEl) mapEl.hidden = pages.includes("map") && page !== "map";
+  if (ordersEl) ordersEl.hidden = pages.includes("queue") && page !== "queue";
   setPanel("camp", campHtml(state, world, cal, ui.rateDisplay));
   setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
   setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));

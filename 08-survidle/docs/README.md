@@ -198,7 +198,12 @@ scale, so a once action's "40 min (10 s)" is what you will actually wait.
   water at the shore, rain, the fire at camp, footsteps on leaves, snow or
   bog, the axe. The species that live here call at their hours and in
   their seasons: loons on a June evening, cranes on the bog, wolves at
-  night by the moon. Click once to start it; the Sound control mutes,
+  night by the moon, and the whole pack in chorus, far off, on the three
+  or four nights a month the moon is full and the sky is clear enough to
+  show it. The calls roll on the game clock from the world seed, so a
+  seed's night sounds the same every time it is played and
+  `npm run calls -- <seed> [day] [hours]` lists when each call comes.
+  Click once to start it; the Sound control mutes,
   sets the volume and turns the ambience off on its own. Recordings and
   their licences are listed in `public/audio/manifest.md`; several are for
   this prototype only and are marked for replacement.

@@ -2,7 +2,8 @@
  * Hurrying the work chosen by hand. The sim never learns of it: each frame
  * the hurry says how many extra game minutes the frame carries, and the
  * frame loop adds them to its own. An immediate action (a raw task, a
- * hand-started intent, a once order) runs at up to PEAK on its own; a
+ * hand-started intent, a once order, a map click's walk on the way) runs
+ * at up to PEAK on its own; a
  * standing, counted, or care activity goes ahead a pulse at a time when
  * the central speed button is clicked, with the pulse as the cooldown.
  * Everything done while away runs at the one scale.
@@ -70,6 +71,12 @@ export function hurryKind(state: GameState): HurryKind {
   if (!isWorkIntent(it)) return state.task && state.task.duration > 0 ? "click" : "none";
   if (it.mode === "runner" && state.player.bodyNeed !== null) return "none";
   if (it.orderId === null || it.until.kind === "once") return "auto";
+  // A map click's walk row stays until struck off (walkorders.ts), which
+  // makes it a standing row once the survivor is there, resting where they
+  // stand: that rest is clicked ahead like any standing work. The walk
+  // itself is the most immediate action there is, and runs on its own at
+  // the walking peak, as a raw walk by hand does.
+  if (it.until.kind === "dismissed" && state.task !== null && state.task.id !== "rest") return "auto";
   return "click";
 }
 
