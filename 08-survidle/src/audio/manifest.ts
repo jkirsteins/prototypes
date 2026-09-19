@@ -26,7 +26,7 @@ type KnownSlot =
   | "startle_hoof_light_open" | "startle_hoof_heavy_open" | "startle_hoof_bog" | "startle_hoof_snow" | "startle_brush_predator"
   | "loon" | "cuckoo" | "raven" | "owl" | "crane" | "woodpecker"
   | "capercaillie" | "blackGrouse" | "willowGrouse" | "ptarmigan" | "mallard" | "eider"
-  | "goose" | "elk" | "wolf" | "fox" | "squirrel";
+  | "goose" | "elk" | "wolf" | "howling" | "fox" | "squirrel";
 
 export const SLOTS: Record<Cue | KnownSlot, SlotDef> = {
   // Beds.
@@ -52,4 +52,6 @@ export const SLOTS: Record<Cue | KnownSlot, SlotDef> = {
   loon: shot(0.7, "loon.ogg"), cuckoo: shot(0.6, "cuckoo.ogg"), raven: shot(0.6, "raven.ogg"), owl: shot(0.6, "owl.ogg"), crane: shot(0.6, "crane.ogg"), woodpecker: shot(0.5, "woodpecker.ogg"),
   capercaillie: shot(0.6, "capercaillie.ogg"), blackGrouse: shot(0.6, "blackGrouse.ogg"), willowGrouse: shot(0.6, "willowGrouse.ogg"), ptarmigan: shot(0.6, "ptarmigan.ogg"), mallard: shot(0.6, "mallard.ogg"), eider: shot(0.6, "eider.ogg"),
   goose: shot(0.6, "goose.ogg"), elk: shot(0.7, "elk.ogg"), wolf: shot(0.7, "wolf.ogg"), fox: shot(0.6, "fox.ogg"), squirrel: shot(0.4, "squirrel.ogg"),
+  // The pack in chorus on a full-moon night. Half a minute long, so it sits under the calls rather than over them.
+  howling: shot(0.5, "howling.ogg"),
 };

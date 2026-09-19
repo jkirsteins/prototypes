@@ -739,6 +739,17 @@ and the two generated sections of this file from scratch.
 - Duration: 6.40 s. Decoded peak: -4.0 dBFS.
 - Note: one long howl from a single animal, which is the night call rather than the pack alarm
 
+### howling.ogg
+
+- Slot: `howling` (oneshot).
+- Source: BBC Sound Effects NHU05102193, "Wolves howling. EUROPEAN WOLF (CANIS LUPUS), London Zoo, UK".
+- Author: BBC Archive.
+- Licence: BBC RemArc (personal, educational and research use only).
+- URL: https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05102193.mp3
+- Processing: cut 126-158 s, highpass=f=120,lowpass=f=3500, mono, 48 kHz, peak normalized to -4 dBFS, Opus 64 kbps.
+- Duration: 32.00 s. Decoded peak: -4.1 dBFS.
+- Note: the pack in chorus, far off: the bout of howling a full-moon night brings, a different half-minute of the recording from the wolves alarm, with the top rolled off as distance takes it
+
 ### loon.ogg
 
 - Slot: `loon` (oneshot).

@@ -71,7 +71,7 @@ const BUS_OF = (def: SlotDef, slot: Slot): "ambience" | "flavour" | "action" =>
   def.kind === "loop" ? "ambience" : CALLS.has(slot) ? "flavour" : "action";
 const CALLS = new Set<Slot>([
   "loon", "cuckoo", "raven", "owl", "crane", "woodpecker", "capercaillie", "blackGrouse", "willowGrouse", "ptarmigan",
-  "mallard", "eider", "goose", "elk", "wolf", "fox", "squirrel",
+  "mallard", "eider", "goose", "elk", "wolf", "howling", "fox", "squirrel",
 ]);
 
 export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage = localStorage): AudioEngine {

@@ -3,7 +3,7 @@ import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { activityLoop, ambienceMix, cricketSong, openCalls, surroundings, type Surroundings, windowOpen } from "../src/sim/soundscape";
+import { activityLoop, ambienceMix, cricketSong, moonFullness, moonHowling, openCalls, surroundings, type Surroundings, windowOpen } from "../src/sim/soundscape";
 import { cellAt, regionAt } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { FIRE_LOW_KG } from "../src/sim/items";
@@ -183,6 +183,49 @@ describe("open calls", () => {
     expect(rate(full)).toBeGreaterThan(3 * rate(dark));
     expect(rate(dark)).toBeGreaterThan(0);
     expect(rate(calendar(at(3, 13)))).toBe(0);
+  });
+
+  it("the moon is full for three nights, waxing and waning to it over three more", () => {
+    // 3 April, run day 3, is the run's first full moon.
+    expect(moonFullness(calendar(at(3, 1)))).toBe(1);
+    expect(moonFullness(calendar(at(2, 1)))).toBe(1);
+    expect(moonFullness(calendar(at(4, 1)))).toBe(1);
+    const twoOut = moonFullness(calendar(at(5, 1)));
+    expect(twoOut).toBeGreaterThan(0);
+    expect(twoOut).toBeLessThan(1);
+    expect(moonFullness(calendar(at(7, 1)))).toBe(0);
+    expect(moonFullness(calendar(at(3 + 15, 1)))).toBe(0);
+  });
+
+  it("the pack sings in chorus under a full moon in a clear sky, and on no other night", () => {
+    const { state, world } = newGame(5);
+    siteCamp(state, world);
+    const id = regionWith(state, world, "wolf");
+    placeAt(state, world, requireCamp(regionAt(world, id)));
+    regionState(state, world, id).pop.wolf = regionAt(world, id).capacity.wolf;
+    testAtmosphere({ cloud: 0 });
+    const full = calendar(at(3, 1));
+    const chorus = (cal: ReturnType<typeof calendar>) => openCalls(state, world, cal).find((o) => o.slot === "howling")?.rate ?? 0;
+    const clear = chorus(full);
+    expect(clear).toBeGreaterThan(0);
+    // The single howl is still there beside it; the chorus is on top, not instead.
+    expect(openCalls(state, world, full).some((o) => o.slot === "wolf")).toBe(true);
+    // A waning moon two nights on sings less, a week on not at all, and daylight never.
+    expect(chorus(calendar(at(5, 1)))).toBeLessThan(clear);
+    expect(chorus(calendar(at(10, 1)))).toBe(0);
+    expect(chorus(calendar(at(3, 13)))).toBe(0);
+    // Cloud between the pack and the moon quietens it, overcast silences it.
+    testAtmosphere({ cloud: 0.35 });
+    const hazy = chorus(full);
+    expect(hazy).toBeGreaterThan(0);
+    expect(hazy).toBeLessThan(clear);
+    testAtmosphere({ cloud: 0.9 });
+    expect(chorus(full)).toBe(0);
+    // No wolves, no chorus, whatever the moon does.
+    testAtmosphere({ cloud: 0 });
+    expect(moonHowling(state, world, full, 0.1)).toBe(0);
+    regionState(state, world, id).pop.wolf = 0;
+    expect(chorus(full)).toBe(0);
   });
 });
 
