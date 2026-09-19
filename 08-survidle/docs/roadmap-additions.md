@@ -28,6 +28,8 @@ different repeated action that deserves its own verb and progression track.
 
 ## Metric reach for legacy predator interactions
 
+**Status 2026-09-19.** Partly done: fire and torch stand-off and the wolf warning are metric (`LIGHT_STANDOFF_M`, `WOLF_WARNING_M` in `src/sim/wildlife-agents.ts`). Camp-food theft, predation and the night attack are still cell-equality checks, there are no cooldowns, `moveOne` is still one function, predators still carry `alarmGain: 0`, and the `startle_brush_predator` slot is still reserved and unreachable.
+
 **Raised** 2026-09-09, while replacing wildlife cell jumps with continuous
 metric travel.
 
@@ -61,6 +63,8 @@ part of this item, or remove the reserved slot if predator departures will use
 a different presentation contract.
 
 ## Wildlife scale transition
+
+**Re-audited 2026-09-19.** Bullets 1, 2, 4, 5 and 6 are still open: the route guard is still 32 in `wildlife-agents.ts`, tests still import the fixed `PATCH_M`, `visibleWildlife` is still cell membership, `followRoute` still refuses to leave the subject's region, and a subject is still one seeded point per cell.
 
 **Raised** 2026-09-09, during the post-implementation scale audit. **Partly
 settled** by the authoritative-close-zoom migration: the grid is the 50 m patch
@@ -105,6 +109,8 @@ and resource consequences. This item is the compatibility gate that must be
 cleared even if a further grid change remains visually similar.
 
 ## Wildlife calibration and deferred senses
+
+**Status 2026-09-19.** Wind is now a simulated field (`windKmh` on the weather sample, from `climate.ts`); it is still not an encounter input, and neither is scent. The gait table is the provisional one.
 
 **Raised** 2026-09-09, during the post-implementation scale audit.
 
@@ -151,6 +157,8 @@ is left to revisit here.
 
 ## Current viewshed refinements
 
+**Status 2026-09-19.** Item 1 is mostly built, ahead of the roadmap item it waited on: `sampleAtmosphere` in `climate.ts` is the per-cell field (rain, snow, fog, blowing snow), `opticalSampler` in `sight.ts` integrates it along terrain rays and along flame rays with their own contrast limit, and the viewshed cache key carries a ten-minute weather bucket; `docs/weather-model.md` documents it. Not built from item 1: distance contrast in the drawing, smoke, and an uncertain state for a diffuse glow. Item 3 is open. Item 4 is due now rather than later: ground is already mutable through `groundChanges` (felling and succession in `src/world/groundchange.ts`) and the cache key does not carry a ground generation.
+
 **Raised** 2026-09-09, after the first topographic viewshed pass.
 
 **Foundation built.** At the cell-scale zooms, current sight now has a circular
@@ -182,13 +190,13 @@ Refine it in this order, and only where play or screenshots expose a problem:
    viewshed cache key or invalidate the cache for every changed burn, smoke and
    regrowth cell before rendering or marking knowledge.
 
-The current rain overlay is presentation only for sight: overcast reduces
-ambient sky light, but rain and snow do not yet attenuate terrain or flame
-line-of-sight. Screenshot coverage must label that limitation until the shared
-transmission field exists. Fog is not yet simulated and must not be mocked only
-in CSS.
+(The paragraph that stood here, saying rain and snow did not yet attenuate
+sight and fog was not simulated, was true when written and is not now; see
+the status line above.)
 
 ## Burn scars
+
+**Note 2026-09-19.** Still open; `src/world/groundchange.ts` is the record a burn would write to, and says so in its header.
 
 **Raised** 2026-09-08, during the seasonal colour pass.
 
@@ -223,6 +231,8 @@ the effective terrain in item 8 and gets rows in `scripts/map-shots.mjs` for
 flame, smoulder, fresh scar and succession.
 
 ## Sensory map follow-ons
+
+**Status 2026-09-19.** Partly: a heard startle draws a transient cue jittered by its `uncertaintyM` (`src/ui/map.ts`), so item 3 has a first form, though it is a `!` anchored near the true source rather than a `?`. Per-animal detection, sound events beyond the startle, and observed dynamic state are open; the map still marks every key of `state.piles`.
 
 **Raised** 2026-09-09, during the current-viewshed pass.
 
@@ -268,6 +278,8 @@ should carry a seep want, given digging one is itself an hour-plus action
 that assumes the walker can afford to stop, not a sip taken in passing.
 
 ## `pile()` and `siteFor` on read paths
+
+**Status 2026-09-19.** Partly: `pileAt` and `siteAt` exist and the stocks, water and camp panels read through them. `checkRaw` in `tasks.ts`, `body.ts`, `camp.ts` and `intent.ts` still call `pile()` on read paths, `horizon.ts` and `orders.ts` still call `siteFor`, and there is no lint rule.
 
 **Raised** 2026-09-08, during the camp siting work.
 
@@ -334,9 +346,8 @@ ancestor's hearth is a good moment and finding ninety years of them is not.
 **Raised** 2026-09-08. None of these are load-bearing; they are recorded so
 they are not rediscovered from scratch.
 
-- `body.ts` prints the unreachable-camp line ("No way to camp from here")
-  when the truth is there is no camp at all. A second wording keyed on a null
-  camp would say what actually happened.
+- Done: `body.ts` says "No camp yet" when there is no camp, and "No way to
+  camp from here" only when there is one.
 - `searchHome` given a region argument routes to that region's generated cell
   and answers "{you} {know} the way home" about ground that is nobody's home.
   Only the reference harness passes that argument today, so no player reaches
@@ -507,6 +518,8 @@ jackpot; routine production of several annual diets by one hunter is the defect.
 
 ### Mechanics-complete diagnostic, 2026-09-10
 
+**Status 2026-09-19.** The stop against the runway is built: `HUNT_FOOD_RUNWAY_DAYS`, `HUNT_FAT_RUNWAY_DAYS` and `huntRunwayOpen` in `src/sim/reference.ts`. The kcal-per-day verdict is unchanged (`scripts/year.ts` still divides kill kcal by days lived); that is the evaluator rebuild below, still open.
+
 The structural mechanics are ready for evaluation. After integration with main,
 720 fast tests, 1,321 slow tests and the production build pass. The five-seed
 expert year probe passes 3 of 5. Seeds 19, 79 and 45 survive the year with about
@@ -595,6 +608,8 @@ verdict still labels all three "over" and remains an evaluator defect, not a
 game-mechanics failure.
 
 ### Persistent-locality ecology stress, 2026-09-10
+
+**Status 2026-09-19.** Emigration under disturbance is built (`BIG_GAME_DISTURBANCE_EMIGRATION` in `src/sim/animals.ts`, `npm run hunt-stress`). The evaluator clean-up it asked for after - potential carcass kcal, spoilage split before and after recovery - is not: `hunt-audit.ts` still carries one `spoiledKcal`.
 
 A separate `npm run hunt-stress` probe deliberately ignores food, fatigue and
 negative evidence and makes three elk attempts every day on one cell. Before an
@@ -685,6 +700,8 @@ Do, in this order:
 
 ### Local-weather hunting integration
 
+**Status 2026-09-19.** Bullets 1 and 2 landed with the merge (the integration result below): carcasses age by the weather at their own cell and ranking is limited to visible cells. Wind and scent, the snow-and-rain-on-sign rules, and weather fields in the hunt audit are still open; `noticeSignOnFoot` reads light only.
+
 **Raised** 2026-09-10, after reviewing the complete
 `codex/survidle-local-weather` branch before its planned merge.
 
@@ -719,6 +736,8 @@ show global weather leaking into a local hunt, hidden-cell weather informing a
 choice, or carcass accounting using the wrong cell's conditions.
 
 #### Merge guidance
+
+**Obsolete 2026-09-19.** The merge it guided landed 2026-09-10 (next subsection). Kept only for the invariants list.
 
 Merge the completed hunting work first, then bring main into
 `codex/survidle-local-weather`. Do not resolve overlapping simulation files by
@@ -768,6 +787,8 @@ cell-local carcass decay, conserved hunts and persistent-locality stress.
 
 ## Fog edge translucency
 
+**Superseded 2026-09-19.** The feathering below was done on the DOM map, and that map is gone: the board is a canvas now (`src/ui/mapcanvas.ts`) and it does not feather known into unknown. Re-raise against the canvas if the effect is wanted back.
+
 **Raised** 2026-09-10, while repairing hunting and exploration feedback.
 
 **Addressed** 2026-09-10. Known cells now feather into adjacent unknown cells
@@ -781,6 +802,8 @@ viewport, and never reveal terrain or marks in an unknown cell. Treat this as a
 P2 readability pass, with screenshots at day, night and rain before shipping.
 
 ## Rendering on its own clock
+
+**Status 2026-09-19.** Tiers 1 and 2 stand as built. Of the rest: the water overlays and the per-cell weather ripples are gone, superseded by the effects canvas (`drawWaterShimmer` and the glyph effects in `src/ui/map.ts`), so the Web Animations and one-element-per-cell ideas are moot; `tests/churn.test.ts` was deleted with the slow suite (`50bef32`) and the attribute-rewrite count was never added, though `panels.ts` and `bars.ts` comments still cite it; tier 3 (the engine in a worker) and the sky's rain cap by viewport (`FALL_DROP_COUNT` is a constant in `sky.ts`) are still open.
 
 **Raised** 2026-09-11, while measuring the water shimmer's cost.
 
@@ -849,6 +872,8 @@ and sky rain could cap its drop count by viewport size.
 
 
 ## Opportunities catalog follow-ons
+
+**Status 2026-09-19.** Done: `DAY_ONE_CAPABILITY_KEYS` is progressive (`knownCapabilityOpportunityKeys` in `src/sim/opportunity-catalog.ts`, `a8c56ac`), and the starlight walk-sign test now pins pitch dark and starlight separately (`tests/sign-on-foot.test.ts`). Partly: `tests/layout.test.ts` pins the CSS side of the 700px breakpoint, `main.ts` is still unasserted. Everything else below is as raised.
 
 **Raised** 2026-09-11, from the reviews of the catalog work as it merged.
 None of these blocks anything; each is a polish item or a question.
@@ -1530,6 +1555,8 @@ this test green.
 
 ## The render surface: four canvases and a DOM for the rest
 
+**Done 2026-09-16, as three surfaces rather than four.** The sky is a canvas (`src/ui/sky.ts`); the board is drawn offscreen (`drawBoard` in `src/ui/mapcanvas.ts`, its palette as code in `palette.ts`) and blitted under every moving thing - water shimmer, cloud shadow, weather glyphs, the walk line, marks, wildlife, startles - on the one visible `#effects` canvas (`updateEffects` in `src/ui/map.ts`); panels stay DOM. `tests/mapcanvas-budget.test.ts` holds the static layer to zero redraws over still frames and `window.survidle.effectsBench` is the instrument `npm run e2e` reads. The subsections below are the record of getting there and are left as written. Three residuals remain open: `drawBoardImage` blits the board copy every frame rather than only when something above it moved; `src/ui/bars.ts` still cites `tests/churn.test.ts`, which went with the slow suite; and the `boardCover` comment in `map.ts` still describes the arrow-key `role="grid"` that no longer exists.
+
 **Raised** 2026-09-14, after Safari terminated the page with "This web page
 was reloaded because it was using significant memory" and the profile showed
 the cost is the document, not the simulation.
@@ -1974,6 +2001,8 @@ should be re-read after each rather than at the end.
 
 ### How it stays honest
 
+**Status 2026-09-19.** The static-layer budget exists (`tests/mapcanvas-budget.test.ts`). `tests/churn.test.ts` is deleted, not replaced. The reference shots are `npm run e2e` writing to `docs/e2e/`; `docs/map-shots` is gone.
+
 `tests/churn.test.ts` currently measures how often each panel rewrites
 itself, and that test loses its subject as panels become canvases. Replace
 it per layer with the same idea in the new terms: a budget on how many times
@@ -1987,6 +2016,8 @@ like anything else, so the weather and map reference shots remain the check
 that the picture did not change.
 
 ### Open questions to settle before stage three
+
+**Settled 2026-09-16, in code.** Glyphs stay text (`fillText`, 0.27 ms a draw, no atlas); close-zoom marks and wildlife are effects draws (`drawMarks`); region borders are on the static board.
 
 - Whether the map's glyphs survive as text or become an atlas, which only a
   measurement can answer.
@@ -2133,3 +2164,273 @@ This is the grades-not-numbers rule the survivor card already follows
   replaces the bar.
 - Some decisions need the number: the queue's lines ("stops work and
   rests") and the forecast. Decide where a number survives, if anywhere.
+
+## Boats
+
+**Raised** 2026-09-19, as an idea to hold onto. Nothing here is built and
+no design has been written; this is the fleshing-out so the next person
+does not start from "what about boats". The rivers design puts "rafts,
+boats, a rope line" out of scope in so many words, and that line stands
+until this item is designed: a boat is not a river crossing, it is a way
+of living on the water the world already has.
+
+### Why a boat, and what it is for
+
+The north is a twentieth lakes, chains of them along the valley floors,
+fjords and skerries on the west coast, and the sea at the edge. Today that
+water is a wall from May to November and a road from December to April:
+`speedOf` in `src/world/route.ts` returns 0 for water with no ice and
+`ICE_SPEED` (0.8 of walking) on safe ice. The ice already teaches every
+player that the water is the fastest way across this country. A boat is
+the open-water half of that road, and the freeze-up and break-up are the
+two weeks a year when it is neither.
+
+What it does for the game's real problem, the idle layer, is extension
+and not intensification (the rule under "Nature is the enemy" above): a
+boat does not make a hectare yield more, it reaches more shore, more
+water and the islands, and it hauls what the pack cannot. That is the
+honest ratchet. It also supplies the reason "A shelter away from camp"
+said it was waiting for: a draw worth an overnight in the next region,
+because the far shore of a 6 km lake is an hour's paddle and a day's walk.
+
+Concretely, four things a boat changes that nothing else does:
+
+- **Hauling.** The pack is 25 kg comfortable and 35 kg hard
+  (`PACK_COMFORTABLE_KG`, `PACK_HARD_KG`), logs are 20 kg and never go in
+  it, and "bring it to camp" is a 35 kg load a trip. A raft of the logs
+  you felled on the far shore, poled home and broken up into the pile, is
+  timber floating, the north's actual method, and it needs no boat at
+  all - the raft is the load.
+- **Deep water.** Every fish is `hunt.spot: "shore"` and its `lie` names
+  where it sits: char "in the deep water", whitefish "off the point",
+  burbot "on the bottom", cod "off the rocks". The survivor stands on the
+  shore and casts at a lie a hundred metres out. A boat puts the survivor
+  over it, and C's net at Fishing 10 (`2026-09-03-survidle-realism-
+  roadmap.md`, "Skill tiers") is set from a boat or not at all.
+- **The water's own animals.** Beaver (`habitat: { lake: 4 }`), mallard,
+  loon and eider are shot from the shore today; a canoe is how they are
+  actually taken. D's list keeps seals for the coast; a seal is the coast's
+  fat animal and is reachable only by boat or over the ice, so a boat is
+  the prerequisite that item has not named yet.
+- **Sight and islands.** Trees at the water's edge show the water and the
+  far shore; from the middle of a lake every shore is in view, so a
+  paddle down a lake maps both banks at once and Wayfinding's sweep of a
+  lake region gets a second method. The terrain already makes skerries
+  ("drowned hills within 20 km of the shore, some of which break the
+  surface", `src/world/terrain.ts`) and lakes with islands; nothing treats
+  an island as a place. An island camp is the one ground in the north a
+  wolf pack does not walk into, which makes it the stake of item P bought
+  with a boat instead of a fence - and lost each November, when the ice is
+  a road for the wolves and a wall for the boat until it bears.
+
+### What a boat is, in this game's terms
+
+The north's boats, in the order a survivor with an axe can make them. The
+game is realism-first, so the tiers are the region's own craft and the
+one liberty is named as a liberty:
+
+1. **The raft.** Logs and cordage, lashed at the shore, poled or paddled
+   at about 1 km/h in a calm, lake only. A 20 kg log at spruce's density
+   (about 0.4) displaces 50 kg and floats 30 kg net, so six logs carry a
+   person and little else and ten carry a person and a load; the number
+   to derive is buoyancy per log, not a capacity constant. Building, at
+   the job rung. It cannot be carried, it is left where it is beached,
+   and a storm takes an unbeached one. It is also the cheapest first
+   stage because every input exists: logs, cordage, a shore, Building.
+2. **The expanded dugout** (the Finnish *haapio*, the Swedish *esping*):
+   one large trunk hollowed by fire and axe, the sides spread with heat
+   and thwarts. Tens of hours (a figure to source), a boat of 100 to 150
+   kg that is never portaged, paddles at 3 to 4 km/h, takes a lake in a
+   wind and a sheltered sea in a calm, and lasts years if it is sunk or
+   shaded through the summer so it does not check. Building 10 with
+   Woodcraft, and it wants a log that is not the one 20 kg `log` item:
+   "wood by species" under C is where a big aspen or pine trunk comes
+   from, so the dugout waits on that tier or on a felled-standing-tree
+   form of the recipe.
+3. **A light boat that can be carried** is the design liberty. Birch bark
+   canoes are North American and skin boats are Arctic and Atlantic;
+   neither is Fennoscandian. If the chain-of-lakes portage is wanted (and
+   it is the best travel this map can offer), the honest options are a
+   sewn bark or hide skin over a stick frame, called what it is, weighing
+   under the 35 kg hard limit so the portage is a real carry at the
+   pack's own rule. A hide skin uses hide, sinew, sticks, cordage and fat
+   for the seams, all of them items today; a bark skin wants pitch, which
+   does not exist and arrives with pine resin under C. Decide the liberty
+   before designing the tier; do not drift into it.
+
+### Skills
+
+Making a boat is Crafting or Building with a per-recipe mastery key, like
+everything else. Using one is the question. Two options, and a
+recommendation:
+
+- **Mastery keys on existing skills, no new skill.** `paddle` under
+  Wayfinding (travel competence is what the Walking skill item says
+  Wayfinding should not own, so this reads wrong) or under Fishing
+  (wrong for a haul). Rejected on the same grounds the Walking skill item
+  gives: a boat is general travel competence and does not belong inside a
+  skill that owns something else.
+- **A new skill, `boating`** (name open: Boatcraft, Watercraft; not
+  Seamanship, which is the sea only). Mastery keys `paddle`, `pole`,
+  `portage`, `haulOut`. It opens the five order rungs like any skill that
+  `opensOrders`. Recommended.
+
+The same feedback-loop warning the Walking skill item carries applies:
+paddling faster must not earn more `paddle` minutes per real second by
+covering more water. Practice is minutes at the paddle, as it is minutes
+at the axe.
+
+What levels buy has to be capabilities with names, per "Progress is
+capabilities, not numbers". A first cut, each line something the survivor
+can newly do:
+
+| Boating | What opens |
+|---|---|
+| 1 | a raft on a lake, daylight, calm |
+| 3 (jobs) | a crossing with a load; "bring it to camp" may plan a water leg |
+| 5 (grinds) | a fresh wind on a lake; the dugout on a sheltered sea in a calm |
+| 10 (keeps) | the portage between two lakes; a moonlit paddle |
+| 15 (conditions) | a skerry crossing in fair weather; reading a squall an hour out shares Weather sense's roll |
+| 20 (pace) | a rapid run downstream, with the rivers design's channel numbers |
+
+The wave limit per tier is where the skill meets the weather, below.
+
+### Required systems, none of which exist
+
+1. **A thing that is neither carried nor a structure.** Logs "lie where
+   they fell"; a boat lies where it was beached. It needs a placed-object
+   class with a cell, a condition, a decay clock (`STRUCTURE_LIFE_DAYS`
+   is the pattern; a raft is one season, a dugout is years, a skin boat
+   left out over winter is gone) and no owning camp, so it survives a
+   life and an heir finds an ancestor's boat on the shore. That is the
+   same decision "Ruins that outlast the fall" asks for, and should be
+   taken with it.
+2. **Water as a route medium.** Routes are cached per profile
+   (`profileFor` keys on ice mode, fell avoidance and known ground), and
+   a boat adds a leg that starts and ends at a shore and carries the boat
+   with it, so the boat's cell is part of the key. Ice is the interesting
+   part and needs no new arithmetic: thin ice and safe ice both block a
+   boat, open water blocks a walker, and `iceCm` already decides which,
+   so the shoulder seasons strand a boat exactly when they strand a
+   walker the other way. The cheap first version avoids the planner
+   entirely: an offer at the shore, "paddle across to {far shore}", taken
+   by hand the way the rivers design's swim is offered and never planned.
+3. **Wind and waves.** Surface wind exists to 60 km/h in `climate.ts`;
+   fetch exists for the sheltered-shore rule in `gen.ts` (sixteen 5 km
+   rays). Significant wave height from wind speed and fetch is a textbook
+   fetch-limited formula; each tier has a limit above which the crossing
+   is refused, and above a second limit an unbeached boat is lost. A
+   headwind halves a paddle. Storms are already called an hour ahead,
+   which is the warning the rules demand. Fog on open water is the
+   wayfinding hazard a shore never has: the fog rule gives a shore "no
+   bearing error", and a paddler out of sight of both shores has nothing
+   but the wind on one cheek.
+4. **Capsize.** Nothing new: the rivers design's cold-water table (cold
+   shock in the first minute, swim failure at 1 to 10 minutes, a drowning
+   at 10) is the whole death. What a boat adds is distance from shore,
+   which turns the same table from a soaking into a death at 1 km out in
+   8 C water, so the offer must print the swim back as a time against
+   that table before the player takes it.
+5. **A load that is not the pack.** A boat's capacity in kilograms from
+   its buoyancy, taking logs, and the haul orders getting a water leg:
+   load at the felling shore, paddle, unload at the camp shore. The
+   landing camp is a shore cell already (the water design, section 1),
+   so most camps qualify without moving.
+6. **Fishing from the water.** A second `hunt.spot`, "water", for the
+   species whose lie is off the shore, with its own odds; the net when C
+   lands it, set from a boat across a bay and emptied daily like the
+   basket trap; herring shoals off the point. Hunting the same way for
+   beaver and waterfowl, and seals when D lands them.
+7. **The runner.** By the rules the runner carries orders out and never
+   makes them safer, so it may paddle a leg an order needs in the boat's
+   own conditions (calm, day, ice-free) and never chooses to cross in a
+   wind, the way it never asks for the thin-ice shortcut. The forecast in
+   `forecast.ts` must count the capsize among its deaths or the Ahead
+   panel lies about a lake camp.
+8. **Presentation.** A glyph for a beached boat and for `@` afloat, the
+   walk line over water, the task bar's paddle row, the Do panel's rows
+   under the exclusion-list test, a sound bed (a paddle, water on a hull),
+   the manual's line, and the opportunity catalog's `SUPPORTED_*` lists
+   and a group or two.
+
+### Interactions with what exists, as a checklist for the design
+
+- **Ice** (`weather.ts`, `hazards.ts`): freeze-up traps a boat left in;
+  "haul the boat out before the freeze" is a chore with a date, and a
+  keep at 10 can own it. Break-up is rotten ice a boat cannot push
+  through and a walker cannot cross: two weeks a year the lake camp is an
+  island whichever way you face.
+- **Rivers** (the 2026-09-11 design): downstream travel and the rapid at
+  Boating 20; the design's out-of-scope line is superseded when this
+  lands, and its "one offer at a time" rule at a bank gains a fourth
+  offer, the boat, ahead of the swim.
+- **Weather** (`climate.ts`): wind, fetch, the one-hour storm warning;
+  Weather sense's `readSky` is the roll a squall reads through.
+- **Clothing and wetness** (`clothing.ts`): a paddler is wet to the
+  knee; a capsize soaks every garment at once, which is the frostbite
+  path in October.
+- **Camp siting**: a camp on an island; a boat landing as a camp
+  structure (a rack that keeps a skin boat off the ground, a shaded
+  berth that keeps a dugout from checking), and the yard it occupies
+  under `yard.ts`.
+- **Hauling and the woodpile**: the vedbod's 1,050 kg becomes reachable
+  from a stand across the water, which changes which stand the stocks
+  strip says the pile is coming out of.
+- **Fishing and Hunting**: above. The trap's placement gains a from-the-
+  boat form for the same Fishing tier.
+- **Exploration** (`sight.ts`, Wayfinding): every shore of a lake from
+  the water; "explore {region} by water" as a second sweep.
+- **Lineage**: the boat outlasts the survivor and the heir inherits it
+  where it lies; the landing premise is already a boat that sails on
+  without you, and this is the first time a survivor can answer that.
+- **Fears and quirks** (`fears.ts`): `SHORE_FEAR_LINE` already refuses
+  the open shore in a storm; a fear of deep water and a boat-born
+  capability quirk (like `forestBorn`) are the obvious pair.
+- **The balance rule**: no yield per hectare changes; the boat is reach.
+- **Presence** (item N): a crossing in a rising wind is a fork the player
+  can take at the keyboard and the runner never does, shown beside the
+  runner's answer before the choice.
+
+### Possible opportunities
+
+Discovered by routes that exist, credited by events a boat task would emit:
+
+| Key | Discovered when | Steps |
+|---|---|---|
+| `build:raft` | a lake wider than 1 km is seen from a camp shore, with an axe held | lash a raft; cross once |
+| `float:logs` | logs lie on a shore with camp on the same water | raft them; break the raft into the pile |
+| `reach:island` | an island is seen | land on it; sleep on it |
+| `fish:deep` | a fish is read whose lie is off the shore | take one from the water |
+| `hunt:water` | a beaver lodge or waterfowl is seen from the water | take one from the boat |
+| `haulOut:freeze` | the first freezing week with a boat afloat | the boat ashore before the ice bears |
+| `portage` | two lakes under 1 km apart are known, with a boat under 35 kg | carry it across; paddle the second |
+| `sea:skerry` | a skerry is seen from a sheltered shore | cross in fair weather; come back |
+
+### Order to build it in, each stage separable
+
+1. The raft as timber floating: build at a shore from logs lying there,
+   pole it to the camp shore, break it up. Building only, no new skill,
+   no planner change, an offer taken by hand. This alone changes where a
+   player fells.
+2. The raft as a crossing offer at a shore, with the cold-water table
+   printed on it, and the placed-object class that lets it be left and
+   found.
+3. `boating` as a skill, the dugout, haul-out and decay, the heir
+   finding the boat.
+4. Water legs in the route planner; the runner paddles under its
+   conditions; the forecast counts the capsize.
+5. Fishing and hunting from the water; the net when C lands it.
+6. Wind, waves, fog and the sea: skerries, the sheltered-shore rule read
+   from the boat, seals when D lands them.
+7. The portable tier and the portage, once the liberty is decided.
+
+### What would look wrong
+
+A boat that is a faster walking speed on blue cells. A lake crossed in
+fog on the walker's bearing. A boat that never traps you at freeze-up or
+break-up. A boat portaged at any weight, or a dugout carried at all. Net
+odds from the shore equal to odds from over the lie. A capsize that is a
+soaking rather than the swim back. A runner that crosses in a wind because
+the order said to. And the first version being the canoe: the raft of the
+logs you felled is the boat this game can honestly build today, and it is
+already the one that changes a decision.
