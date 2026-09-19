@@ -572,19 +572,16 @@ limit could never reveal.
     npm install
     npm run dev      # http://127.0.0.1:5173/prototypes/08/
     npm test
-    npm run test:slow
     npm run build
     npm run weather:profile
     npm run terrain
 
-`npm test` is the commit gate and stays under twenty seconds; it excludes
-`tests/slow/`, which holds the runs measured in whole simulated seasons -
-the three-life lineage on seed 17. A fresh clone pays for the worlds
-first: the fast suite touches about fourteen full-size seeds, each solved
-once and cached, which is around seventy seconds and six hundred MB under
-`node_modules/.cache/` before the twenty-second runs begin. See
-`docs/testing.md` for the cache. `npm run test:slow` runs those, and is
-worth a run when the reference player, the lineage or the landing moves.
+`npm test` is the commit gate and the only suite. A fresh clone pays for
+the worlds first: the suite touches about fourteen full-size seeds, each
+solved once and cached, which is around seventy seconds and six hundred MB
+under `node_modules/.cache/`. See `docs/testing.md` for the cache. The
+slow suite that held the whole-season runs was deleted; see "Reinstate the
+useful slow tests, under a time budget" in `docs/roadmap-additions.md`.
 
 Every browser pass runs at 1440 by 900 and at 390 wide against
 `docs/ux.md`.

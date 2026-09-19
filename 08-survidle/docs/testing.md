@@ -292,11 +292,10 @@ own reads or writes it: a fixture world that borrowed a seed keeps its
 own regions. `tests/sight.test.ts` on this container: 96 s before, 15 s
 warm after.
 
-`tests/slow/terrain-budget.test.ts` is the solve's own budget: it solves
-one full-size world with no cache and asserts under 20 seconds, run as
-part of `npm run test:slow` (`tests/slow/**/*.test.ts` is picked up by
-the slow suite's glob, the same as the other files already in that
-directory, with no separate listing needed in `vitest.config.ts`).
+There is no slow suite. It was deleted on 2026-09-19, with the solve's own
+budget test in it; the roadmap item "Reinstate the useful slow tests,
+under a time budget" in `docs/roadmap-additions.md` says what comes back
+and on what terms.
 
 
 ## Safari memory

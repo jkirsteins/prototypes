@@ -2058,64 +2058,58 @@ Acceptance requires correct reset/cancellation, unchanged world results, verifie
 Safari/deployment compatibility and a measured memory reduction. This is not a
 prerequisite for the current preview and is not a speculative transfer patch.
 
-## Slow-suite reconciliation after map, weather and wildlife migrations
+## Reinstate the useful slow tests, under a time budget
 
-**Raised** 2026-09-17. Fast tests and Chromium playthrough passed, but the slow
-integration suite reports failures. A baseline worktree at 98461be3 reproduced
-16 selected UI/wildlife/delivery failures before the performance batch. That
-establishes provenance, not harmlessness. Additional failures are not yet fully
-baseline-classified. Do not disable files or relax assertions to claim green.
+**Raised** 2026-09-19. The slow suite is deleted: 107 files and about 1,400
+cases, the `SURVIDLE_TEST_SUITE` switch, `npm run test:slow` and
+`scripts/check-test-discovery.mjs`. 96 of those files had been moved out
+of `npm test` one by one as they got slow; the other 11 were the
+whole-season runs in `tests/slow/`. The suite ran on no commit and was a
+gate for nothing, and it drifted red with nobody noticing: on `707b406f`,
+`tests/ui.test.ts` and `tests/emberui.test.ts` alone failed 14 cases, and
+the 2026-09-17 reconciliation found more across `orders`, `ladder`,
+`body`, `fire`, `animal-agents`, `hunting`, `siting`, `landing`, `churn`,
+`tasks`, `needs` and `spatial-performance`. A red suite that nobody runs is
+not evidence of anything.
 
-Simple cases addressed in this follow-up:
+Every deleted file is recoverable from the commit before the deletion:
 
-- Task enumeration keeps uniqueness and required-task assertions, without the
-  obsolete fixed count of 49 after two tasks were added.
-- Counted yard clearing gets its missing Building delegation gate. A real order
-  now refuses below the rung and succeeds at it instead of throwing.
-- Save round-trip expectations preserve Maps/typed arrays through an independent
-  structured snapshot; old-world saves assert the explicit refusal result rather
-  than expecting null. These repair obsolete fixtures, not save behavior.
-- Fire fixtures clear leftover laid fuel before testing carried-wood consumption.
-  The drying test checks both 2 kg/h drying and 1 kg/h exposed-stack rewetting,
-  including dry wood and wetted accounting, rather than mistaking the net rate
-  for the drying rate. The whole fire file passes without simulation changes.
+    git show f932a77b:08-survidle/tests/<name>.test.ts
 
-Remaining investigation groups, ordered by player risk:
+What comes back, and on what terms:
 
-- Delivery preemption and haul completion (`orders`, `ladder`): reproduce whether
-  displaced carrying loses row ownership or marks work complete before delivery.
-  Trace owner, carried load and completion credit across preemption/resumption.
-- Shelter and fire (`body`, `fire`): distinguish stale synthetic-weather fixtures
-  from incorrect cover adequacy, extinguishing or wet-wood drying. Use explicit
-  observer position, local weather and protection transitions, not only regional
-  settings. No balance constants should change just to satisfy an old expectation.
-- Wildlife (`animal-agents`, `hunting`): separate old cell/axis-distance and
-  region-boundary assumptions from actual visibility, alarm and hidden-ice leaks.
-  Use metric positions and independently specified sight/movement contracts.
-  The `animals` summer-refill case narrowly misses its 90% density band; diagnose
-  the migration/calendar fixture before changing the ecological rate or band.
-- Terrain presentation (`ui`, `siting`, `landing`): old per-patch assertions often
-  run at the default 300m aggregate rung. Rewrite narrow tests at an explicit rung
-  and keep separate 300m aggregate/canvas acceptance checks. Fixtures that cannot
-  find their proposed night observer need controlled terrain rather than a new
-  arbitrary seed or weaker assertion.
-  `churn` also reports zero tooltip transitions in its pointer fixture. Reproduce
-  that against controlled known cells, alongside the separate static-layer budget;
-  do not infer from it that continuous redraw is acceptable.
-- Task availability and seep waiting (`tasks`, `needs`): establish whether the
-  fixture reaches usable water, then validate seasonal refusals and continuous
-  trickle drinking at the resolved work destination.
-  `water` also expects an iced-shore message in an old inventory presentation;
-  check the current access/status boundary before altering UI or removing coverage.
-- Routing/visibility budgets (`spatial-performance`): replace incidental generated
-  terrain with controlled traversable neighbors; derive parent-touch budgets from
-  the declared reach plus boundary cells. Do not merely raise failing limits.
+- **Only a test that guards something a player would notice broken**: a
+  death or a stall, a lost or refused save, a wrong map, a delivery that
+  loses its load, or a production budget. A test that pins a fixture's
+  incidental numbers stays deleted.
+- **A hard time budget, enforced by the suite, not by review.** Each
+  returning file runs under 2 s warm on the dev machine and each case
+  under 500 ms, and a check fails `npm test` when one goes over. A case
+  that cannot meet that is cut down to the contract it guards (an
+  explicit rung, controlled terrain, a few simulated hours rather than a
+  season) or it does not come back. The budget is measured per file when
+  it returns and recorded beside it.
+- **Green on the head it returns on.** A case is fixed or dropped, never
+  loosened to pass. The 2026-09-17 rule stands: no relaxed assertion and
+  no changed balance constant to satisfy an old expectation.
+- **Whole-season runs are scripts, not tests.** The lineage, heir, year
+  and reference runs belong with `npm run reference`, `year` and
+  `horizon`: measurements someone reads, not gates.
 
-Next pass should produce an exhaustive JSON failure inventory, run each affected
-case at the pulled baseline and current head, and record root cause, production
-contract and minimal regression. Commit each verified correction independently,
-then run the complete slow suite on the settled head. The in-flight old-head
-run is diagnostic evidence, not final validation of subsequent commits.
+Where to start, by player risk (the 2026-09-17 leads):
+
+1. Delivery preemption and haul completion (`orders`, `ladder`): does a
+   displaced carry lose its row or get credited before it is delivered?
+2. Save round-trip (`advance-save`): Maps and typed arrays survive, and an
+   old-world save gets its explicit refusal.
+3. Body, shelter and fire (`body`, `fire`, `embers`, `emberui`): cover,
+   putting out, and wet wood drying, against explicit local weather.
+4. Map truth (`ui`, `siting`, `landing`): at an explicit rung with
+   controlled terrain. Most old failures ran per-patch assertions at the
+   default 300 m rung. The firelight fixture in `ui` no longer finds its
+   hidden fire.
+5. Wildlife (`animal-agents`, `hunting`, `animals`): metric positions and
+   stated sight and movement contracts, not old cell distances.
 
 ## Need bars as words, not numbers
 
